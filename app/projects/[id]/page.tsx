@@ -2,18 +2,61 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { getCurrentUser } from "@/lib/auth";
+import { authorityTrend, selfTiles, dataHealth } from "@/db/dashboard";
+import { latestScoresByCompany, listComparisonCompanies } from "@/db/competitors";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProjectFormDialog } from "@/components/projects/project-form-dialog";
 import { ArchiveControls } from "@/components/projects/archive-controls";
+import {
+  AuthorityTrendChart,
+  type TrendDatum,
+} from "@/components/charts/authority-trend";
+import { AuthorityBarChart } from "@/components/charts/authority-bar";
 import { formatDate } from "@/lib/format";
 
-const UPCOMING_TABS = [
-  { label: "Reports", spec: "specs/006" },
-  { label: "Tasks", spec: "specs/007" },
+const NAV_CARDS = [
+  { label: "Prompts", path: "prompts", hint: "Sets & frozen versions" },
+  { label: "Runs", path: "runs", hint: "Execute & inspect captures" },
+  { label: "Review", path: "review", hint: "Low-confidence classifications" },
+  { label: "Competitors", path: "competitors", hint: "Comparison & discovery" },
+  { label: "Reports", path: "reports", hint: "Immutable period snapshots" },
 ] as const;
 
-export default async function ProjectDetailPage({
+function StatTile({
+  label,
+  value,
+  delta,
+  sub,
+}: {
+  label: string;
+  value: string;
+  delta?: number | null;
+  sub?: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <div className="mt-1 flex items-baseline gap-2">
+          <span className="text-2xl font-semibold">{value}</span>
+          {delta !== undefined && delta !== null && (
+            <span
+              className={
+                delta >= 0 ? "text-sm text-success" : "text-sm text-destructive"
+              }
+            >
+              {delta >= 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}
+            </span>
+          )}
+        </div>
+        {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default async function ProjectDashboardPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -22,13 +65,53 @@ export default async function ProjectDetailPage({
   const [project, user] = await Promise.all([getProject(id), getCurrentUser()]);
   if (!project) notFound();
 
+  const [tiles, trend, comparison, latestScores, health] = await Promise.all([
+    selfTiles(id),
+    authorityTrend(id),
+    listComparisonCompanies(id),
+    latestScoresByCompany(id),
+    dataHealth(id),
+  ]);
+
+  const tile = (metric: string) => tiles.find((t) => t.metric === metric);
+  const authority = tile("authority_score");
+  const rec = tile("recommendation_rate");
+  const sov = tile("share_of_voice");
+
+  // Pivot trend rows into per-run datums for the chart
+  const trendByRun = new Map<string, TrendDatum>();
+  for (const point of trend) {
+    if (!trendByRun.has(point.runId)) {
+      trendByRun.set(point.runId, {
+        runLabel: point.runLabel,
+        startedAt: point.startedAt.toISOString(),
+        scoringVersion: point.scoringVersion,
+        promptSetVersionId: point.promptSetVersionId,
+        values: {},
+      });
+    }
+    trendByRun.get(point.runId)!.values[point.provider] = Number(point.value);
+  }
+  const trendData = [...trendByRun.values()];
+  const providers = [
+    ...new Set(trend.map((p) => p.provider).filter((p) => p !== "all")),
+  ];
+
+  const barData = comparison
+    .map((c) => ({
+      companyName: c.companyName,
+      isSelf: c.isSelf,
+      value: latestScores.get(c.companyId)?.authority_score ?? null,
+    }))
+    .filter((c): c is { companyName: string; isSelf: boolean; value: number } =>
+      c.value !== null
+    );
+
   return (
     <div className="mx-auto max-w-7xl p-6">
       <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">
-          Projects
-        </Link>{" "}
-        / {project.name}
+        <Link href="/projects" className="hover:text-foreground">Projects</Link>
+        {" / "}{project.name}
       </nav>
 
       {project.status === "archived" && (
@@ -52,9 +135,6 @@ export default async function ProjectDetailPage({
           )}
           <p className="mt-1 text-xs text-muted-foreground">
             Created {formatDate(project.createdAt)}
-            {project.archivedAt
-              ? ` · archived ${formatDate(project.archivedAt)}`
-              : null}
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
@@ -65,57 +145,78 @@ export default async function ProjectDetailPage({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Link href={`/projects/${project.id}/prompts`}>
-          <Card className="transition-colors hover:bg-accent">
-            <CardContent className="p-4">
-              <p className="text-sm font-medium">Prompts</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {project.promptSetCount} prompt set
-                {project.promptSetCount === 1 ? "" : "s"}
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href={`/projects/${project.id}/runs`}>
-          <Card className="transition-colors hover:bg-accent">
-            <CardContent className="p-4">
-              <p className="text-sm font-medium">Runs</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {project.runCount} run{project.runCount === 1 ? "" : "s"}
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href={`/projects/${project.id}/review`}>
-          <Card className="transition-colors hover:bg-accent">
-            <CardContent className="p-4">
-              <p className="text-sm font-medium">Review</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Low-confidence classifications
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href={`/projects/${project.id}/competitors`}>
-          <Card className="transition-colors hover:bg-accent">
-            <CardContent className="p-4">
-              <p className="text-sm font-medium">Competitors</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Comparison &amp; brand discovery
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
-        {UPCOMING_TABS.map((tab) => (
-          <Card key={tab.label}>
-            <CardContent className="p-4">
-              <p className="text-sm font-medium">{tab.label}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Arrives with {tab.spec}
-              </p>
-            </CardContent>
-          </Card>
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile
+          label="Authority score (all providers)"
+          value={authority ? authority.value.toFixed(1) : "—"}
+          delta={
+            authority?.previousValue != null
+              ? authority.value - authority.previousValue
+              : null
+          }
+          sub={authority ? `N=${authority.sampleSize} · v1.0` : "no scored runs"}
+        />
+        <StatTile
+          label="Recommendation rate"
+          value={rec ? `${(rec.value * 100).toFixed(1)}%` : "—"}
+          delta={
+            rec?.previousValue != null
+              ? (rec.value - rec.previousValue) * 100
+              : null
+          }
+          sub={rec ? `N=${rec.sampleSize}` : undefined}
+        />
+        <StatTile
+          label="Share of voice"
+          value={sov ? `${(sov.value * 100).toFixed(1)}%` : "—"}
+          sub={sov ? `N=${sov.sampleSize}` : undefined}
+        />
+        <StatTile
+          label="Data health"
+          value={
+            health.lastRunStatus
+              ? `${health.lastRunStatus}`
+              : "no runs"
+          }
+          sub={`${health.pendingReviews} pending review · ${health.failedJobs} failed jobs`}
+        />
+      </div>
+
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardContent className="p-4">
+            <p className="mb-2 text-sm font-medium">
+              Parva authority over runs{" "}
+              <span className="font-normal text-muted-foreground">
+                (scoring v1.0 — boundaries annotated)
+              </span>
+            </p>
+            <AuthorityTrendChart data={trendData} providers={providers} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="mb-2 text-sm font-medium">
+              Authority by company{" "}
+              <span className="font-normal text-muted-foreground">
+                (latest scored run, all providers)
+              </span>
+            </p>
+            <AuthorityBarChart data={barData} />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {NAV_CARDS.map((card) => (
+          <Link key={card.path} href={`/projects/${project.id}/${card.path}`}>
+            <Card className="h-full transition-colors hover:bg-accent">
+              <CardContent className="p-4">
+                <p className="text-sm font-medium">{card.label}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{card.hint}</p>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
     </div>

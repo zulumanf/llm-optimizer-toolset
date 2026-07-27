@@ -76,6 +76,17 @@ native citation fields (e.g. Perplexity search results) are preserved in
 raw_payload; a future parser version can mine them without any migration —
 that's the payoff of capturing everything verbatim.
 
+### Deterministic report drafter behind a strict evidence gate (spec 006)
+The narrative drafter v1 is pure templating over the snapshot, so every
+numeric sentence carries a [score:id]/[response:id] citation by construction.
+The publish-time validator (evidence gate) is the real invariant: any
+narrative — templated, hand-edited, or a future LLM drafter — must have
+every numeric claim cited and every citation resolvable inside the snapshot,
+or publish fails. This ordering (gate first, fancy drafter later) means
+swapping in REPORT_DRAFTER_V1 when keys exist cannot weaken the guarantee.
+Bug caught by our own gate during implementation: the drafter's coverage
+caveat contained an uncited count — reworded rather than weakening the gate.
+
 ### Playwright E2E deferred to the CI milestone
 Spec 001's unit/integration coverage exercises every acceptance criterion including DB triggers and role checks. Browser E2E adds most value once there's a multi-step flow (freeze → run → review, specs 002–004); installing browser tooling now would slow the vertical slice. Recorded as a scope cut in spec 001; E2E lands with CI setup before spec 003 completes.
 
