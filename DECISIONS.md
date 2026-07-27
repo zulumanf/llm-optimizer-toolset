@@ -67,6 +67,15 @@ The MENTION_PARSER_V1 LLM stage from docs/13 lands as a *new* parser_version
 when keys arrive; old parses stay, per the revision model. Accuracy harness
 gates precision ≥ 0.90 in CI (currently 0.958/1.0 on 22 labeled cases).
 
+### Citation measurement from response text, not new response columns (spec 005)
+`responses` is insert-only, so citation data can't be added to old rows.
+Rather than a schema change, citation denominators are derived at scoring
+time by deterministically re-extracting URLs from stored response_text, and
+per-company attribution comes from the parser's domain matching. Provider-
+native citation fields (e.g. Perplexity search results) are preserved in
+raw_payload; a future parser version can mine them without any migration —
+that's the payoff of capturing everything verbatim.
+
 ### Playwright E2E deferred to the CI milestone
 Spec 001's unit/integration coverage exercises every acceptance criterion including DB triggers and role checks. Browser E2E adds most value once there's a multi-step flow (freeze → run → review, specs 002–004); installing browser tooling now would slow the vertical slice. Recorded as a scope cut in spec 001; E2E lands with CI setup before spec 003 completes.
 

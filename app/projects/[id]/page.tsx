@@ -9,7 +9,6 @@ import { ArchiveControls } from "@/components/projects/archive-controls";
 import { formatDate } from "@/lib/format";
 
 const UPCOMING_TABS = [
-  { label: "Competitors", spec: "specs/005" },
   { label: "Reports", spec: "specs/006" },
   { label: "Tasks", spec: "specs/007" },
 ] as const;
@@ -94,6 +93,16 @@ export default async function ProjectDetailPage({
               <p className="text-sm font-medium">Review</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 Low-confidence classifications
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href={`/projects/${project.id}/competitors`}>
+          <Card className="transition-colors hover:bg-accent">
+            <CardContent className="p-4">
+              <p className="text-sm font-medium">Competitors</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Comparison &amp; brand discovery
               </p>
             </CardContent>
           </Card>

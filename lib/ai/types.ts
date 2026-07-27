@@ -1,7 +1,13 @@
 /** Provider abstraction contract (docs/02, docs/12). Vendor SDKs are imported
  * only inside lib/ai/ adapters — never in feature code. */
 
-export const PROVIDER_IDS = ["anthropic", "openai", "mock"] as const;
+export const PROVIDER_IDS = [
+  "anthropic",
+  "openai",
+  "google",
+  "perplexity",
+  "mock",
+] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 export interface ModelInfo {

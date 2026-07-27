@@ -9,6 +9,10 @@ import { listActiveCompanies } from "@/db/companies";
 import { pendingReviewCount } from "@/db/mentions";
 import { classifyResponse } from "@/lib/parsing/classify";
 import { extractUrls, urlDomain } from "@/lib/parsing/prepass";
+import {
+  detectBrandCandidates,
+  normalizeCandidate,
+} from "@/lib/parsing/candidates";
 import { PARSER_VERSION } from "@/lib/constants";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
@@ -100,6 +104,19 @@ export async function parseResponse(responseId: string): Promise<void> {
         values (${url}, ${domain}, ${owner?.id ?? null}, 1)
         on conflict (url) do update set
           citation_count = sources.citation_count + 1,
+          last_seen_at = now()
+      `;
+    }
+
+    // Unrecognized-brand discovery (spec 005): surfaced for human promotion,
+    // never auto-tracked (PRINCIPLES.md #8)
+    const knownTerms = companies.flatMap((c) => [c.name, ...c.aliases]);
+    for (const candidate of detectBrandCandidates(text, knownTerms)) {
+      await tx`
+        insert into brand_candidates (name, normalized, first_seen_run_id)
+        values (${candidate}, ${normalizeCandidate(candidate)}, ${response.runId})
+        on conflict (normalized) do update set
+          hit_count = brand_candidates.hit_count + 1,
           last_seen_at = now()
       `;
     }
