@@ -10,6 +10,11 @@ const envSchema = z.object({
   DEV_USER_EMAIL: z.string().email().default("dev@parva.local"),
   DEV_USER_NAME: z.string().min(1).default("Dev User"),
   DEV_USER_ROLE: z.enum(["admin", "operator"]).default("admin"),
+  // Provider keys and cron secret are optional at boot; the features that
+  // need them fail with a classified error when missing (lib/ai adapters)
+  ANTHROPIC_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  CRON_SECRET: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

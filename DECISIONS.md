@@ -39,6 +39,22 @@ The schema is the product (`docs/03`) — we want hand-written SQL with triggers
 ### Local dev database
 Homebrew `postgresql@14`, pre-existing install, configured on **port 5433** (left as found). Databases `llm_optimizer_dev` and `llm_optimizer_test`; integration tests remap `DATABASE_URL` to `TEST_DATABASE_URL` in `tests/setup.ts` so they can never touch dev data.
 
+### Official provider SDKs with our own retry layer (spec 003)
+Adapters use `@anthropic-ai/sdk` and `openai` rather than raw fetch — typed
+errors, correct auth handling, maintained request shapes. SDK-internal retries
+are disabled (`maxRetries: 0`) so `lib/ai/retry.ts` is the single retry policy
+for every provider: uniform backoff, budget checks between attempts, refusals
+never retried (docs/12). Cost math uses integer micro-dollars (µ$ = tokens ×
+$/MTok) to avoid float drift; per-model prices are pinned in
+`lib/ai/pricing.ts` with a verified flag — unverified models are called out in
+the run-estimate UI.
+
+### Baseline cron config as columns on projects (spec 003)
+The weekly baseline needs per-project config (which set, which providers,
+what budget). Rather than a settings table for two fields, they live as
+`baseline_prompt_set_id` + `baseline_config` jsonb on projects, set via SQL
+for now. Promote to a settings UI when a second consumer appears.
+
 ### Playwright E2E deferred to the CI milestone
 Spec 001's unit/integration coverage exercises every acceptance criterion including DB triggers and role checks. Browser E2E adds most value once there's a multi-step flow (freeze → run → review, specs 002–004); installing browser tooling now would slow the vertical slice. Recorded as a scope cut in spec 001; E2E lands with CI setup before spec 003 completes.
 
