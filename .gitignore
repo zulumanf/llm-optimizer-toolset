@@ -1,0 +1,15 @@
+# deps / build
+node_modules/
+.next/
+dist/
+coverage/
+
+# env — single .env, never committed (docs/10-security.md)
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+*.log
+.vercel
