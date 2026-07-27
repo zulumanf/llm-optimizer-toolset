@@ -1,8 +1,22 @@
 # Spec 003 — Experiment Runs
 
-> Status: ready
+> Status: done (2026-07-27) — except the real-provider smoke run in the DoD,
+> which is blocked on OPENAI_API_KEY / ANTHROPIC_API_KEY being added to .env.
+> All acceptance criteria verified against the mock provider, including a live
+> worker-executed run through the real queue.
 > Depends on: specs/002 · docs/02 (worker/queue) · docs/07 (protocol) · docs/12 (retry rules)
 > Branch: feat/003-experiment-runs
+>
+> Implementation notes: adapters use the official SDKs (@anthropic-ai/sdk,
+> openai) with SDK retries disabled — lib/ai/retry.ts owns the one retry
+> policy. Pinned models: claude-opus-5, claude-sonnet-5 (pricing verified),
+> gpt-5.1, gpt-5 (pricing UNVERIFIED — flagged in the estimate UI; verify ids
+> and prices in lib/ai/pricing.ts before the first paid run). Cost math is
+> integer micro-dollars. Baseline cron config lives on projects
+> (baseline_prompt_set_id + baseline_config jsonb), set via SQL until a
+> settings UI lands. Response detail is a page rather than a drawer
+> (docs/04 allows either). Anthropic refusals (stop_reason) are captured as
+> valid measurements per docs/12.
 
 ## Goal
 Execute a frozen prompt-set version across providers/models with N repetitions, through a resumable job queue, capturing every raw response immutably with cost tracking. After this spec, the weekly baseline can run unattended. This is the largest spec; it includes the provider abstraction (`lib/ai/`: OpenAI + Anthropic), the `jobs` queue, and the worker process.

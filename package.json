@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "worker": "tsx workers/index.ts",
     "build": "next build",
     "start": "next start",
     "lint": "next lint --max-warnings 0",
@@ -14,11 +15,13 @@
     "db:rollback": "tsx scripts/migrate.ts down"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@hookform/resolvers": "^5.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.510.0",
     "next": "^15.3.0",
+    "openai": "^6.49.0",
     "postgres": "^3.4.5",
     "radix-ui": "^1.6.7",
     "react": "^19.1.0",

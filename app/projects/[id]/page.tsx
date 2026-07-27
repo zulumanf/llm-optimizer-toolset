@@ -9,7 +9,6 @@ import { ArchiveControls } from "@/components/projects/archive-controls";
 import { formatDate } from "@/lib/format";
 
 const UPCOMING_TABS = [
-  { label: "Runs", spec: "specs/003" },
   { label: "Review", spec: "specs/004" },
   { label: "Competitors", spec: "specs/005" },
   { label: "Reports", spec: "specs/006" },
@@ -76,6 +75,16 @@ export default async function ProjectDetailPage({
               <p className="mt-1 text-xs text-muted-foreground">
                 {project.promptSetCount} prompt set
                 {project.promptSetCount === 1 ? "" : "s"}
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href={`/projects/${project.id}/runs`}>
+          <Card className="transition-colors hover:bg-accent">
+            <CardContent className="p-4">
+              <p className="text-sm font-medium">Runs</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {project.runCount} run{project.runCount === 1 ? "" : "s"}
               </p>
             </CardContent>
           </Card>

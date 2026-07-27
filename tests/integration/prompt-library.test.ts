@@ -41,7 +41,7 @@ describe.skipIf(!TEST_URL)("prompt library (integration)", () => {
 
   beforeEach(async () => {
     await sql.unsafe(
-      "truncate audit_log, prompt_set_versions, prompts, prompt_sets, projects"
+      "truncate audit_log, prompt_set_versions, prompts, prompt_sets, projects cascade"
     );
     const [p] = await sql`
       insert into projects (name) values ('Test Project') returning id
