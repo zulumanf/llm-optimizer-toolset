@@ -1,12 +1,16 @@
 import type { AIProvider, ModelInfo, ProviderId } from "@/lib/ai/types";
 import { anthropicProvider } from "@/lib/ai/anthropic";
 import { openaiProvider } from "@/lib/ai/openai";
+import { googleProvider } from "@/lib/ai/google";
+import { perplexityProvider } from "@/lib/ai/perplexity";
 import { mockProvider } from "@/lib/ai/mock";
 import { ClassifiedError } from "@/lib/errors";
 
 const providers: Record<ProviderId, AIProvider> = {
   anthropic: anthropicProvider,
   openai: openaiProvider,
+  google: googleProvider,
+  perplexity: perplexityProvider,
   mock: mockProvider,
 };
 

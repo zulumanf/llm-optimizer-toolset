@@ -40,6 +40,30 @@ export const PRICING: Record<string, ModelPricing> = {
     verified: false,
     lastVerified: "2026-07-27",
   },
+  "gemini-2.5-pro": {
+    inputPerMTok: 1.25,
+    outputPerMTok: 10,
+    verified: false,
+    lastVerified: "2026-07-27",
+  },
+  "gemini-2.5-flash": {
+    inputPerMTok: 0.3,
+    outputPerMTok: 2.5,
+    verified: false,
+    lastVerified: "2026-07-27",
+  },
+  sonar: {
+    inputPerMTok: 1,
+    outputPerMTok: 1,
+    verified: false,
+    lastVerified: "2026-07-27",
+  },
+  "sonar-pro": {
+    inputPerMTok: 3,
+    outputPerMTok: 15,
+    verified: false,
+    lastVerified: "2026-07-27",
+  },
   "mock-model": {
     inputPerMTok: 1,
     outputPerMTok: 1,

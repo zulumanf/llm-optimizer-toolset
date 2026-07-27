@@ -12,6 +12,14 @@ import { currentMentionsForRun, pendingReviewCount } from "@/db/mentions";
 import { SCORING_VERSION, REVIEW_TIMEOUT_HOURS } from "@/lib/constants";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
+import { extractUrls } from "@/lib/parsing/prepass";
+import {
+  computeProviderMetrics,
+  authorityScore,
+  aggregateAcrossProviders,
+  type ComponentMetric,
+  type MetricValues,
+} from "@/lib/scoring/metrics";
 
 export async function computeScores(runId: string): Promise<void> {
   const [run] = await sql`select id, status from runs where id = ${runId}`;
@@ -50,7 +58,7 @@ export async function computeScores(runId: string): Promise<void> {
 
   // Valid cells: successful captures (refusals count; errors don't — docs/06)
   const validResponses = await sql`
-    select id, provider from responses
+    select id, provider, response_text from responses
     where run_id = ${runId} and error is null
   `;
   const included = validResponses.filter(
@@ -62,60 +70,113 @@ export async function computeScores(runId: string): Promise<void> {
   }
 
   const byProvider = new Map<string, Set<string>>();
+  const responsesWithCitation = new Set<string>();
   for (const row of included) {
     const provider = row.provider as string;
     if (!byProvider.has(provider)) byProvider.set(provider, new Set());
     byProvider.get(provider)!.add(row.id as string);
+    if (extractUrls((row.responseText as string) ?? "").length > 0) {
+      responsesWithCitation.add(row.id as string);
+    }
   }
 
   const mentions = (await currentMentionsForRun(runId)).filter(
-    (m) => !excludedResponseIds.has(m.responseId)
+    (m) => !excludedResponseIds.has(m.responseId) && m.mentioned
   );
   const companies = await listActiveCompanies();
 
-  interface Rate {
-    metric: "mention_rate" | "recommendation_rate";
+  interface ScoreInsert {
+    companyId: string;
+    metric: string;
     provider: string;
     value: number;
     sampleSize: number;
   }
+  const rows: ScoreInsert[] = [];
 
-  const rows: (Rate & { companyId: string })[] = [];
   for (const company of companies) {
-    const perProvider: Record<"mention_rate" | "recommendation_rate", number[]> = {
-      mention_rate: [],
-      recommendation_rate: [],
-    };
+    const perProviderValues: Record<string, MetricValues> = {};
+    const perProviderAuthority: (number | null)[] = [];
+
     for (const [provider, responseIds] of byProvider) {
-      const n = responseIds.size;
-      const companyMentions = mentions.filter(
-        (m) =>
-          m.companyId === company.id &&
-          m.mentioned &&
-          responseIds.has(m.responseId)
+      const providerMentions = mentions.filter((m) => responseIds.has(m.responseId));
+      const companyMentions = providerMentions.filter(
+        (m) => m.companyId === company.id
       );
       const mentionedResponses = new Set(companyMentions.map((m) => m.responseId));
-      const recommendedResponses = new Set(
-        companyMentions.filter((m) => m.recommended).map((m) => m.responseId)
-      );
-      const mentionRate = mentionedResponses.size / n;
-      const recommendationRate = recommendedResponses.size / n;
-      rows.push(
-        { companyId: company.id, metric: "mention_rate", provider, value: mentionRate, sampleSize: n },
-        { companyId: company.id, metric: "recommendation_rate", provider, value: recommendationRate, sampleSize: n }
-      );
-      perProvider.mention_rate.push(mentionRate);
-      perProvider.recommendation_rate.push(recommendationRate);
+
+      const values = computeProviderMetrics({
+        n: responseIds.size,
+        mentionedResponses: mentionedResponses.size,
+        recommendedResponses: new Set(
+          companyMentions.filter((m) => m.recommended).map((m) => m.responseId)
+        ).size,
+        companyMentions: mentionedResponses.size,
+        totalTrackedMentions: new Set(
+          providerMentions.map((m) => `${m.companyId}|${m.responseId}`)
+        ).size,
+        listPositions: companyMentions
+          .map((m) => m.listPosition)
+          .filter((p): p is number => p !== null),
+        sentiments: companyMentions.map((m) => m.sentiment),
+        citedResponses: new Set(
+          companyMentions.filter((m) => m.citedUrls.length > 0).map((m) => m.responseId)
+        ).size,
+        responsesWithAnyCitation: [...responseIds].filter((id) =>
+          responsesWithCitation.has(id)
+        ).length,
+      });
+      perProviderValues[provider] = values;
+
+      for (const [metric, value] of Object.entries(values)) {
+        if (value === null || value === undefined) continue;
+        rows.push({
+          companyId: company.id,
+          metric,
+          provider,
+          value,
+          sampleSize: responseIds.size,
+        });
+      }
+      const authority = authorityScore(values);
+      perProviderAuthority.push(authority);
+      if (authority !== null) {
+        rows.push({
+          companyId: company.id,
+          metric: "authority_score",
+          provider,
+          value: authority,
+          sampleSize: responseIds.size,
+        });
+      }
     }
-    // Cross-provider aggregate: unweighted mean (docs/06)
-    for (const metric of ["mention_rate", "recommendation_rate"] as const) {
-      const values = perProvider[metric];
-      if (values.length === 0) continue;
+
+    // Cross-provider aggregates: unweighted mean per metric (docs/06)
+    const metricKeys = new Set<string>(
+      Object.values(perProviderValues).flatMap((v) => Object.keys(v))
+    );
+    for (const metric of metricKeys) {
+      const aggregate = aggregateAcrossProviders(
+        Object.values(perProviderValues).map(
+          (v) => v[metric as ComponentMetric]
+        )
+      );
+      if (aggregate === null) continue;
       rows.push({
         companyId: company.id,
         metric,
         provider: "all",
-        value: values.reduce((a, b) => a + b, 0) / values.length,
+        value: aggregate,
+        sampleSize: included.length,
+      });
+    }
+    const aggregateAuthority = aggregateAcrossProviders(perProviderAuthority);
+    if (aggregateAuthority !== null) {
+      rows.push({
+        companyId: company.id,
+        metric: "authority_score",
+        provider: "all",
+        value: aggregateAuthority,
         sampleSize: included.length,
       });
     }

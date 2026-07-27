@@ -1,8 +1,21 @@
 # Spec 005 — Competitor Analysis
 
-> Status: ready
+> Status: done (2026-07-27)
 > Depends on: specs/004 · docs/06 (share of voice, position, citation, sentiment, authority)
 > Branch: feat/005-competitor-analysis
+>
+> Implementation notes / recorded cuts: trend charts (with version-boundary
+> annotation) are deferred to specs/006 where the dashboard is the core
+> deliverable — this spec ships the comparison table with n/a for
+> null/insufficient metrics. Google + Perplexity adapters are implemented
+> (@google/genai; Perplexity via the OpenAI-compatible endpoint) but their
+> model ids and prices are UNVERIFIED pending API keys — flagged in
+> lib/ai/pricing.ts and the estimate UI. Citation denominators derive from
+> URLs in response text at scoring time (deterministic, avoids new columns
+> on the immutable responses table); provider-native citation fields ride in
+> raw_payload for a future parser version. SoV denominators use all active
+> companies (single-project reality; revisit if projects diverge). Backfill
+> re-parses the last 12 completed runs (BACKFILL_RUN_LIMIT).
 
 ## Goal
 Track a competitor set per project and compute the **full v1.0 metric suite** (share of voice, position score, citation score, sentiment index, authority score) for Parva and every tracked competitor with identical methodology, plus discovery of untracked brands appearing in answers. Also adds the Google and Perplexity provider adapters (citations become meaningful).

@@ -172,10 +172,16 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
       where s.run_id = ${runId}
       order by c.name, s.metric, s.provider
     `;
-    // 2 companies × 2 metrics × (mock + all) = 8 rows
-    expect(scores).toHaveLength(8);
+    // 2 companies × 4 metrics (rates, SoV, authority) × (mock + all) = 16 rows;
+    // position/sentiment need ≥5 cells, citation needs URLs — absent here
+    expect(scores).toHaveLength(16);
     for (const row of scores) {
-      expect(Number(row.value)).toBe(1); // both responses mention+recommend both
+      const value = Number(row.value);
+      if (row.metric === "share_of_voice") expect(value).toBeCloseTo(0.5);
+      else if (row.metric === "authority_score")
+        // (1×.35 + 1×.2 + .5×.15) / (.35+.2+.15) × 100
+        expect(value).toBeCloseTo(100 * (0.625 / 0.7), 3);
+      else expect(value).toBe(1); // both responses mention+recommend both
       expect(row.sampleSize).toBe(2);
     }
     const [ledger] = await sql`
