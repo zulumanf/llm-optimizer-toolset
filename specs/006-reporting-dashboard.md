@@ -1,8 +1,20 @@
 # Spec 006 — Reporting Dashboard
 
-> Status: ready
+> Status: done (2026-07-27)
 > Depends on: specs/005 · docs/06 (reporting rules, evidence score) · docs/13 (REPORT_DRAFTER_V1)
 > Branch: feat/006-reporting-dashboard
+>
+> Implementation notes / recorded cuts: the narrative drafter v1 is
+> deterministic templating over the snapshot — fully cited by construction;
+> REPORT_DRAFTER_V1 (LLM) lands as a later version when keys exist (same
+> pattern as the parser, DECISIONS.md). The evidence gate (validator) is
+> enforced at publish regardless of drafter. Export is CSV + the browser's
+> print-to-PDF rather than server-rendered PDF (cut recorded). Draft
+> generation is synchronous in the action (fast DB assembly) — no
+> generate_report job type needed. Charts follow the dataviz method:
+> reference palette slots validated against our surfaces, fixed provider→slot
+> assignment, one axis per chart, version boundaries annotated. Dashboard
+> replaced the project-detail card page as the project home.
 
 ## Goal
 Two deliverables: (1) the **dashboard** — the project home showing current standing and trends; (2) **reports** — immutable, evidence-linked period snapshots with an AI-drafted narrative that a human edits and publishes.
