@@ -1,8 +1,14 @@
 # Spec 001 — Project Management
 
-> Status: ready
+> Status: done (2026-07-27)
 > Depends on: repo scaffolding (auth, layout, migrations working)
 > Branch: feat/001-project-management
+>
+> Implementation notes: prompt-set/run counts hardcoded to 0 in `db/projects.ts`
+> until specs 002/003 create those tables (option chosen per the API section).
+> Cut from v1: Playwright E2E — covered by integration tests for now, deferred
+> to the CI milestone (see DECISIONS.md 2026-07-27). Auth runs in dev mode
+> (single local user) until a Supabase project exists.
 
 ## Goal
 Operators can create, view, edit, and archive **projects** — the container every prompt set, run, competitor, report, and task belongs to. Ships the first end-to-end vertical slice: migration → query layer → server actions → UI → tests.
