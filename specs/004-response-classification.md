@@ -1,8 +1,20 @@
 # Spec 004 — Response Classification & Review
 
-> Status: ready
+> Status: done (2026-07-27)
 > Depends on: specs/003 · docs/06 (confidence) · docs/12 (parser design) · docs/13 (MENTION_PARSER_V1)
 > Branch: feat/004-response-classification
+>
+> Implementation notes: parser v1 is deterministic-heuristic only
+> ("mention-parser-v1+heuristic") — the LLM refinement stage becomes a new
+> parser_version once provider keys exist (see DECISIONS.md); ambiguity maps
+> to lowered confidence so uncertain rows reach human review. Scores carry a
+> `provider` column ('all' = cross-provider aggregate) — docs/03 updated.
+> Parse state lives in a `response_parses` ledger (responses are immutable).
+> Re-parse appends retraction revisions for companies that no longer match.
+> The accuracy corpus is hand-written realistic text (22 labeled cases,
+> precision 0.958 / recall 1.0); real captured fixtures accumulate once real
+> provider runs exist. The fuzzy alias tier is deliberately absent from the
+> heuristic parser (too false-positive-prone without an LLM check).
 
 ## Goal
 Turn raw responses into structured `mentions` (mentioned/recommended/position/sentiment/citations) with per-field confidence, route low-confidence parses to a human review queue, and compute the first scores (mention rate, recommendation rate) behind the review gate. Includes `companies` management (Parva + aliases) and the accuracy harness.

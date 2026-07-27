@@ -1,14 +1,11 @@
 import Link from "next/link";
-import { FolderKanban } from "lucide-react";
+import { Building2, FolderKanban } from "lucide-react";
 import { listActiveProjects } from "@/db/projects";
 import { cn } from "@/lib/utils";
 
-// Sections beyond Projects arrive with specs/002+ (docs/04 navigation)
+// Sections beyond these arrive with specs/005+ (docs/04 navigation)
 const UPCOMING_SECTIONS = [
   "Dashboard",
-  "Prompts",
-  "Runs",
-  "Review",
   "Competitors",
   "Reports",
   "Tasks",
@@ -28,11 +25,18 @@ export async function Sidebar(): Promise<React.ReactElement> {
           href="/projects"
           className={cn(
             "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium",
-            "bg-accent text-accent-foreground"
+            "hover:bg-accent"
           )}
         >
           <FolderKanban className="size-4" />
           Projects
+        </Link>
+        <Link
+          href="/companies"
+          className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
+        >
+          <Building2 className="size-4" />
+          Companies
         </Link>
         <ul className="mt-1">
           {UPCOMING_SECTIONS.map((label) => (

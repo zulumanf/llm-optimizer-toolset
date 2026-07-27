@@ -146,12 +146,13 @@ Computed metrics. Never overwritten — new scoring version = new rows.
 | run_id | uuid fk | indexed |
 | company_id | uuid fk | |
 | metric | text | 'mention_rate', 'recommendation_rate', … per `docs/06` |
+| provider | text | per-provider rows plus an 'all' aggregate (docs/06 computes per provider first) |
 | value | numeric | |
 | sample_size | int | |
 | scoring_version | text | e.g. 'v1.0' |
 | computed_at | timestamptz | |
 
-Unique: (run_id, company_id, metric, scoring_version).
+Unique: (run_id, company_id, metric, provider, scoring_version).
 
 ## sources
 External URLs cited in AI answers.
