@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { getRun, listRunCells } from "@/db/runs";
+import { listScoresForRun } from "@/db/scores";
+import { pendingReviewCount } from "@/db/mentions";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -23,7 +25,11 @@ export default async function RunDetailPage({
   const { id: projectId, runId } = await params;
   const [project, run] = await Promise.all([getProject(projectId), getRun(runId)]);
   if (!project || !run || run.projectId !== projectId) notFound();
-  const cells = await listRunCells(runId);
+  const [cells, scores, pendingReviews] = await Promise.all([
+    listRunCells(runId),
+    listScoresForRun(runId),
+    pendingReviewCount(runId),
+  ]);
 
   const successes = cells.filter((c) => c.error === null).length;
   const failures = cells.filter((c) => c.error !== null).length;
@@ -69,6 +75,66 @@ export default async function RunDetailPage({
           hasFailures={failures > 0}
         />
       </div>
+
+      <section className="mb-6">
+        <h2 className="mb-2 text-lg font-medium">Scores</h2>
+        {scores.length > 0 ? (
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Company</TableHead>
+                  <TableHead>Metric</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead className="text-right">Value</TableHead>
+                  <TableHead className="text-right">N</TableHead>
+                  <TableHead>Version</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {scores.map((s) => (
+                  <TableRow key={`${s.companyId}-${s.metric}-${s.provider}`}>
+                    <TableCell className="font-medium">
+                      {s.companyName}
+                      {s.isSelf && <Badge className="ml-2">Parva</Badge>}
+                    </TableCell>
+                    <TableCell className="text-sm">{s.metric}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {s.provider}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {s.sampleSize < 10
+                        ? "insufficient data"
+                        : `${(Number(s.value) * 100).toFixed(1)}%`}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-xs">
+                      {s.sampleSize}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {s.scoringVersion}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : pendingReviews > 0 ? (
+          <div className="rounded-md border border-warning/50 bg-warning/10 px-4 py-3 text-sm">
+            Scoring blocked: {pendingReviews} classification
+            {pendingReviews === 1 ? "" : "s"} awaiting review —{" "}
+            <Link href={`/projects/${projectId}/review`} className="underline">
+              open the review queue
+            </Link>
+            .
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {isActive
+              ? "Scores appear after the run completes, parses, and clears review."
+              : "No scores yet — parsing may still be in the worker queue."}
+          </p>
+        )}
+      </section>
 
       {cells.length === 0 ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">

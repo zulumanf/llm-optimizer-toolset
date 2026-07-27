@@ -199,4 +199,9 @@ async function finalizeRun(
     where id = ${runId}
   `;
   log("info", "run.execute.done", { runId, status, successes, totalCells });
+
+  // Parsing kicks off automatically after execution (spec 004 / docs/07 step 5)
+  const { enqueueParseJobs } = await import("@/lib/parsing/service");
+  const enqueued = await enqueueParseJobs(runId);
+  if (enqueued > 0) log("info", "run.parse_jobs_enqueued", { runId, enqueued });
 }

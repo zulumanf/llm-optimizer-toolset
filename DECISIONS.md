@@ -55,6 +55,18 @@ what budget). Rather than a settings table for two fields, they live as
 `baseline_prompt_set_id` + `baseline_config` jsonb on projects, set via SQL
 for now. Promote to a settings UI when a second consumer appears.
 
+### Heuristic-first parser (spec 004)
+Mention parser v1 (`mention-parser-v1+heuristic`) is fully deterministic:
+word-boundary alias scanning (domain-aware boundaries so "Parva" ≠
+"parva.com" ≠ "Parvati"), list-position detection, recommendation/sentiment
+lexicons, verbatim-excerpt selection. No LLM call — provider keys don't exist
+yet, and an untestable LLM stage would be riskier than an honest heuristic
+whose uncertainty routes to human review via the docs/06 confidence formula
+(heuristic certainty caps keep ambiguous parses below the 0.7 threshold).
+The MENTION_PARSER_V1 LLM stage from docs/13 lands as a *new* parser_version
+when keys arrive; old parses stay, per the revision model. Accuracy harness
+gates precision ≥ 0.90 in CI (currently 0.958/1.0 on 22 labeled cases).
+
 ### Playwright E2E deferred to the CI milestone
 Spec 001's unit/integration coverage exercises every acceptance criterion including DB triggers and role checks. Browser E2E adds most value once there's a multi-step flow (freeze → run → review, specs 002–004); installing browser tooling now would slow the vertical slice. Recorded as a scope cut in spec 001; E2E lands with CI setup before spec 003 completes.
 

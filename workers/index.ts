@@ -9,6 +9,8 @@ import { randomUUID } from "node:crypto";
 import { claimNextJob, completeJob, failJob, reclaimStaleJobs } from "@/db/jobs";
 import { sql } from "@/db/client";
 import { executeRun } from "@/lib/runs/execute";
+import { parseResponse } from "@/lib/parsing/service";
+import { computeScores } from "@/lib/scoring/compute";
 import { log } from "@/lib/logger";
 
 const WORKER_ID = `worker-${randomUUID().slice(0, 8)}`;
@@ -18,6 +20,12 @@ const STALE_LEASE_MINUTES = 15;
 const handlers: Record<string, (payload: Record<string, unknown>) => Promise<void>> = {
   execute_run: async (payload) => {
     await executeRun(payload.runId as string);
+  },
+  parse_response: async (payload) => {
+    await parseResponse(payload.responseId as string);
+  },
+  compute_scores: async (payload) => {
+    await computeScores(payload.runId as string);
   },
 };
 

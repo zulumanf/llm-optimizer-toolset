@@ -208,7 +208,13 @@ describe.skipIf(!TEST_URL)("experiment runs (integration)", () => {
 
     const retried = await runSvc.retryFailedCells(user, { runId });
     expect(retried.ok).toBe(true);
-    const retryJob = await jobs.claimNextJob("test-worker");
+    // The queue also holds parse_response jobs from finalize (spec 004);
+    // skip past them to the retry's execute_run job
+    let retryJob = await jobs.claimNextJob("test-worker");
+    while (retryJob && retryJob.type !== "execute_run") {
+      await jobs.completeJob(retryJob.id);
+      retryJob = await jobs.claimNextJob("test-worker");
+    }
     expect(retryJob?.type).toBe("execute_run");
     await execute.executeRun(runId);
 
