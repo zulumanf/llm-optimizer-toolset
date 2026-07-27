@@ -14,10 +14,7 @@ import {
   updateProjectSchema,
   projectIdSchema,
 } from "@/lib/projects/validation";
-
-function firstZodMessage(error: { issues: { message: string }[] }): string {
-  return error.issues[0]?.message ?? "Invalid input.";
-}
+import { firstZodMessage, duplicateNameConflict } from "@/lib/service-helpers";
 
 export async function createProject(
   user: CurrentUser,
@@ -47,7 +44,7 @@ export async function createProject(
     });
     return ok(project);
   } catch (err) {
-    return fail(conflictAsDuplicateName(err));
+    return fail(duplicateNameConflict(err, "A project with this name already exists."));
   }
 }
 
@@ -90,7 +87,7 @@ export async function updateProject(
     });
     return ok(project);
   } catch (err) {
-    return fail(conflictAsDuplicateName(err));
+    return fail(duplicateNameConflict(err, "A project with this name already exists."));
   }
 }
 
@@ -148,23 +145,8 @@ async function setProjectStatus(
     // Unarchive can collide with an active project's name (partial unique index)
     return fail(
       target === "active"
-        ? conflictAsDuplicateName(err, "An active project already uses this name — rename it first.")
+        ? duplicateNameConflict(err, "An active project already uses this name — rename it first.")
         : err
     );
   }
-}
-
-function conflictAsDuplicateName(err: unknown, message?: string): unknown {
-  if (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: unknown }).code === "23505"
-  ) {
-    return new ClassifiedError(
-      "conflict",
-      message ?? "A project with this name already exists."
-    );
-  }
-  return err;
 }

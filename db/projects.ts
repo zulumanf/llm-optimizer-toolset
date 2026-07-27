@@ -16,20 +16,19 @@ export interface ProjectWithCounts extends Project {
   runCount: number;
 }
 
-/**
- * Counts are 0 until specs/002 (prompt_sets) and specs/003 (runs) create
- * their tables — noted in spec 001; wire real counts in those specs.
- */
+/** runCount stays 0 until specs/003 creates the runs table (noted in spec 001). */
 export async function listProjects(opts: {
   includeArchived: boolean;
 }): Promise<ProjectWithCounts[]> {
-  const rows = await sql<Project[]>`
-    select id, name, description, status, created_at, archived_at
-    from projects
-    ${opts.includeArchived ? sql`` : sql`where status = 'active'`}
-    order by created_at desc
+  const rows = await sql<Omit<ProjectWithCounts, "runCount">[]>`
+    select p.id, p.name, p.description, p.status, p.created_at, p.archived_at,
+      (select count(*)::int from prompt_sets s
+        where s.project_id = p.id and s.archived_at is null) as prompt_set_count
+    from projects p
+    ${opts.includeArchived ? sql`` : sql`where p.status = 'active'`}
+    order by p.created_at desc
   `;
-  return rows.map((r) => ({ ...r, promptSetCount: 0, runCount: 0 }));
+  return rows.map((r) => ({ ...r, runCount: 0 }));
 }
 
 export async function listActiveProjects(): Promise<Project[]> {
@@ -42,11 +41,13 @@ export async function listActiveProjects(): Promise<Project[]> {
 }
 
 export async function getProject(id: string): Promise<ProjectWithCounts | null> {
-  const rows = await sql<Project[]>`
-    select id, name, description, status, created_at, archived_at
-    from projects
-    where id = ${id}
+  const rows = await sql<Omit<ProjectWithCounts, "runCount">[]>`
+    select p.id, p.name, p.description, p.status, p.created_at, p.archived_at,
+      (select count(*)::int from prompt_sets s
+        where s.project_id = p.id and s.archived_at is null) as prompt_set_count
+    from projects p
+    where p.id = ${id}
   `;
   const row = rows[0];
-  return row ? { ...row, promptSetCount: 0, runCount: 0 } : null;
+  return row ? { ...row, runCount: 0 } : null;
 }
