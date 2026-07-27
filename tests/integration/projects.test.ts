@@ -47,8 +47,9 @@ describe.skipIf(!TEST_URL)("projects (integration)", () => {
   });
 
   beforeEach(async () => {
-    // TRUNCATE bypasses row triggers, so this works on insert-only tables too
-    await sql.unsafe("truncate audit_log, projects");
+    // TRUNCATE bypasses row triggers, so this works on insert-only tables too;
+    // cascade clears tables added by later migrations that reference projects
+    await sql.unsafe("truncate audit_log, projects cascade");
   });
 
   afterAll(async () => {
@@ -189,12 +190,20 @@ describe.skipIf(!TEST_URL)("projects (integration)", () => {
     await expect(sql`delete from audit_log`).rejects.toThrow(/insert-only/);
   });
 
-  it("migration 001 rolls back and re-applies cleanly", async () => {
-    migrate("down");
+  it("every migration rolls back and re-applies cleanly", async () => {
+    const counted = await sql`
+      select count(*)::int as count from schema_migrations
+    `;
+    const count = counted[0]?.count as number;
+    for (let i = 0; i < count; i += 1) migrate("down");
     const gone = await sql`select to_regclass('public.projects') as t`;
     expect(gone[0]?.t).toBeNull();
     migrate("up");
     const back = await sql`select to_regclass('public.projects') as t`;
     expect(back[0]?.t).toBe("projects");
+    const recounted = await sql`
+      select count(*)::int as count from schema_migrations
+    `;
+    expect(recounted[0]?.count).toBe(count);
   });
 });

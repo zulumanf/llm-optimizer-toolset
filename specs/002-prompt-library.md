@@ -1,8 +1,14 @@
 # Spec 002 — Prompt Library
 
-> Status: ready
+> Status: done (2026-07-27)
 > Depends on: specs/001 · docs/07 (freeze semantics)
 > Branch: feat/002-prompt-library
+>
+> Implementation notes: reorder uses up/down buttons rather than drag-and-drop
+> (same capability, less machinery — revisit if sets grow long). Duplicate-text
+> warning within a set is client-side only, per the "warning, not block" rule.
+> Freeze serializes concurrent attempts with a row lock; the loser gets the
+> no-change conflict. E2E remains deferred per the spec-001 cut (DECISIONS.md).
 
 ## Goal
 Author prompts, organize them into sets, and **freeze** sets into immutable versions that runs will reference. This spec delivers the reproducibility cornerstone: after it ships, nothing about a frozen version can ever change.
