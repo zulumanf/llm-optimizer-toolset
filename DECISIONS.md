@@ -117,6 +117,19 @@ note: the ≥2-provider consistency requirement means single-provider setups
 can never produce a "notable" verdict — kept deliberately; robustness of the
 claim is the point, and real baselines run multiple providers.
 
+### First LLM agents, behind deterministic gates (spec 010)
+The content engine introduces real LLM agents (brief/draft/fact-verify on
+pinned gpt-5.4) through one runner (lib/ai/agent.ts): JSON mode, Zod
+validation with a single retry, cost accounting, and an injectable caller so
+tests inject canned outputs. The load-bearing decision: agents never gate
+themselves — the deterministic citation validator (subject sentences must
+cite approved claims, no uncited numbers/superlatives) runs on every draft
+and at verify time, and the fresh-context verifier is a different agent than
+the drafter. The live smoke proved the design: the gates blocked the
+system's own first real draft (citation-after-period formatting) and the
+verifier flagged a pedantic edge — both fixed as validator/prompt
+refinements without weakening enforcement.
+
 ### Playwright E2E deferred to the CI milestone
 Spec 001's unit/integration coverage exercises every acceptance criterion including DB triggers and role checks. Browser E2E adds most value once there's a multi-step flow (freeze → run → review, specs 002–004); installing browser tooling now would slow the vertical slice. Recorded as a scope cut in spec 001; E2E lands with CI setup before spec 003 completes.
 

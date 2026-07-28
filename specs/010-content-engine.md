@@ -1,7 +1,23 @@
 # Spec 010 — Content Engine
 
-> Status: draft (ready after 009)
+> Status: done (2026-07-28)
 > Depends on: specs/008 (claims) · specs/009 (gaps) · docs/15
+> Branch: feat/010-content-engine
+>
+> Implementation notes: the platform's first LLM agents (content-brief-v1,
+> content-draft-v1, fact-verify-v1 on pinned gpt-5.4-2026-03-05) via
+> lib/ai/agent.ts — JSON output, Zod validation with one retry, injectable
+> caller so tests never touch the network. The deterministic citation gate
+> (subject sentences must cite approved claims; no uncited numbers; no
+> uncited superlatives) blocks regardless of agent output, and the fresh-
+> context verifier must also pass (unsupported > 0 blocks). Compliance is
+> the generic superlative rule until specs/012 packs. Verification reports
+> ride on immutable version rows. Two real-world lessons from the live run,
+> both fixed: GPT places citations after the sentence period (validator now
+> attaches trailing tokens), and the verifier flagged a bare FAQ "Yes." as
+> unsupported (prompt now judges substance, not sentence boundaries). Live
+> result: Parva's entity-gap category page briefed, drafted, gate-passed,
+> fact-verified, and approved for ~$0.06 total.
 
 ## Goal
 Turn approved gap-findings into publish-ready assets through a graph of

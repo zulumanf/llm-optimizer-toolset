@@ -10,6 +10,15 @@ Single source of truth for every AI prompt **we author** (parsers, drafting aids
 |---|---|---|---|
 | Mention Parser | `MENTION_PARSER_V1` | `lib/parsing/classify.ts` | pinned cheap structured-output model (recorded in `parser_version`) |
 | Report Narrative Drafter | `REPORT_DRAFTER_V1` | report draft generation | same |
+| Content Brief | `content-brief-v1` | `lib/content/prompts.ts` (BRIEF_SYSTEM) | `gpt-5.4-2026-03-05` (AGENT_MODEL) |
+| Content Draft | `content-draft-v1` | `lib/content/prompts.ts` (DRAFT_SYSTEM) | same |
+| Fact Verifier | `fact-verify-v1` | `lib/content/prompts.ts` (VERIFY_SYSTEM) — fresh-context, never the drafter | same |
+
+> Spec 010 note: the three content prompts live as versioned constants in
+> `lib/content/prompts.ts` (implemented before MENTION_PARSER_V1/
+> REPORT_DRAFTER_V1, which remain planned LLM upgrades of their heuristic/
+> deterministic v1s). The deterministic citation gate in
+> `lib/content/validate.ts` is the enforcement layer regardless of prompts.
 
 ---
 
