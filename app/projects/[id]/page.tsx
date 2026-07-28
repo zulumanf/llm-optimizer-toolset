@@ -21,6 +21,8 @@ const NAV_CARDS = [
   { label: "Review", path: "review", hint: "Low-confidence classifications" },
   { label: "Competitors", path: "competitors", hint: "Comparison & discovery" },
   { label: "Reports", path: "reports", hint: "Immutable period snapshots" },
+  { label: "Interventions", path: "interventions", hint: "Before/after measurement" },
+  { label: "Tasks", path: "tasks", hint: "Evidence-backed actions" },
 ] as const;
 
 function StatTile({

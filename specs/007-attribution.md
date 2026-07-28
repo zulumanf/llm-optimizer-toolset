@@ -1,8 +1,18 @@
 # Spec 007 — Attribution
 
-> Status: ready
+> Status: done (2026-07-27)
 > Depends on: specs/006 · docs/07 (intervention experiments) · docs/06 (change detection)
 > Branch: feat/007-attribution
+>
+> Implementation notes: verdicts are computed on read (never stored/editable);
+> the ≥2-provider direction-consistency rule means single-provider setups can
+> never reach "notable" — by design per docs/06. Authority gets deltas only
+> (no noise verdict, including no "insufficient"). Confound window: shipped
+> dates within 84 days on the same frozen version, mutually flagged. Post runs
+> reuse the latest baseline's exact provider config; instrument_changed flags
+> config drift. Task suggestions from report "suggested actions" are cut
+> (suggest-from-verdicts ships; reports keep suggestions as narrative).
+> Scheduling uses the jobs queue's run_after — no separate scheduler.
 
 ## Goal
 Close the loop: record **interventions** (things Parva ships in the world — content, docs, PR), tie them to before/after measurement windows on frozen prompt sets, apply the change-detection rule, and manage **tasks** (suggested from findings, human-approved, evidence-linked) whose completion becomes the next intervention. After this spec, the system answers: *"did what we did move AI answers?"*

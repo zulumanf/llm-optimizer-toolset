@@ -112,15 +112,24 @@ describe.skipIf(!TEST_URL)("reports (integration)", () => {
     return project.data.id;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // Period bounds straddle today generously: JS dates are UTC-based while
+  // Postgres compares timestamptz against date in server-local time, so an
+  // exact "today" breaks for a few hours around UTC midnight.
+  const day = (offset: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offset);
+    return d.toISOString().slice(0, 10);
+  };
+  const periodStart = day(-2);
+  const periodEnd = day(2);
 
   it("draft lifecycle: generate (cited by construction) → edit narrative → publish → locked", async () => {
     const projectId = await seedScoredRun();
     const draft = await reports.generateReportDraft(user, {
       projectId,
       title: "Weekly",
-      periodStart: today,
-      periodEnd: today,
+      periodStart,
+      periodEnd,
     });
     expect(draft.ok).toBe(true);
     if (!draft.ok) return;
@@ -162,8 +171,8 @@ describe.skipIf(!TEST_URL)("reports (integration)", () => {
     const draft = await reports.generateReportDraft(user, {
       projectId,
       title: "Gate",
-      periodStart: today,
-      periodEnd: today,
+      periodStart,
+      periodEnd,
     });
     if (!draft.ok) throw new Error(draft.error.message);
 
@@ -184,8 +193,8 @@ describe.skipIf(!TEST_URL)("reports (integration)", () => {
     const draftBlocked = await reports.generateReportDraft(user, {
       projectId,
       title: "Ack",
-      periodStart: today,
-      periodEnd: today,
+      periodStart,
+      periodEnd,
     });
     expect(draftBlocked.ok).toBe(false); // no scored run in period yet
 
@@ -228,8 +237,8 @@ describe.skipIf(!TEST_URL)("reports (integration)", () => {
     const draft = await reports.generateReportDraft(user, {
       projectId,
       title: "Ack",
-      periodStart: today,
-      periodEnd: today,
+      periodStart,
+      periodEnd,
     });
     if (!draft.ok) throw new Error(draft.error.message);
     expect(draft.data.body.coverage.pendingReview).toBeGreaterThan(0);
@@ -255,15 +264,15 @@ describe.skipIf(!TEST_URL)("reports (integration)", () => {
     const first = await reports.generateReportDraft(user, {
       projectId,
       title: "One",
-      periodStart: today,
-      periodEnd: today,
+      periodStart,
+      periodEnd,
     });
     expect(first.ok).toBe(true);
     const dup = await reports.generateReportDraft(user, {
       projectId,
       title: "Two",
-      periodStart: today,
-      periodEnd: today,
+      periodStart,
+      periodEnd,
     });
     expect(dup.ok).toBe(false);
     if (!dup.ok) expect(dup.error.message).toMatch(/already exists/);
@@ -283,8 +292,8 @@ describe.skipIf(!TEST_URL)("reports (integration)", () => {
     const draft = await reports.generateReportDraft(user, {
       projectId,
       title: "Frozen",
-      periodStart: today,
-      periodEnd: today,
+      periodStart,
+      periodEnd,
     });
     if (!draft.ok) throw new Error(draft.error.message);
     await reports.publishReport(user, { reportId: draft.data.id });
