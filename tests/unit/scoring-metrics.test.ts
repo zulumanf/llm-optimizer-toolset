@@ -145,4 +145,28 @@ describe("detectBrandCandidates", () => {
       detectBrandCandidates("and The Best Tools are here", known)
     ).toEqual([]);
   });
+
+  it("ignores markdown headers, bold labels, and table structure (real GPT shapes)", () => {
+    const markdownAnswer = [
+      "**Bottom line:** it depends on your needs.",
+      "## Comparison",
+      "| Dimension | Notes |",
+      "|---|---|",
+      "| Loyalty | strong |",
+      "1. **Wanderlog** — collaborative planning",
+      "Many travelers also use TripIt for itineraries.",
+    ].join("\n");
+    const found = detectBrandCandidates(markdownAnswer, known);
+    expect(found).toContain("TripIt");
+    expect(found).not.toContain("Bottom");
+    expect(found).not.toContain("Comparison");
+    expect(found).not.toContain("Dimension");
+    expect(found).not.toContain("Loyalty");
+  });
+
+  it("rejects header-like 'Word:' shapes even mid-line", () => {
+    expect(
+      detectBrandCandidates("things to weigh — Verdict: choose wisely", known)
+    ).toEqual([]);
+  });
 });
