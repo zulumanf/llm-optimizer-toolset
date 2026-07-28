@@ -3,7 +3,22 @@ import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { sql } from "@/db/client";
 import { listAllModels } from "@/lib/ai/registry";
+import { getEnv } from "@/lib/env";
+import type { ProviderId } from "@/lib/ai/types";
 import { NewRunForm, type VersionOption } from "@/components/runs/new-run-form";
+
+/** Providers whose API keys are configured — these default to enabled in the
+ * form so runs don't start with cells doomed to auth failures. The mock
+ * provider steps in only when no real key exists (fresh setups stay usable). */
+function configuredProviders(): ProviderId[] {
+  const env = getEnv();
+  const configured: ProviderId[] = [];
+  if (env.ANTHROPIC_API_KEY) configured.push("anthropic");
+  if (env.OPENAI_API_KEY) configured.push("openai");
+  if (process.env.GOOGLE_API_KEY) configured.push("google");
+  if (process.env.PERPLEXITY_API_KEY) configured.push("perplexity");
+  return configured.length > 0 ? configured : ["mock"];
+}
 
 export default async function NewRunPage({
   params,
@@ -53,6 +68,7 @@ export default async function NewRunPage({
           projectId={id}
           versions={versions}
           models={listAllModels()}
+          defaultEnabled={configuredProviders()}
         />
       )}
     </div>
