@@ -1,7 +1,22 @@
 # Spec 009 — Evidence-Gap Engine
 
-> Status: draft (ready after 008)
+> Status: done (2026-07-28) — v1, deterministic
 > Depends on: specs/008 · docs/15 (agent contract)
+> Branch: feat/009-evidence-gap-engine
+>
+> Implementation notes: v1 ships the deterministic layer only (gap-detector-v1)
+> — six typed detectors (entity, branded_recognition, recommendation,
+> citation, category_share, source_target) computed from scored-run data with
+> the blueprint's 30/25/20/15/10 opportunity weights; findings are idempotent
+> per (run, type, category) and become evidence-backed suggested tasks via
+> the existing approval machinery. The LLM competitor-evidence agent (web
+> enrichment via the OpenAI Responses search tool) lands as detector v2 —
+> same versioned-upgrade path as the parser. Known limitation surfaced by
+> live data: the heuristic parser counts the Sanskrit word "parva" (in the
+> Mahabharata answer) as a brand mention, so branded_recognition under-fires
+> for name-collision clients — an LLM parser version fixes detection; the
+> entity gap still fires correctly. Also shipped: the client-portfolio view
+> on the projects list (subject, authority, open gaps, last run per client).
 
 ## Goal
 Answer *why* the client is or isn't retrieved, per prompt: competitor

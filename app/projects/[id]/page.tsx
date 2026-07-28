@@ -17,6 +17,7 @@ import { formatDate } from "@/lib/format";
 
 const NAV_CARDS = [
   { label: "Knowledge", path: "knowledge", hint: "Subject & verified claims" },
+  { label: "Gaps", path: "gaps", hint: "Why answers exclude the client" },
   { label: "Prompts", path: "prompts", hint: "Sets & frozen versions" },
   { label: "Runs", path: "runs", hint: "Execute & inspect captures" },
   { label: "Review", path: "review", hint: "Low-confidence classifications" },
