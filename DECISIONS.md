@@ -87,6 +87,17 @@ swapping in REPORT_DRAFTER_V1 when keys exist cannot weaken the guarantee.
 Bug caught by our own gate during implementation: the drafter's coverage
 caveat contained an uncited count — reworded rather than weakening the gate.
 
+### Attribution verdicts computed on read, scheduled via the jobs queue (spec 007)
+Verdicts (pooled baseline vs each post run, docs/06 rule) are derived fresh
+from score rows on every view — storing them would create a second source of
+truth that could drift from the immutable scores. Post-run scheduling reuses
+the existing Postgres jobs queue (`run_after` in the future) rather than a
+separate scheduler; the worker treats a due `start_scheduled_run` like any
+other job, so crash-recovery, leasing, and retries come for free. Strictness
+note: the ≥2-provider consistency requirement means single-provider setups
+can never produce a "notable" verdict — kept deliberately; robustness of the
+claim is the point, and real baselines run multiple providers.
+
 ### Playwright E2E deferred to the CI milestone
 Spec 001's unit/integration coverage exercises every acceptance criterion including DB triggers and role checks. Browser E2E adds most value once there's a multi-step flow (freeze → run → review, specs 002–004); installing browser tooling now would slow the vertical slice. Recorded as a scope cut in spec 001; E2E lands with CI setup before spec 003 completes.
 

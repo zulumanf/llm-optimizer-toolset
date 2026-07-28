@@ -11,6 +11,7 @@ import { sql } from "@/db/client";
 import { executeRun } from "@/lib/runs/execute";
 import { parseResponse } from "@/lib/parsing/service";
 import { computeScores } from "@/lib/scoring/compute";
+import { startScheduledRun } from "@/lib/attribution/service";
 import { log } from "@/lib/logger";
 
 const WORKER_ID = `worker-${randomUUID().slice(0, 8)}`;
@@ -26,6 +27,11 @@ const handlers: Record<string, (payload: Record<string, unknown>) => Promise<voi
   },
   compute_scores: async (payload) => {
     await computeScores(payload.runId as string);
+  },
+  start_scheduled_run: async (payload) => {
+    await startScheduledRun(
+      payload as { interventionId: string; offsetLabel: string }
+    );
   },
 };
 

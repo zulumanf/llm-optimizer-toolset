@@ -8,7 +8,7 @@
 export const NOTABLE_DELTA = 0.1;
 export const MIN_N_PER_SIDE = 30;
 
-const RATE_METRICS = new Set([
+export const RATE_METRICS = new Set([
   "mention_rate",
   "recommendation_rate",
   "share_of_voice",
