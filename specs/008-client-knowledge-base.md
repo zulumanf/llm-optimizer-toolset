@@ -1,8 +1,20 @@
 # Spec 008 — Client Knowledge Base
 
-> Status: ready
+> Status: done (2026-07-27)
 > Depends on: specs/001–007 · docs/15 (multi-client model)
 > Branch: feat/008-client-knowledge-base
+>
+> Implementation notes: subject resolution falls back to the legacy global
+> is_self company when a project has no explicit subject (migration path;
+> is_self is deprecated and its one-per-registry constraint dropped). Parse
+> and scoring scope = subject + registry companies that are not other
+> projects' subjects (no cross-client talk, proven by test). Claim keys are
+> normalized snake_case; approval supersedes the prior approved claim per
+> key. Seeded live: Parva (link-in-bio for real estate agents — operator-
+> stated 2026-07-27) as subject with one approved positioning claim
+> (domain parva.com is a PLACEHOLDER — verify), competitors Linktree/
+> Beacons/Stan/Milkshake/Carrd, frozen "Realtor link-in-bio" v1, and
+> Baseline #1 executed on gpt-5.4-mini (16/16, $0.036).
 
 ## Goal
 Turn each project into a **client engagement** with a verified factual

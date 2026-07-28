@@ -1,4 +1,5 @@
 import { sql } from "@/db/client";
+import { getSubjectCompany } from "@/db/companies";
 
 export interface TrendPoint {
   runId: string;
@@ -10,15 +11,16 @@ export interface TrendPoint {
   promptSetVersionId: string;
 }
 
-/** Authority-score history for the self company, per provider, oldest first. */
+/** Authority-score history for the project's subject, per provider. */
 export async function authorityTrend(projectId: string): Promise<TrendPoint[]> {
+  const subject = await getSubjectCompany(projectId);
+  if (!subject) return [];
   return sql<TrendPoint[]>`
     select r.id as run_id, r.label as run_label, r.started_at,
       s.provider, s.value, s.scoring_version, r.prompt_set_version_id
     from scores s
     join runs r on r.id = s.run_id
-    join companies c on c.id = s.company_id
-    where r.project_id = ${projectId} and c.is_self
+    where r.project_id = ${projectId} and s.company_id = ${subject.id}
       and s.metric = 'authority_score'
     order by r.started_at asc
   `;
@@ -31,8 +33,10 @@ export interface SelfTile {
   previousValue: number | null;
 }
 
-/** Latest 'all' values for the self company + previous scored run's values. */
+/** Latest 'all' values for the project's subject + previous scored run. */
 export async function selfTiles(projectId: string): Promise<SelfTile[]> {
+  const subject = await getSubjectCompany(projectId);
+  if (!subject) return [];
   const rows = await sql`
     with scored_runs as (
       select distinct r.id, r.started_at
@@ -47,8 +51,7 @@ export async function selfTiles(projectId: string): Promise<SelfTile[]> {
     select s.metric, s.value, s.sample_size, ranked.rn
     from scores s
     join ranked on ranked.id = s.run_id
-    join companies c on c.id = s.company_id
-    where c.is_self and s.provider = 'all'
+    where s.company_id = ${subject.id} and s.provider = 'all'
   `;
   const latest = rows.filter((r) => r.rn === "1" || Number(r.rn) === 1);
   const previous = new Map(

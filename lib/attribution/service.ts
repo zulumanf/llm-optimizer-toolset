@@ -271,14 +271,18 @@ export async function interventionView(
     throw new ClassifiedError("not_found", "Intervention not found.");
   }
 
-  const scoreRows = await sql`
-    select s.id as score_id, s.run_id, s.metric, s.provider, s.value,
-      s.sample_size, s.scoring_version, ir.role
-    from intervention_runs ir
-    join scores s on s.run_id = ir.run_id
-    join companies c on c.id = s.company_id
-    where ir.intervention_id = ${interventionId} and c.is_self
-  `;
+  const { getSubjectCompany } = await import("@/db/companies");
+  const subject = await getSubjectCompany(intervention.projectId as string);
+  const scoreRows = subject
+    ? await sql`
+        select s.id as score_id, s.run_id, s.metric, s.provider, s.value,
+          s.sample_size, s.scoring_version, ir.role
+        from intervention_runs ir
+        join scores s on s.run_id = ir.run_id
+        where ir.intervention_id = ${interventionId}
+          and s.company_id = ${subject.id}
+      `
+    : [];
   const toInput = (r: (typeof scoreRows)[number]): ScoreInput => ({
     scoreId: r.scoreId as string,
     runId: r.runId as string,

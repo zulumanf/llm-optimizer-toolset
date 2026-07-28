@@ -5,6 +5,7 @@
  * version and scoring version (docs/06 forbids cross-version comparison).
  */
 import { sql } from "@/db/client";
+import { getSubjectCompany } from "@/db/companies";
 import { ClassifiedError } from "@/lib/errors";
 import { SCORING_VERSION } from "@/lib/constants";
 import { changeVerdict, type ProviderDelta } from "@/lib/reports/deltas";
@@ -16,9 +17,12 @@ import type {
   SnapshotExcerpt,
 } from "@/lib/reports/types";
 
-async function scoresForRun(runId: string): Promise<SnapshotScore[]> {
+async function scoresForRun(
+  runId: string,
+  subjectId: string | null
+): Promise<SnapshotScore[]> {
   const rows = await sql`
-    select s.id as score_id, s.company_id, c.name as company_name, c.is_self,
+    select s.id as score_id, s.company_id, c.name as company_name,
       s.metric, s.provider, s.value, s.sample_size, s.scoring_version
     from scores s join companies c on c.id = s.company_id
     where s.run_id = ${runId} and s.scoring_version = ${SCORING_VERSION}
@@ -27,7 +31,7 @@ async function scoresForRun(runId: string): Promise<SnapshotScore[]> {
     scoreId: r.scoreId as string,
     companyId: r.companyId as string,
     companyName: r.companyName as string,
-    isSelf: r.isSelf as boolean,
+    isSelf: (r.companyId as string) === subjectId,
     metric: r.metric as string,
     provider: r.provider as string,
     value: Number(r.value),
@@ -83,8 +87,12 @@ export async function buildSnapshot(
     order by r.started_at desc limit 1
   `;
 
-  const scores = await scoresForRun(current.id as string);
-  const previousScores = previous ? await scoresForRun(previous.id as string) : [];
+  const subject = await getSubjectCompany(projectId);
+  const subjectId = subject?.id ?? null;
+  const scores = await scoresForRun(current.id as string, subjectId);
+  const previousScores = previous
+    ? await scoresForRun(previous.id as string, subjectId)
+    : [];
 
   const deltas: SnapshotDelta[] = [];
   if (previous) {
@@ -137,8 +145,8 @@ export async function buildSnapshot(
   // Notable excerpts: current-revision mentions with excerpts, self first
   const excerptRows = await sql`
     select distinct on (m.company_id, m.response_id)
-      m.response_id, c.name as company_name, r.provider, runs.label as run_label,
-      m.excerpt, m.recommended, c.is_self, m.confidence
+      m.response_id, m.company_id, c.name as company_name, r.provider,
+      runs.label as run_label, m.excerpt, m.recommended, m.confidence
     from mentions m
     join companies c on c.id = m.company_id
     join responses r on r.id = m.response_id
@@ -152,13 +160,15 @@ export async function buildSnapshot(
     order by m.company_id, m.response_id, m.revision desc
   `;
   const excerpts: SnapshotExcerpt[] = excerptRows
-    .sort((a, b) =>
-      a.isSelf === b.isSelf
+    .sort((a, b) => {
+      const aSelf = (a.companyId as string) === subjectId;
+      const bSelf = (b.companyId as string) === subjectId;
+      return aSelf === bSelf
         ? Number(b.confidence) - Number(a.confidence)
-        : a.isSelf
+        : aSelf
           ? -1
-          : 1
-    )
+          : 1;
+    })
     .slice(0, 6)
     .map((r) => ({
       responseId: r.responseId as string,

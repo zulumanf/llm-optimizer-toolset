@@ -131,14 +131,15 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
     }
   }
 
-  it("company registry: exactly one is_self, alias collisions blocked, is_self change is admin-only", async () => {
+  it("company registry: alias collisions blocked; multiple is_self allowed since spec 008", async () => {
     await seedCompanies();
+    // Spec 008 dropped the one-is_self constraint (multi-client world;
+    // is_self is a deprecated per-registry fallback, subjects live on projects)
     const secondSelf = await companySvc.upsertCompany(admin, {
       name: "Other",
       isSelf: true,
     });
-    expect(secondSelf.ok).toBe(false);
-    if (!secondSelf.ok) expect(secondSelf.error.kind).toBe("conflict");
+    expect(secondSelf.ok).toBe(true);
 
     const collision = await companySvc.upsertCompany(operator, {
       name: "Fresh Co",

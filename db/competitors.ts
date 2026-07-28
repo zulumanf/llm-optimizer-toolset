@@ -1,4 +1,5 @@
 import { sql } from "@/db/client";
+import { getSubjectCompany } from "@/db/companies";
 
 export interface CompetitorRow {
   id: string;
@@ -16,21 +17,22 @@ export interface BrandCandidate {
   lastSeenAt: Date;
 }
 
-/** Parva (implicitly compared) plus the project's tracked competitors. */
+/** The project's subject (implicitly compared) plus tracked competitors. */
 export async function listComparisonCompanies(
   projectId: string
 ): Promise<CompetitorRow[]> {
+  const subject = await getSubjectCompany(projectId);
   return sql<CompetitorRow[]>`
     select null::uuid as id, c.id as company_id, c.name as company_name,
       true as is_self, 'self' as tier, null::timestamptz as added_at
     from companies c
-    where c.is_self and c.archived_at is null
+    where c.id = ${subject?.id ?? null} and c.archived_at is null
     union all
     select k.id, c.id, c.name, false, k.tier, k.added_at
     from competitors k
     join companies c on c.id = k.company_id
     where k.project_id = ${projectId} and k.archived_at is null
-      and c.archived_at is null
+      and c.archived_at is null and c.id != ${subject?.id ?? null}
     order by is_self desc, company_name asc
   `;
 }
