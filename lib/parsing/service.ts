@@ -5,7 +5,7 @@
  */
 import { sql } from "@/db/client";
 import { enqueueJob } from "@/db/jobs";
-import { listActiveCompanies } from "@/db/companies";
+import { listCompaniesForProject, getSubjectCompany } from "@/db/companies";
 import { pendingReviewCount } from "@/db/mentions";
 import { classifyResponse } from "@/lib/parsing/classify";
 import { extractUrls, urlDomain } from "@/lib/parsing/prepass";
@@ -19,20 +19,26 @@ import { log } from "@/lib/logger";
 
 export async function parseResponse(responseId: string): Promise<void> {
   const [response] = await sql`
-    select id, run_id, response_text, error from responses where id = ${responseId}
+    select r.id, r.run_id, r.response_text, r.error, runs.project_id
+    from responses r join runs on runs.id = r.run_id
+    where r.id = ${responseId}
   `;
   if (!response) {
     throw new ClassifiedError("not_found", `Response ${responseId} not found.`);
   }
 
-  const companies = await listActiveCompanies();
-  if (!companies.some((c) => c.isSelf)) {
-    // Parse refuses without a configured self company (spec 004)
+  // Project-scoped companies: the subject + non-subject registry companies —
+  // other clients' subjects never enter this project's parse (spec 008)
+  const projectId = response.projectId as string;
+  const subject = await getSubjectCompany(projectId);
+  if (!subject) {
+    // Parse refuses without a configured client subject (specs 004 + 008)
     throw new ClassifiedError(
       "validation",
-      "No is_self company configured — add Parva in Companies before parsing."
+      "Project has no subject company — set the client under Knowledge before parsing (legacy is_self also satisfies this)."
     );
   }
+  const companies = await listCompaniesForProject(projectId);
 
   const alreadyParsed = await sql`
     select 1 from response_parses

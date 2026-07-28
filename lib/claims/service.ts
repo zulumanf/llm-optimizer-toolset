@@ -1,0 +1,227 @@
+/**
+ * Verified client claims (spec 008): every fact an agent may use has
+ * canonical wording, evidence links, an as-of date, and human approval.
+ * Approving supersedes the previously approved claim with the same key —
+ * history is never deleted.
+ */
+import { z } from "zod";
+import { sql } from "@/db/client";
+import { writeAudit } from "@/db/audit";
+import type { CurrentUser } from "@/lib/auth";
+import { ClassifiedError } from "@/lib/errors";
+import { ok, fail, type ActionResult } from "@/lib/actions/result";
+import { firstZodMessage } from "@/lib/service-helpers";
+
+export interface Claim {
+  id: string;
+  projectId: string;
+  key: string;
+  canonicalText: string;
+  value: unknown;
+  asOf: string | null;
+  status: "proposed" | "approved" | "rejected" | "superseded";
+  evidenceIds: string[];
+  createdBy: string | null;
+  approvedBy: string | null;
+  createdAt: Date;
+}
+
+const COLUMNS = sql`id, project_id, key, canonical_text, value,
+  to_char(as_of, 'YYYY-MM-DD') as as_of, status, evidence_ids,
+  created_by, approved_by, created_at`;
+
+const proposeSchema = z.object({
+  projectId: z.string().uuid(),
+  key: z
+    .string()
+    .transform((s) => s.trim().toLowerCase().replace(/\s+/g, "_"))
+    .pipe(z.string().min(1).max(60).regex(/^[a-z0-9_]+$/, "Key must be snake_case.")),
+  canonicalText: z
+    .string()
+    .transform((s) => s.trim())
+    .pipe(z.string().min(1, "Canonical wording is required.").max(500)),
+  asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  evidence: z
+    .array(
+      z.object({
+        url: z.string().url(),
+        note: z.string().min(1).max(500),
+      })
+    )
+    .min(1, "A claim needs at least one evidence source."),
+});
+
+export async function proposeClaim(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<Claim>> {
+  const parsed = proposeSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    const claim = await sql.begin(async (tx) => {
+      const evidenceIds: string[] = [];
+      for (const item of input.evidence) {
+        const [row] = await tx`
+          insert into evidence (kind, ref_id, url, note, created_by)
+          values ('url', gen_random_uuid(), ${item.url}, ${item.note}, ${user.id})
+          returning id
+        `;
+        evidenceIds.push(row?.id as string);
+      }
+      const [row] = await tx<Claim[]>`
+        insert into claims (project_id, key, canonical_text, as_of,
+          evidence_ids, created_by)
+        values (${input.projectId}, ${input.key}, ${input.canonicalText},
+          ${input.asOf ?? null}, ${evidenceIds}, ${user.id})
+        returning ${COLUMNS}
+      `;
+      if (!row) throw new ClassifiedError("internal", "Insert returned no row.");
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "claim.propose",
+        entity: "claim",
+        entityId: row.id,
+        detail: { key: input.key },
+      });
+      return row;
+    });
+    return ok(claim);
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function approveClaim(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ claimId: string; supersededId: string | null }>> {
+  const parsed = z.object({ claimId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid claim id."));
+  }
+  try {
+    const result = await sql.begin(async (tx) => {
+      const [claim] = await tx`
+        select id, project_id, key, status from claims
+        where id = ${parsed.data.claimId} for update
+      `;
+      if (!claim) throw new ClassifiedError("not_found", "Claim not found.");
+      if (claim.status !== "proposed") {
+        throw new ClassifiedError("conflict", `Claim is ${claim.status}, not proposed.`);
+      }
+      const [previous] = await tx`
+        update claims set status = 'superseded', updated_at = now()
+        where project_id = ${claim.projectId} and key = ${claim.key}
+          and status = 'approved'
+        returning id
+      `;
+      await tx`
+        update claims set status = 'approved', approved_by = ${user.id},
+          updated_at = now()
+        where id = ${claim.id}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "claim.approve",
+        entity: "claim",
+        entityId: claim.id as string,
+        detail: { key: claim.key, superseded: (previous?.id as string) ?? null },
+      });
+      return {
+        claimId: claim.id as string,
+        supersededId: (previous?.id as string) ?? null,
+      };
+    });
+    return ok(result);
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function rejectClaim(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ claimId: string }>> {
+  const parsed = z.object({ claimId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid claim id."));
+  }
+  try {
+    await sql.begin(async (tx) => {
+      const [row] = await tx`
+        update claims set status = 'rejected', updated_at = now()
+        where id = ${parsed.data.claimId} and status = 'proposed'
+        returning id, key
+      `;
+      if (!row) {
+        throw new ClassifiedError("conflict", "Only proposed claims can be rejected.");
+      }
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "claim.reject",
+        entity: "claim",
+        entityId: row.id as string,
+        detail: { key: row.key as string },
+      });
+    });
+    return ok({ claimId: parsed.data.claimId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function setSubjectCompany(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ projectId: string }>> {
+  const parsed = z
+    .object({ projectId: z.string().uuid(), companyId: z.string().uuid() })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid input."));
+  }
+  const { projectId, companyId } = parsed.data;
+  try {
+    await sql.begin(async (tx) => {
+      const [company] = await tx`
+        select archived_at from companies where id = ${companyId}
+      `;
+      if (!company) throw new ClassifiedError("not_found", "Company not found.");
+      if (company.archivedAt) {
+        throw new ClassifiedError("conflict", "Company is archived.");
+      }
+      const [row] = await tx`
+        update projects set subject_company_id = ${companyId}
+        where id = ${projectId} and status = 'active'
+        returning id
+      `;
+      if (!row) {
+        throw new ClassifiedError("conflict", "Project not found or archived.");
+      }
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "project.subject",
+        entity: "project",
+        entityId: projectId,
+        detail: { companyId },
+      });
+    });
+    return ok({ projectId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function listClaims(projectId: string): Promise<Claim[]> {
+  return sql<Claim[]>`
+    select ${COLUMNS} from claims
+    where project_id = ${projectId}
+    order by key asc,
+      case status when 'approved' then 0 when 'proposed' then 1
+        when 'superseded' then 2 else 3 end,
+      created_at desc
+  `;
+}

@@ -7,7 +7,7 @@
  * and the exclusion is logged (docs/06).
  */
 import { sql } from "@/db/client";
-import { listActiveCompanies } from "@/db/companies";
+import { listCompaniesForProject } from "@/db/companies";
 import { currentMentionsForRun, pendingReviewCount } from "@/db/mentions";
 import { SCORING_VERSION, REVIEW_TIMEOUT_HOURS } from "@/lib/constants";
 import { ClassifiedError } from "@/lib/errors";
@@ -22,7 +22,7 @@ import {
 } from "@/lib/scoring/metrics";
 
 export async function computeScores(runId: string): Promise<void> {
-  const [run] = await sql`select id, status from runs where id = ${runId}`;
+  const [run] = await sql`select id, status, project_id from runs where id = ${runId}`;
   if (!run) throw new ClassifiedError("not_found", `Run ${runId} not found.`);
 
   const pending = await pendingReviewCount(runId);
@@ -83,7 +83,8 @@ export async function computeScores(runId: string): Promise<void> {
   const mentions = (await currentMentionsForRun(runId)).filter(
     (m) => !excludedResponseIds.has(m.responseId) && m.mentioned
   );
-  const companies = await listActiveCompanies();
+  // Project-scoped: other clients' subjects never enter this run's scores
+  const companies = await listCompaniesForProject(run.projectId as string);
 
   interface ScoreInsert {
     companyId: string;
