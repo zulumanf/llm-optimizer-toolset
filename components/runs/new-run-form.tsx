@@ -41,9 +41,11 @@ interface Props {
   projectId: string;
   versions: VersionOption[];
   models: ModelInfo[];
+  /** Providers with configured API keys (mock when none) — checked by default. */
+  defaultEnabled: ProviderId[];
 }
 
-export function NewRunForm({ projectId, versions, models }: Props) {
+export function NewRunForm({ projectId, versions, models, defaultEnabled }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [versionId, setVersionId] = useState(versions[0]?.id ?? "");
@@ -55,7 +57,7 @@ export function NewRunForm({ projectId, versions, models }: Props) {
   const providerIds = [...new Set(models.map((m) => m.provider))];
   const [rows, setRows] = useState<ProviderRow[]>(
     providerIds.map((p) => ({
-      enabled: p !== "mock",
+      enabled: defaultEnabled.includes(p),
       provider: p,
       model: models.find((m) => m.provider === p)?.id ?? "",
       repetitions: 5,
