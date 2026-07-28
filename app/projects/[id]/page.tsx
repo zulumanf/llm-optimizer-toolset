@@ -15,19 +15,6 @@ import {
 import { AuthorityBarChart } from "@/components/charts/authority-bar";
 import { formatDate } from "@/lib/format";
 
-const NAV_CARDS = [
-  { label: "Knowledge", path: "knowledge", hint: "Subject & verified claims" },
-  { label: "Gaps", path: "gaps", hint: "Why answers exclude the client" },
-  { label: "Prompts", path: "prompts", hint: "Sets & frozen versions" },
-  { label: "Runs", path: "runs", hint: "Execute & inspect captures" },
-  { label: "Review", path: "review", hint: "Low-confidence classifications" },
-  { label: "Competitors", path: "competitors", hint: "Comparison & discovery" },
-  { label: "Reports", path: "reports", hint: "Immutable period snapshots" },
-  { label: "Interventions", path: "interventions", hint: "Before/after measurement" },
-  { label: "Tasks", path: "tasks", hint: "Evidence-backed actions" },
-  { label: "Settings", path: "settings", hint: "Weekly baseline & cron" },
-] as const;
-
 function StatTile({
   label,
   value,
@@ -212,18 +199,6 @@ export default async function ProjectDashboardPage({
         </Card>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        {NAV_CARDS.map((card) => (
-          <Link key={card.path} href={`/projects/${project.id}/${card.path}`}>
-            <Card className="h-full transition-colors hover:bg-accent">
-              <CardContent className="p-4">
-                <p className="text-sm font-medium">{card.label}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{card.hint}</p>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
     </div>
   );
 }
