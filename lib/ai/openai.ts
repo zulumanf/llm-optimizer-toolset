@@ -18,11 +18,12 @@ function getClient(): OpenAI {
 
 export const openaiProvider: AIProvider = {
   id: "openai",
-  // Model ids pinned 2026-07-27 — verify against the OpenAI models list
-  // before the first real run (docs/12: exact pinned ids)
+  // Dated snapshots pinned 2026-07-27, VERIFIED against the account's live
+  // /v1/models list (docs/12: exact ids, never floating aliases — the
+  // -chat-latest aliases change underneath and would break comparability)
   models: [
-    { id: "gpt-5.1", label: "GPT-5.1", provider: "openai" },
-    { id: "gpt-5", label: "GPT-5", provider: "openai" },
+    { id: "gpt-5.4-2026-03-05", label: "GPT-5.4", provider: "openai" },
+    { id: "gpt-5.4-mini-2026-03-17", label: "GPT-5.4 Mini", provider: "openai" },
   ],
 
   async runPrompt(req: PromptRequest): Promise<ProviderResult> {

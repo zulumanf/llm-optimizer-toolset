@@ -49,9 +49,9 @@ describe("estimateRun", () => {
   it("flags models with unverified pricing", () => {
     const est = estimateRun(
       [prompts[0]!],
-      [{ provider: "openai", model: "gpt-5.1", repetitions: 1 }]
+      [{ provider: "google", model: "gemini-2.5-pro", repetitions: 1 }]
     );
-    expect(est.unverifiedPricing).toEqual(["gpt-5.1"]);
+    expect(est.unverifiedPricing).toEqual(["gemini-2.5-pro"]);
   });
 });
 

@@ -5,8 +5,11 @@
  * Sources — verify before the first real paid run and update lastVerified:
  * - Anthropic: https://platform.claude.com/docs/en/pricing (verified 2026-07-27
  *   via the claude-api reference: opus-5 $5/$25, sonnet-5 $3/$15 sticker)
- * - OpenAI: https://openai.com/api/pricing (NOT yet verified — placeholder
- *   values; the run cost display flags unverified pricing)
+ * - OpenAI: verified 2026-07-27 (model ids against the account's live
+ *   /v1/models; prices gpt-5.4 $2.50/$15, gpt-5.4-mini $0.75/$4.50 per
+ *   web-published pricing pages)
+ * - Google/Perplexity: NOT verified — placeholder values; the run cost
+ *   display flags unverified pricing
  */
 export interface ModelPricing {
   inputPerMTok: number;
@@ -28,16 +31,16 @@ export const PRICING: Record<string, ModelPricing> = {
     verified: true,
     lastVerified: "2026-07-27",
   },
-  "gpt-5.1": {
-    inputPerMTok: 3,
-    outputPerMTok: 12,
-    verified: false,
+  "gpt-5.4-2026-03-05": {
+    inputPerMTok: 2.5,
+    outputPerMTok: 15,
+    verified: true,
     lastVerified: "2026-07-27",
   },
-  "gpt-5": {
-    inputPerMTok: 2,
-    outputPerMTok: 8,
-    verified: false,
+  "gpt-5.4-mini-2026-03-17": {
+    inputPerMTok: 0.75,
+    outputPerMTok: 4.5,
+    verified: true,
     lastVerified: "2026-07-27",
   },
   "gemini-2.5-pro": {
