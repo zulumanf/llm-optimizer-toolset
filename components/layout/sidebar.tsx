@@ -1,74 +1,29 @@
-import Link from "next/link";
-import { Building2, FolderKanban } from "lucide-react";
 import { listActiveProjects } from "@/db/projects";
-import { cn } from "@/lib/utils";
-
-// Sections beyond these arrive with specs/005+ (docs/04 navigation)
-const UPCOMING_SECTIONS = [
-  "Dashboard",
-  "Competitors",
-  "Reports",
-  "Tasks",
-] as const;
+import { getCurrentUser } from "@/lib/auth";
+import { SidebarNav } from "@/components/layout/sidebar-nav";
 
 export async function Sidebar(): Promise<React.ReactElement> {
-  const projects = await listActiveProjects();
+  const [projects, user] = await Promise.all([
+    listActiveProjects(),
+    getCurrentUser(),
+  ]);
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r bg-card">
       <div className="border-b p-4">
-        <p className="text-sm font-semibold">LLM Optimizer</p>
-        <p className="text-xs text-muted-foreground">Parva · internal</p>
+        <p className="text-sm font-semibold">AI Visibility OS</p>
+        <p className="text-xs text-muted-foreground">
+          client engagements · internal
+        </p>
       </div>
-      <nav className="flex-1 overflow-y-auto p-2">
-        <Link
-          href="/projects"
-          className={cn(
-            "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium",
-            "hover:bg-accent"
-          )}
-        >
-          <FolderKanban className="size-4" />
-          Projects
-        </Link>
-        <Link
-          href="/companies"
-          className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
-        >
-          <Building2 className="size-4" />
-          Companies
-        </Link>
-        <ul className="mt-1">
-          {UPCOMING_SECTIONS.map((label) => (
-            <li
-              key={label}
-              className="cursor-default px-3 py-2 text-sm text-muted-foreground/50"
-              title="Arrives with a later spec"
-            >
-              {label}
-            </li>
-          ))}
-        </ul>
-        {projects.length > 0 && (
-          <div className="mt-4 border-t pt-3">
-            <p className="px-3 pb-1 text-xs font-medium uppercase text-muted-foreground">
-              Active projects
-            </p>
-            <ul>
-              {projects.map((p) => (
-                <li key={p.id}>
-                  <Link
-                    href={`/projects/${p.id}`}
-                    className="block truncate rounded-md px-3 py-1.5 text-sm hover:bg-accent"
-                  >
-                    {p.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </nav>
+      <SidebarNav
+        projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+      />
+      <div className="border-t px-4 py-3">
+        <p className="truncate text-xs text-muted-foreground">
+          {user.name} · {user.role}
+        </p>
+      </div>
     </aside>
   );
 }

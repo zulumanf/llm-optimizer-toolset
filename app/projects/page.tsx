@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { FolderPlus } from "lucide-react";
 import { listPortfolio } from "@/db/projects";
-import { getCurrentUser } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -21,15 +20,12 @@ export default async function ProjectsPage({
 }) {
   const { archived } = await searchParams;
   const includeArchived = archived === "1";
-  const [projects, user] = await Promise.all([
-    listPortfolio({ includeArchived }),
-    getCurrentUser(),
-  ]);
+  const projects = await listPortfolio({ includeArchived });
 
   return (
     <div className="mx-auto max-w-7xl p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Projects</h1>
+        <h1 className="text-2xl font-semibold">Clients</h1>
         <div className="flex items-center gap-3">
           <Link
             href={includeArchived ? "/projects" : "/projects?archived=1"}
@@ -112,9 +108,6 @@ export default async function ProjectsPage({
           </Table>
         </div>
       )}
-      <p className="mt-3 text-xs text-muted-foreground">
-        Signed in as {user.email} ({user.role})
-      </p>
     </div>
   );
 }
