@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "app": "bash scripts/dev-all.sh",
     "worker": "tsx workers/index.ts",
     "build": "next build",
     "start": "next start",

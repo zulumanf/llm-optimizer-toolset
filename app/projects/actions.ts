@@ -37,3 +37,18 @@ export async function archiveProject(input: unknown): Promise<ActionResult<Proje
 export async function unarchiveProject(input: unknown): Promise<ActionResult<Project>> {
   return withUserAndRevalidate((user) => service.unarchiveProject(user, input));
 }
+
+export async function updateBaselineSettings(
+  input: unknown
+): Promise<ActionResult<{ projectId: string }>> {
+  try {
+    const user = await getCurrentUser();
+    const result = await (
+      await import("@/lib/projects/baseline")
+    ).updateBaselineSettings(user, input);
+    if (result.ok) revalidatePath("/projects", "layout");
+    return result;
+  } catch (err) {
+    return fail(err);
+  }
+}
