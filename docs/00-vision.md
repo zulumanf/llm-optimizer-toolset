@@ -28,7 +28,14 @@ When someone asks ChatGPT, Claude, Gemini, or Perplexity a question in Parva's c
 
 ## Non-goals
 
-- Not a SaaS product. No customers, no billing, no multi-tenancy.
+> Amended 2026-07-27 (see DECISIONS.md and docs/15): the platform now serves
+> **multiple client engagements** — each project is a client (Parva first;
+> real-estate agents, medical practices, and others follow), with verticals
+> as configuration packs. What remains a non-goal is *self-serve SaaS*: no
+> client logins, billing, or tenant self-service — operators run every
+> engagement.
+
+- Not self-serve SaaS. No customer logins, no billing, no tenant self-service.
 - Not an SEO tool. We don't chase search rankings; classic SEO is measured elsewhere.
 - Not a growth-hacking tool. No manipulation, spam, fake reviews, or prompt injection of public sources. Authority is earned or not claimed. (See `PRINCIPLES.md`.)
 - Not a general analytics platform. It measures AI visibility; it does not replace product analytics.

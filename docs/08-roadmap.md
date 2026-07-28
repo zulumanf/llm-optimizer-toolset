@@ -30,6 +30,22 @@ Milestone-driven; one spec at a time, in order, done means *done* (acceptance cr
 - **`specs/007-attribution.md`** — interventions, before/after windows, tasks with evidence, finding → task → re-measurement flow
 - Hardening: budget caps, alerting on failed runs/jobs, audit log UI
 
+## Phase 2 — Agentic operations platform (adopted 2026-07-27, docs/15)
+
+Specs/001–007 shipped as specified (the measurement + learning graphs). The
+platform now grows into the multi-client operations system:
+
+1. **`specs/008-client-knowledge-base.md`** — project = client engagement;
+   per-project subject company; verified claims with evidence + approval
+2. **`specs/009-evidence-gap-engine.md`** — competitor evidence profiles,
+   typed gap findings, deterministic opportunity scoring → suggested tasks
+3. **`specs/010-content-engine.md`** — opportunity → brief → draft →
+   fact-verification against claim ids → compliance → human publish
+4. **`specs/011-outreach-crm.md`** — journalist intelligence, pitch drafts
+   (never sends), ranking-submission packages (never submits)
+5. **`specs/012-vertical-packs.md`** — industries as versioned configuration
+   (generic-product, real-estate-agent, medical-aesthetics)
+
 ## Future (prioritized backlog — see `docs/14-future-ideas.md` for the parked list)
 1. Statistical inference upgrade to change detection (scoring v2)
 2. Prompt-set coverage advisor (which query categories are unmeasured)

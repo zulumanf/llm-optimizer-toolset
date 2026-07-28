@@ -4,6 +4,25 @@ Append-only. Every non-obvious technical decision gets a dated entry: the decisi
 
 ---
 
+## 2026-07-27 — Re-scope to a multi-client agentic operations platform
+
+The operator adopted an agentic-workflow blueprint (drafted for a real-estate
+brokerage) as the product direction: one platform serving many client
+engagements across verticals (Parva first, then realtors, plastic surgeons,
+…). Superseded: the "not multi-tenant, Parva only" framing in docs/00 —
+amended to "project = client engagement; still not self-serve SaaS."
+Rationale for evolving this codebase rather than starting the blueprint's
+repo from scratch: specs/001–007 already implement its Phase 1–2 measurement
+and learning graphs with the same doctrine (agents prepare, workflows
+control, humans approve = PRINCIPLES.md), and everything is already
+partitioned by project. Rejected from the blueprint's stack, same reasoning
+as the original decisions: Temporal/Trigger.dev (our Postgres queue is the
+orchestrator until multi-step graphs outgrow it — revisit at specs/010),
+Drizzle/Prisma (schema-as-SQL is the product), Clerk/PostHog (deferred).
+Adopted: the shared agent contract (docs/15), formalized green/yellow/red
+approval levels, and specs/008–012. See docs/15-agentic-operations.md for
+the full mapping.
+
 ## 2026-07-27 — Initial decisions
 
 ### Why Postgres?
