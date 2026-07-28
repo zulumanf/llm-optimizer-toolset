@@ -23,6 +23,7 @@ const NAV_CARDS = [
   { label: "Reports", path: "reports", hint: "Immutable period snapshots" },
   { label: "Interventions", path: "interventions", hint: "Before/after measurement" },
   { label: "Tasks", path: "tasks", hint: "Evidence-backed actions" },
+  { label: "Settings", path: "settings", hint: "Weekly baseline & cron" },
 ] as const;
 
 function StatTile({

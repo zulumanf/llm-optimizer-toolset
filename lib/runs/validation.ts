@@ -7,7 +7,7 @@ export const MAX_REPETITIONS = 10;
 export const BUDGET_MIN_USD = 0.5;
 export const BUDGET_MAX_USD = 100;
 
-const providerConfigSchema = z
+export const providerConfigSchema = z
   .object({
     provider: z.enum(PROVIDER_IDS),
     model: z.string().min(1),
