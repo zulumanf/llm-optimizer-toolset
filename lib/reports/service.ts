@@ -12,11 +12,7 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage, duplicateNameConflict } from "@/lib/service-helpers";
 import { buildSnapshot } from "@/lib/reports/snapshot";
 import { validateNarrative } from "@/lib/reports/narrative";
-import {
-  NARRATIVE_SECTIONS,
-  type NarrativeSection,
-  type ReportBody,
-} from "@/lib/reports/types";
+import { NARRATIVE_SECTIONS, type ReportBody } from "@/lib/reports/types";
 
 export interface Report {
   id: string;
