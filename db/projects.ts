@@ -16,6 +16,47 @@ export interface ProjectWithCounts extends Project {
   runCount: number;
 }
 
+export interface PortfolioRow extends ProjectWithCounts {
+  subjectName: string | null;
+  authorityScore: number | null;
+  lastRunLabel: string | null;
+  lastRunStatus: string | null;
+  openFindings: number;
+}
+
+/** The client-portfolio view: each project with its subject and headline
+ * numbers (latest scored run's 'all' authority for the subject). */
+export async function listPortfolio(opts: {
+  includeArchived: boolean;
+}): Promise<PortfolioRow[]> {
+  return sql<PortfolioRow[]>`
+    select p.id, p.name, p.description, p.status, p.created_at, p.archived_at,
+      (select count(*)::int from prompt_sets s
+        where s.project_id = p.id and s.archived_at is null) as prompt_set_count,
+      (select count(*)::int from runs r where r.project_id = p.id) as run_count,
+      subject.name as subject_name,
+      (select s.value from scores s
+        join runs r on r.id = s.run_id
+        where r.project_id = p.id and s.company_id = subject.id
+          and s.metric = 'authority_score' and s.provider = 'all'
+        order by r.started_at desc limit 1) as authority_score,
+      last_run.label as last_run_label,
+      last_run.status as last_run_status,
+      (select count(*)::int from gap_findings f
+        where f.project_id = p.id and f.status = 'open') as open_findings
+    from projects p
+    left join companies subject on subject.id = coalesce(
+      p.subject_company_id,
+      (select id from companies where is_self and archived_at is null limit 1))
+    left join lateral (
+      select label, status from runs
+      where project_id = p.id order by started_at desc limit 1
+    ) last_run on true
+    ${opts.includeArchived ? sql`` : sql`where p.status = 'active'`}
+    order by p.created_at desc
+  `;
+}
+
 export async function listProjects(opts: {
   includeArchived: boolean;
 }): Promise<ProjectWithCounts[]> {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { FolderPlus } from "lucide-react";
-import { listProjects } from "@/db/projects";
+import { listPortfolio } from "@/db/projects";
 import { getCurrentUser } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,7 +22,7 @@ export default async function ProjectsPage({
   const { archived } = await searchParams;
   const includeArchived = archived === "1";
   const [projects, user] = await Promise.all([
-    listProjects({ includeArchived }),
+    listPortfolio({ includeArchived }),
     getCurrentUser(),
   ]);
 
@@ -54,11 +54,12 @@ export default async function ProjectsPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
+                <TableHead>Client / project</TableHead>
+                <TableHead>Subject</TableHead>
+                <TableHead className="text-right">Authority</TableHead>
+                <TableHead className="text-right">Open gaps</TableHead>
+                <TableHead>Last run</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Prompt sets</TableHead>
-                <TableHead className="text-right">Runs</TableHead>
-                <TableHead>Created</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -71,20 +72,39 @@ export default async function ProjectsPage({
                     >
                       {p.name}
                     </Link>
+                    <p className="text-xs text-muted-foreground">
+                      {p.promptSetCount} set{p.promptSetCount === 1 ? "" : "s"} ·{" "}
+                      {p.runCount} run{p.runCount === 1 ? "" : "s"} · since{" "}
+                      {formatDate(p.createdAt)}
+                    </p>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {p.subjectName ?? (
+                      <span className="text-warning">no subject</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {p.authorityScore != null
+                      ? Number(p.authorityScore).toFixed(1)
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {p.openFindings > 0 ? p.openFindings : "—"}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {p.lastRunLabel ? (
+                      <>
+                        {p.lastRunLabel}{" "}
+                        <Badge variant="outline">{p.lastRunStatus}</Badge>
+                      </>
+                    ) : (
+                      "never"
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge variant={p.status === "active" ? "default" : "outline"}>
                       {p.status}
                     </Badge>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {p.promptSetCount}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {p.runCount}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {formatDate(p.createdAt)}
                   </TableCell>
                 </TableRow>
               ))}
