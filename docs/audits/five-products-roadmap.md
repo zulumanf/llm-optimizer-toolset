@@ -7,6 +7,12 @@
 
 ## P0 — Trust and data integrity (Phase 0)
 
+> **Status 2026-07-29 (same day):** classifier v2 **DONE** (spec 013,
+> merged — live re-parse retracted all three false positives); backups +
+> verified restore drill **DONE** (`npm run backup` / `npm run restore`,
+> docs/10); real auth **BLOCKED on operator action** — spec 014 written and
+> ready, needs a Supabase project the operator must create.
+
 | Item | Product | Score | Rationale |
 |---|---|---|---|
 | LLM classifier v2 + fresh-context verifier | 1 | 5×5×5×4=**500** | Every metric, gap, verdict, and report inherits classification quality; name-collision false positives proven live. Feasible: agent runner + revision model exist; re-parse is a designed operation (`reparseRun`). Acceptance: collision fixture (Parva/Mahabharata) classified correctly; confidence-routed to review; parser_version bumped; historical revisions preserved. |
@@ -19,9 +25,9 @@
 |---|---|---|---|
 | Self-reported AI-discovery lead log | 4 | 5×4×4×5=**400** | The only revenue signal available from day one; trivial build (one table + form + report section). Starts accruing before GA4 exists — waiting loses data forever. |
 | GA4 CSV import + AI-referrer rules (confirmed/probable labels) | 4 | 5×4×3×4=**240** | Turns the pilot's manual traffic section into system data without OAuth scope creep. |
-| Schedule weekly baseline (CRON_SECRET + scheduler) | 1/5 | 4×4×3×5=**240** | Trend lines and weekly cadence depend on it; wiring exists. |
+| ~~Schedule weekly baseline~~ **DONE** | 1/5 | 4×4×3×5=**240** | CRON_SECRET set, endpoint verified (401/200), Parva baseline configured (search-enabled, $2 cap), launchd template in `scripts/`. Caveat: fires only while the machine is awake and the app is serving — hosted scheduling is the durable answer. |
 | Second live provider (Anthropic or Gemini key + live verification) | 1 | 4×3×4×4=**192** | docs/06 verdicts need ≥2 providers for "notable"; also de-risks OpenAI dependency. |
-| Client-validation UI page | 1 | 3×2×4×5=**120** | Services/tables/tests exist (migration 011); pilot credibility feature. |
+| ~~Client-validation UI page~~ **DONE** | 1 | 3×2×4×5=**120** | `/projects/[id]/validation` — seeded run creation, client instructions, immutable observation recording, directional comparison. Closes the audit's "tested but invisible" finding. |
 | Weekly/monthly cadence report templates + delivery (email/PDF or share link) | 5 | 4×3×3×3=**108** | Report engine exists; cadence formats + any delivery mechanism. |
 | Factual-accuracy monitoring v1 (responses vs approved claims) | 2 | 4×3×4×3=**144** | Reuses FACT_VERIFY pattern against claims; produces the "LLM misinformation report" clients feel viscerally. |
 
