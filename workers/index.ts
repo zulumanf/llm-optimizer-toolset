@@ -17,6 +17,7 @@ import { analyzeRun } from "@/lib/gaps/service";
 import { analyzeRunAccuracy } from "@/lib/accuracy/service";
 import { generateEvidenceExport } from "@/lib/evidence/export";
 import { getCurrentUser } from "@/lib/auth";
+import { advanceCycle } from "@/lib/cycles/service";
 import { log } from "@/lib/logger";
 
 const WORKER_ID = `worker-${randomUUID().slice(0, 8)}`;
@@ -55,6 +56,10 @@ const handlers: Record<string, (payload: Record<string, unknown>) => Promise<voi
       runId: payload.runId as string,
     });
     if (!result.ok) throw new Error(result.error.message);
+  },
+  // The weekly cycle drives itself one step per tick (spec 017)
+  advance_cycle: async (payload) => {
+    await advanceCycle(payload.cycleId as string);
   },
   build_evidence_export: async (payload) => {
     const user = await getCurrentUser();

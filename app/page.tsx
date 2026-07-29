@@ -18,6 +18,7 @@ const KIND_LABEL: Record<string, string> = {
   scheduled_run_due: "Measurement due",
   approvals_waiting: "Approvals",
   content_waiting: "Content",
+  cycle_halted: "Cycle stopped",
   no_subject: "Setup",
   no_baseline: "Setup",
   never_run: "Setup",

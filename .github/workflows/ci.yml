@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One CI run per branch; a new push cancels the previous run
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: llm_optimizer_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Integration tests reset and re-migrate this database themselves.
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/llm_optimizer_test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/llm_optimizer_test
+      AUTH_MODE: dev
+      DEV_USER_EMAIL: ci@test.local
+      DEV_USER_NAME: CI
+      DEV_USER_ROLE: admin
+      # No provider keys in CI on purpose: tests/setup.ts strips them anyway,
+      # so a leaked key could never be spent by a test run.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Migrations apply and reverse cleanly
+        run: |
+          npx tsx scripts/migrate.ts up --db "$TEST_DATABASE_URL"
+          # Every migration must roll back — historical reports depend on
+          # being able to unwind a bad schema change (docs/09).
+          for _ in $(seq 1 "$(ls db/migrations/*.sql | wc -l)"); do
+            npx tsx scripts/migrate.ts down --db "$TEST_DATABASE_URL"
+          done
+          npx tsx scripts/migrate.ts up --db "$TEST_DATABASE_URL"
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

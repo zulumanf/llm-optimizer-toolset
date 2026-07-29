@@ -21,7 +21,8 @@ export type AttentionKind =
   | "no_baseline"
   | "never_run"
   | "stale_client"
-  | "gaps_open";
+  | "gaps_open"
+  | "cycle_halted";
 
 export type Severity = "urgent" | "attention" | "info";
 
@@ -41,6 +42,8 @@ const SEVERITY: Record<AttentionKind, Severity> = {
   never_run: "info",
   stale_client: "info",
   gaps_open: "info",
+  // Automation stopped and is waiting on a human decision (spec 017)
+  cycle_halted: "urgent",
 };
 
 const SEVERITY_ORDER: Record<Severity, number> = {
@@ -91,6 +94,7 @@ interface SignalRow {
   spend7d: number;
   spend30d: number;
   runs7d: number;
+  cycleHaltReason: string | null;
 }
 
 async function signals(): Promise<SignalRow[]> {
@@ -126,6 +130,9 @@ async function signals(): Promise<SignalRow[]> {
         as high_accuracy,
       (select count(*)::int from gap_findings g
         where g.project_id = p.id and g.status = 'open') as open_gaps,
+      (select c.halt_reason from cycle_runs c
+        where c.project_id = p.id and c.state = 'halted'
+        order by c.week_start desc limit 1) as cycle_halt_reason,
       (select count(*)::int from tasks t
         where t.project_id = p.id and t.status = 'suggested') as suggested_tasks,
       (select count(*)::int from content_assets ca
@@ -176,6 +183,12 @@ export async function attentionFeed(): Promise<{
   const items: AttentionItem[] = [];
 
   for (const row of rows) {
+    if (row.cycleHaltReason) {
+      items.push(
+        item(row, "cycle_halted", 1,
+          `This week's automated cycle stopped: ${row.cycleHaltReason}`, "/runs")
+      );
+    }
     if (!row.hasSubject) {
       items.push(
         item(row, "no_subject", 1, "No subject company — parsing and scoring are blocked.", "/knowledge")
