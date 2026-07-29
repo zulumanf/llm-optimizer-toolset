@@ -36,9 +36,37 @@ Internal tool, small attack surface — but it holds API keys with real spend an
 - If a raw response happens to contain personal data about an individual, it stays immutable per principles but is excluded from exports; flag it via mention review. Don't build prompts that solicit personal data.
 
 ## Backups & recovery
-- Supabase automated daily backups + PITR where available.
-- Weekly logical dump (`pg_dump`) of the full database to a separate storage account — raw responses are irreplaceable (a lost provider answer from last March can never be re-captured).
-- Restore drill once per quarter: restore latest backup to a scratch project, run the integration test suite against it.
+
+**Implemented (2026-07-29, P0 from the five-products audit).** Raw
+responses are irreplaceable — a provider answer from last March can never
+be re-captured — so backups cover both the database and the evidence
+artifacts.
+
+```bash
+npm run backup                       # dump + artifacts + hash manifest
+BACKUP_DIR=~/Library/Mobile\ Documents/com~apple~CloudDocs/parva-backups \
+  npm run backup                     # off-box via iCloud (recommended)
+npm run restore -- var/backups/<stamp>   # drill into llm_optimizer_restore
+```
+
+- `scripts/backup.sh` — `pg_dump` (custom format) + `tar` of `var/evidence`
+  + `MANIFEST.sha256` over both, so a restore is verifiable the same way
+  client evidence packages are. Prunes to the newest `BACKUP_KEEP` (default
+  14) because this machine has hit ENOSPC before.
+- `scripts/restore.sh` — verifies the manifest, restores into a **separate**
+  database (`llm_optimizer_restore`) so a drill can never destroy live data,
+  and prints row counts for eyeball verification.
+- **Restore drill performed 2026-07-29**: manifest verified, 46 responses /
+  207 mentions / 434 scores / 3 claims / 1 report restored, live database
+  untouched.
+- **Operator action required for real durability:** the default
+  `var/backups` is the same disk — it protects against corruption and bad
+  migrations, not disk loss or theft. Set `BACKUP_DIR` to a synced/mounted
+  location and schedule it nightly (cron/launchd).
+- Quarterly: run a drill and execute the integration suite against the
+  restored database.
+- When the Supabase milestone lands: managed daily backups + PITR replace
+  the database half; artifact backups move to object storage.
 
 ## Dependencies & code
 - `npm audit` in CI (fail on high/critical), Dependabot/Renovate enabled.

@@ -6,6 +6,8 @@
     "dev": "next dev",
     "app": "bash scripts/dev-all.sh",
     "worker": "tsx workers/index.ts",
+    "backup": "bash scripts/backup.sh",
+    "restore": "bash scripts/restore.sh",
     "build": "next build",
     "start": "next start",
     "lint": "next lint --max-warnings 0",
