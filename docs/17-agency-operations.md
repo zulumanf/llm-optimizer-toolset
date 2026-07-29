@@ -20,9 +20,9 @@ attention management, and separation* — not about better measurement.
 
 | # | Capability | Status | Why it blocks |
 |---|---|---|---|
-| A1 | **Repeatable client onboarding** (vertical packs → generated prompt sets) | ❌ spec 012 draft | Today onboarding is artisanal: hand-write prompts, invent categories, guess competitors. Inconsistent per client, ~an hour each, and quality depends on who did it. |
+| A1 | **Repeatable client onboarding** (vertical packs → generated prompt sets) | ✅ **DONE** (spec 012 — realtor onboards in 0.1s, 33 prompts) | Today onboarding is artisanal: hand-write prompts, invent categories, guess competitors. Inconsistent per client, ~an hour each, and quality depends on who did it. |
 | A2 | **Real auth + client separation + roles** | ❌ spec 014, BLOCKED on operator (Supabase project) | Client data behind a hardcoded dev user; no client-viewer access; no RLS. Disqualifying for paid work. |
-| A3 | **Cross-client operations console** | ❌ missing | The portfolio lists clients but cannot answer "what needs me today across all of them" — the core agency question. |
+| A3 | **Cross-client operations console** | ✅ **DONE** (`/` Today view — rule-ranked attention feed + per-client cost) | The portfolio lists clients but cannot answer "what needs me today across all of them" — the core agency question. |
 | A4 | **Hosted deployment + reliable scheduling** | ❌ laptop only | launchd fires only while the machine is awake and `npm run app` is serving. Twenty clients cannot depend on that. |
 
 ### Tier B — required for agency credibility
@@ -31,7 +31,7 @@ attention management, and separation* — not about better measurement.
 |---|---|---|---|
 | B1 | **Multi-provider coverage** (Gemini, Perplexity, Claude live) | ◐ adapters exist, never run, prices placeholder | Clients ask "what about Gemini?"; docs/06's ≥2-provider rule means single-provider verdicts can never reach "notable". |
 | B2 | **Notifications / digests** | ❌ none platform-wide | Nobody polls twenty clients by hand. |
-| B3 | **Per-client cost tracking + caps** | ◐ per-run budgets only | Margin per client is unknown; a runaway client can't be capped. |
+| B3 | **Per-client cost tracking + caps** | ◐ tracking DONE (cost-per-client table on Today); per-client monthly caps still missing | Margin per client is unknown; a runaway client can't be capped. |
 | B4 | **Client-facing deliverable** (read-only portal or shareable report) | ◐ exports only | Exports work but every delivery is manual. |
 
 ### Tier C — scale and margin

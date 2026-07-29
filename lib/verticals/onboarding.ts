@@ -127,7 +127,8 @@ export async function onboardClient(
     const company = await upsertCompany(user, {
       name: input.company.name,
       aliases: input.company.aliases,
-      domain: input.company.domain ?? null,
+      // upsertCompany treats domain as optional-not-nullable
+      ...(input.company.domain ? { domain: input.company.domain } : {}),
     });
     if (!company.ok) return company;
     const subject = await setSubjectCompany(user, {
@@ -158,7 +159,7 @@ export async function onboardClient(
       const competitorCompany = await upsertCompany(user, {
         name: competitor.name,
         aliases: [],
-        domain: competitor.domain ?? null,
+        ...(competitor.domain ? { domain: competitor.domain } : {}),
       });
       if (!competitorCompany.ok) continue;
       const tracked = await addCompetitor(user, {
