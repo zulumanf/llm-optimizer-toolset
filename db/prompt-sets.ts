@@ -18,6 +18,7 @@ export interface Prompt {
   category: PromptCategory;
   language: string;
   position: number;
+  isHoldout: boolean;
   createdAt: Date;
   archivedAt: Date | null;
 }

@@ -33,6 +33,17 @@ export interface SelfTile {
   previousValue: number | null;
 }
 
+/** The most recent run with scores — the drill-down target for tiles. */
+export async function latestScoredRunId(projectId: string): Promise<string | null> {
+  const [row] = await sql`
+    select r.id from runs r
+    where r.project_id = ${projectId}
+      and exists (select 1 from scores s where s.run_id = r.id)
+    order by r.started_at desc limit 1
+  `;
+  return (row?.id as string | undefined) ?? null;
+}
+
 /** Latest 'all' values for the project's subject + previous scored run. */
 export async function selfTiles(projectId: string): Promise<SelfTile[]> {
   const subject = await getSubjectCompany(projectId);

@@ -14,3 +14,4 @@ coverage/
 *.log
 .vercel
 tsconfig.tsbuildinfo
+var/

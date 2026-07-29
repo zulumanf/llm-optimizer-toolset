@@ -23,8 +23,24 @@ import {
 } from "@/lib/scoring/metrics";
 
 export async function computeScores(runId: string): Promise<void> {
-  const [run] = await sql`select id, status, project_id from runs where id = ${runId}`;
+  const [run] = await sql`
+    select id, status, project_id, prompt_set_version_id
+    from runs where id = ${runId}
+  `;
   if (!run) throw new ClassifiedError("not_found", `Run ${runId} not found.`);
+
+  // Holdout prompts run but never enter standard metric denominators
+  // (evidence spec). With zero holdout prompts the eligible set — and every
+  // historical value — is unchanged (DECISIONS: no scoring-version bump).
+  const [frozenVersion] = await sql`
+    select frozen_prompts from prompt_set_versions
+    where id = ${run.promptSetVersionId}
+  `;
+  const holdoutPromptIds = new Set(
+    ((frozenVersion?.frozenPrompts as { promptId: string; isHoldout?: boolean }[] | null) ?? [])
+      .filter((p) => p.isHoldout)
+      .map((p) => p.promptId)
+  );
 
   const pending = await pendingReviewCount(runId);
   let excludedResponseIds = new Set<string>();
@@ -59,9 +75,14 @@ export async function computeScores(runId: string): Promise<void> {
 
   // Valid cells: successful captures (refusals count; errors don't — docs/06)
   const validResponses = await sql`
-    select id, provider, response_text, raw_payload from responses
+    select id, provider, prompt_id, response_text, raw_payload from responses
     where run_id = ${runId} and error is null
   `;
+  for (const row of validResponses) {
+    if (holdoutPromptIds.has(row.promptId as string)) {
+      excludedResponseIds.add(row.id as string);
+    }
+  }
   const included = validResponses.filter(
     (r) => !excludedResponseIds.has(r.id as string)
   );
