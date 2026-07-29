@@ -191,6 +191,73 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
     expect(ledger?.n).toBe(2);
   });
 
+  it("bulk confirm clears a multi-item queue and unblocks scoring", async () => {
+    await seedCompanies();
+    // Three ambiguous prompts → three queue items needing the same judgement
+    const runId = await runPipeline([
+      "please MOCK_AMBIGUOUS answer one",
+      "please MOCK_AMBIGUOUS answer two",
+      "please MOCK_AMBIGUOUS answer three",
+    ]);
+    await drainJobs();
+    const [project] = await sql`select project_id from runs where id = ${runId}`;
+    const queue = await mentionsDb.listReviewQueue(project?.projectId as string);
+    expect(queue.length).toBeGreaterThan(1);
+    expect(await mentionsDb.pendingReviewCount(runId)).toBe(queue.length);
+
+    const bulk = await reviewSvc.bulkConfirmMentions(operator, {
+      mentionIds: queue.map((q) => q.id),
+    });
+    expect(bulk.ok).toBe(true);
+    if (!bulk.ok) return;
+    expect(bulk.data.confirmed).toBe(queue.length);
+    expect(bulk.data.skipped).toBe(0);
+
+    // Each item still got its own audited revision — batching is not a shortcut
+    expect(await mentionsDb.pendingReviewCount(runId)).toBe(0);
+    const audits = await sql`
+      select count(*)::int as n from audit_log where action = 'mention.review'
+    `;
+    expect(audits[0]?.n).toBe(queue.length);
+    const reviewed = await sql`
+      select count(*)::int as n from mentions
+      where reviewed_by is not null and confidence = 1.0
+    `;
+    expect(reviewed[0]?.n).toBe(queue.length);
+
+    // Queue cleared → scoring enqueued
+    await drainJobs();
+    const [scores] = await sql`
+      select count(*)::int as n from scores where run_id = ${runId}
+    `;
+    expect(scores?.n).toBeGreaterThan(0);
+  });
+
+  it("bulk confirm skips already-superseded rows instead of failing the batch", async () => {
+    await seedCompanies();
+    const runId = await runPipeline([
+      "please MOCK_AMBIGUOUS answer one",
+      "please MOCK_AMBIGUOUS answer two",
+    ]);
+    await drainJobs();
+    const [project] = await sql`select project_id from runs where id = ${runId}`;
+    const queue = await mentionsDb.listReviewQueue(project?.projectId as string);
+
+    // Someone reviews the first item in another tab before the batch runs
+    await reviewSvc.reviewMention(operator, {
+      mentionId: queue[0]!.id,
+      verdict: "confirm",
+    });
+
+    const bulk = await reviewSvc.bulkConfirmMentions(operator, {
+      mentionIds: queue.map((q) => q.id),
+    });
+    expect(bulk.ok).toBe(true);
+    if (!bulk.ok) return;
+    expect(bulk.data.confirmed).toBe(queue.length - 1);
+    expect(bulk.data.skipped).toBe(1);
+  });
+
   it("review gate: low-confidence parse blocks scoring; confirming unblocks it", async () => {
     const { parvaId } = await seedCompanies();
     const runId = await runPipeline(["please MOCK_AMBIGUOUS answer"]);

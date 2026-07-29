@@ -13,6 +13,10 @@ import { parseResponse } from "@/lib/parsing/service";
 import { computeScores } from "@/lib/scoring/compute";
 import { startScheduledRun } from "@/lib/attribution/service";
 import { syncNotifications } from "@/lib/notifications/service";
+import { analyzeRun } from "@/lib/gaps/service";
+import { analyzeRunAccuracy } from "@/lib/accuracy/service";
+import { generateEvidenceExport } from "@/lib/evidence/export";
+import { getCurrentUser } from "@/lib/auth";
 import { log } from "@/lib/logger";
 
 const WORKER_ID = `worker-${randomUUID().slice(0, 8)}`;
@@ -37,6 +41,27 @@ const handlers: Record<string, (payload: Record<string, unknown>) => Promise<voi
   // Derived from the live attention feed — safe to run on any schedule
   sync_notifications: async () => {
     await syncNotifications();
+  },
+  // Long agent/IO operations run here rather than blocking a request:
+  // each is idempotent, so a retry after a crash is safe (UX pass).
+  analyze_gaps: async (payload) => {
+    const user = await getCurrentUser();
+    const result = await analyzeRun(user, { runId: payload.runId as string });
+    if (!result.ok) throw new Error(result.error.message);
+  },
+  analyze_accuracy: async (payload) => {
+    const user = await getCurrentUser();
+    const result = await analyzeRunAccuracy(user, {
+      runId: payload.runId as string,
+    });
+    if (!result.ok) throw new Error(result.error.message);
+  },
+  build_evidence_export: async (payload) => {
+    const user = await getCurrentUser();
+    const result = await generateEvidenceExport(user, {
+      runId: payload.runId as string,
+    });
+    if (!result.ok) throw new Error(result.error.message);
   },
 };
 

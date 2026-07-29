@@ -12,6 +12,7 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
 import { SENTIMENTS } from "@/lib/constants";
 import { maybeEnqueueScoring, enqueueParseJobs } from "@/lib/parsing/service";
+import { log } from "@/lib/logger";
 
 const reviewSchema = z.object({
   mentionId: z.string().uuid(),
@@ -85,6 +86,44 @@ export async function reviewMention(
   } catch (err) {
     return fail(err);
   }
+}
+
+/**
+ * Bulk confirm (UX): clearing a queue one card at a time is the operator's
+ * biggest time sink at agency scale, and scoring stays blocked until the
+ * queue is empty. Each mention still gets its own audited revision — this is
+ * a batching of the same decision, never a shortcut around it. Confirm only:
+ * a correction is per-item by nature and stays a single-card action.
+ */
+export async function bulkConfirmMentions(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ confirmed: number; skipped: number }>> {
+  const parsed = z
+    .object({ mentionIds: z.array(z.string().uuid()).min(1).max(200) })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const { mentionIds } = parsed.data;
+  let confirmed = 0;
+  let skipped = 0;
+
+  for (const mentionId of mentionIds) {
+    // Per-item so one stale row (superseded by a re-parse mid-review) cannot
+    // abort the batch — it is skipped and reported. reviewMention also
+    // re-checks scoring readiness, so the queue unblocks itself.
+    const result = await reviewMention(user, { mentionId, verdict: "confirm" });
+    if (result.ok) confirmed += 1;
+    else skipped += 1;
+  }
+
+  log("info", "mentions.bulk_confirm", {
+    requested: mentionIds.length,
+    confirmed,
+    skipped,
+  });
+  return ok({ confirmed, skipped });
 }
 
 /** Admin: re-parse a run (after alias/parser changes). New revisions only. */

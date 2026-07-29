@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { CheckCheck } from "lucide-react";
 import { getProject } from "@/db/projects";
 import { listReviewQueue } from "@/db/mentions";
-import { ReviewCard } from "@/components/review/review-card";
+import { ReviewQueue } from "@/components/review/review-queue";
 
 export default async function ReviewPage({
   params,
@@ -16,7 +16,7 @@ export default async function ReviewPage({
   const queue = await listReviewQueue(id);
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <div className="mx-auto max-w-5xl p-6">
       <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/projects" className="hover:text-foreground">Projects</Link>
         {" / "}
@@ -44,11 +44,7 @@ export default async function ReviewPage({
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {queue.map((item) => (
-            <ReviewCard key={item.id} item={item} />
-          ))}
-        </div>
+        <ReviewQueue items={queue} />
       )}
     </div>
   );
