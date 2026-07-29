@@ -114,6 +114,11 @@ export function SidebarNav({ projects }: { projects: SidebarProject[] }) {
     <nav className="flex-1 overflow-y-auto p-2">
       <ul className="space-y-0.5">
         <li>
+          <NavLink href="/" active={pathname === "/"}>
+            <LayoutDashboard className="size-4" /> Today
+          </NavLink>
+        </li>
+        <li>
           <NavLink href="/projects" active={pathname.startsWith("/projects")}>
             <Users className="size-4" /> Clients
           </NavLink>
