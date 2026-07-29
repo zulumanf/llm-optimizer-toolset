@@ -95,7 +95,37 @@ export function NotificationRow({ notification }: Props) {
             size="sm"
             variant="ghost"
             disabled={pending}
-            onClick={() => act("dismissed", "Dismissed — it won't come back.")}
+            onClick={() =>
+              startTransition(async () => {
+                const result = await setNotificationStatus({
+                  notificationId: notification.id,
+                  status: "dismissed",
+                });
+                if (!result.ok) {
+                  toast.error(result.error.message);
+                  return;
+                }
+                router.refresh();
+                toast.success("Dismissed — it won't come back.", {
+                  action: {
+                    label: "Undo",
+                    onClick: () =>
+                      startTransition(async () => {
+                        const undo = await setNotificationStatus({
+                          notificationId: notification.id,
+                          status: "unread",
+                        });
+                        if (undo.ok) {
+                          toast.success("Restored.");
+                          router.refresh();
+                        } else {
+                          toast.error(undo.error.message);
+                        }
+                      }),
+                  },
+                });
+              })
+            }
           >
             Dismiss
           </Button>

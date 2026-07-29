@@ -27,3 +27,6 @@ export async function createTaskFromFinding(input: unknown) {
 export async function dismissFinding(input: unknown) {
   return run((u) => svc.dismissFinding(u, input));
 }
+export async function reopenFinding(input: unknown) {
+  return run((u) => svc.reopenFinding(u, input));
+}

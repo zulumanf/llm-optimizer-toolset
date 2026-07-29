@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { unreadCount } from "@/lib/notifications/service";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { CommandPalette } from "@/components/layout/command-palette";
 
 export async function Sidebar(): Promise<React.ReactElement> {
   const [projects, user, unread] = await Promise.all([
@@ -13,10 +14,14 @@ export async function Sidebar(): Promise<React.ReactElement> {
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r bg-card">
+      <CommandPalette
+        projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+      />
       <div className="border-b p-4">
         <p className="text-sm font-semibold">AI Visibility OS</p>
         <p className="text-xs text-muted-foreground">
-          client engagements · internal
+          <kbd className="rounded border px-1 py-0.5 text-[10px]">⌘K</kbd> to
+          jump anywhere
         </p>
       </div>
       <SidebarNav
