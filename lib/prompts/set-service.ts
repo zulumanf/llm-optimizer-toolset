@@ -150,7 +150,7 @@ export async function freezePromptSet(
       }
 
       const prompts = await tx`
-        select id, text, category, language, position from prompts
+        select id, text, category, language, position, is_holdout from prompts
         where prompt_set_id = ${setId} and archived_at is null
         order by position asc, created_at asc
       `;
@@ -163,6 +163,7 @@ export async function freezePromptSet(
         category: p.category as FrozenPrompt["category"],
         language: p.language as string,
         position: i + 1,
+        isHoldout: Boolean(p.isHoldout),
       }));
 
       const [latest] = await tx`

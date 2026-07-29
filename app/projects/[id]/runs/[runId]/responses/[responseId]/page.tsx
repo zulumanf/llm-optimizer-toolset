@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getResponse, getRun } from "@/db/runs";
+import { sql } from "@/db/client";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/format";
 
@@ -17,6 +18,20 @@ export default async function ResponsePage({
   if (!run || !response || response.runId !== runId || run.projectId !== projectId) {
     notFound();
   }
+
+  const [hashes] = await sql`
+    select response_hash, payload_hash, hashed_at
+    from responses where id = ${responseId}
+  `;
+  // Full classification history: every revision, never collapsed
+  const history = await sql`
+    select c.name as company, m.revision, m.mentioned, m.recommended,
+      m.list_position, m.sentiment, m.confidence, m.needs_review,
+      m.parser_version, m.created_at
+    from mentions m join companies c on c.id = m.company_id
+    where m.response_id = ${responseId}
+    order by c.name asc, m.revision asc
+  `;
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -64,12 +79,76 @@ export default async function ResponsePage({
         </section>
       ) : (
         <section className="mb-6">
-          <h2 className="mb-1 text-sm font-medium text-muted-foreground">
-            Response text
-          </h2>
+          <div className="mb-1 flex items-center justify-between">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              Response text
+            </h2>
+            <Badge variant="outline" className="font-mono text-[10px]">
+              RAW EVIDENCE — UNEDITED
+            </Badge>
+          </div>
           <pre className="whitespace-pre-wrap rounded-md border p-4 font-mono text-sm">
             {response.responseText || "(empty)"}
           </pre>
+        </section>
+      )}
+
+      <section className="mb-6 rounded-md border bg-muted/30 p-4 text-xs">
+        <p className="mb-1 font-medium text-foreground">Integrity</p>
+        <p className="break-all font-mono text-muted-foreground">
+          response sha256: {(hashes?.responseHash as string | null) ?? "—"}
+        </p>
+        <p className="break-all font-mono text-muted-foreground">
+          payload sha256: {(hashes?.payloadHash as string | null) ?? "—"}
+        </p>
+        <p className="text-muted-foreground">
+          hashed at capture:{" "}
+          {hashes?.hashedAt ? formatDate(hashes.hashedAt as Date) : "—"} ·
+          insert-only at the database level (docs/03)
+        </p>
+      </section>
+
+      {history.length > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-1 text-sm font-medium text-muted-foreground">
+            Classification history (every revision preserved)
+          </h2>
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/40 text-left">
+                <tr>
+                  <th className="p-2">Company</th>
+                  <th className="p-2">Rev</th>
+                  <th className="p-2">Mentioned</th>
+                  <th className="p-2">Recommended</th>
+                  <th className="p-2">Pos</th>
+                  <th className="p-2">Sentiment</th>
+                  <th className="p-2">Confidence</th>
+                  <th className="p-2">Classifier</th>
+                  <th className="p-2">At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((m, i) => (
+                  <tr key={i} className="border-t">
+                    <td className="p-2">{m.company as string}</td>
+                    <td className="p-2 tabular-nums">{m.revision as number}</td>
+                    <td className="p-2">{m.mentioned ? "yes" : "no"}</td>
+                    <td className="p-2">{m.recommended ? "yes" : "no"}</td>
+                    <td className="p-2 tabular-nums">
+                      {(m.listPosition as number | null) ?? "—"}
+                    </td>
+                    <td className="p-2">{(m.sentiment as string | null) ?? "—"}</td>
+                    <td className="p-2 tabular-nums">
+                      {m.confidence == null ? "—" : Number(m.confidence).toFixed(2)}
+                    </td>
+                    <td className="p-2 font-mono">{m.parserVersion as string}</td>
+                    <td className="p-2">{formatDate(m.createdAt as Date)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 

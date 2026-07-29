@@ -69,11 +69,21 @@ export default async function RunDetailPage({
             {totalPlanned > 0 ? "" : ""}
           </p>
         </div>
-        <RunControls
-          runId={run.id}
-          status={run.status}
-          hasFailures={failures > 0}
-        />
+        <div className="flex shrink-0 items-center gap-2">
+          {scores.length > 0 && (
+            <Link
+              href={`/projects/${projectId}/runs/${runId}/evidence`}
+              className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent"
+            >
+              Evidence
+            </Link>
+          )}
+          <RunControls
+            runId={run.id}
+            status={run.status}
+            hasFailures={failures > 0}
+          />
+        </div>
       </div>
 
       <section className="mb-6">

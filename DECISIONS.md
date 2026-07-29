@@ -117,6 +117,24 @@ note: the ≥2-provider consistency requirement means single-provider setups
 can never produce a "notable" verdict — kept deliberately; robustness of the
 claim is the point, and real baselines run multiple providers.
 
+### Evidence audit trail: hashes computed in Postgres; holdout without a scoring bump
+Capture-time SHA-256 hashes for response text and raw payload are computed
+by a BEFORE INSERT trigger in Postgres, not in JS — one canonicalization
+(jsonb::text) shared by capture, the one-time migration backfill (immutability
+trigger disabled for that single additive-metadata statement, raw content
+untouched), and integrity verification, which recomputes in SQL and treats
+any mismatch as tampering. Metric drill-down re-derives numerator/denominator
+from mentions at read time and displays a mismatch with the stored score
+rather than trusting either silently. Holdout prompts (locked into
+frozen_prompts at freeze) are excluded from standard metric denominators
+WITHOUT a scoring-version bump: no historical run contains holdout prompts,
+so every historical value is bit-identical under the clarified eligible-set
+definition — a version bump would have severed Parva's baseline
+comparability for zero measurement benefit. Deferred with named integration
+points rather than half-built: consumer-interface capture (browser runner) →
+EvidenceCaptureAdapter interface; per-client portal logins → Supabase auth
+milestone; stored top-three metric → next scoring version.
+
 ### Search-enabled runs as a distinct instrument; citations from payloads at read time
 Search-mode models (e.g. `gpt-5.4-mini-2026-03-17+search`, Responses API +
 web_search, shape verified live 2026-07-28) are separate pinned model ids —

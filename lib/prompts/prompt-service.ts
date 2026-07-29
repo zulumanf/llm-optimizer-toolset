@@ -18,7 +18,7 @@ import {
 import { firstZodMessage } from "@/lib/service-helpers";
 
 const PROMPT_COLUMNS = sql`id, prompt_set_id, text, category, language,
-  position, created_at, archived_at`;
+  position, is_holdout, created_at, archived_at`;
 
 async function requireActiveSet(tx: TransactionSql, setId: string): Promise<void> {
   const [set] = await tx`
@@ -38,16 +38,18 @@ export async function addPrompt(
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
   }
-  const { setId, text, category, language } = parsed.data;
+  const { setId, text, category, language, isHoldout } = parsed.data;
   try {
     const prompt = await sql.begin(async (tx) => {
       await requireActiveSet(tx, setId);
       const [row] = await tx<Prompt[]>`
-        insert into prompts (prompt_set_id, text, category, language, position)
+        insert into prompts (prompt_set_id, text, category, language, position,
+          is_holdout)
         values (
           ${setId}, ${text}, ${category}, ${language ?? "en"},
           (select coalesce(max(position), 0) + 1 from prompts
-            where prompt_set_id = ${setId} and archived_at is null)
+            where prompt_set_id = ${setId} and archived_at is null),
+          ${isHoldout ?? false}
         )
         returning ${PROMPT_COLUMNS}
       `;

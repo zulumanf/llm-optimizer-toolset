@@ -2,7 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { getCurrentUser } from "@/lib/auth";
-import { authorityTrend, selfTiles, dataHealth } from "@/db/dashboard";
+import {
+  authorityTrend,
+  selfTiles,
+  dataHealth,
+  latestScoredRunId,
+} from "@/db/dashboard";
 import { latestScoresByCompany, listComparisonCompanies } from "@/db/competitors";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,14 +25,17 @@ function StatTile({
   value,
   delta,
   sub,
+  href,
 }: {
   label: string;
   value: string;
   delta?: number | null;
   sub?: string;
+  /** Evidence drill-down target — every displayed rate is inspectable */
+  href?: string;
 }) {
-  return (
-    <Card>
+  const card = (
+    <Card className={href ? "h-full transition-colors hover:bg-accent/50" : undefined}>
       <CardContent className="p-4">
         <p className="text-xs text-muted-foreground">{label}</p>
         <div className="mt-1 flex items-baseline gap-2">
@@ -46,6 +54,7 @@ function StatTile({
       </CardContent>
     </Card>
   );
+  return href ? <Link href={href}>{card}</Link> : card;
 }
 
 export default async function ProjectDashboardPage({
@@ -57,13 +66,15 @@ export default async function ProjectDashboardPage({
   const [project, user] = await Promise.all([getProject(id), getCurrentUser()]);
   if (!project) notFound();
 
-  const [tiles, trend, comparison, latestScores, health] = await Promise.all([
-    selfTiles(id),
-    authorityTrend(id),
-    listComparisonCompanies(id),
-    latestScoresByCompany(id),
-    dataHealth(id),
-  ]);
+  const [tiles, trend, comparison, latestScores, health, scoredRunId] =
+    await Promise.all([
+      selfTiles(id),
+      authorityTrend(id),
+      listComparisonCompanies(id),
+      latestScoresByCompany(id),
+      dataHealth(id),
+      latestScoredRunId(id),
+    ]);
 
   const tile = (metric: string) => tiles.find((t) => t.metric === metric);
   const authority = tile("authority_score");
@@ -156,7 +167,16 @@ export default async function ProjectDashboardPage({
               ? (rec.value - rec.previousValue) * 100
               : null
           }
-          sub={rec ? `N=${rec.sampleSize}` : undefined}
+          sub={
+            rec
+              ? `${Math.round(rec.value * rec.sampleSize)} of ${rec.sampleSize} observations — click to inspect`
+              : undefined
+          }
+          href={
+            scoredRunId
+              ? `/projects/${id}/runs/${scoredRunId}/evidence?metric=recommendation_rate`
+              : undefined
+          }
         />
         <StatTile
           label="Share of voice"

@@ -7,4 +7,8 @@ export interface FrozenPrompt {
   category: PromptCategory;
   language: string;
   position: number;
+  /** Holdout membership locks at freeze (evidence spec): holdout
+   * observations run but stay out of standard metric denominators.
+   * Absent on pre-evidence-spec versions = false. */
+  isHoldout?: boolean;
 }

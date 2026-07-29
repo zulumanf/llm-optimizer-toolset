@@ -64,6 +64,7 @@ export const addPromptSchema = z.object({
   text: promptText,
   category,
   language: language.optional(),
+  isHoldout: z.boolean().optional(),
 });
 
 export const updatePromptSchema = z.object({
