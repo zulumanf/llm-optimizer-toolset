@@ -54,6 +54,12 @@ export default async function EvidencePage({
   const tampered =
     integrity.mismatchedResponses.length + integrity.mismatchedArtifacts.length;
 
+  const [latestExport] = await sql`
+    select id, sha256 from evidence_exports
+    where run_id = ${runId} and status = 'completed'
+    order by completed_at desc limit 1
+  `;
+
   const companies = await sql`
     select distinct c.id, c.name from scores s join companies c on c.id = s.company_id
     where s.run_id = ${runId} order by c.name
@@ -125,7 +131,18 @@ export default async function EvidencePage({
             )}
           </p>
         </div>
-        <EvidenceTools runId={runId} projectId={projectId} />
+        <EvidenceTools
+          runId={runId}
+          projectId={projectId}
+          latestExport={
+            latestExport
+              ? {
+                  exportId: latestExport.id as string,
+                  sha256: latestExport.sha256 as string,
+                }
+              : null
+          }
+        />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">

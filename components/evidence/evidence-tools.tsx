@@ -1,16 +1,25 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Dices, PackageOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createAuditSample, generateEvidenceExport } from "@/app/evidence/actions";
+import { createAuditSample } from "@/app/evidence/actions";
+import { BackgroundAction } from "@/components/jobs/background-action";
 
-export function EvidenceTools({ runId }: { runId: string; projectId: string }) {
+export function EvidenceTools({
+  runId,
+  latestExport,
+}: {
+  runId: string;
+  projectId: string;
+  /** Most recent completed package — served from the DB so the link
+   * survives a refresh (the export now runs in the worker). */
+  latestExport: { exportId: string; sha256: string } | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [exportInfo, setExportInfo] = useState<{ exportId: string; sha256: string } | null>(null);
 
   return (
     <div className="flex shrink-0 flex-col items-end gap-2">
@@ -35,38 +44,24 @@ export function EvidenceTools({ runId }: { runId: string; projectId: string }) {
         >
           <Dices className="size-4" /> Audit sample
         </Button>
-        <Button
-          size="sm"
-          disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              const result = await generateEvidenceExport({ runId });
-              if (result.ok) {
-                setExportInfo({
-                  exportId: result.data.exportId,
-                  sha256: result.data.sha256,
-                });
-                toast.success("Evidence package built and hash-recorded.");
-              } else {
-                toast.error(result.error.message);
-              }
-            })
-          }
-        >
-          <PackageOpen className="size-4" />
-          {pending ? "Working…" : "Export package"}
-        </Button>
+        <BackgroundAction
+          type="build_evidence_export"
+          runId={runId}
+          label="Export package"
+          workingLabel="Packaging…"
+          icon={<PackageOpen className="size-4" />}
+        />
       </div>
-      {exportInfo && (
+      {latestExport && (
         <p className="max-w-xs break-all text-right text-xs text-muted-foreground">
           <a
-            href={`/api/evidence/${exportInfo.exportId}`}
+            href={`/api/evidence/${latestExport.exportId}`}
             className="underline"
             download
           >
-            download .tar.gz
+            download latest .tar.gz
           </a>{" "}
-          · sha256 {exportInfo.sha256.slice(0, 16)}…
+          · sha256 {latestExport.sha256.slice(0, 16)}…
         </p>
       )}
     </div>

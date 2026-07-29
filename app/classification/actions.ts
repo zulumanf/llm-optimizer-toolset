@@ -32,6 +32,10 @@ export async function reviewMention(input: unknown) {
   return run((u) => reviewSvc.reviewMention(u, input), ["/projects"]);
 }
 
+export async function bulkConfirmMentions(input: unknown) {
+  return run((u) => reviewSvc.bulkConfirmMentions(u, input), ["/projects"]);
+}
+
 export async function reparseRun(input: unknown) {
   return run((u) => reviewSvc.reparseRun(u, input), ["/projects"]);
 }

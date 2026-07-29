@@ -14,15 +14,23 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LLM Optimizer",
-  description: "Internal AI-visibility measurement tool for Parva",
+  title: "AI Visibility OS",
+  description: "Internal AI-visibility operations platform for client engagements",
 };
+
+/** Runs before paint so the correct theme is on <html> from the first frame —
+ * no flash of the wrong theme, and no dependency for three lines of logic.
+ * Must stay in sync with components/layout/theme-toggle.tsx. */
+const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem('theme')||'system';var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){document.documentElement.classList.add('dark');}})();`;
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >

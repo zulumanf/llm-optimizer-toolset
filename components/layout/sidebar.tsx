@@ -2,6 +2,7 @@ import { listActiveProjects } from "@/db/projects";
 import { getCurrentUser } from "@/lib/auth";
 import { unreadCount } from "@/lib/notifications/service";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 export async function Sidebar(): Promise<React.ReactElement> {
   const [projects, user, unread] = await Promise.all([
@@ -22,10 +23,11 @@ export async function Sidebar(): Promise<React.ReactElement> {
         projects={projects.map((p) => ({ id: p.id, name: p.name }))}
         unreadCount={unread}
       />
-      <div className="border-t px-4 py-3">
+      <div className="flex items-center justify-between gap-2 border-t px-4 py-3">
         <p className="truncate text-xs text-muted-foreground">
           {user.name} · {user.role}
         </p>
+        <ThemeToggle />
       </div>
     </aside>
   );
