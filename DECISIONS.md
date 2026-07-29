@@ -266,3 +266,86 @@ performance.
 Node timeouts are a distinct failure class from `internal`: they are expected,
 bounded, and retryable, and the operator's response differs. One-word addition
 to `lib/errors.ts`; no consumer switches exhaustively on `ErrorKind`.
+
+## 2026-07-29 — The automation layer is first-party, on the spec-018 engine
+
+`specs/native-automation-and-connector-layer.md` asked for an
+`AutomationRuntime`. It is a ~250-line **adapter** over
+`lib/workflow/engine.ts`, not a second execution model. A run's state, retry
+semantics, audit trail and "what is this waiting on?" must have exactly one
+home; spec 018 already built it, and the revisit conditions it recorded
+(external orchestrator when multi-worker throughput or 30-day waits bite) are
+still not met. The adapter adds only what does not belong in a graph engine:
+run mode, connector preflight, per-client concurrency, and exception querying.
+
+Full build-vs-borrow reasoning, including what we deliberately refuse to build
+(arbitrary code nodes, a connector marketplace, a customer-facing builder), is
+in `docs/architecture/build-vs-borrow-boundaries.md`.
+
+## 2026-07-29 — `transform: postgres.camel` rewrites JSON keys, not just columns
+
+Discovered while wiring test-mode fixtures: the shared client's camel transform
+rewrites keys **inside jsonb** on read. A stored `analytics.fetch_sessions`
+comes back as `analytics.fetchSessions`, and `__test` comes back as `_Test`.
+
+Consequences, both now enforced:
+
+- Any name that must survive a round trip lives in a **value**, not a key.
+  `WorkflowFixtureBundle` is therefore an array of `{capability, response}`
+  entries, not an object keyed by capability.
+- Reserved keys in stored JSON are camelCase with no leading underscores
+  (`automationTestConfig`).
+
+Workflow definitions were audited and are safe: every node `config` key is
+already camelCase, and capability names appear only as values.
+
+## 2026-07-29 — Edges govern execution; paths govern reading
+
+A template routinely needs a value produced several nodes back — a report's
+approval node needs the metric section computed four nodes earlier. The obvious
+fix, adding a shortcut edge, is actively unsafe: `computeReady` fires a node
+when *any* incoming edge is satisfied, so a shortcut around a gate would let
+the gated node run before its gate cleared.
+
+So `lib/automation/nodes/paths.ts` resolves a config path from direct upstream
+outputs, then the run input, then any node in the run that has already
+**succeeded**. That is a read, never a permission: a node that has not run has
+no output, so a bypassed gate still starves its downstream nodes.
+`validateNodePaths` refuses a path rooted at a node that is not an ancestor,
+because nothing orders it first — that one is a genuine race.
+
+## 2026-07-29 — Per-node action types, so a level-2 workflow is usable
+
+`lib/workflow/autonomy.ts` classifies `deterministic_task`, `agent_task` and
+`integration_task` as effectful, and gates every effectful node at autonomy ≤ 2.
+Without a per-node action type, a level-2 workflow would demand a human decision
+on every read and every calculation — which that same file warns "would train
+the operator to rubber-stamp, which is worse than no gate at all".
+
+`lib/automation/workflows/helpers.ts` therefore sets `config.actionType` per node
+category (reads → `analytics_ingestion`, calculations → `metric_calculation`,
+agent drafts → `content_drafting`), following the convention spec 018's own
+`content_production_v1` established. Nodes that actually act inherit the
+workflow's action type and stay gated.
+
+## 2026-07-29 — Adapter status is labelled, never inflated
+
+Sixteen connector adapters ship. Five are `verified` — fixture, CSV, manual,
+internal notification, local file store — and every one of those runs entirely
+inside this platform. Nine provider adapters are `implemented_unverified`:
+written against the documented HTTP contract, shape-tested against captured
+fixtures, and **never executed against the live API**, because no provider
+credentials exist in this environment. Two are `contract_only`.
+
+`tests/unit/connector-security.test.ts` asserts that no adapter talking to a
+third party can claim `verified`, and that every non-verified adapter documents
+what remains. The connectors page states the same thing in prose.
+
+## 2026-07-29 — Labour savings are not reported
+
+The request asks for human-time-saved metrics "unless actual baseline and
+operating data exist". None does, so `businessMetrics().humanTimeSavedHours` is
+typed `null` and the dashboard prints "not measured". What *is* reported is
+`manualInterventionRate` — the share of live runs where a human had to touch a
+node — computed from `node_runs.human_touch`. That is the number that says
+whether the automation is helping, and it needs no baseline to be honest.

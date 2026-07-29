@@ -22,6 +22,15 @@ import { advanceCycle } from "@/lib/cycles/service";
 // effect — the engine cannot run a graph whose handlers are unknown.
 import { bootstrapWorkflows } from "@/lib/workflow/templates";
 import { advanceWorkflow } from "@/lib/workflow/engine";
+// The automation layer registers ~110 more node handlers and 18 workflow
+// definitions on top of spec 018's three (specs/native-automation-and-connector-layer).
+import {
+  deliverOneEvent,
+  ensureAutomationReady,
+  runEventDelivery,
+  runTriggerDispatch,
+} from "@/lib/automation/dispatch";
+import { sweepConnections } from "@/lib/connectors/health";
 import { log } from "@/lib/logger";
 
 const WORKER_ID = `worker-${randomUUID().slice(0, 8)}`;
@@ -78,6 +87,38 @@ const handlers: Record<string, (payload: Record<string, unknown>) => Promise<voi
     });
     if (!result.ok) throw new Error(result.error.message);
   },
+
+  // ---------------------------------------------- automation layer
+
+  // Deliver one event to its subscriptions. Enqueued transactionally by
+  // publishEvent, so an event and its delivery attempt cannot diverge.
+  deliver_events: async (payload) => {
+    await deliverOneEvent(payload.eventId as string);
+  },
+  // A safety net for events whose delivery job was lost, and the retry path for
+  // ones that failed. Idempotent consumption makes re-sweeping harmless.
+  sweep_event_delivery: async () => {
+    const result = await runEventDelivery(100);
+    if (result.deadLettered > 0) {
+      log("warn", "worker.events_dead_lettered", { count: result.deadLettered });
+    }
+  },
+  // Fire due schedules and thresholds. Safe at any frequency: a fire key is the
+  // window's identity, so two dispatchers on the same slot produce one run.
+  dispatch_triggers: async () => {
+    await runTriggerDispatch();
+  },
+  // Probe every connection. Prevents the silent-failure mode where a connector
+  // broke weeks ago and reporting has been quietly incomplete since.
+  connector_health_sweep: async () => {
+    const result = await sweepConnections();
+    if (result.failing > 0) {
+      log("warn", "worker.connectors_failing", {
+        failing: result.failing,
+        checked: result.checked,
+      });
+    }
+  },
 };
 
 let shuttingDown = false;
@@ -87,6 +128,9 @@ async function main(): Promise<void> {
   // Publish workflow definitions before claiming any job: a tick that finds
   // no published version cannot do anything useful.
   await bootstrapWorkflows();
+  // Then the automation layer's node handlers, definitions, triggers and
+  // subscriptions. Both calls are idempotent.
+  await ensureAutomationReady();
   let sinceReclaim = 0;
 
   while (!shuttingDown) {

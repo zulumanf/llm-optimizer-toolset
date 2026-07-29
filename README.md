@@ -98,6 +98,61 @@ Then open `/control-tower`, decide the pending approval, and watch the paused
 run resume. The demo needs no API keys — capture uses the deterministic mock
 provider.
 
+## The automation & connector layer (`specs/native-automation-and-connector-layer.md`)
+
+Spec 018 gave the platform a workflow **engine**. This layer gives it a way for
+work to *start* without a human and to *touch* the outside world — without
+becoming a generic automation product (`docs/architecture/build-vs-borrow-boundaries.md`).
+
+- `lib/events/` — typed, versioned, append-only domain event bus (38 event types).
+  Publishing is transactional with the change that caused it.
+- `lib/triggers/` — schedule (real cron + IANA timezones + DST), webhook (HMAC,
+  replay protection), domain event, threshold (deterministic, fires on transition),
+  manual (role + reason + audited)
+- `lib/connectors/` — provider-neutral capability SDK, AES-256-GCM credentials,
+  health probes, deterministic field mapping. 16 adapters, status labelled
+  honestly — see below.
+- `lib/automation/` — `AutomationRuntime` (a thin adapter over the spec-018
+  engine, not a second one), test mode, 112 node handlers, 18 workflows
+- `lib/outreach/` — global suppression and the seven-check external-send gate
+
+Operator surfaces: `/automation` (what is running, waiting, broken),
+`/automation/workflows` (templates + read-only graph), `/automation/runs/[id]`
+(node inputs/outputs, routing, gates, and for a test run the
+would-have-happened ledger), `/automation/connectors`, `/automation/triggers`,
+`/automation/events`, `/automation/outreach`.
+
+Entry points: `POST /api/cron/automation` (per-minute heartbeat; fires due
+triggers, sweeps event delivery) and `POST /api/webhooks/[slug]` (the single
+signed inbound path — it publishes an event and never starts a workflow
+directly).
+
+### Connector honesty
+
+**No adapter in this repository has been executed against a live provider API**,
+because no provider credentials exist here. Five adapters are `verified`
+(fixture, CSV, manual, internal notification, local file store) and all run
+inside the platform. Nine are `implemented_unverified`: written against the
+documented HTTP contract, shape-tested against captured fixtures, never run
+live. Two are `contract_only`. The connectors page says the same thing, and a
+unit test prevents any third-party adapter from claiming otherwise.
+
+### Safety, in one paragraph
+
+A test run cannot send, publish, or invoice — the distinction is a database
+column, not a convention, and it records what it *would* have sent. An external
+send passes seven checks in order (mode, suppression, tenant match, recipient
+authorisation, approval, message version, compliance fields) and fails closed on
+each. Credentials are decrypted in exactly one module; a node handler's context
+has no accessor for one. Nothing labels a correlation as confirmed attribution.
+Labour savings are not reported, because no measured baseline exists.
+
+To exercise it end to end without spending anything:
+
+```bash
+npm test -- automation-demos    # prospect outreach, content, reporting, failure recovery
+```
+
 ## Deployment
 
 Internal only. Runs on Vercel (app) + Supabase (database) + a single worker process (Railway/Fly/local cron). No public signup; access restricted to the Parva team (see `docs/10-security.md`).
