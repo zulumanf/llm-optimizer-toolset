@@ -13,6 +13,7 @@ import { SCORING_VERSION, REVIEW_TIMEOUT_HOURS } from "@/lib/constants";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 import { extractUrls } from "@/lib/parsing/prepass";
+import { extractCitations } from "@/lib/ai/citations";
 import {
   computeProviderMetrics,
   authorityScore,
@@ -58,7 +59,7 @@ export async function computeScores(runId: string): Promise<void> {
 
   // Valid cells: successful captures (refusals count; errors don't — docs/06)
   const validResponses = await sql`
-    select id, provider, response_text from responses
+    select id, provider, response_text, raw_payload from responses
     where run_id = ${runId} and error is null
   `;
   const included = validResponses.filter(
@@ -75,7 +76,11 @@ export async function computeScores(runId: string): Promise<void> {
     const provider = row.provider as string;
     if (!byProvider.has(provider)) byProvider.set(provider, new Set());
     byProvider.get(provider)!.add(row.id as string);
-    if (extractUrls((row.responseText as string) ?? "").length > 0) {
+    // Cited = in-text URLs or search citations in the payload (lib/ai/citations)
+    if (
+      extractUrls((row.responseText as string) ?? "").length > 0 ||
+      extractCitations(provider, row.rawPayload).length > 0
+    ) {
       responsesWithCitation.add(row.id as string);
     }
   }

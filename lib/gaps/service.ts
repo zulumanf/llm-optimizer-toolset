@@ -19,6 +19,7 @@ import {
   type DomainCitation,
 } from "@/lib/gaps/detect";
 import { extractUrls, urlDomain } from "@/lib/parsing/prepass";
+import { extractCitations } from "@/lib/ai/citations";
 import { log } from "@/lib/logger";
 
 export async function analyzeRun(
@@ -102,16 +103,22 @@ export async function analyzeRun(
       else entry.recommendationRate = Number(row.value);
     }
 
-    // Domain citations from the run's response texts (deterministic re-scan)
+    // Domain citations: in-text URLs plus the search citations each provider
+    // actually retrieved (payload re-scan — works retroactively, immutable)
     const textRows = await sql`
-      select response_text from responses
-      where run_id = ${runId} and error is null and response_text is not null
+      select provider, response_text, raw_payload from responses
+      where run_id = ${runId} and error is null
     `;
     const domainCounts = new Map<string, number>();
+    const bump = (domain: string | null) => {
+      if (domain) domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
+    };
     for (const row of textRows) {
-      for (const url of extractUrls(row.responseText as string)) {
-        const domain = urlDomain(url);
-        if (domain) domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
+      for (const url of extractUrls((row.responseText as string) ?? "")) {
+        bump(urlDomain(url));
+      }
+      for (const citation of extractCitations(row.provider as string, row.rawPayload)) {
+        bump(citation.domain);
       }
     }
     const domains: DomainCitation[] = [...domainCounts.entries()].map(
