@@ -207,7 +207,8 @@ ${text}
 
 const statusSchema = z.object({
   findingId: z.string().uuid(),
-  status: z.enum(["acknowledged", "dismissed"]),
+  // "open" is the undo path — dismissing must be reversible (UX)
+  status: z.enum(["acknowledged", "dismissed", "open"]),
 });
 
 export async function setFindingStatus(
@@ -219,12 +220,23 @@ export async function setFindingStatus(
     return fail(new ClassifiedError("validation", "Invalid input."));
   }
   try {
+    const target = parsed.data.status;
     const [row] = await sql`
-      update accuracy_findings set status = ${parsed.data.status}
-      where id = ${parsed.data.findingId} and status = 'open'
+      update accuracy_findings set status = ${target}
+      where id = ${parsed.data.findingId}
+        and status = ${target === "open" ? sql`any(array['acknowledged','dismissed'])` : sql`'open'`}
       returning id, kind
     `;
-    if (!row) return fail(new ClassifiedError("conflict", "Finding is not open."));
+    if (!row) {
+      return fail(
+        new ClassifiedError(
+          "conflict",
+          target === "open"
+            ? "Only acknowledged or dismissed findings can be reopened."
+            : "Finding is not open."
+        )
+      );
+    }
     await sql.begin((tx) =>
       writeAudit(tx, {
         userId: user.id,

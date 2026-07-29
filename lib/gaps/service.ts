@@ -216,6 +216,40 @@ export async function createTaskFromFinding(
   }
 }
 
+/** Undo a dismissal (UX): dismissing is one keystroke away from a mistake,
+ * so it must be reversible. Only reverses dismissal — a finding that became
+ * a task keeps its task link. */
+export async function reopenFinding(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ findingId: string }>> {
+  const parsed = z.object({ findingId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid finding id."));
+  }
+  try {
+    const [row] = await sql`
+      update gap_findings set status = 'open'
+      where id = ${parsed.data.findingId} and status = 'dismissed'
+      returning id
+    `;
+    if (!row) {
+      return fail(new ClassifiedError("conflict", "Only dismissed findings can be reopened."));
+    }
+    await sql.begin((tx) =>
+      writeAudit(tx, {
+        userId: user.id,
+        action: "gaps.reopen",
+        entity: "gap_finding",
+        entityId: parsed.data.findingId,
+      })
+    );
+    return ok({ findingId: parsed.data.findingId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 export async function dismissFinding(
   user: CurrentUser,
   raw: unknown

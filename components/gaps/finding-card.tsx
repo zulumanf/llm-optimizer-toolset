@@ -6,7 +6,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { createTaskFromFinding, dismissFinding } from "@/app/gaps/actions";
+import {
+  createTaskFromFinding,
+  dismissFinding,
+  reopenFinding,
+} from "@/app/gaps/actions";
 
 interface Props {
   finding: {
@@ -58,7 +62,29 @@ export function FindingCard({ finding }: Props) {
               variant="ghost"
               disabled={pending}
               onClick={() =>
-                act(() => dismissFinding({ findingId: finding.id }), "Dismissed.")
+                startTransition(async () => {
+                  const result = await dismissFinding({ findingId: finding.id });
+                  if (!result.ok) {
+                    toast.error(result.error.message);
+                    return;
+                  }
+                  router.refresh();
+                  toast.success("Dismissed.", {
+                    action: {
+                      label: "Undo",
+                      onClick: () =>
+                        startTransition(async () => {
+                          const undo = await reopenFinding({ findingId: finding.id });
+                          if (undo.ok) {
+                            toast.success("Restored.");
+                            router.refresh();
+                          } else {
+                            toast.error(undo.error.message);
+                          }
+                        }),
+                    },
+                  });
+                })
               }
             >
               Dismiss

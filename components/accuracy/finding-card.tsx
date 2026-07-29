@@ -98,10 +98,35 @@ export function AccuracyFindingCard({ finding }: Props) {
                 variant="ghost"
                 disabled={pending}
                 onClick={() =>
-                  act(
-                    () => setFindingStatus({ findingId: finding.id, status: "dismissed" }),
-                    "Dismissed."
-                  )
+                  startTransition(async () => {
+                    const result = await setFindingStatus({
+                      findingId: finding.id,
+                      status: "dismissed",
+                    });
+                    if (!result.ok) {
+                      toast.error(result.error.message);
+                      return;
+                    }
+                    router.refresh();
+                    toast.success("Dismissed.", {
+                      action: {
+                        label: "Undo",
+                        onClick: () =>
+                          startTransition(async () => {
+                            const undo = await setFindingStatus({
+                              findingId: finding.id,
+                              status: "open",
+                            });
+                            if (undo.ok) {
+                              toast.success("Restored.");
+                              router.refresh();
+                            } else {
+                              toast.error(undo.error.message);
+                            }
+                          }),
+                      },
+                    });
+                  })
                 }
               >
                 Dismiss

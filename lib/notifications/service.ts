@@ -136,7 +136,8 @@ export async function unreadCount(): Promise<number> {
 
 const statusSchema = z.object({
   notificationId: z.string().uuid(),
-  status: z.enum(["read", "dismissed"]),
+  // "unread" is the undo path for a dismissal (UX)
+  status: z.enum(["read", "dismissed", "unread"]),
 });
 
 export async function setNotificationStatus(
@@ -149,14 +150,20 @@ export async function setNotificationStatus(
   }
   const { notificationId, status } = parsed.data;
   try {
+    const allowedFrom =
+      status === "unread"
+        ? ["dismissed", "read"]
+        : ["unread", "read"];
     const [row] = await sql`
       update notifications set status = ${status},
         read_at = case when ${status} = 'read' then now() else read_at end
-      where id = ${notificationId} and status in ('unread', 'read')
+      where id = ${notificationId} and status = any(${allowedFrom})
       returning id, kind
     `;
     if (!row) {
-      return fail(new ClassifiedError("conflict", "Notification is not open."));
+      return fail(
+        new ClassifiedError("conflict", "Notification is not in a state that allows that.")
+      );
     }
     // Dismissal is a deliberate "I know, stop telling me" — worth auditing;
     // marking read is routine and is not.
