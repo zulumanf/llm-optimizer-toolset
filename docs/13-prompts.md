@@ -12,6 +12,7 @@ Single source of truth for every AI prompt **we author** (parsers, drafting aids
 | Report Narrative Drafter | `REPORT_DRAFTER_V1` | report draft generation | same |
 | Mention Classifier (v2) | `mention-classifier-v2` | `lib/parsing/classify-llm.ts` (CLASSIFIER_SYSTEM) | `gpt-5.4-mini-2026-03-17` (CLASSIFIER_MODEL) |
 | Mention Verifier | `mention-verifier-v2` | `lib/parsing/classify-llm.ts` (VERIFIER_SYSTEM) — fresh context, never the classifier | same |
+| Accuracy Monitor | `accuracy-monitor-v1` | `lib/accuracy/prompts.ts` (ACCURACY_SYSTEM) — findings gated on verbatim quotes | `gpt-5.4-2026-03-05` (AGENT_MODEL) |
 | Content Brief | `content-brief-v1` | `lib/content/prompts.ts` (BRIEF_SYSTEM) | `gpt-5.4-2026-03-05` (AGENT_MODEL) |
 | Content Draft | `content-draft-v1` | `lib/content/prompts.ts` (DRAFT_SYSTEM) | same |
 | Fact Verifier | `fact-verify-v1` | `lib/content/prompts.ts` (VERIFY_SYSTEM) — fresh-context, never the drafter | same |

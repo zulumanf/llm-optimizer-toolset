@@ -29,7 +29,7 @@
 | Second live provider (Anthropic or Gemini key + live verification) | 1 | 4×3×4×4=**192** | docs/06 verdicts need ≥2 providers for "notable"; also de-risks OpenAI dependency. |
 | ~~Client-validation UI page~~ **DONE** | 1 | 3×2×4×5=**120** | `/projects/[id]/validation` — seeded run creation, client instructions, immutable observation recording, directional comparison. Closes the audit's "tested but invisible" finding. |
 | Weekly/monthly cadence report templates + delivery (email/PDF or share link) | 5 | 4×3×3×3=**108** | Report engine exists; cadence formats + any delivery mechanism. |
-| Factual-accuracy monitoring v1 (responses vs approved claims) | 2 | 4×3×4×3=**144** | Reuses FACT_VERIFY pattern against claims; produces the "LLM misinformation report" clients feel viscerally. |
+| ~~Factual-accuracy monitoring v1~~ **DONE** | 2 | 4×3×4×3=**144** | Spec 015 shipped: typed findings (entity_confusion/contradicted/outdated/unverifiable/missing_context), code-assigned severity, deterministic verbatim-quote gate, correction tasks. Live: 33 findings on real captures, 5 high-severity entity confusions. Reputation Accuracy's largest MISSING capability is now closed. |
 
 ## P2 — Before scaling past ~5 clients (Phases 2–3 start)
 
