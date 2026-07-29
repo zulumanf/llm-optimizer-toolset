@@ -30,7 +30,7 @@ attention management, and separation* — not about better measurement.
 | # | Capability | Status | Why |
 |---|---|---|---|
 | B1 | **Multi-provider coverage** (Gemini, Perplexity, Claude live) | ◐ adapters exist, never run, prices placeholder | Clients ask "what about Gemini?"; docs/06's ≥2-provider rule means single-provider verdicts can never reach "notable". |
-| B2 | **Notifications / digests** | ❌ none platform-wide | Nobody polls twenty clients by hand. |
+| B2 | **Notifications / digests** | ✅ **DONE** — derived inbox that self-resolves, unread badge, copyable digest, hourly cron endpoint | Nobody polls twenty clients by hand. |
 | B3 | **Per-client cost tracking + caps** | ◐ tracking DONE (cost-per-client table on Today); per-client monthly caps still missing | Margin per client is unknown; a runaway client can't be capped. |
 | B4 | **Client-facing deliverable** (read-only portal or shareable report) | ◐ exports only | Exports work but every delivery is manual. |
 

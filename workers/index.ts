@@ -12,6 +12,7 @@ import { executeRun } from "@/lib/runs/execute";
 import { parseResponse } from "@/lib/parsing/service";
 import { computeScores } from "@/lib/scoring/compute";
 import { startScheduledRun } from "@/lib/attribution/service";
+import { syncNotifications } from "@/lib/notifications/service";
 import { log } from "@/lib/logger";
 
 const WORKER_ID = `worker-${randomUUID().slice(0, 8)}`;
@@ -32,6 +33,10 @@ const handlers: Record<string, (payload: Record<string, unknown>) => Promise<voi
     await startScheduledRun(
       payload as { interventionId: string; offsetLabel: string }
     );
+  },
+  // Derived from the live attention feed — safe to run on any schedule
+  sync_notifications: async () => {
+    await syncNotifications();
   },
 };
 
