@@ -17,6 +17,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { generateReportDraft } from "@/app/reports/actions";
+import {
+  DEFAULT_PERIOD_DAYS,
+  REPORT_KINDS,
+  type ReportKind,
+} from "@/lib/reports/types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function isoDaysAgo(days: number): string {
   const d = new Date();
@@ -29,9 +41,16 @@ export function GenerateReportDialog({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [title, setTitle] = useState("");
-  const [start, setStart] = useState(isoDaysAgo(7));
+  const [kind, setKind] = useState<ReportKind>("weekly_pulse");
+  const [start, setStart] = useState(isoDaysAgo(DEFAULT_PERIOD_DAYS.weekly_pulse));
   const [end, setEnd] = useState(isoDaysAgo(0));
   const [error, setError] = useState<string | null>(null);
+
+  // Changing cadence re-defaults the period to that cadence's window
+  const selectKind = (next: ReportKind) => {
+    setKind(next);
+    setStart(isoDaysAgo(DEFAULT_PERIOD_DAYS[next]));
+  };
 
   const submit = () =>
     startTransition(async () => {
@@ -39,6 +58,7 @@ export function GenerateReportDialog({ projectId }: { projectId: string }) {
       const result = await generateReportDraft({
         projectId,
         title,
+        kind,
         periodStart: start,
         periodEnd: end,
       });
@@ -67,6 +87,25 @@ export function GenerateReportDialog({ projectId }: { projectId: string }) {
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Cadence</Label>
+            <Select value={kind} onValueChange={(v) => selectKind(v as ReportKind)}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {REPORT_KINDS.map((k) => (
+                  <SelectItem key={k} value={k}>
+                    {k === "weekly_pulse"
+                      ? "Weekly pulse — what changed, what needs you"
+                      : k === "monthly"
+                        ? "Monthly — full picture"
+                        : "Quarterly — longer-window review"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="rep-title">Title</Label>
             <Input

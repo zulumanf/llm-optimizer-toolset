@@ -9,9 +9,11 @@
  */
 import type { ReportBody, NarrativeSection, SnapshotScore } from "@/lib/reports/types";
 
-const CITATION_RE = /\[(score|response):([0-9a-f-]{36})\]/g;
+const CITATION_RE = /\[(score|response|finding|accuracy):([0-9a-f-]{36})\]/g;
 // Non-global twin for .test() — the global one is stateful and unsafe there
-const CITATION_TEST = /\[(?:score|response):[0-9a-f-]{36}\]/;
+// Citation kinds gained finding/accuracy in spec 016 so program numbers
+// (gap and accuracy counts) are as traceable as score numbers.
+const CITATION_TEST = /\[(?:score|response|finding|accuracy):[0-9a-f-]{36}\]/;
 
 export interface ValidationResult {
   ok: boolean;
@@ -21,10 +23,18 @@ export interface ValidationResult {
 
 export function validateNarrative(
   narrative: Partial<Record<NarrativeSection, string>>,
-  body: Pick<ReportBody, "scores" | "excerpts">
+  body: Pick<ReportBody, "scores" | "excerpts"> & {
+    program?: ReportBody["program"];
+  }
 ): ValidationResult {
   const scoreIds = new Set(body.scores.map((s) => s.scoreId));
   const responseIds = new Set(body.excerpts.map((e) => e.responseId));
+  const findingIds = new Set(
+    (body.program?.gapFindings ?? []).map((g) => g.findingId)
+  );
+  const accuracyIds = new Set(
+    (body.program?.accuracyFindings ?? []).map((a) => a.accuracyId)
+  );
   const uncitedSentences: string[] = [];
   const unresolvedCitations: string[] = [];
 
@@ -32,7 +42,14 @@ export function validateNarrative(
     if (!text) continue;
     for (const match of text.matchAll(CITATION_RE)) {
       const [token, kind, id] = match as unknown as [string, string, string];
-      const pool = kind === "score" ? scoreIds : responseIds;
+      const pool =
+        kind === "score"
+          ? scoreIds
+          : kind === "response"
+            ? responseIds
+            : kind === "finding"
+              ? findingIds
+              : accuracyIds;
       if (!pool.has(id)) unresolvedCitations.push(token);
     }
     const sentences = text
@@ -56,6 +73,22 @@ export function validateNarrative(
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 
+/**
+ * Make arbitrary stored text safe to interpolate into a cited sentence.
+ * Without this, a snippet containing "." splits into multiple sentences and
+ * the numeric half loses its citation — the evidence gate then (correctly)
+ * blocks publish. Caught on real data: a gap finding ending in a period and
+ * an excerpt that was literally "2.".
+ */
+function inline(text: string, max: number): string {
+  return text
+    .replace(/\s+/g, " ")
+    .slice(0, max)
+    .replace(/([.!?])(\s+)/g, ";$2")
+    .replace(/[.!?]+\s*$/, "")
+    .trim();
+}
+
 function findScore(
   scores: SnapshotScore[],
   opts: { isSelf?: boolean; companyId?: string; metric: string }
@@ -74,9 +107,50 @@ export function draftNarrative(
   body: Omit<ReportBody, "narrative">
 ): Record<NarrativeSection, string> {
   const { scores, deltas, excerpts, coverage, comparable, comparabilityNote } = body;
+  const program = body.program;
+  const isPulse = body.kind === "weekly_pulse";
 
   // Summary — Parva's headline numbers with deltas where comparable
   const summaryParts: string[] = [];
+
+  // Weekly pulse leads with what changed and what needs a human, not with
+  // standing metrics (spec 016): an operating brief, not a scorecard.
+  if (isPulse && program) {
+    const highAccuracy = program.accuracyFindings.filter(
+      (a) => a.severity === "high"
+    );
+    for (const finding of highAccuracy.slice(0, 3)) {
+      summaryParts.push(
+        `New high-severity accuracy finding (${finding.kind.replace(/_/g, " ")}): "${inline(finding.quote, 140)}" [accuracy:${finding.accuracyId}].`
+      );
+    }
+    if (highAccuracy.length === 0) {
+      summaryParts.push("No new high-severity factual problems this period.");
+    }
+    for (const gap of program.gapFindings.slice(0, 2)) {
+      summaryParts.push(
+        `Top open gap — ${gap.gapType.replace(/_/g, " ")}: ${inline(gap.finding, 160)} [finding:${gap.findingId}].`
+      );
+    }
+    // Counts, dates, titles and URLs live in the structured program tables
+    // below — prose stays free of uncited numerals so the evidence gate
+    // (docs/06) passes by construction, exactly like the coverage line.
+    if (program.interventions.length > 0) {
+      summaryParts.push(
+        "Interventions shipped in this period are being measured; their post-run counts are in the program section."
+      );
+    }
+    if (program.tasksCompleted.length > 0) {
+      summaryParts.push(
+        "Work completed this period is listed in the program section."
+      );
+    }
+    if (program.contentPublished.length > 0) {
+      summaryParts.push(
+        "Content published this period is listed in the program section, with URLs."
+      );
+    }
+  }
   const authority = findScore(scores, { isSelf: true, metric: "authority_score" });
   if (authority) {
     summaryParts.push(
@@ -112,6 +186,19 @@ export function draftNarrative(
       : "The review queue was clear when this snapshot was taken."
   );
 
+  // Category ownership — where the client stands per prompt category,
+  // always with numerator/denominator so a label never stands alone
+  // Labels only in prose; the numerator/denominator for every row is in the
+  // category-ownership table (structured body data, immutable once published)
+  const ownershipParts: string[] = [];
+  for (const row of body.categoryOwnership ?? []) {
+    const leader =
+      row.leadingCompetitor && row.label !== "owned"
+        ? ` ${row.leadingCompetitor} leads it.`
+        : "";
+    ownershipParts.push(`"${row.category}" — ${row.label}.${leader}`);
+  }
+
   // Competitors — side-by-side authority + recommendation rate
   const competitorParts: string[] = [];
   const byCompany = new Map<string, SnapshotScore[]>();
@@ -138,7 +225,7 @@ export function draftNarrative(
     .slice(0, 5)
     .map(
       (e) =>
-        `${e.companyName} (${e.provider}, ${e.runLabel}): "${e.excerpt}" [response:${e.responseId}]`
+        `${e.companyName} (${e.provider}, ${inline(e.runLabel, 80)}): "${inline(e.excerpt, 300)}" [response:${e.responseId}]`
     );
   if (notableParts.length === 0) notableParts.push("No notable excerpts in this period.");
 
@@ -162,9 +249,20 @@ export function draftNarrative(
     actionParts.push("No actions suggested for this period.");
   }
 
+  // Category ownership rides in the competitors section: it is the same
+  // question ("who owns what") at category rather than company granularity.
+  const competitorText = [
+    competitorParts.join(" "),
+    ownershipParts.length > 0
+      ? `Category ownership: ${ownershipParts.join(" ")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
   return {
     summary: summaryParts.join(" "),
-    competitors: competitorParts.join(" "),
+    competitors: competitorText,
     notable_responses: notableParts.join("\n\n"),
     suggested_actions: actionParts.join("\n\n"),
   };

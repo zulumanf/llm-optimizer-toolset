@@ -87,10 +87,162 @@ export default async function ReportPage({
       </div>
 
       <div className="mb-6 rounded-md border bg-muted/30 px-4 py-3 text-sm">
+        {body.kind && (
+          <span className="mr-2 font-medium">
+            {body.kind === "weekly_pulse"
+              ? "Weekly pulse"
+              : body.kind === "monthly"
+                ? "Monthly report"
+                : "Quarterly review"}
+            {" · "}
+          </span>
+        )}
         Coverage: {body.coverage.capturedCells} captured ·{" "}
         {body.coverage.failedCells} failed · {body.coverage.refusals} refusals ·{" "}
         {body.coverage.pendingReview} pending review
       </div>
+
+      {(body.categoryOwnership?.length ?? 0) > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">
+            Category ownership{" "}
+            <span className="text-sm font-normal text-muted-foreground">
+              (counts, not just labels)
+            </span>
+          </h2>
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-xs">
+                <tr>
+                  <th className="p-2">Category</th>
+                  <th className="p-2">Standing</th>
+                  <th className="p-2">Mentioned</th>
+                  <th className="p-2">Recommended</th>
+                  <th className="p-2">Leader</th>
+                </tr>
+              </thead>
+              <tbody>
+                {body.categoryOwnership.map((row) => (
+                  <tr key={row.category} className="border-t">
+                    <td className="p-2">{row.category}</td>
+                    <td className="p-2">
+                      <Badge
+                        variant={
+                          row.label === "owned"
+                            ? "default"
+                            : row.label === "absent"
+                              ? "outline"
+                              : "secondary"
+                        }
+                      >
+                        {row.label}
+                      </Badge>
+                    </td>
+                    <td className="p-2 tabular-nums">
+                      {row.mentions} of {row.observations}
+                    </td>
+                    <td className="p-2 tabular-nums">
+                      {row.recommendations} of {row.observations}
+                    </td>
+                    <td className="p-2 text-muted-foreground">
+                      {row.leadingCompetitor
+                        ? `${row.leadingCompetitor} (${row.leadingCompetitorMentions})`
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {body.program && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">Program activity</h2>
+          <div className="space-y-3 rounded-md border p-4 text-sm">
+            {body.program.accuracyFindings.length > 0 && (
+              <div>
+                <p className="font-medium">Factual accuracy findings</p>
+                <ul className="mt-1 space-y-1">
+                  {body.program.accuracyFindings.map((a) => (
+                    <li key={a.accuracyId} className="text-muted-foreground">
+                      <Badge
+                        variant={a.severity === "high" ? "destructive" : "secondary"}
+                        className="mr-1"
+                      >
+                        {a.severity}
+                      </Badge>
+                      {a.kind.replace(/_/g, " ")}: &ldquo;{a.quote.slice(0, 120)}
+                      &rdquo;
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {body.program.gapFindings.length > 0 && (
+              <div>
+                <p className="font-medium">Evidence gaps</p>
+                <ul className="mt-1 space-y-1">
+                  {body.program.gapFindings.slice(0, 6).map((g) => (
+                    <li key={g.findingId} className="text-muted-foreground">
+                      [{g.opportunityScore.toFixed(0)}] {g.gapType.replace(/_/g, " ")}:{" "}
+                      {g.finding.slice(0, 140)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {body.program.interventions.length > 0 && (
+              <div>
+                <p className="font-medium">Interventions being measured</p>
+                <ul className="mt-1 space-y-1">
+                  {body.program.interventions.map((i) => (
+                    <li key={i.interventionId} className="text-muted-foreground">
+                      {i.title} — shipped {i.shippedAt}, {i.measuredVerdicts} post-run(s)
+                      recorded
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {body.program.tasksCompleted.length > 0 && (
+              <div>
+                <p className="font-medium">Work completed</p>
+                <ul className="mt-1 space-y-1">
+                  {body.program.tasksCompleted.map((t) => (
+                    <li key={t.taskId} className="text-muted-foreground">
+                      {t.title} ({t.priority})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {body.program.contentPublished.length > 0 && (
+              <div>
+                <p className="font-medium">Content published</p>
+                <ul className="mt-1 space-y-1">
+                  {body.program.contentPublished.map((c) => (
+                    <li key={c.assetId} className="text-muted-foreground">
+                      {c.title}
+                      {c.url ? ` — ${c.url}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {body.program.accuracyFindings.length === 0 &&
+              body.program.gapFindings.length === 0 &&
+              body.program.interventions.length === 0 &&
+              body.program.tasksCompleted.length === 0 &&
+              body.program.contentPublished.length === 0 && (
+                <p className="text-muted-foreground">
+                  No program activity recorded in this period.
+                </p>
+              )}
+          </div>
+        </section>
+      )}
 
       {NARRATIVE_SECTIONS.map((section) => (
         <section key={section} className="mb-6">
