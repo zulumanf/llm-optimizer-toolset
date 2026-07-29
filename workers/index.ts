@@ -18,6 +18,10 @@ import { analyzeRunAccuracy } from "@/lib/accuracy/service";
 import { generateEvidenceExport } from "@/lib/evidence/export";
 import { getCurrentUser } from "@/lib/auth";
 import { advanceCycle } from "@/lib/cycles/service";
+// Importing the templates module registers every node handler as a side
+// effect — the engine cannot run a graph whose handlers are unknown.
+import { bootstrapWorkflows } from "@/lib/workflow/templates";
+import { advanceWorkflow } from "@/lib/workflow/engine";
 import { log } from "@/lib/logger";
 
 const WORKER_ID = `worker-${randomUUID().slice(0, 8)}`;
@@ -61,6 +65,12 @@ const handlers: Record<string, (payload: Record<string, unknown>) => Promise<voi
   advance_cycle: async (payload) => {
     await advanceCycle(payload.cycleId as string);
   },
+  // One handler drives every workflow graph (spec 018). The tick is
+  // re-entrant, so a crashed worker resumes without losing or duplicating
+  // node work — the (run, node, fan_key) index is the guarantee.
+  advance_workflow: async (payload) => {
+    await advanceWorkflow(payload.runId as string);
+  },
   build_evidence_export: async (payload) => {
     const user = await getCurrentUser();
     const result = await generateEvidenceExport(user, {
@@ -74,6 +84,9 @@ let shuttingDown = false;
 
 async function main(): Promise<void> {
   log("info", "worker.start", { workerId: WORKER_ID });
+  // Publish workflow definitions before claiming any job: a tick that finds
+  // no published version cannot do anything useful.
+  await bootstrapWorkflows();
   let sinceReclaim = 0;
 
   while (!shuttingDown) {

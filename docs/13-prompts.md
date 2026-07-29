@@ -113,3 +113,28 @@ Data:
 | 2026-07-27 | REPORT_DRAFTER_V1 | Initial. |
 
 Rules for changes: new version constant (never edit an existing one), changelog row here, accuracy harness re-run for parser prompts (`docs/09`), and the version recorded in produced data (`parser_version`).
+
+---
+
+## Spec 018 additions (2026-07-29)
+
+Two new platform prompts live as versioned constants in
+`lib/agents/verification.ts`, and the full contract for every agent (scopes,
+prohibitions, evidence requirements, cost caps) is declared in
+`lib/agents/registry.ts` and mirrored to `agent_definitions`/`agent_versions`.
+
+| Prompt | Current | Used by | Model |
+|---|---|---|---|
+| Independent Artifact Verifier | `artifact-verifier-v1` | `lib/agents/verification.ts` (VERIFIER_SYSTEM) — allow-listed context; never sees the creator's reasoning | `AGENT_MODEL` |
+| Adversarial Reviewer | `adversarial-review-v1` | `lib/agents/verification.ts` (ADVERSARIAL_SYSTEM) — ten fixed attack questions | `AGENT_MODEL` |
+
+The verifier's payload is assembled by `buildVerifierContext()`, which is an
+**allow-list**: artifact, evidence, rubric, approved claims. The ban on seeing
+the creator's reasoning, confidence, or self-evaluation is structural, not a
+prompt instruction — see the leak test in
+`tests/unit/agent-verification.test.ts`.
+
+| Date | Prompt | Change |
+|---|---|---|
+| 2026-07-29 | artifact-verifier-v1 | Initial. |
+| 2026-07-29 | adversarial-review-v1 | Initial. |

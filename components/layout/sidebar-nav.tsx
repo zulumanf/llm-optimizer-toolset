@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Bell,
   BookOpen,
+  Bot,
   Building2,
   CheckCheck,
   ClipboardCheck,
@@ -13,6 +14,7 @@ import {
   FileEdit,
   FileText,
   FlaskConical,
+  Gauge,
   LayoutDashboard,
   ListTodo,
   MessageSquareText,
@@ -21,6 +23,7 @@ import {
   ShieldAlert,
   Swords,
   Users,
+  Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -133,6 +136,21 @@ export function SidebarNav({
                 {unreadCount}
               </span>
             )}
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/control-tower" active={pathname.startsWith("/control-tower")}>
+            <Gauge className="size-4" /> Control tower
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/workflows" active={pathname.startsWith("/workflows")}>
+            <Workflow className="size-4" /> Workflows
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/agents" active={pathname.startsWith("/agents")}>
+            <Bot className="size-4" /> Agents
           </NavLink>
         </li>
         <li>

@@ -6,6 +6,8 @@ export type ErrorKind =
   | "forbidden"
   | "provider_rate_limit"
   | "provider_auth"
+  /** A bounded operation exceeded its declared budget (spec 018 node timeouts). */
+  | "timeout"
   | "internal";
 
 export class ClassifiedError extends Error {

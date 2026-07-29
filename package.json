@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "tsx scripts/migrate.ts up",
-    "db:rollback": "tsx scripts/migrate.ts down"
+    "db:rollback": "tsx scripts/migrate.ts down",
+    "seed:graph": "tsx scripts/seed-graph.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

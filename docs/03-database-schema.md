@@ -243,3 +243,66 @@ Postgres-backed queue for `workers/`.
 | Scores | `scoring_version`, new rows per version |
 | Reports | immutable once published |
 | Methodology | versioned in `docs/06-scoring-methodology.md` changelog |
+
+---
+
+# Graph platform tables (specs/018, specs/019)
+
+Added 2026-07-29. Full rationale in
+`docs/architecture/graph-native-platform-architecture.md`.
+
+## Workflow graph — migration 017
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `workflow_definitions` | logical process (`key`, autonomy level, action type) | mutable metadata |
+| `workflow_versions` | immutable snapshot of one graph (`graph_hash`, `spec`) | **IMMUTABLE** |
+| `workflow_nodes` | one row per node in a version | **IMMUTABLE** |
+| `workflow_edges` | `(from, to, condition, required, on_failure, loop_max_iterations)` | **IMMUTABLE** |
+| `workflow_runs` | one execution; `idempotency_key` unique, cost cap, state | mutable state |
+| `node_runs` | one row per node **instance**; `(run, node, fan_key)` unique | mutable state |
+| `workflow_transitions` | previous → new state, actor, reason, versions | **IMMUTABLE** |
+| `workflow_signals` | external inputs (approval decisions, callbacks) | append + consume marker |
+| `workflow_approvals` | durable approval requests and their decisions | decision written once |
+| `workflow_exceptions` | the unified exception queue | mutable status |
+| `quality_gate_results` | gate evaluations with per-check detail | **IMMUTABLE** |
+| `agent_definitions` / `agent_versions` | the versioned agent registry | versions **IMMUTABLE** |
+| `agent_evaluations` | fixture-suite results per agent version | append-only |
+| `autonomy_policies` | per (project, workflow, action type, risk) override | mutable |
+
+The `(workflow_run_id, node_key, fan_key)` unique index on `node_runs` is the
+idempotency guarantee for both fan-out and retries — a retry cannot create a
+second instance of work that already settled.
+
+## Knowledge & evidence graph — migration 018
+
+`claims` gains graph-shaped columns (`normalized_predicate`, `subject_entity`,
+`object_entity_id`, `category`, `effective_date`, `review_date`,
+`verification_status`, `confidence`, `privacy_status`, `allowed_wording`,
+`prohibited_wording`, `version`).
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `claim_versions` | history; a correction creates a version, never an edit | **IMMUTABLE** |
+| `claim_contradictions` | claim vs claim, or claim vs external observation | mutable status |
+| `evidence_packets` | exactly what an agent was shown, hashed | **IMMUTABLE** |
+
+## Control tower — migration 019
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `client_health_snapshots` | components, weights version, period, missing, confidence | **IMMUTABLE** |
+| `action_outcomes` | before/after envelope + fixed-vocabulary effectiveness label | measured once |
+| `outcome_relationships` | typed edges with a confidence label | **IMMUTABLE** |
+| `operator_capacity_snapshots` | observed human minutes, automation rate, capacity | **IMMUTABLE** |
+| `executive_briefs` | evidence-linked statements with per-statement `kind` | one draft per period |
+
+## Versioning summary (additions)
+
+| What | How |
+|---|---|
+| Workflow graphs | `workflow_versions.graph_hash`; a changed graph is a new version, and a run points at the version it executed |
+| Agents | `agent_versions`, immutable; the version used is recorded in produced data |
+| Claims | `claim_versions`, immutable; corrections create versions |
+| Health / capacity | append-only snapshots; recomputing writes a new row |
+| Gate results | immutable, with per-check detail |

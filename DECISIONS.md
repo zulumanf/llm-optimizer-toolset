@@ -185,3 +185,84 @@ Spec 001's unit/integration coverage exercises every acceptance criterion includ
 
 ### Why `specs/` separate from `docs/`?
 `docs/` explains why the system exists and how it holds together — stable, read for context. `specs/` are executable work orders — one feature, implemented exactly, then done. Mixing them makes docs churn and specs vague.
+
+---
+
+## 2026-07-29 — Graph execution: keep the Postgres queue, add a graph layer (spec 018)
+
+The recorded revisit point ("our Postgres queue is the orchestrator until
+multi-step graphs outgrow it", 2026-07-27; restated as "DAG dependencies or
+human-wait steps measured in days" in `docs/audits/architecture-consolidation-recommendations.md`
+#8) came due: the content and reporting workflows need real dependencies,
+fan-in, and approvals that pause for days. **The answer is still the queue.**
+
+What was actually missing was *tables*, not *infrastructure*: dependency
+resolution, fan-in, and a resumable human wait. The queue already provides the
+two hard parts — durable at-least-once delivery and crash recovery — and it
+provides one thing no external engine can: node completion, state transition,
+audit row, and the next node's enqueue all commit in **one transaction**. With
+Temporal/Trigger.dev/Inngest they cannot, and we would need an outbox to fake
+it. Rejected, with the costs stated: a second runtime and failure domain, a
+tunnel or cloud account for local dev, re-homing every existing handler in a
+foreign execution model against a 246-test baseline, and a workflow history
+that is not portable the way Postgres rows are.
+
+The engine is a **tick** (`advanceWorkflow(runId)`), generalising the proven
+shape of `lib/cycles/service.ts` from one hard-coded process to any declared
+graph. Substitution stays cheap: everything outside `lib/workflow/engine.ts`
+depends on the `WorkflowEngine` interface, so a durable orchestrator can be
+dropped in without touching a template, handler, or page.
+
+## 2026-07-29 — Autonomy gates the nodes that act, not every node (spec 018)
+
+First implementation demanded an approval for every node in a level-≤2
+workflow. That makes `content_production_v1` unusable — its claim gate,
+fact verification, and adversarial review would each need a human decision
+before the actual publish approval — and an operator asked to approve nine
+things to publish one thing will rubber-stamp all nine, which is worse than
+having no gate. Autonomy now gates **effectful** node types
+(`deterministic_task`, `agent_task`, `integration_task`, `manual_task`) plus
+anything declaring `requiresApproval`; gates, conditions, fan-outs, and
+verifications are the checks that guard the act, not the act. Templates name
+each node's own `config.actionType`, so the approval lands on the consequential
+step. See `isEffectful()` in `lib/workflow/autonomy.ts`.
+
+## 2026-07-29 — Edge semantics: settled is not the same as succeeded (spec 018)
+
+Found by the integration suite. An edge with no explicit condition means "B
+needs A's output"; a source that failed, timed out, or was cancelled has no
+output, so it blocks its target. Error-routing edges say so explicitly with a
+`node_state` condition. Two related rules fell out of the same review:
+
+- A node with incoming edges needs at least **one** satisfied. Without it, a
+  node reachable only by an optional error-routing edge fired immediately,
+  before its source had run — "not required" is not "not waited for".
+- A `fan_in` is the exception: it receives the failed branches too, because
+  disclosing what did not arrive is its entire job. A fan-in that silently
+  proceeds on whatever showed up is the undisclosed-partial-sample failure
+  this platform exists to prevent.
+
+## 2026-07-29 — Correlation is capped in code, not in prose (spec 019)
+
+`outcome_relationships.confidence_label` is guarded by `boundConfidence()`:
+an agent can never write `confirmed` at any confidence, and deterministic code
+reaches it only with a matching identifier or a client self-report. A lowered
+label records *why* it was lowered in `basis`, so a reader sees the system
+declined to overclaim rather than merely lacking data. The rows are immutable,
+so nobody upgrades a label later without a new, attributable row.
+
+## 2026-07-29 — Capacity and automation are measured or withheld (spec 019)
+
+`supportableClients` is `null` below 20 human-touch observations and the view
+says "insufficient data" rather than printing an extrapolation from two weeks
+of one client. Automation rate is computed from `node_runs` settled without a
+human transition — the architectural targets in
+`docs/architecture/automation-quality-operating-model.md` are stated as intent
+and shown next to the measured number, never as a claim about current
+performance.
+
+## 2026-07-29 — `timeout` added to the ErrorKind taxonomy
+
+Node timeouts are a distinct failure class from `internal`: they are expected,
+bounded, and retryable, and the operator's response differs. One-word addition
+to `lib/errors.ts`; no consumer switches exhaustively on `ErrorKind`.

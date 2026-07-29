@@ -46,6 +46,7 @@ npm run build          # production build
 npm run worker         # start background worker (experiment runner)
 npm run db:migrate     # apply pending migrations
 npm run db:rollback    # revert last migration
+npm run seed:graph     # demo portfolio: 3 clients, workflow runs, exceptions, an approval
 npm run test           # unit + integration tests
 npm run test:e2e       # Playwright E2E
 npm run lint           # ESLint (zero warnings policy)
@@ -64,10 +65,38 @@ npm run typecheck      # tsc --noEmit
 ├── components/        # React components (no business logic, no DB access)
 ├── lib/               # business logic, scoring, parsing, AI provider abstraction
 ├── db/                # schema, migrations, query layer
-├── workers/           # background jobs (run execution, parsing queues)
+├── workers/           # background jobs (run execution, parsing, workflow ticks)
 ├── tests/             # unit, integration, E2E, fixtures (captured raw responses)
 └── scripts/           # one-off operational scripts
 ```
+
+## The graph platform (specs/018, specs/019)
+
+Multi-step work is declared as a **versioned directed graph** and executed by
+one engine over the existing Postgres queue — no external workflow runtime
+(`DECISIONS.md`, 2026-07-29).
+
+- `lib/workflow/` — graph algebra, engine, gates, autonomy, exceptions, templates
+- `lib/agents/` — versioned agent registry, independent verification, adversarial QA
+- `lib/knowledge/` — task-scoped evidence packets (privacy filtered at retrieval)
+- `lib/outcomes/` — action-to-outcome graph with guarded confidence labels
+- `lib/control-tower/` — prioritised queue, client health, operator capacity
+
+Operator surfaces: `/control-tower` (portfolio + one prioritised queue),
+`/workflows` (definitions and runs), `/workflows/[runId]` (live graph,
+transitions, gates, approvals), `/agents` (registry contracts).
+
+To see it working locally:
+
+```bash
+npm run db:migrate
+npm run seed:graph     # 3 demo clients; one run parked on an approval
+npm run app            # Postgres + worker + Next.js
+```
+
+Then open `/control-tower`, decide the pending approval, and watch the paused
+run resume. The demo needs no API keys — capture uses the deterministic mock
+provider.
 
 ## Deployment
 
