@@ -33,7 +33,15 @@ export default async function ProjectsPage({
           >
             {includeArchived ? "Hide archived" : "Show archived"}
           </Link>
-          <ProjectFormDialog mode="create" />
+          <div className="flex gap-2">
+            <Link
+              href="/onboarding"
+              className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+            >
+              Onboard client
+            </Link>
+            <ProjectFormDialog mode="create" />
+          </div>
         </div>
       </div>
 
@@ -43,7 +51,15 @@ export default async function ProjectsPage({
           <p className="text-sm text-muted-foreground">
             No projects yet — create your first project.
           </p>
-          <ProjectFormDialog mode="create" />
+          <div className="flex gap-2">
+            <Link
+              href="/onboarding"
+              className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+            >
+              Onboard client
+            </Link>
+            <ProjectFormDialog mode="create" />
+          </div>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border">

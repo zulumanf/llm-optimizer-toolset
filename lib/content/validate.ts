@@ -14,12 +14,21 @@ const CLAIM_TEST = /\[claim:[0-9a-f-]{36}\]/;
 const SUPERLATIVES =
   /\b(best|#1|number one|leading|top[- ]rated|guaranteed|unmatched|greatest)\b/i;
 
+export interface ComplianceHit {
+  ruleId: string;
+  rule: string;
+  severity: "block" | "warn";
+  sentence: string;
+}
+
 export interface ContentValidation {
   ok: boolean;
   uncitedSubjectSentences: string[];
   unresolvedCitations: string[];
   uncitedNumericSentences: string[];
   uncitedSuperlatives: string[];
+  /** Vertical-pack rule hits (spec 012). "block" severity fails the gate. */
+  complianceHits: ComplianceHit[];
 }
 
 function sentences(text: string): string[] {
@@ -52,12 +61,20 @@ function mentionsSubject(sentence: string, terms: string[]): boolean {
 export function validateContent(
   markdown: string,
   subjectTerms: string[],
-  approvedClaimIds: Set<string>
+  approvedClaimIds: Set<string>,
+  /** Vertical-pack compliance rules (spec 012); empty for generic clients. */
+  complianceRules: {
+    id: string;
+    rule: string;
+    pattern: string;
+    severity: "block" | "warn";
+  }[] = []
 ): ContentValidation {
   const uncitedSubjectSentences: string[] = [];
   const unresolvedCitations: string[] = [];
   const uncitedNumericSentences: string[] = [];
   const uncitedSuperlatives: string[] = [];
+  const complianceHits: ComplianceHit[] = [];
 
   for (const match of markdown.matchAll(CLAIM_RE)) {
     if (!approvedClaimIds.has(match[1] as string)) {
@@ -83,16 +100,39 @@ export function validateContent(
     }
   }
 
+  // Vertical compliance — deterministic patterns, evaluated per sentence so
+  // the operator sees exactly which line trips a rule (spec 012).
+  for (const sentence of sentences(markdown)) {
+    for (const rule of complianceRules) {
+      let regex: RegExp;
+      try {
+        regex = new RegExp(rule.pattern, "i");
+      } catch {
+        continue; // a malformed pack rule must never break drafting
+      }
+      if (regex.test(sentence)) {
+        complianceHits.push({
+          ruleId: rule.id,
+          rule: rule.rule,
+          severity: rule.severity,
+          sentence: sentence.slice(0, 200),
+        });
+      }
+    }
+  }
+
   return {
     ok:
       uncitedSubjectSentences.length === 0 &&
       unresolvedCitations.length === 0 &&
       uncitedNumericSentences.length === 0 &&
-      uncitedSuperlatives.length === 0,
+      uncitedSuperlatives.length === 0 &&
+      complianceHits.every((h) => h.severity !== "block"),
     uncitedSubjectSentences,
     unresolvedCitations,
     uncitedNumericSentences,
     uncitedSuperlatives,
+    complianceHits,
   };
 }
 
