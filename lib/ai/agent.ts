@@ -24,11 +24,13 @@ export interface AgentCallResult {
 export type AgentCaller = (args: {
   system: string;
   user: string;
+  /** Model override; defaults to AGENT_MODEL when omitted. */
+  model?: string;
 }) => Promise<AgentCallResult>;
 
 let client: OpenAI | undefined;
 
-const openaiCaller: AgentCaller = async ({ system, user }) => {
+const openaiCaller: AgentCaller = async ({ system, user, model }) => {
   if (!process.env.OPENAI_API_KEY) {
     throw new ClassifiedError(
       "provider_auth",
@@ -37,7 +39,7 @@ const openaiCaller: AgentCaller = async ({ system, user }) => {
   }
   if (!client) client = new OpenAI({ maxRetries: 1 });
   const response = await client.chat.completions.create({
-    model: AGENT_MODEL,
+    model: model ?? AGENT_MODEL,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: system },
@@ -67,9 +69,12 @@ export async function runAgent<T>(args: {
   system: string;
   user: string;
   schema: z.ZodType<T>;
+  /** Model override — cheap snapshots for narrow, high-volume judgments. */
+  model?: string;
   caller?: AgentCaller;
 }): Promise<AgentRun<T>> {
   const caller = args.caller ?? openaiCaller;
+  const model = args.model ?? AGENT_MODEL;
   let cost = 0;
   let lastError = "";
 
@@ -78,8 +83,8 @@ export async function runAgent<T>(args: {
       attempt === 1
         ? args.user
         : `${args.user}\n\nYour previous output was invalid (${lastError.slice(0, 300)}). Return ONLY valid JSON matching the required shape.`;
-    const result = await caller({ system: args.system, user: prompt });
-    cost += costMicroUsd(AGENT_MODEL, result.tokensIn, result.tokensOut);
+    const result = await caller({ system: args.system, user: prompt, model });
+    cost += costMicroUsd(model, result.tokensIn, result.tokensOut);
     try {
       const parsed = args.schema.safeParse(JSON.parse(result.text));
       if (parsed.success) {

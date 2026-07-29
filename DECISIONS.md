@@ -117,6 +117,21 @@ note: the ≥2-provider consistency requirement means single-provider setups
 can never produce a "notable" verdict — kept deliberately; robustness of the
 claim is the point, and real baselines run multiple providers.
 
+### Classifier v2: deterministic recall, LLM precision, mini model (spec 013)
+The alias prepass keeps recall deterministic (and costs nothing when no
+candidate matches); the LLM only adjudicates precision — identity
+resolution first, then recommendation/position/sentiment. Identity ground
+truth comes from spec 008 approved claims, never model recollection.
+Model: `gpt-5.4-mini-2026-03-17` (CLASSIFIER_MODEL) — this runs on every
+observation, and live results matched flagship judgment at ~6× lower cost.
+Verifier policy: verification can only ADD oversight — disagreement (or a
+failed verification call) forces `needs_review`; agreement never clears the
+docs/06 confidence-threshold review. Parser version is now resolved at
+parse time (`lib/parsing/version.ts`) so heuristic and LLM rows are
+self-describing and mixed histories stay legible. Test setup now strips
+provider keys (tests/setup.ts): without that, the LLM parse path would have
+made the integration suite spend tokens and depend on network reachability.
+
 ### Evidence audit trail: hashes computed in Postgres; holdout without a scoring bump
 Capture-time SHA-256 hashes for response text and raw payload are computed
 by a BEFORE INSERT trigger in Postgres, not in JS — one canonicalization

@@ -8,20 +8,21 @@ import { enqueueJob } from "@/db/jobs";
 import { listCompaniesForProject, getSubjectCompany } from "@/db/companies";
 import { pendingReviewCount } from "@/db/mentions";
 import { classifyResponse } from "@/lib/parsing/classify";
+import { classifyResponseLlm } from "@/lib/parsing/classify-llm";
 import { extractUrls, urlDomain } from "@/lib/parsing/prepass";
 import {
   detectBrandCandidates,
   normalizeCandidate,
 } from "@/lib/parsing/candidates";
 import { extractCitations } from "@/lib/ai/citations";
-import { PARSER_VERSION } from "@/lib/constants";
+import { activeParserVersion, llmClassificationAvailable } from "@/lib/parsing/version";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
 export async function parseResponse(responseId: string): Promise<void> {
   const [response] = await sql`
-    select r.id, r.run_id, r.response_text, r.error, r.raw_payload,
-      r.provider, runs.project_id
+    select r.id, r.run_id, r.response_text, r.prompt_text, r.error,
+      r.raw_payload, r.provider, runs.project_id
     from responses r join runs on runs.id = r.run_id
     where r.id = ${responseId}
   `;
@@ -44,7 +45,7 @@ export async function parseResponse(responseId: string): Promise<void> {
 
   const alreadyParsed = await sql`
     select 1 from response_parses
-    where response_id = ${responseId} and parser_version = ${PARSER_VERSION}
+    where response_id = ${responseId} and parser_version = ${activeParserVersion()}
   `;
   if (alreadyParsed.length > 0) {
     await maybeEnqueueScoring(response.runId as string);
@@ -53,15 +54,43 @@ export async function parseResponse(responseId: string): Promise<void> {
 
   // Failed captures and refusals parse to no mentions but still count as parsed
   const text = (response.error ? "" : ((response.responseText as string) ?? "")) as string;
-  const drafts = classifyResponse(
-    text,
-    companies.map((c) => ({
-      id: c.id,
-      name: c.name,
-      aliases: c.aliases,
-      domain: c.domain,
-    }))
-  );
+  const companyInputs = companies.map((c) => ({
+    id: c.id,
+    name: c.name,
+    aliases: c.aliases,
+    domain: c.domain,
+  }));
+
+  // v2: LLM entity resolution (spec 013) with approved claims as identity
+  // ground truth; degrades to heuristic v1 without a key (docs/12).
+  let drafts;
+  if (llmClassificationAvailable() && text.trim().length > 0) {
+    const claimRows = await sql`
+      select canonical_text from claims
+      where project_id = ${projectId} and status = 'approved'
+      order by key asc
+    `;
+    const identityContext: Record<string, string[]> = {
+      [subject.id]: claimRows.map((c) => c.canonicalText as string),
+    };
+    try {
+      drafts = await classifyResponseLlm({
+        responseText: text,
+        promptText: (response.promptText as string) ?? "",
+        companies: companyInputs,
+        identityContext,
+      });
+    } catch (err) {
+      // Never fail a parse on classifier trouble — fall back and record it
+      log("warn", "parse.llm_classifier_failed", {
+        responseId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      drafts = classifyResponse(text, companyInputs);
+    }
+  } else {
+    drafts = classifyResponse(text, companyInputs);
+  }
 
   // Search citations from the immutable payload (lib/ai/citations): the
   // provider's actual retrieval sources. Company-attributed by domain.
@@ -98,7 +127,7 @@ export async function parseResponse(responseId: string): Promise<void> {
           (${responseId}, ${prev.companyId},
            (select max(revision) from mentions
             where response_id = ${responseId} and company_id = ${prev.companyId}) + 1,
-           false, ${PARSER_VERSION}, 0.85, false)
+           false, ${activeParserVersion()}, 0.85, false)
       `;
     }
 
@@ -115,7 +144,7 @@ export async function parseResponse(responseId: string): Promise<void> {
              where response_id = ${responseId} and company_id = ${draft.companyId}), 0) + 1,
            ${draft.mentioned}, ${draft.recommended}, ${draft.listPosition},
            ${draft.sentiment}, ${draft.excerpt}, ${draft.citedUrls},
-           ${PARSER_VERSION}, ${draft.confidence}, ${draft.needsReview})
+           ${activeParserVersion()}, ${draft.confidence}, ${draft.needsReview})
       `;
     }
 
@@ -152,7 +181,7 @@ export async function parseResponse(responseId: string): Promise<void> {
 
     await tx`
       insert into response_parses (response_id, run_id, parser_version)
-      values (${responseId}, ${response.runId}, ${PARSER_VERSION})
+      values (${responseId}, ${response.runId}, ${activeParserVersion()})
       on conflict do nothing
     `;
   });
@@ -171,7 +200,7 @@ export async function maybeEnqueueScoring(runId: string): Promise<void> {
     where r.run_id = ${runId}
       and not exists (
         select 1 from response_parses p
-        where p.response_id = r.id and p.parser_version = ${PARSER_VERSION}
+        where p.response_id = r.id and p.parser_version = ${activeParserVersion()}
       )
   `;
   if ((unparsed?.n as number) > 0) return;
@@ -196,7 +225,7 @@ export async function enqueueParseJobs(runId: string): Promise<number> {
     where r.run_id = ${runId}
       and not exists (
         select 1 from response_parses p
-        where p.response_id = r.id and p.parser_version = ${PARSER_VERSION}
+        where p.response_id = r.id and p.parser_version = ${activeParserVersion()}
       )
   `;
   for (const row of rows) {
