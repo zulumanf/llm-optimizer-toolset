@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ArrowLeft,
+  Bell,
   BookOpen,
   Building2,
   CheckCheck,
@@ -69,7 +70,13 @@ function NavLink({
   );
 }
 
-export function SidebarNav({ projects }: { projects: SidebarProject[] }) {
+export function SidebarNav({
+  projects,
+  unreadCount = 0,
+}: {
+  projects: SidebarProject[];
+  unreadCount?: number;
+}) {
   const pathname = usePathname();
   const projectMatch = pathname.match(/^\/projects\/([0-9a-f-]{36})(\/.*)?$/);
   const currentProject = projectMatch
@@ -116,6 +123,16 @@ export function SidebarNav({ projects }: { projects: SidebarProject[] }) {
         <li>
           <NavLink href="/" active={pathname === "/"}>
             <LayoutDashboard className="size-4" /> Today
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/notifications" active={pathname.startsWith("/notifications")}>
+            <Bell className="size-4" /> Inbox
+            {unreadCount > 0 && (
+              <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
+                {unreadCount}
+              </span>
+            )}
           </NavLink>
         </li>
         <li>
