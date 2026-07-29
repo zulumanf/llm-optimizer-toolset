@@ -43,6 +43,22 @@ export const PRICING: Record<string, ModelPricing> = {
     verified: true,
     lastVerified: "2026-07-27",
   },
+  // "+search" = same snapshot through the Responses API with the web_search
+  // tool (lib/ai/openai.ts). Token prices identical; OpenAI bills the search
+  // tool itself separately per call — that fee is NOT in our cost math, so
+  // these stay flagged unverified to surface the caveat in run estimates.
+  "gpt-5.4-2026-03-05+search": {
+    inputPerMTok: 2.5,
+    outputPerMTok: 15,
+    verified: false,
+    lastVerified: "2026-07-28",
+  },
+  "gpt-5.4-mini-2026-03-17+search": {
+    inputPerMTok: 0.75,
+    outputPerMTok: 4.5,
+    verified: false,
+    lastVerified: "2026-07-28",
+  },
   "gemini-2.5-pro": {
     inputPerMTok: 1.25,
     outputPerMTok: 10,

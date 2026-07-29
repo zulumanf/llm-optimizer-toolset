@@ -117,6 +117,23 @@ note: the ≥2-provider consistency requirement means single-provider setups
 can never produce a "notable" verdict — kept deliberately; robustness of the
 claim is the point, and real baselines run multiple providers.
 
+### Search-enabled runs as a distinct instrument; citations from payloads at read time
+Search-mode models (e.g. `gpt-5.4-mini-2026-03-17+search`, Responses API +
+web_search, shape verified live 2026-07-28) are separate pinned model ids —
+a searched answer is a different measurement instrument than a parametric
+one (docs/07), and it is closer to consumer ChatGPT, which searches by
+default. Retrieval citations (url_citation annotations; Perplexity
+citations/search_results; Anthropic web-search citations; Gemini grounding
+chunks) are extracted at READ time from immutable raw_payload
+(lib/ai/citations.ts) — no schema change, works retroactively on every
+capture — and feed sources, mention citation attribution, the citation_rate
+metric, and the source_target gap detector. Caveat kept visible: OpenAI
+bills the search tool per call outside token usage, so +search pricing rows
+stay flagged unverified. First live search baseline promptly exposed that
+the "Parva" name is contested territory in retrieval (parvahealth.com,
+parvaconsulting.com, getparva.com) — the entity problem is about winning a
+collision, not filling a void.
+
 ### First LLM agents, behind deterministic gates (spec 010)
 The content engine introduces real LLM agents (brief/draft/fact-verify on
 pinned gpt-5.4) through one runner (lib/ai/agent.ts): JSON mode, Zod

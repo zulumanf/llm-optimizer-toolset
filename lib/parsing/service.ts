@@ -13,13 +13,15 @@ import {
   detectBrandCandidates,
   normalizeCandidate,
 } from "@/lib/parsing/candidates";
+import { extractCitations } from "@/lib/ai/citations";
 import { PARSER_VERSION } from "@/lib/constants";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
 export async function parseResponse(responseId: string): Promise<void> {
   const [response] = await sql`
-    select r.id, r.run_id, r.response_text, r.error, runs.project_id
+    select r.id, r.run_id, r.response_text, r.error, r.raw_payload,
+      r.provider, runs.project_id
     from responses r join runs on runs.id = r.run_id
     where r.id = ${responseId}
   `;
@@ -61,6 +63,23 @@ export async function parseResponse(responseId: string): Promise<void> {
     }))
   );
 
+  // Search citations from the immutable payload (lib/ai/citations): the
+  // provider's actual retrieval sources. Company-attributed by domain.
+  const searchCitations = response.error
+    ? []
+    : extractCitations(response.provider as string, response.rawPayload);
+  for (const draft of drafts) {
+    if (!draft.mentioned) continue;
+    const company = companies.find((c) => c.id === draft.companyId);
+    if (!company?.domain) continue;
+    const owned = searchCitations
+      .filter((c) => c.domain.endsWith(company.domain as string))
+      .map((c) => c.url);
+    if (owned.length > 0) {
+      draft.citedUrls = [...new Set([...draft.citedUrls, ...owned])];
+    }
+  }
+
   await sql.begin(async (tx) => {
     // Re-parse supersession: companies previously mentioned but no longer hit
     // get a retraction revision (originals stay — docs/03 revision model)
@@ -100,8 +119,12 @@ export async function parseResponse(responseId: string): Promise<void> {
       `;
     }
 
-    // Source intelligence: upsert every cited URL (spec 004 / docs/03)
-    for (const url of extractUrls(text)) {
+    // Source intelligence: upsert every cited URL — in-text links plus the
+    // search citations the provider actually retrieved (spec 004 / docs/03)
+    const allUrls = [
+      ...new Set([...extractUrls(text), ...searchCitations.map((c) => c.url)]),
+    ];
+    for (const url of allUrls) {
       const domain = urlDomain(url);
       if (!domain) continue;
       const owner = companies.find((c) => c.domain && domain.endsWith(c.domain));
