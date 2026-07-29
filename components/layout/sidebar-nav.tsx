@@ -17,6 +17,7 @@ import {
   MessageSquareText,
   PlayCircle,
   Settings,
+  ShieldAlert,
   Swords,
   Users,
 } from "lucide-react";
@@ -34,6 +35,7 @@ const PROJECT_SECTIONS = [
   { path: "/runs", label: "Runs", icon: PlayCircle },
   { path: "/review", label: "Review", icon: CheckCheck },
   { path: "/gaps", label: "Gaps", icon: Crosshair },
+  { path: "/accuracy", label: "Accuracy", icon: ShieldAlert },
   { path: "/content", label: "Content", icon: FileEdit },
   { path: "/competitors", label: "Competitors", icon: Swords },
   { path: "/reports", label: "Reports", icon: FileText },
