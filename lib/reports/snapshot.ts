@@ -10,8 +10,13 @@ import { ClassifiedError } from "@/lib/errors";
 import { SCORING_VERSION } from "@/lib/constants";
 import { changeVerdict, type ProviderDelta } from "@/lib/reports/deltas";
 import { draftNarrative } from "@/lib/reports/narrative";
+import {
+  buildProgram,
+  buildCategoryOwnership,
+} from "@/lib/reports/program";
 import type {
   ReportBody,
+  ReportKind,
   SnapshotScore,
   SnapshotDelta,
   SnapshotExcerpt,
@@ -43,7 +48,8 @@ async function scoresForRun(
 export async function buildSnapshot(
   projectId: string,
   periodStart: string,
-  periodEnd: string
+  periodEnd: string,
+  kind: ReportKind = "monthly"
 ): Promise<Omit<ReportBody, "narrative"> & { narrative: ReportBody["narrative"] }> {
   const runs = await sql`
     select r.id, r.label, r.started_at, r.prompt_set_version_id
@@ -200,7 +206,20 @@ export async function buildSnapshot(
   `;
 
   const [now] = await sql`select now() as ts`;
+  // Whole-platform activity + ownership map (spec 016)
+  const [program, categoryOwnership] = await Promise.all([
+    buildProgram({ projectId, periodStart, periodEnd }),
+    buildCategoryOwnership({
+      projectId,
+      runId: current.id as string,
+      promptSetVersionId: current.promptSetVersionId as string,
+    }),
+  ]);
+
   const base: Omit<ReportBody, "narrative"> = {
+    kind,
+    program,
+    categoryOwnership,
     scoringVersion: SCORING_VERSION,
     generatedAt: (now?.ts as Date).toISOString(),
     runs: runs.map((r) => ({
@@ -227,4 +246,5 @@ export async function buildSnapshot(
   };
 
   return { ...base, narrative: draftNarrative(base) };
+  // Narrative shape varies by cadence — see lib/reports/narrative.ts
 }

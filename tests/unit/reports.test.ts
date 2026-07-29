@@ -79,6 +79,15 @@ function snapshotBase(): Omit<ReportBody, "narrative"> {
     value: 0.45,
   };
   return {
+    kind: "monthly" as const,
+    program: {
+      gapFindings: [],
+      accuracyFindings: [],
+      interventions: [],
+      tasksCompleted: [],
+      contentPublished: [],
+    },
+    categoryOwnership: [],
     scoringVersion: "v1.0",
     generatedAt: "2026-07-27T00:00:00Z",
     runs: [{ id: "r1", label: "W31", startedAt: "2026-07-27T00:00:00Z" }],

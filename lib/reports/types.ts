@@ -43,6 +43,63 @@ export interface SnapshotCoverage {
   pendingReview: number;
 }
 
+/** Report cadences (spec 016). Each answers a different question and gets
+ * its own section emphasis and default period length. */
+export const REPORT_KINDS = ["weekly_pulse", "monthly", "quarterly"] as const;
+export type ReportKind = (typeof REPORT_KINDS)[number];
+
+export const DEFAULT_PERIOD_DAYS: Record<ReportKind, number> = {
+  weekly_pulse: 7,
+  monthly: 28,
+  quarterly: 91,
+};
+
+/** Program activity in the period — everything built since spec 006 that
+ * reports were previously blind to (spec 016). */
+export interface SnapshotGapFinding {
+  findingId: string;
+  gapType: string;
+  finding: string;
+  opportunityScore: number;
+  status: string;
+}
+
+export interface SnapshotAccuracyFinding {
+  accuracyId: string;
+  kind: string;
+  severity: string;
+  quote: string;
+  status: string;
+}
+
+export interface SnapshotIntervention {
+  interventionId: string;
+  title: string;
+  shippedAt: string;
+  notableVerdicts: number;
+  measuredVerdicts: number;
+}
+
+export interface SnapshotProgram {
+  gapFindings: SnapshotGapFinding[];
+  accuracyFindings: SnapshotAccuracyFinding[];
+  interventions: SnapshotIntervention[];
+  tasksCompleted: { taskId: string; title: string; priority: string }[];
+  contentPublished: { assetId: string; title: string; url: string | null }[];
+}
+
+/** Category ownership — composed from existing rates and stability, never
+ * a bare label: numerator/denominator always travel with it (spec 016). */
+export interface SnapshotCategoryOwnership {
+  category: string;
+  label: "owned" | "emerging" | "contested" | "absent";
+  observations: number;
+  mentions: number;
+  recommendations: number;
+  leadingCompetitor: string | null;
+  leadingCompetitorMentions: number;
+}
+
 export const NARRATIVE_SECTIONS = [
   "summary",
   "competitors",
@@ -52,6 +109,7 @@ export const NARRATIVE_SECTIONS = [
 export type NarrativeSection = (typeof NARRATIVE_SECTIONS)[number];
 
 export interface ReportBody {
+  kind: ReportKind;
   scoringVersion: string;
   generatedAt: string;
   runs: { id: string; label: string; startedAt: string }[];
@@ -63,5 +121,7 @@ export interface ReportBody {
   deltas: SnapshotDelta[];
   excerpts: SnapshotExcerpt[];
   coverage: SnapshotCoverage;
+  program: SnapshotProgram;
+  categoryOwnership: SnapshotCategoryOwnership[];
   narrative: Record<NarrativeSection, string>;
 }

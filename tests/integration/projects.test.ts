@@ -205,5 +205,6 @@ describe.skipIf(!TEST_URL)("projects (integration)", () => {
       select count(*)::int as count from schema_migrations
     `;
     expect(recounted[0]?.count).toBe(count);
-  });
+    // Timeout scales with migration count — each is a separate tsx process
+  }, 60_000);
 });

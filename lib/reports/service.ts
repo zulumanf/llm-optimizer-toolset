@@ -12,12 +12,18 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage, duplicateNameConflict } from "@/lib/service-helpers";
 import { buildSnapshot } from "@/lib/reports/snapshot";
 import { validateNarrative } from "@/lib/reports/narrative";
-import { NARRATIVE_SECTIONS, type ReportBody } from "@/lib/reports/types";
+import {
+  NARRATIVE_SECTIONS,
+  REPORT_KINDS,
+  type ReportBody,
+  type ReportKind,
+} from "@/lib/reports/types";
 
 export interface Report {
   id: string;
   projectId: string;
   title: string;
+  kind: ReportKind;
   periodStart: string;
   periodEnd: string;
   body: ReportBody;
@@ -27,7 +33,7 @@ export interface Report {
   publishedAt: Date | null;
 }
 
-const COLUMNS = sql`id, project_id, title,
+const COLUMNS = sql`id, project_id, title, kind,
   to_char(period_start, 'YYYY-MM-DD') as period_start,
   to_char(period_end, 'YYYY-MM-DD') as period_end,
   body, status, created_at, published_by, published_at`;
@@ -40,6 +46,7 @@ const generateSchema = z.object({
     .pipe(z.string().min(1, "Title is required.").max(120)),
   periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   periodEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  kind: z.enum(REPORT_KINDS).optional(),
 });
 
 export async function generateReportDraft(
@@ -51,15 +58,16 @@ export async function generateReportDraft(
     return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
   }
   const { projectId, title, periodStart, periodEnd } = parsed.data;
+  const kind = parsed.data.kind ?? "monthly";
   if (periodEnd < periodStart) {
     return fail(new ClassifiedError("validation", "Period end precedes start."));
   }
   try {
-    const body = await buildSnapshot(projectId, periodStart, periodEnd);
+    const body = await buildSnapshot(projectId, periodStart, periodEnd, kind);
     const report = await sql.begin(async (tx) => {
       const [row] = await tx<Report[]>`
-        insert into reports (project_id, title, period_start, period_end, body)
-        values (${projectId}, ${title}, ${periodStart}, ${periodEnd},
+        insert into reports (project_id, title, kind, period_start, period_end, body)
+        values (${projectId}, ${title}, ${kind}, ${periodStart}, ${periodEnd},
           ${tx.json(body as never)})
         returning ${COLUMNS}
       `;
@@ -69,7 +77,7 @@ export async function generateReportDraft(
         action: "report.draft",
         entity: "report",
         entityId: row.id,
-        detail: { title, periodStart, periodEnd },
+        detail: { title, kind, periodStart, periodEnd },
       });
       return row;
     });
@@ -138,7 +146,7 @@ export async function regenerateReportDraft(
     const [report] = await sql`
       select status, project_id,
         to_char(period_start, 'YYYY-MM-DD') as period_start,
-        to_char(period_end, 'YYYY-MM-DD') as period_end
+        to_char(period_end, 'YYYY-MM-DD') as period_end, kind
       from reports where id = ${reportId}
     `;
     if (!report) return fail(new ClassifiedError("not_found", "Report not found."));
@@ -148,7 +156,8 @@ export async function regenerateReportDraft(
     const body = await buildSnapshot(
       report.projectId as string,
       report.periodStart as string,
-      report.periodEnd as string
+      report.periodEnd as string,
+      report.kind as ReportKind
     );
     await sql.begin(async (tx) => {
       await tx`update reports set body = ${tx.json(body as never)} where id = ${reportId}`;
