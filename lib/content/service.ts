@@ -26,6 +26,7 @@ import {
 } from "@/lib/content/prompts";
 import { validateContent, renderPublishable } from "@/lib/content/validate";
 import { createIntervention } from "@/lib/attribution/service";
+import { complianceRulesFor } from "@/lib/verticals/onboarding";
 
 interface ClaimRow {
   id: string;
@@ -171,7 +172,8 @@ ${claimsBlock(claims)}`,
     const gate = validateContent(
       run.output.markdown,
       [subject.name, ...subject.aliases],
-      new Set(claims.map((c) => c.id as string))
+      new Set(claims.map((c) => c.id as string)),
+      await complianceRulesFor(projectId)
     );
 
     const version = await sql.begin(async (tx) => {
@@ -239,7 +241,8 @@ export async function verifyDraft(
     const gate = validateContent(
       latest.body as string,
       subject ? [subject.name, ...subject.aliases] : [],
-      new Set(claims.map((c) => c.id as string))
+      new Set(claims.map((c) => c.id as string)),
+      await complianceRulesFor(asset.projectId as string)
     );
 
     // Fresh-context LLM verifier (separate agent; the creator never verifies
