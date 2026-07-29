@@ -40,7 +40,7 @@ attention management, and separation* — not about better measurement.
 |---|---|---|
 | C1 | Templates library (competitor sets, claim vocabularies per vertical) | partial via A1 |
 | C2 | Cross-client benchmarks ("realtors average X% recommendation rate") | ❌ needs ≥5 clients of data |
-| C3 | Weekly cycle automation (baseline → parse → score → analyse → draft pulse) | ◐ pieces exist, not chained |
+| C3 | Weekly cycle automation (baseline → parse → score → analyse → draft pulse) | ✅ **DONE** (spec 017 — self-driving state machine that halts at judgement calls) |
 | C4 | Provider-cost optimisation (cheaper models for classification, caching) | ◐ partially done (classifier on mini) |
 
 ## Execution order (and why)
@@ -58,6 +58,12 @@ attention management, and separation* — not about better measurement.
 5. **A4 — deployment** with A2 (they share the same milestone: hosted app,
    hosted cron, client access).
 6. **B1 — providers** as keys arrive; **B4 — portal** after A2.
+
+## Verification (added 2026-07-29)
+CI runs on every push and PR (`.github/workflows/ci.yml`): typecheck, lint,
+migrations applied AND reversed, full test suite against a Postgres service
+container, and a production build. Before this, nothing but a human ran the
+246 tests.
 
 ## Non-goals for this phase
 Revenue attribution (product 4, deferred by the operator), media/outreach
