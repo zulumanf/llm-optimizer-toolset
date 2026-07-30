@@ -11,7 +11,7 @@ This README covers **only the repository** — setup, stack, structure, commands
 - **UI:** Tailwind CSS + shadcn/ui, dark mode, desktop-first
 - **AI providers:** OpenAI, Anthropic, Google, Perplexity via the abstraction in `lib/ai/`
 - **Background jobs:** worker processes in `workers/` (experiment execution, parsing)
-- **Testing:** Vitest (unit/integration), Playwright (E2E)
+- **Testing:** Vitest (unit/integration). No E2E suite yet — see `docs/09-testing-strategy.md`
 
 ## Setup
 
@@ -49,7 +49,6 @@ npm run db:rollback    # revert last migration
 npm run seed:graph     # demo portfolio: 3 clients, workflow runs, exceptions, an approval
 npm run seed:knowledge # demo knowledge base: sources, claims, wiki, packets, token comparison
 npm run test           # unit + integration tests
-npm run test:e2e       # Playwright E2E
 npm run lint           # ESLint (zero warnings policy)
 npm run typecheck      # tsc --noEmit
 ```
@@ -67,7 +66,7 @@ npm run typecheck      # tsc --noEmit
 ├── lib/               # business logic, scoring, parsing, AI provider abstraction
 ├── db/                # schema, migrations, query layer
 ├── workers/           # background jobs (run execution, parsing, workflow ticks)
-├── tests/             # unit, integration, E2E, fixtures (captured raw responses)
+├── tests/             # unit, integration, fixtures (recorded provider payloads)
 └── scripts/           # one-off operational scripts
 ```
 

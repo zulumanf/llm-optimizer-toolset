@@ -95,16 +95,11 @@ export const xlsxExtractor: Extractor = {
         options?: { sheet?: number | string; getSheets?: boolean }
       ) => Promise<unknown>;
 
-      const listed = (await readXlsx(bytes, { getSheets: true })) as { name: string }[];
-      const names = Array.isArray(listed) && listed.length > 0
-        ? listed.map((s) => s.name)
-        : ["Sheet1"];
-
-      sheets = [];
-      for (const name of names) {
-        const rows = (await readXlsx(bytes, { sheet: name })) as unknown[][];
-        sheets.push({ name, rows: Array.isArray(rows) ? rows : [] });
-      }
+      // One call returns every sheet with its rows. The library's own shape is
+      // `[{sheet, data}]` — verified against a real workbook in
+      // tests/unit/knowledge-documents.test.ts, because assuming a flat row
+      // array here previously made every workbook fail to parse.
+      sheets = toSheets(await readXlsx(bytes, { getSheets: true }));
     } catch (err) {
       return {
         status: "failed",
@@ -161,6 +156,35 @@ export const xlsxExtractor: Extractor = {
     };
   },
 };
+
+/**
+ * Normalise whatever the reader returned into `{name, rows}`.
+ *
+ * Tolerant on purpose: the library's shape is `[{sheet, data}]`, but a bare
+ * array of rows is the other plausible contract and costs nothing to accept.
+ * A shape matching neither yields no sheets, which surfaces as `empty` rather
+ * than as a crash mid-ingest.
+ */
+function toSheets(result: unknown): { name: string; rows: unknown[][] }[] {
+  if (!Array.isArray(result)) return [];
+
+  const wrapped = result.filter(
+    (entry): entry is { sheet?: unknown; name?: unknown; data?: unknown } =>
+      typeof entry === "object" && entry !== null && !Array.isArray(entry)
+  );
+  if (wrapped.length > 0) {
+    return wrapped.map((entry, index) => ({
+      name: String(entry.sheet ?? entry.name ?? `Sheet${index + 1}`),
+      rows: Array.isArray(entry.data) ? (entry.data as unknown[][]) : [],
+    }));
+  }
+
+  // A flat array of rows: one unnamed sheet.
+  if (result.every((row) => Array.isArray(row))) {
+    return [{ name: "Sheet1", rows: result as unknown[][] }];
+  }
+  return [];
+}
 
 function cellText(cell: unknown): string {
   if (cell === null || cell === undefined) return "";
