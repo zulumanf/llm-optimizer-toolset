@@ -23,6 +23,13 @@ const CANCEL_CHECK_EVERY = 5;
 interface ExecState {
   cancelled: boolean;
   budgetExhausted: boolean;
+  /**
+   * Set when a provider says its quota is spent for the window. Every
+   * remaining cell for that provider would fail, so the run stops rather than
+   * working through them one failure at a time — a Gemini run burned 20 cells
+   * this way before the distinction existed.
+   */
+  quotaExhausted: string | null;
   spentMicro: number;
   failed: number;
   launched: number;
@@ -59,6 +66,7 @@ export async function executeRun(runId: string): Promise<void> {
   const state: ExecState = {
     cancelled: false,
     budgetExhausted: false,
+    quotaExhausted: null,
     spentMicro: await runCostMicroUsd(runId),
     failed: 0,
     launched: 0,
@@ -97,6 +105,7 @@ export async function executeRun(runId: string): Promise<void> {
           }
         }
         if (state.cancelled) return;
+        if (state.quotaExhausted !== null) return;
         if (state.spentMicro >= budgetMicro) {
           state.budgetExhausted = true;
           return;
@@ -169,6 +178,18 @@ async function executeCell(
         ? err
         : new ClassifiedError("internal", err instanceof Error ? err.message : "Unknown");
     state.failed += 1;
+    if (classified.kind === "provider_quota_exhausted" && state.quotaExhausted === null) {
+      // First cell to hit it stops the run. The failure is still recorded —
+      // a failed cell is evidence, and PRINCIPLES #5 forbids pretending
+      // otherwise — but no further calls are made against a spent quota.
+      state.quotaExhausted = cell.provider;
+      log("warn", "run.quota_exhausted", {
+        runId,
+        provider: cell.provider,
+        model: cell.model,
+        message: classified.message.slice(0, 200),
+      });
+    }
     await sql`
       insert into responses
         (run_id, prompt_id, prompt_text, provider, model, repetition,
@@ -204,7 +225,13 @@ async function finalizeRun(
   const successes = (await successfulCellKeys(runId)).size;
   let status: "completed" | "partial" | "failed";
   let detail: string | null = null;
-  if (state.budgetExhausted) {
+  if (state.quotaExhausted) {
+    // Named explicitly: "20 of 40 cells failed" reads as flaky, while
+    // "provider quota exhausted" tells the operator to come back tomorrow or
+    // enable billing.
+    status = successes === 0 ? "failed" : "partial";
+    detail = `provider quota exhausted (${state.quotaExhausted}) — ${successes} of ${totalCells} cells captured before stopping`;
+  } else if (state.budgetExhausted) {
     status = "partial";
     detail = "budget cap reached";
   } else if (successes === totalCells) {

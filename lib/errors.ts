@@ -5,6 +5,8 @@ export type ErrorKind =
   | "conflict"
   | "forbidden"
   | "provider_rate_limit"
+  /** The account's quota is spent for this window; retrying today will not help. */
+  | "provider_quota_exhausted"
   | "provider_auth"
   /** A bounded operation exceeded its declared budget (spec 018 node timeouts). */
   | "timeout"

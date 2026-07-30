@@ -6,10 +6,44 @@ export const MAX_ATTEMPTS = 3;
 const BASE_DELAY_MS = 1000;
 
 export interface ProviderCallError {
-  kind: "provider_rate_limit" | "provider_auth" | "validation" | "internal";
+  kind:
+    | "provider_rate_limit"
+    | "provider_quota_exhausted"
+    | "provider_auth"
+    | "validation"
+    | "internal";
   retryable: boolean;
   retryAfterMs?: number;
   message: string;
+}
+
+/**
+ * A 429 means two very different things, and treating them alike wasted a run.
+ *
+ * A per-MINUTE limit clears in seconds: wait and retry. A per-DAY quota does
+ * not clear today, so every remaining cell is a call that will fail — a Gemini
+ * run burned 20 cells against an exhausted daily quota before this existed,
+ * producing a partial run and 20 pointless requests.
+ *
+ * Providers say which in the error body: Google names the quota metric
+ * (`...free_tier_requests`) and omits RetryInfo when the window is a day;
+ * OpenAI and Anthropic say "quota" or "billing" rather than "rate".
+ */
+const DAILY_QUOTA_MARKERS = [
+  /per\s*day/i,
+  /daily\s*(limit|quota)/i,
+  /quota\s*exceeded/i,
+  /exceeded your current quota/i,
+  /check your plan and billing/i,
+  /insufficient_quota/i,
+  /credit balance is too low/i,
+];
+
+/** True when a 429 will still be a 429 in a minute. */
+export function isQuotaExhausted(message: string, retryAfterMs?: number): boolean {
+  // A provider that tells us when to come back is rate limiting, not refusing.
+  if (retryAfterMs !== undefined && retryAfterMs <= 120_000) return false;
+  return DAILY_QUOTA_MARKERS.some((pattern) => pattern.test(message));
 }
 
 /** Normalize any provider/SDK error into a classified, retry-decidable shape.
@@ -35,6 +69,11 @@ export function classifyProviderError(err: unknown): ProviderCallError {
           : (retryAfterHeader as Record<string, string>)["retry-after"];
       const seconds = raw ? Number(raw) : NaN;
       if (Number.isFinite(seconds)) retryAfterMs = seconds * 1000;
+    }
+    if (isQuotaExhausted(message, retryAfterMs)) {
+      // Not retryable, and the caller should stop the whole run rather than
+      // work through the remaining cells one failure at a time.
+      return { kind: "provider_quota_exhausted", retryable: false, message };
     }
     return { kind: "provider_rate_limit", retryable: true, retryAfterMs, message };
   }
