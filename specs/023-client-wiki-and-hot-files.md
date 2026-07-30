@@ -1,6 +1,6 @@
 # Spec 023 — Client Wiki & Hot Files
 
-> Status: in-progress
+> Status: done (2026-07-30)
 > Depends on: specs/020, specs/021, specs/024
 > Branch: feat/018-graph-execution-control-plane
 

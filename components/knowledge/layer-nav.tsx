@@ -19,6 +19,7 @@ const SECTIONS = [
   { path: "/wiki", label: "Wiki" },
   { path: "/builds", label: "Builds" },
   { path: "/packets", label: "Packets" },
+  { path: "/maintenance", label: "Maintenance" },
 ] as const;
 
 export function KnowledgeLayerNav({ projectId }: { projectId: string }) {

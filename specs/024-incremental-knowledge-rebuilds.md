@@ -1,6 +1,6 @@
 # Spec 024 — Incremental Knowledge Rebuilds
 
-> Status: in-progress
+> Status: done (2026-07-30)
 > Depends on: specs/020, specs/023, specs/018 (queue + events)
 > Branch: feat/018-graph-execution-control-plane
 

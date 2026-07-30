@@ -12,6 +12,10 @@
 import { NextResponse } from "next/server";
 import { runEventDelivery, runTriggerDispatch } from "@/lib/automation/dispatch";
 import { sweepConnections } from "@/lib/connectors/health";
+import {
+  runDailyMaintenance,
+  runWeeklyMaintenance,
+} from "@/lib/knowledge/maintenance/service";
 import { getEnv } from "@/lib/env";
 import { log } from "@/lib/logger";
 
@@ -40,6 +44,45 @@ export async function POST(request: Request): Promise<NextResponse> {
       ? await sweepConnections()
       : { checked: 0, healthy: 0, failing: 0, expiringSoon: 0 };
 
+    // Knowledge maintenance rides the same heartbeat rather than bringing its
+    // own scheduler (spec 025). Calling it every minute is safe and cheap: the
+    // unique (kind, window_key) index means the first caller in a window does
+    // the work and every other caller returns that run untouched. A failure
+    // here must not fail the heartbeat, because trigger dispatch and event
+    // delivery are more time-critical than reconciliation.
+    let maintenance: Record<string, unknown> = { skipped: true };
+    try {
+      const daily = await runDailyMaintenance();
+      const weekly = await runWeeklyMaintenance();
+      maintenance = {
+        daily: {
+          windowKey: daily.windowKey,
+          ranNow: !daily.alreadyRan,
+          status: daily.status,
+          exceptionsOpened: daily.exceptionsOpened,
+          pagesRebuilt: daily.pagesRebuilt,
+          pagesConsidered: daily.pagesConsidered,
+        },
+        weekly: {
+          windowKey: weekly.windowKey,
+          ranNow: !weekly.alreadyRan,
+          status: weekly.status,
+          exceptionsOpened: weekly.exceptionsOpened,
+        },
+      };
+      if (daily.status === "partial" || weekly.status === "partial") {
+        log("warn", "cron.maintenance.partial", {
+          dailyFailed: daily.checksFailed,
+          weeklyFailed: weekly.checksFailed,
+        });
+      }
+    } catch (err) {
+      log("error", "cron.maintenance_failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      maintenance = { error: "maintenance failed; dispatch was unaffected" };
+    }
+
     if (events.deadLettered > 0 || triggers.failed > 0 || health.failing > 0) {
       log("warn", "cron.automation.degraded", {
         deadLettered: events.deadLettered,
@@ -64,6 +107,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             expiringSoon: health.expiringSoon,
           }
         : { skipped: true },
+      maintenance,
     });
   } catch (err) {
     log("error", "cron.automation_failed", {

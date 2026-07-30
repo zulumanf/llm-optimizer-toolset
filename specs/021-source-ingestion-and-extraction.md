@@ -1,6 +1,6 @@
 # Spec 021 — Source Ingestion & Extraction
 
-> Status: in-progress
+> Status: done (2026-07-30)
 > Depends on: specs/020, specs/llm-evidence-capture-and-audit-trail, docs/10
 > Branch: feat/018-graph-execution-control-plane
 

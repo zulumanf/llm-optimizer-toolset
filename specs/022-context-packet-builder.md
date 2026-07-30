@@ -1,6 +1,6 @@
 # Spec 022 — Context Packet Builder
 
-> Status: in-progress
+> Status: done (2026-07-30)
 > Depends on: specs/020, specs/023 (hot files), specs/018 (agent registry), docs/10, docs/12
 > Branch: feat/018-graph-execution-control-plane
 

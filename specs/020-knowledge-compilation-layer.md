@@ -1,6 +1,6 @@
 # Spec 020 — Knowledge Compilation & Context Engineering Layer
 
-> Status: in-progress
+> Status: done (2026-07-30)
 > Depends on: specs/008 (claims), specs/018 (graph control plane), specs/llm-evidence-capture-and-audit-trail, docs/02, docs/10, docs/12
 > Branch: feat/018-graph-execution-control-plane
 > Sub-specs: 021 (ingestion), 022 (context packets), 023 (wiki & hot files), 024 (incremental rebuilds), 025 (maintenance — deferred)

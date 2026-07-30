@@ -192,3 +192,35 @@ export const TRACKING_PARAMS = [
 export const MATCH_CONFIDENCE_EXACT = 1.0;
 export const MATCH_CONFIDENCE_PROBABLE = 0.85;
 export const MATCH_CONFIDENCE_AMBIGUOUS = 0.6;
+
+// ------------------------------------------------- maintenance (spec 025)
+
+/**
+ * How long a page may sit stale before it becomes an exception. Being stale is
+ * normal — a claim changed and the rebuild has not run yet. Being stale for a
+ * working day means the rebuild is not happening, which is a different problem.
+ */
+export const STALE_PAGE_SLA_HOURS = 24;
+
+/**
+ * A page whose token count exceeds its budget by this factor is flagged. Not
+ * an error: an oversized page still compiles and still serves. It is a signal
+ * that a template is accreting, which is how a "concise" hot file stops being
+ * one without anybody deciding it should.
+ */
+export const OVERSIZED_PAGE_FACTOR = 1.25;
+
+/** A page never selected into a packet over this window is probably dead weight. */
+export const UNUSED_PAGE_DAYS = 30;
+
+/**
+ * Claims whose only support is a single source. Not wrong — but a material
+ * claim resting on one source is one retraction away from being unsupported.
+ */
+export const WEAK_EVIDENCE_MAX_SOURCES = 1;
+
+/** Retrieval evaluation gate: below this recall of required facts, CI fails. */
+export const RETRIEVAL_RECALL_FLOOR = 0.9;
+
+/** And any forbidden item present at all is a hard failure, never a ratio. */
+export const RETRIEVAL_FORBIDDEN_TOLERANCE = 0;

@@ -1,8 +1,8 @@
 # Spec 025 — Knowledge Maintenance, Evaluation & Hardening
 
-> Status: **ready — not implemented in this branch**
+> Status: done (2026-07-30) — see "Not built" below
 > Depends on: specs/020, 021, 022, 023, 024
-> Branch: (future) `feat/025-knowledge-maintenance`
+> Branch: `feat/018-graph-execution-control-plane`
 
 ## Why this is a separate spec
 
@@ -95,3 +95,24 @@ signed-URL artifact access when object storage lands.
 - [ ] Retrieval evaluations produce scored, gated fixtures.
 - [ ] Live experiments are opt-in and never scheduled.
 - [ ] Retention classes are enforced, with legal hold honoured.
+
+## Not built (2026-07-30) — stated so nothing here is over-claimed
+
+- **Live agent-quality experiments.** The offline token comparison from spec
+  020 still stands, and `knowledgeHealth()` reports `agentQualityMeasured:
+  false`. The live four-mode harness needs a provider key and spends real
+  money; it stays operator-triggered and unwritten until there is a reason to
+  run it. Nothing in this branch claims an accuracy or quality number.
+- **Retrieval evaluation has an engine, not a corpus.** `retrieval-eval.ts`
+  scores a packet against a fixture and `retrieval_evaluations` stores the
+  result, both unit-tested. What does not exist is the seeded fixture set for
+  all eight task types running against real packets in CI. The gate is built;
+  the thing it gates is one fixture file away.
+- **Two of the twelve weekly checks are absent:** source-quality review (no
+  source-quality signal exists in the schema yet to review) and the
+  retrieval-quality evaluation, for the reason above. The other ten run.
+- **Client deletion workflow and load testing.** Retention and legal hold are
+  enforced — the database refuses to purge held material — but bulk client
+  deletion is not written, and no isolation load test exists.
+- **Signed-URL artifact access** waits on object storage, which spec 020 also
+  defers. Local filesystem storage means artifact access is process-local.
