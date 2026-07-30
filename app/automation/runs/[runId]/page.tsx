@@ -127,7 +127,7 @@ export default async function RunDetailPage({
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Cost</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">
+            <p className="mt-1 text-lg font-medium tabular-nums">
               ${(run.costMicroUsd / 1_000_000).toFixed(4)}
             </p>
             <p className="text-xs text-muted-foreground">
@@ -141,7 +141,7 @@ export default async function RunDetailPage({
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Nodes</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">{nodes.length}</p>
+            <p className="mt-1 text-lg font-medium tabular-nums">{nodes.length}</p>
             <p className="text-xs text-muted-foreground">
               {nodes.filter((n) => n.state === "succeeded").length} succeeded,{" "}
               {nodes.filter((n) => n.state === "failed_terminal").length} failed
@@ -151,7 +151,7 @@ export default async function RunDetailPage({
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Human touches</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">
+            <p className="mt-1 text-lg font-medium tabular-nums">
               {nodes.filter((n) => n.humanTouch).length}
             </p>
             <p className="text-xs text-muted-foreground">
@@ -162,7 +162,7 @@ export default async function RunDetailPage({
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Critical path</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">
+            <p className="mt-1 text-lg font-medium tabular-nums">
               {path === null ? "—" : `${Math.round(path.durationMs / 1000)}s`}
             </p>
             <p className="text-xs text-muted-foreground">

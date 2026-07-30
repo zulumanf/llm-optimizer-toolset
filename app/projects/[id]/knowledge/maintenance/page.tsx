@@ -1,7 +1,14 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { Badge } from "@/components/ui/badge";
+import {
+  EmptyState,
+  PageHeader,
+  PageShell,
+  Section,
+  Stat,
+  StatGrid,
+} from "@/components/layout/page";
 import { KnowledgeLayerNav } from "@/components/knowledge/layer-nav";
 import { openKnowledgeExceptions } from "@/lib/knowledge/maintenance/exceptions";
 import { recentMaintenanceRuns } from "@/lib/knowledge/maintenance/service";
@@ -44,32 +51,20 @@ export default async function MaintenancePage({
   ]);
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Maintenance
-      </nav>
-      <h1 className="text-2xl font-semibold tracking-tight">Knowledge maintenance</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Daily reconciliation and the weekly deeper review. Both ride the automation
-        heartbeat and reconcile rather than regenerate — a job that rebuilt everything
-        would hide the staleness it exists to detect.
-      </p>
-
+    <PageShell>
+      <PageHeader
+        title="Knowledge maintenance"
+        crumbs={[{ label: project.name, href: `/projects/${id}` }, { label: "Maintenance" }]}
+        description="Daily reconciliation and the weekly deeper review. Both ride the automation heartbeat and reconcile rather than regenerate — a job that rebuilt everything would hide the staleness it exists to detect."
+      />
       <KnowledgeLayerNav projectId={id} />
 
       {/* ------------------------------------------------------ exceptions */}
-      <section className="mt-8">
-        <h2 className="text-lg font-medium">Open exceptions</h2>
+      <Section title="Open exceptions">
         {exceptions.length === 0 ? (
-          <p className="mt-2 rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-            Nothing outstanding. Findings appear here and on the Today feed when a
-            maintenance run detects one.
-          </p>
+          <EmptyState message="Nothing outstanding. Findings appear here and on the Today feed when a maintenance run detects one." />
         ) : (
-          <ul className="mt-3 space-y-2">
+          <ul className="space-y-2">
             {exceptions.map((exception) => (
               <li key={exception.id} className="rounded-md border p-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -96,12 +91,11 @@ export default async function MaintenancePage({
             ))}
           </ul>
         )}
-      </section>
+      </Section>
 
       {/* ---------------------------------------------------------- health */}
-      <section className="mt-8">
-        <h2 className="text-lg font-medium">Health</h2>
-        <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Section title="Health">
+        <StatGrid>
           {[
             ["Sources", String(health.ingestion.sources)],
             ["Extraction failures", pct(health.ingestion.extractionFailureRate)],
@@ -112,27 +106,21 @@ export default async function MaintenancePage({
             ["Stale in packets", pct(health.retrieval.staleInclusionRate)],
             ["Cross-client leakage", pct(health.retrieval.crossClientLeakageRate)],
           ].map(([label, value]) => (
-            <div key={label} className="rounded-md border p-3">
-              <dt className="text-xs text-muted-foreground">{label}</dt>
-              <dd className="mt-1 text-lg font-medium tabular-nums">{value}</dd>
-            </div>
+            <Stat key={label} label={label!} value={value} />
           ))}
-        </dl>
+        </StatGrid>
         <p className="mt-2 text-xs text-muted-foreground">
           Agent quality is <strong>not measured</strong>. It needs a live provider run;
           deriving it from mock traffic would be a fabricated measurement.
         </p>
-      </section>
+      </Section>
 
       {/* ------------------------------------------------------------ runs */}
-      <section className="mt-8">
-        <h2 className="text-lg font-medium">Recent runs</h2>
+      <Section title="Recent runs">
         {runs.length === 0 ? (
-          <p className="mt-2 rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-            No maintenance has run yet. It starts on the next automation heartbeat.
-          </p>
+          <EmptyState message="No maintenance has run yet. It starts on the next automation heartbeat." />
         ) : (
-          <div className="mt-3 overflow-x-auto">
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>
@@ -170,7 +158,7 @@ export default async function MaintenancePage({
             </table>
           </div>
         )}
-      </section>
-    </div>
+      </Section>
+    </PageShell>
   );
 }
