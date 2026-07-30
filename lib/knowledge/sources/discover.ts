@@ -39,8 +39,21 @@ import { SOURCE_FETCH_TIMEOUT_MS } from "@/lib/knowledge/constants";
 const CRAWLER_USER_AGENT =
   "ParvaVisibilityAudit/1.0 (internal AI-visibility audit; contact the operator who scheduled it)";
 
-/** Politeness gap between requests to the same host. */
-const CRAWL_DELAY_MS = 400;
+/**
+ * Politeness gap between requests to the same host.
+ *
+ * Raised from 400ms after a 150-page crawl of a real client site earned eight
+ * `429 Too Many Requests` — losing pages, and being rude to a prospect whose
+ * goodwill we are trying to earn. A visibility audit is never so urgent that it
+ * justifies hammering the site it is auditing.
+ */
+const CRAWL_DELAY_MS = 1_200;
+
+/** How much to slow down after a 429, and the ceiling on that. */
+const BACKOFF_MULTIPLIER = 2;
+const MAX_CRAWL_DELAY_MS = 10_000;
+/** Attempts for a single URL that returns 429. */
+const RATE_LIMIT_RETRIES = 2;
 const DEFAULT_MAX_PAGES = 40;
 const DEFAULT_MAX_DEPTH = 2;
 
@@ -133,7 +146,9 @@ export function shouldSkipUrl(url: string): boolean {
   return SKIP_PATTERNS.some((pattern) => pattern.test(url));
 }
 
-async function fetchText(url: string): Promise<{ html: string; status: number }> {
+async function fetchText(
+  url: string
+): Promise<{ html: string; status: number; retryAfterMs: number | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SOURCE_FETCH_TIMEOUT_MS);
   try {
@@ -149,10 +164,46 @@ async function fetchText(url: string): Promise<{ html: string; status: number }>
       },
     });
     const html = response.ok ? await response.text() : "";
-    return { html, status: response.status };
+    // Honour the server's own instruction when it gives one; a Retry-After is
+    // the host telling us exactly how to behave, and ignoring it is a choice.
+    const header = response.headers.get("retry-after");
+    const retryAfterMs = header
+      ? Number.isFinite(Number(header))
+        ? Number(header) * 1000
+        : Math.max(0, new Date(header).getTime() - Date.now())
+      : null;
+    return { html, status: response.status, retryAfterMs };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Fetch, honouring 429 by waiting and retrying, and permanently slowing the
+ * crawl afterwards. Returns the delay the caller should now use between
+ * requests, so one rate-limited page makes the whole crawl gentler rather than
+ * the same wall being hit repeatedly.
+ */
+async function fetchPolitely(
+  url: string,
+  currentDelayMs: number
+): Promise<{ html: string; status: number; delayMs: number }> {
+  let delayMs = currentDelayMs;
+
+  for (let attempt = 0; attempt <= RATE_LIMIT_RETRIES; attempt += 1) {
+    const { html, status, retryAfterMs } = await fetchText(url);
+    if (status !== 429) return { html, status, delayMs };
+
+    // Slow the rest of the crawl, not just this retry.
+    delayMs = Math.min(delayMs * BACKOFF_MULTIPLIER, MAX_CRAWL_DELAY_MS);
+    if (attempt === RATE_LIMIT_RETRIES) {
+      log("warn", "knowledge.crawl_rate_limited", { url, delayMs });
+      return { html: "", status, delayMs };
+    }
+    const wait = retryAfterMs ?? delayMs;
+    await new Promise((resolve) => setTimeout(resolve, wait));
+  }
+  return { html: "", status: 429, delayMs };
 }
 
 /** Visible text length, for spotting JS-rendered pages. */
@@ -278,6 +329,8 @@ export async function discoverSite(raw: unknown): Promise<ActionResult<Discovery
   ];
 
   let fetched = 0;
+  let delayMs = CRAWL_DELAY_MS;
+  let rateLimited = 0;
   while (queue.length > 0 && fetched < maxPages) {
     // Highest-value URL first, so a capped crawl spends its budget well.
     queue.sort((a, b) => scoreUrlForAudit(b.url).score - scoreUrlForAudit(a.url).score);
@@ -287,7 +340,12 @@ export async function discoverSite(raw: unknown): Promise<ActionResult<Discovery
 
     const { score, kind } = scoreUrlForAudit(next.url);
     try {
-      const { html, status } = await fetchText(next.url);
+      const polite = await fetchPolitely(next.url, delayMs);
+      const { html, status } = polite;
+      if (polite.delayMs !== delayMs) {
+        delayMs = polite.delayMs;
+        rateLimited += 1;
+      }
       fetched += 1;
       if (status !== 200 || html.length === 0) {
         results.push({
@@ -315,7 +373,7 @@ export async function discoverSite(raw: unknown): Promise<ActionResult<Discovery
           }
         }
       }
-      await new Promise((resolve) => setTimeout(resolve, CRAWL_DELAY_MS));
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     } catch (err) {
       results.push({
         url: next.url, kind, score, title: null, depth: next.depth,
@@ -329,6 +387,14 @@ export async function discoverSite(raw: unknown): Promise<ActionResult<Discovery
   if (truncated > 0) {
     // Stated, never silent: a capped crawl that reads as complete is a lie.
     notes.push(`${truncated} more URLs were found but not fetched (page cap ${maxPages}).`);
+  }
+
+  if (rateLimited > 0) {
+    // Stated, because a crawl that quietly lost pages to rate limiting looks
+    // identical to a site that simply has fewer pages.
+    notes.push(
+      `The site rate-limited ${rateLimited} request(s); the crawl slowed to ${delayMs}ms between pages. Re-run later to pick up anything missed.`
+    );
   }
 
   const thin = results.filter((r) => !r.error && r.textLength < 500);

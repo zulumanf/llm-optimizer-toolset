@@ -197,7 +197,7 @@ export const PLAYS: Play[] = [
         ? null
         : "Client site not crawled yet — run discovery before judging its positioning.",
     why: () =>
-      "Your site features six New York neighbourhoods above six New Jersey ones, so Jersey City reads as secondary.",
+      "Your site publishes 25 New York neighbourhood pages against 10 New Jersey ones, so Jersey City reads as secondary.",
     steps: () => [
       "Put your home market first in the neighbourhoods list and the navigation.",
       "Say the primary market in the first sentence of the homepage and the about page.",
