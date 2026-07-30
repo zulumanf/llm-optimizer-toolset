@@ -12,6 +12,7 @@ import { executeRun } from "@/lib/runs/execute";
 import { parseResponse } from "@/lib/parsing/service";
 import { computeScores } from "@/lib/scoring/compute";
 import { startScheduledRun } from "@/lib/attribution/service";
+import { discoverAndIngestSite } from "@/lib/knowledge/sources/onboard-site";
 import { syncNotifications } from "@/lib/notifications/service";
 import { analyzeRun } from "@/lib/gaps/service";
 import { analyzeRunAccuracy } from "@/lib/accuracy/service";
@@ -56,6 +57,17 @@ const handlers: Record<string, (payload: Record<string, unknown>) => Promise<voi
   // Derived from the live attention feed — safe to run on any schedule
   sync_notifications: async () => {
     await syncNotifications();
+  },
+  // Crawls a new client's website. Deliberately a job, not part of onboarding:
+  // creating the client must not fail because their site is slow or down.
+  // Idempotent — ingestSource dedupes on (project, sha256), so a retry after a
+  // partial crawl stores nothing twice.
+  discover_client_site: async (payload) => {
+    await discoverAndIngestSite({
+      projectId: payload.projectId as string,
+      domain: payload.domain as string,
+      createdBy: (payload.createdBy as string | null) ?? null,
+    });
   },
   // Long agent/IO operations run here rather than blocking a request:
   // each is idempotent, so a retry after a crash is safe (UX pass).

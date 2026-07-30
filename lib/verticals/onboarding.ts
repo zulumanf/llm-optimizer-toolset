@@ -10,6 +10,7 @@
  */
 import { z } from "zod";
 import { sql } from "@/db/client";
+import { enqueueJob } from "@/db/jobs";
 import { writeAudit } from "@/db/audit";
 import type { CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
@@ -67,6 +68,8 @@ export interface OnboardingResult {
   claimsApproved: number;
   competitorsTracked: number;
   packVersion: number;
+  /** False when no domain was supplied, or the queue rejected the job. */
+  siteDiscoveryQueued: boolean;
 }
 
 /** Pin the current pack definition, reusing the row if this version exists.
@@ -210,11 +213,34 @@ export async function onboardClient(
         },
       })
     );
+    // Crawl the client's own site so their roster, projects and about pages
+    // are in the tool from day one. Queued rather than awaited: onboarding must
+    // not fail because a prospect's website is slow, gated or down, and a
+    // 30-page polite crawl takes longer than a request should.
+    let siteDiscoveryQueued = false;
+    if (input.company.domain) {
+      try {
+        await enqueueJob(sql, "discover_client_site", {
+          projectId,
+          domain: input.company.domain,
+          createdBy: user.id,
+        });
+        siteDiscoveryQueued = true;
+      } catch (err) {
+        // A queue failure must not lose the onboarding that already succeeded.
+        log("warn", "client.site_discovery_not_queued", {
+          projectId,
+          error: err instanceof Error ? err.message : "unknown",
+        });
+      }
+    }
+
     log("info", "client.onboarded", {
       projectId,
       pack: pack.key,
       promptsCreated,
       competitorsTracked,
+      siteDiscoveryQueued,
     });
 
     return ok({
@@ -225,6 +251,7 @@ export async function onboardClient(
       claimsApproved,
       competitorsTracked,
       packVersion: pack.version,
+      siteDiscoveryQueued,
     });
   } catch (err) {
     return fail(err);
