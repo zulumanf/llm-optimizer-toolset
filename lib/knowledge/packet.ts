@@ -11,6 +11,8 @@
  */
 import { createHash } from "node:crypto";
 import { sql, type TransactionSql } from "@/db/client";
+import { selectClaims } from "@/lib/knowledge/context/builder";
+import { GENERIC_TEMPLATE } from "@/lib/knowledge/context/templates";
 
 type Tx = TransactionSql | typeof sql;
 
@@ -106,6 +108,13 @@ const NO_CLAIMS_DISCLAIMER =
 /**
  * Assemble the packet. Reads only APPROVED claims — a proposed or rejected
  * claim is not a fact the platform is allowed to believe.
+ *
+ * Since spec 022 this **delegates its claim selection** to
+ * `lib/knowledge/context/builder.ts#selectClaims`, so privacy filtering,
+ * freshness assessment and category rules have one implementation in this
+ * codebase rather than two that can drift (CLAUDE.md: no duplicated logic).
+ * What remains here is the legacy packet's own shape and rendering, which
+ * several workflow templates still consume.
  */
 export async function buildEvidencePacket(
   input: BuildPacketInput
@@ -113,49 +122,43 @@ export async function buildEvidencePacket(
   const audience = input.audience ?? "internal";
   const allowed = AUDIENCE_MAX_PRIVACY[audience];
 
-  const rows = await sql`
-    select id, key, canonical_text, value, as_of, normalized_predicate, category,
-      effective_date, review_date, verification_status, confidence, privacy_status,
-      allowed_wording, prohibited_wording, evidence_ids
-    from claims
-    where project_id = ${input.projectId}
-      and status = 'approved'
-      ${input.categories?.length ? sql`and category = any(${input.categories})` : sql``}
-      ${input.claimKeys?.length ? sql`and key = any(${input.claimKeys})` : sql``}
-    order by key
-  `;
-
   const today = new Date();
-  const claims: PacketClaim[] = [];
-  const withheld: string[] = [];
+  const { claims: selected, withheld } = await selectClaims({
+    projectId: input.projectId,
+    // A synthetic template that reproduces the legacy contract exactly:
+    // audience-based privacy, every category, and no freshness exclusion —
+    // this packet has always *disclosed* staleness rather than dropping it.
+    template: {
+      ...GENERIC_TEMPLATE,
+      audience,
+      allowedPrivacy: allowed,
+      minFreshness: "unknown",
+    },
+    categories: input.categories ?? [],
+    claimKeys: input.claimKeys,
+    now: today,
+  });
 
-  for (const row of rows) {
-    const privacy = (row.privacyStatus as PrivacyStatus) ?? "public";
-    if (!allowed.includes(privacy)) {
-      // Recorded, not silently dropped: the omission is auditable.
-      withheld.push(row.id as string);
-      continue;
-    }
-    const reviewDate = row.reviewDate ? new Date(row.reviewDate as string) : null;
-    claims.push({
-      id: row.id as string,
-      key: row.key as string,
-      text: row.canonicalText as string,
-      value: row.value ?? null,
-      predicate: (row.normalizedPredicate as string | null) ?? null,
-      category: (row.category as string) ?? "general",
-      asOf: dateString(row.asOf),
-      effectiveDate: dateString(row.effectiveDate),
-      reviewDate: dateString(row.reviewDate),
-      verificationStatus: (row.verificationStatus as string) ?? "unverified",
-      confidence: row.confidence === null ? null : Number(row.confidence),
-      privacyStatus: privacy,
-      allowedWording: (row.allowedWording as string[]) ?? [],
-      prohibitedWording: (row.prohibitedWording as string[]) ?? [],
-      evidenceIds: (row.evidenceIds as string[]) ?? [],
-      stale: reviewDate !== null && reviewDate < today,
-    });
-  }
+  const claims: PacketClaim[] = selected.map((claim) => ({
+    id: claim.id,
+    key: claim.key,
+    text: claim.text,
+    value: claim.value,
+    predicate: claim.predicate,
+    category: claim.category,
+    asOf: claim.asOf,
+    effectiveDate: claim.effectiveDate,
+    reviewDate: claim.reviewDate,
+    verificationStatus: claim.verificationStatus,
+    confidence: claim.confidence,
+    privacyStatus: claim.privacyStatus,
+    allowedWording: claim.allowedWording,
+    prohibitedWording: claim.prohibitedWording,
+    evidenceIds: claim.evidenceIds,
+    // The legacy field means "past its review date". The richer freshness model
+    // is a superset, so it is derived rather than recomputed.
+    stale: claim.freshness === "stale" || claim.freshness === "expired",
+  }));
 
   const evidenceIds = [...new Set(claims.flatMap((c) => c.evidenceIds))];
   const sources: PacketSource[] = [];
@@ -292,10 +295,4 @@ export function renderPacket(packet: EvidencePacket): string {
     for (const d of packet.requiredDisclaimers) lines.push(`- ${d}`);
   }
   return lines.join("\n");
-}
-
-function dateString(value: unknown): string | null {
-  if (!value) return null;
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  return String(value).slice(0, 10);
 }

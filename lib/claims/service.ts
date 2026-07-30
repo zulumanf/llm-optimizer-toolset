@@ -9,6 +9,7 @@ import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import type { CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
+import { publishEvent } from "@/lib/events/bus";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
 
@@ -120,8 +121,24 @@ export async function approveClaim(
       `;
       await tx`
         update claims set status = 'approved', approved_by = ${user.id},
-          updated_at = now()
+          last_verified_at = now(), updated_at = now()
         where id = ${claim.id}
+      `;
+      // The immutable version row: a report generated last month must stay
+      // reproducible, which requires the wording as it was then (spec 018).
+      await tx`
+        insert into claim_versions (
+          claim_id, version, canonical_text, value, normalized_predicate,
+          subject_entity, object_entity_id, category, status, verification_status,
+          privacy_status, allowed_wording, prohibited_wording, confidence,
+          as_of, effective_date, review_date, evidence_ids, change_reason, created_by
+        )
+        select id, version, canonical_text, value, normalized_predicate,
+          subject_entity, object_entity_id, category, 'approved', verification_status,
+          privacy_status, allowed_wording, prohibited_wording, confidence,
+          as_of, effective_date, review_date, evidence_ids, 'approved', ${user.id}
+        from claims where id = ${claim.id}
+        on conflict (claim_id, version) do nothing
       `;
       await writeAudit(tx, {
         userId: user.id,
@@ -130,6 +147,21 @@ export async function approveClaim(
         entityId: claim.id as string,
         detail: { key: claim.key, superseded: (previous?.id as string) ?? null },
       });
+      // Publishing inside the transaction is what marks the compiled pages
+      // that depend on this claim stale (spec 024). Approval and invalidation
+      // commit together or not at all.
+      await publishEvent(tx, {
+        type: "claim.approved",
+        projectId: claim.projectId as string,
+        payload: { claimId: claim.id as string, subject: claim.key as string },
+      });
+      if (previous) {
+        await publishEvent(tx, {
+          type: "claim.superseded",
+          projectId: claim.projectId as string,
+          payload: { claimId: previous.id as string, subject: claim.key as string },
+        });
+      }
       return {
         claimId: claim.id as string,
         supersededId: (previous?.id as string) ?? null,

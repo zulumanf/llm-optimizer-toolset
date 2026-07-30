@@ -76,6 +76,7 @@ export async function publishEvent<TPayload extends Record<string, unknown>>(
 
   if (result.created) {
     await enqueueJob(tx, "deliver_events", { eventId: result.event.id });
+    await markKnowledgeStale(tx, input.type, projectId, parsed.data as Record<string, unknown>);
     log("info", "event.published", {
       type: input.type,
       version,
@@ -87,6 +88,39 @@ export async function publishEvent<TPayload extends Record<string, unknown>>(
   }
   return result;
 }
+
+/**
+ * Invalidate compiled knowledge that depended on whatever this event changed
+ * (spec 024). Runs in the publisher's transaction, so a claim approval and the
+ * staleness it causes commit together — the same guarantee the bus itself makes.
+ *
+ * The import is dynamic on purpose: the knowledge layer publishes events, so a
+ * static import here would be a cycle. This is the same reasoning that makes
+ * `deliverEvent` take `startWorkflow` as a parameter rather than importing the
+ * runtime.
+ *
+ * Types that mark nothing return immediately, which is also what stops the
+ * recursion — `wiki.page_marked_stale` has no dependency mapping.
+ */
+async function markKnowledgeStale(
+  tx: Tx,
+  type: string,
+  projectId: string | null,
+  payload: Record<string, unknown>
+): Promise<void> {
+  if (!KNOWLEDGE_EVENT_PREFIXES.some((prefix) => type.startsWith(prefix))) return;
+  try {
+    const { onKnowledgeEvent } = await import("@/lib/knowledge/build/stale");
+    await onKnowledgeEvent(tx, { type, projectId, payload });
+  } catch (err) {
+    // Staleness is a cache concern. Failing to mark must never roll back the
+    // domain change that caused it — a stale page is recoverable by the daily
+    // reconciliation; a lost claim approval is not.
+    log("warn", "knowledge.stale.failed", { type, error: (err as Error).message });
+  }
+}
+
+const KNOWLEDGE_EVENT_PREFIXES = ["claim.", "source.", "instruction.", "transaction.", "content."];
 
 /** Convenience: publish outside an existing transaction. */
 export async function publishEventStandalone<TPayload extends Record<string, unknown>>(

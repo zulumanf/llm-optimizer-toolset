@@ -18,6 +18,7 @@ import { analyzeRunAccuracy } from "@/lib/accuracy/service";
 import { generateEvidenceExport } from "@/lib/evidence/export";
 import { getCurrentUser } from "@/lib/auth";
 import { advanceCycle } from "@/lib/cycles/service";
+import { compileAffected } from "@/lib/knowledge/build/planner";
 // Importing the templates module registers every node handler as a side
 // effect — the engine cannot run a graph whose handlers are unknown.
 import { bootstrapWorkflows } from "@/lib/workflow/templates";
@@ -73,6 +74,17 @@ const handlers: Record<string, (payload: Record<string, unknown>) => Promise<voi
   // The weekly cycle drives itself one step per tick (spec 017)
   advance_cycle: async (payload) => {
     await advanceCycle(payload.cycleId as string);
+  },
+  // Incremental knowledge compilation (spec 024). Idempotent by construction:
+  // the planner builds only what is stale, and an unchanged page is a no-op, so
+  // a duplicate job costs a few queries and mints nothing.
+  knowledge_build: async (payload) => {
+    await compileAffected({
+      projectId: (payload.projectId as string | null) ?? null,
+      trigger: (payload.trigger as "event" | "manual" | "maintenance" | "initial") ?? "event",
+      triggerRef: (payload.triggerRef as string | null) ?? null,
+      slugs: (payload.slugs as string[] | undefined) ?? undefined,
+    });
   },
   // One handler drives every workflow graph (spec 018). The tick is
   // re-entrant, so a crashed worker resumes without losing or duplicating

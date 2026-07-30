@@ -50,6 +50,23 @@ export interface AgentDefinition {
   maxCostMicroUsd?: number;
   maxSeconds?: number;
   evaluationSuite?: string;
+  // ---- context requirements (spec 022) ---------------------------------
+  /**
+   * The context-packet template this agent must be given. When set, the agent
+   * receives a packet built to that template rather than whatever context a
+   * caller assembled — which is the difference between a contract and a habit.
+   */
+  requiredPacketTemplate?: string;
+  /** Hard ceiling on the context this agent may be handed. */
+  maxContextTokens?: number;
+  /** Claims worse than this are excluded from its packet and disclosed. */
+  minFreshness?: "current" | "nearing_review" | "stale" | "unknown";
+  /** Evidence classes the packet must contain for the task to be attempted. */
+  requiredEvidenceClasses?: string[];
+  /** Privacy classes this agent may ever see. `restricted` is never allowed. */
+  allowedPrivacyClasses?: ("public" | "client_only" | "internal")[];
+  /** Knowledge categories that must never reach this agent. */
+  prohibitedKnowledgeCategories?: string[];
 }
 
 // Shared shapes ------------------------------------------------------------
@@ -176,6 +193,13 @@ export const AGENTS: AgentDefinition[] = [
     minConfidence: 0.7,
     escalationConditions: ["confidence below the review threshold", "company id not in the provided list"],
     evaluationSuite: "parser-accuracy",
+    requiredPacketTemplate: "response_classification",
+    maxContextTokens: 3_000,
+    minFreshness: "stale",
+    allowedPrivacyClasses: ["public", "client_only"],
+    // A classifier that can see sales figures will start using them to decide
+    // whether a mention is favourable. It has no business with them.
+    prohibitedKnowledgeCategories: ["transaction", "sales_volume", "strategy"],
   },
   {
     key: "independent_response_verifier",
@@ -212,6 +236,10 @@ export const AGENTS: AgentDefinition[] = [
     prohibitedActions: NEVER_WRITE,
     evidenceRequirements: ["a verbatim quote from the response", "the contradicted claim id"],
     escalationConditions: ["quote not found verbatim in the response"],
+    requiredPacketTemplate: "claim_verification",
+    maxContextTokens: 6_000,
+    minFreshness: "unknown",
+    allowedPrivacyClasses: ["public", "client_only", "internal"],
   },
   {
     key: "content_brief",
@@ -229,6 +257,10 @@ export const AGENTS: AgentDefinition[] = [
     prohibitedActions: NEVER_WRITE,
     evidenceRequirements: ["an evidence packet"],
     escalationConditions: ["no approved claims available for the topic"],
+    requiredPacketTemplate: "content_drafting",
+    maxContextTokens: 8_000,
+    minFreshness: "nearing_review",
+    allowedPrivacyClasses: ["public"],
   },
   {
     key: "content_draft",
@@ -246,6 +278,12 @@ export const AGENTS: AgentDefinition[] = [
     prohibitedActions: NEVER_WRITE,
     evidenceRequirements: ["an evidence packet"],
     escalationConditions: ["a required claim has no approved wording"],
+    requiredPacketTemplate: "content_drafting",
+    maxContextTokens: 8_000,
+    minFreshness: "nearing_review",
+    // A public asset may carry nothing but public claims. This is the single
+    // most consequential line in the registry.
+    allowedPrivacyClasses: ["public"],
   },
   {
     key: "content_fact_verifier",
@@ -355,13 +393,49 @@ export const AGENTS: AgentDefinition[] = [
     maxCostMicroUsd: 3_000_000,
     maxSeconds: 240,
     evaluationSuite: "executive-brief",
+    requiredPacketTemplate: "executive_report",
+    maxContextTokens: 10_000,
+    minFreshness: "nearing_review",
+    allowedPrivacyClasses: ["public", "client_only"],
+  },
+
+  {
+    key: "claim_extraction",
+    name: "Claim Extraction Agent",
+    mission:
+      "Propose candidate claims from an ingested source, quoting the document verbatim for every one.",
+    domain: "reputation",
+    version: "claim-extraction-v1",
+    model: AGENT_MODEL,
+    status: "implemented",
+    module: "lib/knowledge/extraction/claims.ts",
+    inputSchema: z.object({ sourceArtifactId: z.string(), maxClaims: z.number().optional() }),
+    outputSchema: z.object({ claims: z.array(z.unknown()) }),
+    allowedTools: [],
+    allowedDataScopes: ["extracted_document"],
+    prohibitedActions: [
+      ...NEVER_WRITE,
+      "approve a claim",
+      "assign its own materiality",
+      "state a fact the document does not contain",
+    ],
+    evidenceRequirements: ["a verbatim quote from the source document"],
+    escalationConditions: [
+      "the quoted wording is not present in the document",
+      "a high-risk claim is proposed",
+    ],
+    maxCostMicroUsd: 2_000_000,
+    maxSeconds: 180,
+    evaluationSuite: "claim-extraction",
+    maxContextTokens: 20_000,
+    // It reads one source and proposes; it never sees the client's other data.
+    allowedPrivacyClasses: ["public", "client_only", "internal"],
   },
 
   // ---- contract fixed, runner not yet wired ------------------------------
   ...declaredOnly([
     ["prompt_strategy", "Prompt Strategy Agent", "visibility", "Propose prompt clusters for a client's category."],
     ["competitor_evidence", "Competitor Evidence Agent", "visibility", "Explain why a competitor was retrieved."],
-    ["claim_extraction", "Claim Extraction Agent", "reputation", "Extract candidate claims from client-supplied material."],
     ["evidence_verification", "Evidence Verification Agent", "reputation", "Check that a claim's cited sources support it."],
     ["contradiction_detection", "Contradiction Detection Agent", "reputation", "Detect contradictions between claims and observations."],
     ["action_prioritization", "Action Prioritization Agent", "authority", "Explain the ranking a deterministic score produced."],

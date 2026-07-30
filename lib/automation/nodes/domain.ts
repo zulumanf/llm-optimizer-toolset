@@ -11,6 +11,8 @@
 import { sql } from "@/db/client";
 import { resolve, resolveArray, resolveObject, resolveString } from "@/lib/automation/nodes/paths";
 import { buildEvidencePacket, recordPacket } from "@/lib/knowledge/packet";
+import { buildValidatedPacket } from "@/lib/knowledge/context/builder";
+import { getPacketTemplate } from "@/lib/knowledge/context/templates";
 import { publishEvent } from "@/lib/events/bus";
 import { checkSuppression, suppress } from "@/lib/outreach/suppression";
 import {
@@ -38,6 +40,16 @@ const buildPacket: NodeHandler = async (ctx): Promise<NodeResult> => {
   if (ctx.projectId === null) {
     return { outcome: "failed_terminal", error: "an evidence packet requires a client scope" };
   }
+
+  // Spec 022: when the node names a template, it gets a task-specific packet —
+  // token-budgeted, instructions separated from facts, every omission recorded.
+  // Nodes that name no template keep the legacy path, which now delegates its
+  // claim selection to the same implementation.
+  const templateKey = ctx.config.template as string | undefined;
+  if (templateKey) {
+    return buildTemplatedPacket(ctx, templateKey);
+  }
+
   const audience = (ctx.config.audience as "internal" | "client" | "public") ?? "internal";
   const packet = await buildEvidencePacket({
     projectId: ctx.projectId,
@@ -107,6 +119,94 @@ const buildPacket: NodeHandler = async (ctx): Promise<NodeResult> => {
     },
   };
 };
+
+/**
+ * The spec-022 path: a packet built to a named task template.
+ *
+ * Validation runs before the packet is returned, so a node cannot hand an agent
+ * a packet that failed its checks. A validation failure is a `safe_stop`, not a
+ * retry: nothing about running the same query again will make a restricted
+ * claim allowed or a missing instruction appear.
+ */
+async function buildTemplatedPacket(
+  ctx: Parameters<NodeHandler>[0],
+  templateKey: string
+): Promise<NodeResult> {
+  const template = getPacketTemplate(templateKey);
+  if (!template) {
+    return {
+      outcome: "failed_terminal",
+      error: `No context-packet template named "${templateKey}". Declare it in lib/knowledge/context/templates.ts.`,
+    };
+  }
+
+  try {
+    const { packet, packetId } = await buildValidatedPacket(
+      {
+        projectId: ctx.projectId!,
+        templateKey,
+        taskObjective: String(ctx.config.objective ?? ctx.nodeKey),
+        agentKey: (ctx.config.agentKey as string | undefined) ?? undefined,
+        workflowKey: (ctx.config.workflowKey as string | undefined) ?? undefined,
+        workflowRunId: ctx.runId,
+        additionalCategories: (ctx.config.categories as string[] | undefined) ?? undefined,
+        claimKeys: (ctx.config.claimKeys as string[] | undefined) ?? undefined,
+        tokenBudget: (ctx.config.tokenBudget as number | undefined) ?? undefined,
+      },
+      { workflowRunId: ctx.runId, nodeRunId: null }
+    );
+
+    const claims = packet.items.filter((item) => item.itemType === "claim" && item.included);
+    const contradictions = packet.items.filter(
+      (item) => item.itemType === "contradiction" && item.included
+    );
+    const evidence = packet.items.filter(
+      (item) => item.itemType === "evidence" && item.included
+    );
+
+    if (template.requiresClaims && claims.length === 0) {
+      return {
+        outcome: "safe_stop",
+        reason:
+          "no approved claims are available for this client — proceeding would require inventing facts",
+        output: { packetId, missingContext: packet.missingContext },
+      };
+    }
+
+    return {
+      outcome: "succeeded",
+      output: {
+        packetId,
+        templateKey,
+        tokenCount: packet.tokenCount,
+        tokenBudget: packet.tokenBudget,
+        claimCount: claims.length,
+        contradictionCount: contradictions.length,
+        sourceCount: evidence.length,
+        withheldClaimCount: packet.withheldClaimIds.length,
+        excludedItemCount: packet.items.filter((item) => !item.included).length,
+        missingContext: packet.missingContext,
+        requiredDisclaimers: packet.requiredDisclaimers,
+        freshness: packet.freshness,
+        contentHash: packet.contentHash,
+        // The shape `ctl.evidence_gate` consumes, so the two still compose.
+        sampleSize: claims.length,
+        rawEvidenceCount: evidence.length,
+        evidenceKinds: [...new Set(evidence.map((item) => item.label))],
+        classifiedCount: claims.length,
+        partialFailureCount: 0,
+        partialFailureDisclosed: true,
+        requiredUpstreamTotal: 1,
+        requiredUpstreamCompleted: 1,
+      },
+    };
+  } catch (err) {
+    return {
+      outcome: "safe_stop",
+      reason: `the context packet could not be built safely: ${(err as Error).message}`,
+    };
+  }
+}
 
 /**
  * `dom.build_prospect_evidence` — the prospect-side counterpart to the client

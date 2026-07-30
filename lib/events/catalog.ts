@@ -50,6 +50,56 @@ const visibilityMovement = z.object({
   material: z.boolean().default(true),
 });
 
+// -------------------------------------------------------------- knowledge
+// Specs 020-024. Only types this codebase actually publishes are declared —
+// a catalogue entry with no producer is a promise, not a contract.
+const sourceRef = z.object({
+  sourceArtifactId: z.string(),
+  sourceType: z.string(),
+  mimeType: z.string().default(""),
+  sha256: z.string().default(""),
+});
+const sourceExtractionFailure = sourceRef.extend({
+  extractorKey: z.string(),
+  extractorVersion: z.string(),
+  error: z.string(),
+});
+const sourceSuperseded = sourceRef.extend({ supersedesId: z.string() });
+
+const instructionRef = z.object({
+  instructionId: z.string(),
+  instructionType: z.string(),
+  scope: z.string().default("project"),
+  version: z.number().int().positive().default(1),
+});
+
+const wikiPageRef = z.object({
+  pageId: z.string(),
+  slug: z.string(),
+  pageType: z.string().default(""),
+});
+const wikiPageStale = wikiPageRef.extend({ reason: z.string().default("") });
+const wikiBuildRef = z.object({
+  buildId: z.string(),
+  pages: z.number().int().nonnegative().default(0),
+  compiled: z.number().int().nonnegative().default(0),
+  noOp: z.number().int().nonnegative().default(0),
+  failed: z.number().int().nonnegative().default(0),
+});
+const wikiBuildFailure = wikiBuildRef.extend({ error: z.string() });
+
+const contextPacketRef = z.object({
+  packetId: z.string(),
+  templateKey: z.string(),
+  agentKey: z.string().default(""),
+  tokenCount: z.number().int().nonnegative().default(0),
+});
+const contextPacketRejected = z.object({
+  templateKey: z.string(),
+  agentKey: z.string().default(""),
+  reason: z.string(),
+});
+
 // --------------------------------------------------------------- claim
 const claimRef = z.object({ claimId: z.string(), subject: z.string().default("") });
 const claimExpiry = claimRef.extend({ expiresAt: z.string() });
@@ -203,9 +253,36 @@ export const EVENT_CATALOG: EventTypeDefinition[] = [
   def("visibility.materially_improved", "Visibility rose past the materiality threshold", visibilityMovement),
 
   def("claim.created", "A claim entered the knowledge graph", claimRef),
+  def("claim.proposed", "A claim was proposed and awaits verification", claimRef),
   def("claim.expired", "A claim's evidence passed its freshness window", claimExpiry),
   def("claim.conflict_detected", "Two claims contradict each other", claimConflict),
+  def("claim.conflict_resolved", "A human resolved or dismissed a contradiction", claimConflict),
   def("claim.approved", "A human approved a claim", claimRef),
+  def("claim.superseded", "A newer approved version replaced a claim", claimRef),
+
+  def("source.ingested", "A raw source artifact entered the knowledge layer", sourceRef),
+  def(
+    "source.extraction_failed",
+    "A stored source could not be parsed — the artifact is kept, the parse is not",
+    sourceExtractionFailure
+  ),
+  def("source.superseded", "A newer version of a source replaced an earlier one", sourceSuperseded),
+
+  def("instruction.created", "An operating instruction was created", instructionRef),
+  def("instruction.updated", "An operating instruction gained a new version", instructionRef),
+  def("instruction.expired", "An instruction passed its effective window", instructionRef),
+
+  def("wiki.page_marked_stale", "A canonical change invalidated a compiled page", wikiPageStale),
+  def("wiki.page_build_started", "A knowledge build began", wikiBuildRef),
+  def("wiki.page_build_completed", "A knowledge build finished", wikiBuildRef),
+  def("wiki.page_build_failed", "A knowledge build failed outright", wikiBuildFailure),
+
+  def("context.packet_created", "A task context packet was assembled", contextPacketRef),
+  def(
+    "context.packet_rejected",
+    "A packet failed validation and was never handed to an agent",
+    contextPacketRejected
+  ),
 
   def("content.opportunity_created", "An evidence gap became a content opportunity", contentOpportunity),
   def("content.approved", "A content asset was approved", contentAsset),

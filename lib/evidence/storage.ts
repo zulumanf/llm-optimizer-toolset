@@ -4,20 +4,15 @@
  * SHA-256 at write time and an immutable evidence_artifacts row. Cloud
  * storage + signed URLs arrive with the Supabase milestone.
  */
-import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join, normalize } from "node:path";
+import { join } from "node:path";
 import { sql } from "@/db/client";
 import { ClassifiedError } from "@/lib/errors";
+import { resolveStoragePath, writeImmutable } from "@/lib/storage/content-addressed";
 
 const EVIDENCE_ROOT = join(process.cwd(), "var", "evidence");
 
 export function artifactPath(storageKey: string): string {
-  const path = normalize(join(EVIDENCE_ROOT, storageKey));
-  if (!path.startsWith(EVIDENCE_ROOT)) {
-    throw new ClassifiedError("validation", "Invalid storage key.");
-  }
-  return path;
+  return resolveStoragePath(EVIDENCE_ROOT, storageKey);
 }
 
 export async function storeArtifact(args: {
@@ -30,10 +25,20 @@ export async function storeArtifact(args: {
   note?: string;
   createdBy?: string;
 }): Promise<{ artifactId: string; sha256: string }> {
-  const path = artifactPath(args.storageKey);
-  await mkdir(join(path, ".."), { recursive: true });
-  const sha256 = createHash("sha256").update(args.bytes).digest("hex");
-  await writeFile(path, args.bytes, { flag: "wx" }); // never overwrite
+  const { sha256, alreadyExisted } = await writeImmutable(
+    EVIDENCE_ROOT,
+    args.storageKey,
+    args.bytes
+  );
+  if (alreadyExisted) {
+    // Evidence keys are unique by construction. A collision means a caller is
+    // about to reuse a key that already holds different bytes — refuse loudly
+    // rather than let the row and the file disagree.
+    throw new ClassifiedError(
+      "conflict",
+      `An artifact is already stored at "${args.storageKey}".`
+    );
+  }
   const [row] = await sql`
     insert into evidence_artifacts
       (response_id, kind, storage_key, mime_type, byte_size, sha256,
