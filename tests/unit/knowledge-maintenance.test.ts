@@ -104,9 +104,9 @@ function packet(overrides: Partial<ContextPacket> = {}): ContextPacket {
 }
 
 const fixture: RetrievalFixture = {
-  key: "content-jc",
+  key: "content-northvale",
   taskType: "content_drafting",
-  description: "drafting packet for JC Luxury",
+  description: "drafting packet for Northvale Demo",
   required: ["Jersey City", "40 transactions"],
   forbidden: ["Harbor Point private", "other-client-fact"],
 };
@@ -116,7 +116,7 @@ describe("retrieval fixture scoring", () => {
     const score = scoreFixture(
       fixture,
       packet(),
-      "JC Luxury operates in Jersey City and closed 40 transactions in 2025."
+      "Northvale Demo operates in Jersey City and closed 40 transactions in 2025."
     );
     expect(score.recall).toBe(1);
     expect(score.forbiddenPresent).toBe(0);
@@ -138,7 +138,7 @@ describe("retrieval fixture scoring", () => {
   });
 
   it("fails when recall falls below the floor", () => {
-    const score = scoreFixture(fixture, packet(), "JC Luxury operates in Jersey City.");
+    const score = scoreFixture(fixture, packet(), "Northvale Demo operates in Jersey City.");
     expect(score.recall).toBe(0.5);
     expect(score.passed).toBe(false);
     expect(score.failures.join(" ")).toContain("missing required");
@@ -217,7 +217,7 @@ describe("suite summary", () => {
     expect(summary.fixtures).toBe(2);
     expect(summary.passed).toBe(1);
     expect(summary.anyForbiddenPresent).toBe(true);
-    expect(summary.failures[0]?.fixtureKey).toBe("content-jc");
+    expect(summary.failures[0]?.fixtureKey).toBe("content-northvale");
   });
 
   it("returns null mean recall when nothing required anything", () => {

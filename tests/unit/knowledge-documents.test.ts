@@ -20,13 +20,13 @@ import { buildPdf, buildScannedPdf, buildXlsx } from "../fixtures/documents";
 describe("PDF extraction", () => {
   it("extracts the text layer with one span per page", async () => {
     const bytes = buildPdf([
-      "JC Luxury Group operates in Jersey City.",
+      "Northvale Demo Group operates in Jersey City.",
       "The team closed 40 transactions in 2025.",
     ]);
     const result = await pdfExtractor.extract(bytes);
 
     expect(result.status).toBe("extracted");
-    expect(result.text).toContain("JC Luxury Group operates in Jersey City.");
+    expect(result.text).toContain("Northvale Demo Group operates in Jersey City.");
     expect(result.text).toContain("closed 40 transactions");
     expect(result.spans.map((s) => s.locator)).toEqual(["page 1", "page 2"]);
     expect((result.structured as { pageCount: number }).pageCount).toBe(2);

@@ -80,7 +80,7 @@ describe("html extraction", () => {
   it("drops script and style content, keeps title and meta", async () => {
     const result = await htmlExtractor.extract(
       buf(
-        `<html><head><title>JC Luxury</title>
+        `<html><head><title>Northvale Demo</title>
          <meta name="description" content="Jersey City waterfront">
          <style>.a{color:red}</style><script>var secret=1;</script></head>
          <body><h1>Waterfront</h1><p>We closed 40 homes.</p></body></html>`
@@ -91,7 +91,7 @@ describe("html extraction", () => {
     expect(result.text).not.toContain("secret");
     expect(result.text).not.toContain("color:red");
     const structured = result.structured as { title: string; meta: Record<string, string> };
-    expect(structured.title).toBe("JC Luxury");
+    expect(structured.title).toBe("Northvale Demo");
     expect(structured.meta.description).toBe("Jersey City waterfront");
   });
 
@@ -255,17 +255,19 @@ describe("normalization preserves the original and the ambiguity", () => {
   });
 
   it("casefolds entity names and drops corporate noise", () => {
-    expect(normalizeEntityName("The JC Luxury Group, LLC")).toBe("jc luxury");
-    expect(normalizeEntityName("J.C. Luxury")).toBe("jc luxury");
-    expect(slugify("JC Luxury Group")).toBe("jc-luxury-group");
+    // "The" and the entity suffix are noise; the same firm written three ways
+    // must normalise to one key or its evidence splits across duplicates.
+    expect(normalizeEntityName("The Northvale Demo Group, LLC")).toBe("northvale demo");
+    expect(normalizeEntityName("N.D. Group")).toBe("nd");
+    expect(slugify("Northvale Demo Group")).toBe("northvale-demo-group");
   });
 
   it("bands match confidence and flags everything below exact for review", () => {
-    expect(scoreNameMatch("JC Luxury Group LLC", "JC Luxury Group")).toMatchObject({
+    expect(scoreNameMatch("Northvale Demo Group LLC", "Northvale Demo Group")).toMatchObject({
       matchStatus: "exact",
       requiresReview: false,
     });
-    expect(scoreNameMatch("JC Luxury", "JC Luxury Waterfront Team")).toMatchObject({
+    expect(scoreNameMatch("Northvale Demo", "Northvale Demo Waterfront Team")).toMatchObject({
       matchStatus: "probable",
       requiresReview: true,
     });
@@ -273,7 +275,7 @@ describe("normalization preserves the original and the ambiguity", () => {
       matchStatus: "ambiguous",
       requiresReview: true,
     });
-    expect(scoreNameMatch("Acme Widgets", "JC Luxury").matchStatus).toBe("unmatched");
+    expect(scoreNameMatch("Acme Widgets", "Northvale Demo").matchStatus).toBe("unmatched");
   });
 
   it("refuses to pick a winner when two candidates tie", () => {
@@ -287,8 +289,8 @@ describe("normalization preserves the original and the ambiguity", () => {
   });
 
   it("returns the single best match when there is no tie", () => {
-    const picked = bestMatch("JC Luxury Group", [
-      { id: "a", name: "JC Luxury Group" },
+    const picked = bestMatch("Northvale Demo Group", [
+      { id: "a", name: "Northvale Demo Group" },
       { id: "b", name: "Acme Realty" },
     ]);
     expect(picked.entityId).toBe("a");

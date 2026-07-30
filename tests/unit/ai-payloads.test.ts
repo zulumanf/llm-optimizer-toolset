@@ -22,7 +22,7 @@ describe("OpenAI / Perplexity chat completions", () => {
   it("extracts text, tokens and a clean finish", () => {
     const parsed = parseChatCompletion(fx.openaiChat);
     expect(parsed.shapeRecognized).toBe(true);
-    expect(parsed.responseText).toContain("JC Luxury Group");
+    expect(parsed.responseText).toContain("Northvale Demo Group");
     expect(parsed.refusal).toBe(false);
     expect(parsed.tokensIn).toBe(42);
     expect(parsed.tokensOut).toBe(21);
@@ -86,7 +86,7 @@ describe("OpenAI Responses API (search-enabled)", () => {
     const parsed = parseResponsesPayload(fx.openaiResponses);
     expect(parsed.shapeRecognized).toBe(true);
     expect(parsed.responseText).toBe(
-      "JC Luxury Group is cited by two Jersey City market reports."
+      "Northvale Demo Group is cited by two Jersey City market reports."
     );
     // The web_search_call item must not leak into the captured answer.
     expect(parsed.responseText).not.toContain("web_search");
@@ -112,7 +112,7 @@ describe("Anthropic messages", () => {
     const parsed = parseAnthropicMessage(fx.anthropicMessage);
     expect(parsed.shapeRecognized).toBe(true);
     expect(parsed.responseText).toBe(
-      "Two firms come up repeatedly for the Jersey City waterfront:\nJC Luxury Group and Harbor Point Partners."
+      "Two firms come up repeatedly for the Jersey City waterfront:\nNorthvale Demo Group and Harbor Point Partners."
     );
     expect(parsed.tokensIn).toBe(51);
     expect(parsed.tokensOut).toBe(29);
@@ -122,7 +122,7 @@ describe("Anthropic messages", () => {
   it("excludes thinking blocks from the captured answer", () => {
     const parsed = parseAnthropicMessage(fx.anthropicWithThinking);
     expect(parsed.responseText).toBe(
-      "JC Luxury Group operates on the Jersey City waterfront."
+      "Northvale Demo Group operates on the Jersey City waterfront."
     );
     expect(parsed.responseText).not.toContain("The user is asking");
   });
@@ -146,7 +146,7 @@ describe("Google generateContent", () => {
     const parsed = parseGooglePayload(fx.googleGenerate);
     expect(parsed.shapeRecognized).toBe(true);
     expect(parsed.responseText).toBe(
-      "JC Luxury Group is active in Jersey City and Hoboken."
+      "Northvale Demo Group is active in Jersey City and Hoboken."
     );
     expect(parsed.tokensIn).toBe(33);
     expect(parsed.tokensOut).toBe(17);

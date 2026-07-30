@@ -3,7 +3,7 @@
  *
  * The distinction this module exists to enforce:
  *
- *   FACT:        "JC Luxury operates in Jersey City."
+ *   FACT:        "Northvale Demo operates in Jersey City."
  *   INSTRUCTION: "For seller-facing content, lead with Jersey City before Hoboken."
  *
  * Today the second kind can only be expressed as a string array hanging off an

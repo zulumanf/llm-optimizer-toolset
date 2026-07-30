@@ -23,7 +23,7 @@ export const openaiChat = {
       message: {
         role: "assistant",
         content:
-          "For Jersey City waterfront condos, JC Luxury Group and Harbor Point Partners are frequently recommended.",
+          "For Jersey City waterfront condos, Northvale Demo Group and Harbor Point Partners are frequently recommended.",
         refusal: null,
       },
       finish_reason: "stop",
@@ -74,7 +74,7 @@ export const openaiResponses = {
       content: [
         {
           type: "output_text",
-          text: "JC Luxury Group is cited by two Jersey City market reports.",
+          text: "Northvale Demo Group is cited by two Jersey City market reports.",
           annotations: [
             {
               type: "url_citation",
@@ -106,7 +106,7 @@ export const anthropicMessage = {
   model: "claude-opus-5",
   content: [
     { type: "text", text: "Two firms come up repeatedly for the Jersey City waterfront:" },
-    { type: "text", text: "JC Luxury Group and Harbor Point Partners." },
+    { type: "text", text: "Northvale Demo Group and Harbor Point Partners." },
   ],
   stop_reason: "end_turn",
   usage: { input_tokens: 51, output_tokens: 29 },
@@ -128,7 +128,7 @@ export const anthropicWithThinking = {
   role: "assistant",
   content: [
     { type: "thinking", thinking: "The user is asking about Jersey City brokerages." },
-    { type: "text", text: "JC Luxury Group operates on the Jersey City waterfront." },
+    { type: "text", text: "Northvale Demo Group operates on the Jersey City waterfront." },
   ],
   stop_reason: "end_turn",
   usage: { input_tokens: 60, output_tokens: 40 },
@@ -141,7 +141,7 @@ export const googleGenerate = {
     {
       content: {
         role: "model",
-        parts: [{ text: "JC Luxury Group is active in Jersey City and Hoboken." }],
+        parts: [{ text: "Northvale Demo Group is active in Jersey City and Hoboken." }],
       },
       finishReason: "STOP",
     },

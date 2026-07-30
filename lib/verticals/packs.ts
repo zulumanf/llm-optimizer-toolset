@@ -114,7 +114,12 @@ const REAL_ESTATE_AGENT: VerticalPackDefinition = {
   promptTemplates: [
     { text: "Who is the best real estate agent in {market} for {clientType}?", category: "recommendation", tier: 1 },
     { text: "Best realtor in {neighborhood} for buying a {propertyType}", category: "recommendation", tier: 1 },
-    { text: "I'm a {clientType} moving to {market}. Which real estate agent should I contact?", category: "problem", tier: 1 },
+    // "We're", not "I'm a": client situations are entered in the plural
+    // ("sellers", "investors", "luxury buyers"), and "I'm a sellers moving to
+    // Hoboken" is not a question any real person types. The prompt IS the
+    // instrument — badly phrased prompts measure how assistants answer badly
+    // phrased prompts, which is not the thing anyone wants to know.
+    { text: "We're {clientType} moving to {market}. Which real estate agent should we contact?", category: "problem", tier: 1 },
     { text: "Who are the top listing agents in {market}?", category: "recommendation", tier: 2 },
     { text: "Best real estate agent for selling a {propertyType} in {market}", category: "recommendation", tier: 2 },
     { text: "Which agents know {neighborhood} best?", category: "recommendation", tier: 2 },

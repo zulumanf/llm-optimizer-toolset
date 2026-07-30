@@ -1,4 +1,10 @@
 /**
+ * NOTE: every client, person and figure in this file is FICTIONAL.
+ * Seed data must never carry a real company's name — an invented "closed 40
+ * transactions" claim sitting under a real prospect, marked approved, is
+ * exactly the fabricated evidence PRINCIPLES #5 forbids, and it is one report
+ * away from being stated to that company as fact.
+ *
  * Demo seed for the knowledge compilation layer (specs 020-024).
  *
  * Usage: npm run seed:knowledge
@@ -49,13 +55,13 @@ function stubExtractor(claims: unknown[]) {
   });
 }
 
-const JC_WEBSITE = `<html><head><title>JC Luxury Group</title>
+const DEMO_WEBSITE = `<html><head><title>Northvale Demo Group</title>
 <meta name="description" content="Jersey City waterfront specialists">
 </head><body>
-<h1>JC Luxury Group</h1>
-<p>JC Luxury Group operates in Jersey City and Hoboken.</p>
+<h1>Northvale Demo Group</h1>
+<p>Northvale Demo Group operates in Jersey City and Hoboken.</p>
 <p>The team specialises in waterfront condominiums and new-development sales.</p>
-<p>JC Luxury Group closed 40 residential transactions in 2025.</p>
+<p>Northvale Demo Group closed 40 residential transactions in 2025.</p>
 <p>The team is led by Ana Diaz and is affiliated with Harborline Realty.</p>
 </body></html>`;
 
@@ -78,8 +84,8 @@ We want to be known for waterfront new development, not for rentals.`;
  * should receive those three facts rather than the whole conversation.
  */
 const TRANSCRIPT = [
-  "Quarterly review — JC Luxury Group — 12 June 2026",
-  "Attendees: Ana Diaz (JC Luxury), operator (Parva).",
+  "Quarterly review — Northvale Demo Group — 12 June 2026",
+  "Attendees: Ana Diaz (Northvale Demo), operator (Parva).",
   "",
   ...Array.from({ length: 40 }, (_, i) => {
     const turn = i + 1;
@@ -113,7 +119,7 @@ async function main(): Promise<void> {
 
   // ------------------------------------------------------------ 1. clients
   const clients: Record<string, string> = {};
-  for (const name of ["JC Luxury Group", "Harbor Point Partners", "Meridian Estates"]) {
+  for (const name of ["Northvale Demo Group", "Harbor Point Partners", "Meridian Estates"]) {
     const existing = await sql`select id from projects where name = ${name}`;
     if (existing.length > 0) {
       clients[name] = existing[0]!.id as string;
@@ -123,17 +129,17 @@ async function main(): Promise<void> {
     if (!created.ok) throw new Error(`${name}: ${created.error.message}`);
     clients[name] = created.data.id;
   }
-  const jc = clients["JC Luxury Group"]!;
+  const demo = clients["Northvale Demo Group"]!;
   const harbor = clients["Harbor Point Partners"]!;
   log("info", "seed.knowledge.clients", { count: Object.keys(clients).length });
 
   // ------------------------------------------------------------ 2. entities
   for (const entity of [
-    { entityType: "organization" as const, canonicalName: "JC Luxury Group", aliases: ["JC Luxury", "JCL"] },
+    { entityType: "organization" as const, canonicalName: "Northvale Demo Group", aliases: ["Northvale Demo", "NDG"] },
     { entityType: "person" as const, canonicalName: "Ana Diaz", aliases: ["Ana M. Diaz"] },
     { entityType: "brokerage" as const, canonicalName: "Harborline Realty", aliases: [] },
   ]) {
-    await upsertEntity(user, { projectId: jc, ...entity });
+    await upsertEntity(user, { projectId: demo, ...entity });
   }
   // Markets are shared across clients — one "Jersey City", not one per client.
   for (const market of ["Jersey City", "Hoboken", "Downtown Manhattan"]) {
@@ -146,11 +152,11 @@ async function main(): Promise<void> {
 
   // ------------------------------------------------------------- 3. sources
   const website = await ingestSource(user, {
-    projectId: jc,
+    projectId: demo,
     sourceType: "website",
     origin: "url_fetch",
     url: "https://jcluxury.example/about",
-    text: JC_WEBSITE,
+    text: DEMO_WEBSITE,
     declaredMimeType: "text/html",
     privacy: "public",
     effectiveDate: "2026-06-01",
@@ -159,15 +165,15 @@ async function main(): Promise<void> {
 
   // The same bytes again: demonstrates content-addressed deduplication.
   const duplicate = await ingestSource(user, {
-    projectId: jc,
+    projectId: demo,
     sourceType: "website",
     url: "https://jcluxury.example/about",
-    text: JC_WEBSITE,
+    text: DEMO_WEBSITE,
     declaredMimeType: "text/html",
   });
 
   await ingestSource(user, {
-    projectId: jc,
+    projectId: demo,
     sourceType: "crm_export",
     origin: "connector",
     provider: "hubspot",
@@ -179,7 +185,7 @@ async function main(): Promise<void> {
 
   // A privacy-restricted source: held, extracted, and never packet-eligible.
   await ingestSource(user, {
-    projectId: jc,
+    projectId: demo,
     sourceType: "questionnaire",
     filename: "onboarding-questionnaire.md",
     text: JC_QUESTIONNAIRE,
@@ -192,7 +198,7 @@ async function main(): Promise<void> {
   // markets the client serves. Length here is representative, not padding —
   // a real 45-minute transcript is several thousand words.
   await ingestSource(user, {
-    projectId: jc,
+    projectId: demo,
     sourceType: "transcript",
     filename: "quarterly-review-2026-06.txt",
     text: TRANSCRIPT,
@@ -202,7 +208,7 @@ async function main(): Promise<void> {
 
   // An image: stored and hashed, explicitly not parsed. No OCR is claimed.
   await ingestSource(user, {
-    projectId: jc,
+    projectId: demo,
     sourceType: "image",
     filename: "listing-photo.png",
     bytes: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02]),
@@ -226,11 +232,11 @@ async function main(): Promise<void> {
     {
       caller: stubExtractor([
         {
-          subject: "JC Luxury Group",
+          subject: "Northvale Demo Group",
           predicate: "operates in",
           object: "Jersey City",
-          originalWording: "JC Luxury Group operates in Jersey City and Hoboken.",
-          normalizedWording: "JC Luxury Group operates in Jersey City and Hoboken.",
+          originalWording: "Northvale Demo Group operates in Jersey City and Hoboken.",
+          normalizedWording: "Northvale Demo Group operates in Jersey City and Hoboken.",
           category: "market",
           asOf: "2026-06-01",
           value: null,
@@ -238,13 +244,13 @@ async function main(): Promise<void> {
           locator: "block 2",
         },
         {
-          subject: "JC Luxury Group",
+          subject: "Northvale Demo Group",
           predicate: "specialises in",
           object: "waterfront condominiums",
           originalWording:
             "The team specialises in waterfront condominiums and new-development sales.",
           normalizedWording:
-            "JC Luxury Group specialises in waterfront condominiums and new-development sales.",
+            "Northvale Demo Group specialises in waterfront condominiums and new-development sales.",
           category: "specialty",
           asOf: "2026-06-01",
           value: null,
@@ -252,11 +258,11 @@ async function main(): Promise<void> {
           locator: "block 3",
         },
         {
-          subject: "JC Luxury Group",
+          subject: "Northvale Demo Group",
           predicate: "closed transactions",
           object: "40",
-          originalWording: "JC Luxury Group closed 40 residential transactions in 2025.",
-          normalizedWording: "JC Luxury Group closed 40 residential transactions in 2025.",
+          originalWording: "Northvale Demo Group closed 40 residential transactions in 2025.",
+          normalizedWording: "Northvale Demo Group closed 40 residential transactions in 2025.",
           category: "transaction",
           asOf: "2025-12-31",
           value: 40,
@@ -279,11 +285,11 @@ async function main(): Promise<void> {
         {
           // Not in the document. Dropped by the verbatim-quote guard, and it is
           // in the seed precisely so the rejection is visible in the UI.
-          subject: "JC Luxury Group",
+          subject: "Northvale Demo Group",
           predicate: "is",
           object: "the top firm",
-          originalWording: "JC Luxury is the number one waterfront firm in New Jersey.",
-          normalizedWording: "JC Luxury Group is the leading waterfront firm in New Jersey.",
+          originalWording: "Northvale Demo is the number one waterfront firm in New Jersey.",
+          normalizedWording: "Northvale Demo Group is the leading waterfront firm in New Jersey.",
           category: "ranking",
           asOf: null,
           value: null,
@@ -307,9 +313,9 @@ async function main(): Promise<void> {
 
   // ------------------------------------------- 5. an expired ranking claim
   const expiredRanking = await proposeClaim(user, {
-    projectId: jc,
+    projectId: demo,
     key: "ranking_2023",
-    canonicalText: "JC Luxury Group ranked #3 by transaction volume in Jersey City.",
+    canonicalText: "Northvale Demo Group ranked #3 by transaction volume in Jersey City.",
     asOf: "2023-11-01",
     evidence: [
       { url: "https://realtytimes.example/rankings-2023", note: "2023 market ranking table" },
@@ -322,7 +328,7 @@ async function main(): Promise<void> {
 
   // --------------------------------------------- 6. a real contradiction
   const conflicting = await proposeClaim(user, {
-    projectId: jc,
+    projectId: demo,
     key: "ana_affiliation_2026",
     canonicalText: "Ana Diaz is affiliated with Waterline Properties.",
     asOf: "2026-01-01",
@@ -341,9 +347,9 @@ async function main(): Promise<void> {
   // Align the other side's predicate so the detector can compare them.
   await sql`
     update claims set normalized_predicate = 'works_for', subject_entity = 'Ana Diaz'
-    where project_id = ${jc} and category = 'affiliation'
+    where project_id = ${demo} and category = 'affiliation'
   `;
-  const scan = await scanProjectContradictions(jc);
+  const scan = await scanProjectContradictions(demo);
   log("info", "seed.knowledge.contradictions", scan);
 
   // -------------------------------------------------------- 7. a rival client
@@ -361,7 +367,7 @@ async function main(): Promise<void> {
 
   // ---------------------------------------------------- 8. instructions
   await createInstruction(user, {
-    projectId: jc,
+    projectId: demo,
     instructionType: "brand_voice",
     scope: "project",
     title: "Brand voice",
@@ -369,7 +375,7 @@ async function main(): Promise<void> {
     owner: "Account lead",
   });
   await createInstruction(user, {
-    projectId: jc,
+    projectId: demo,
     instructionType: "prohibited_claim",
     scope: "project",
     title: "No superlatives",
@@ -378,7 +384,7 @@ async function main(): Promise<void> {
     owner: "Compliance",
   });
   await createInstruction(user, {
-    projectId: jc,
+    projectId: demo,
     instructionType: "confidentiality",
     scope: "project",
     title: "Riverside Tower is confidential",
@@ -388,7 +394,7 @@ async function main(): Promise<void> {
   });
   // Awaiting approval: excluded from packets and disclosed as missing context.
   await createInstruction(user, {
-    projectId: jc,
+    projectId: demo,
     instructionType: "preferred_positioning",
     scope: "project",
     title: "Draft positioning (unapproved)",
@@ -398,7 +404,7 @@ async function main(): Promise<void> {
   });
   // Expired: visible in the UI, never applied.
   await createInstruction(user, {
-    projectId: jc,
+    projectId: demo,
     instructionType: "tone",
     scope: "project",
     title: "Spring campaign tone (expired)",
@@ -433,7 +439,7 @@ async function main(): Promise<void> {
 
   // 10. An incremental rebuild that is almost entirely no-ops — the property
   // that keeps version history meaningful.
-  const rebuild = await compileAffected({ projectId: jc, trigger: "manual", force: true });
+  const rebuild = await compileAffected({ projectId: demo, trigger: "manual", force: true });
   log("info", "seed.knowledge.rebuild", { compiled: rebuild.compiled, noOp: rebuild.noOp });
 
   // 11. A deliberately failed build, so the failure UI has something to show.
@@ -459,13 +465,13 @@ async function main(): Promise<void> {
     try {
       const { packet } = await buildValidatedPacket(
         {
-          projectId: jc,
+          projectId: demo,
           templateKey,
           taskObjective:
             templateKey === "content_drafting"
               ? "Draft a Jersey City waterfront buyer guide."
               : templateKey === "meeting_preparation"
-                ? "Prepare for the quarterly review with JC Luxury Group."
+                ? "Prepare for the quarterly review with Northvale Demo Group."
                 : "Compose the June executive report.",
           agentKey: templateKey === "content_drafting" ? "content_draft" : undefined,
         },
@@ -484,9 +490,9 @@ async function main(): Promise<void> {
   // 13. A blocked cross-client retrieval, recorded so the isolation story is
   // demonstrable rather than merely asserted.
   const isolationCheck = await buildPacket({
-    projectId: jc,
+    projectId: demo,
     templateKey: "meeting_preparation",
-    taskObjective: "Prepare for the JC Luxury Group review.",
+    taskObjective: "Prepare for the Northvale Demo Group review.",
   });
   const leaked = isolationCheck.items.some((item) => item.body.includes("Harbor Point"));
   log("info", "seed.knowledge.isolation", { crossClientLeak: leaked });
@@ -494,7 +500,7 @@ async function main(): Promise<void> {
 
   // ------------------------------------------------- 14. token comparison
   const comparison = await compareContextModes({
-    projectId: jc,
+    projectId: demo,
     templateKey: "content_drafting",
     taskObjective: "Draft a Jersey City waterfront buyer guide.",
   });

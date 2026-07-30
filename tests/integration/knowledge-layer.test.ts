@@ -31,11 +31,11 @@ function stubCaller(claims: unknown[]) {
   });
 }
 
-const WEBSITE_HTML = `<html><head><title>JC Luxury</title></head><body>
-<h1>JC Luxury Group</h1>
-<p>JC Luxury operates in Jersey City and Hoboken.</p>
+const WEBSITE_HTML = `<html><head><title>Northvale Demo</title></head><body>
+<h1>Northvale Demo Group</h1>
+<p>Northvale Demo operates in Jersey City and Hoboken.</p>
 <p>The team specialises in waterfront condominiums.</p>
-<p>JC Luxury closed 40 homes in 2025.</p>
+<p>Northvale Demo closed 40 homes in 2025.</p>
 </body></html>`;
 
 describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
@@ -98,7 +98,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
         evidence, jobs, domain_events, audit_log, projects
       restart identity cascade
     `);
-    const a = await projectSvc.createProject(user, { name: "JC Luxury" });
+    const a = await projectSvc.createProject(user, { name: "Northvale Demo" });
     const b = await projectSvc.createProject(user, { name: "Hudson Rivals" });
     if (!a.ok || !b.ok) throw new Error("project setup failed");
     projectA = a.data.id;
@@ -234,7 +234,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
     await entities.upsertEntity(user, {
       projectId: projectA,
       entityType: "organization",
-      canonicalName: "JC Luxury",
+      canonicalName: "Northvale Demo",
     });
     const source = await ingest.ingestSource(user, {
       projectId: projectA,
@@ -252,11 +252,11 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
       {
         caller: stubCaller([
           {
-            subject: "JC Luxury",
+            subject: "Northvale Demo",
             predicate: "operates in",
             object: "Jersey City",
-            originalWording: "JC Luxury operates in Jersey City and Hoboken.",
-            normalizedWording: "JC Luxury operates in Jersey City and Hoboken.",
+            originalWording: "Northvale Demo operates in Jersey City and Hoboken.",
+            normalizedWording: "Northvale Demo operates in Jersey City and Hoboken.",
             category: "market",
             asOf: null,
             value: null,
@@ -265,11 +265,11 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
           },
           {
             // Not in the document — a fabrication, and it must not survive.
-            subject: "JC Luxury",
+            subject: "Northvale Demo",
             predicate: "is",
             object: "the top firm",
-            originalWording: "JC Luxury is the number one firm in New Jersey.",
-            normalizedWording: "JC Luxury is the leading firm in New Jersey.",
+            originalWording: "Northvale Demo is the number one firm in New Jersey.",
+            normalizedWording: "Northvale Demo is the leading firm in New Jersey.",
             category: "ranking",
             asOf: null,
             value: null,
@@ -356,7 +356,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   }
 
   it("compiles a wiki with section provenance and no free-floating facts", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
 
     const build = await planner.compileAffected({
       projectId: projectA,
@@ -369,7 +369,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
 
     const page = await compile.readActivePage({ projectId: projectA, slug: "client-summary" });
     expect(page).not.toBeNull();
-    expect(page!.body).toContain("JC Luxury operates in Jersey City.");
+    expect(page!.body).toContain("Northvale Demo operates in Jersey City.");
     expect(page!.stale).toBe(false);
 
     const provenance = await compile.readPageProvenance(page!.versionId);
@@ -386,7 +386,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   });
 
   it("produces no new version when nothing changed", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     await planner.compileAffected({ projectId: projectA, trigger: "initial", force: true });
 
     const before = await compile.readActivePage({ projectId: projectA, slug: "client-summary" });
@@ -405,14 +405,14 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   });
 
   it("marks only the pages that depend on a changed claim", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     await planner.compileAffected({ projectId: projectA, trigger: "initial", force: true });
 
     const stalePagesBefore = await stale.stalePages(projectA);
     expect(stalePagesBefore).toHaveLength(0);
 
     // Approving a claim publishes claim.approved, which marks its dependents.
-    await approveClaim(projectA, "specialises_in", "JC Luxury specialises in waterfront condos.", {
+    await approveClaim(projectA, "specialises_in", "Northvale Demo specialises in waterfront condos.", {
       category: "specialty",
     });
 
@@ -427,7 +427,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   });
 
   it("records a partial build when one page fails, never 'completed'", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     const { CLIENT_PAGE_TEMPLATES } = await import("@/lib/knowledge/compiler/templates");
     const victim = CLIENT_PAGE_TEMPLATES.find((t) => t.slug === "markets")!;
     const original = victim.select;
@@ -456,7 +456,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   });
 
   it("keeps every historical page version readable", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     await planner.compileAffected({ projectId: projectA, trigger: "initial", force: true });
     await approveClaim(projectA, "team_size", "The team has 8 agents.", { category: "team" });
     await planner.compileAffected({ projectId: projectA, trigger: "manual", force: true });
@@ -474,7 +474,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   });
 
   it("refuses to mutate a compiled page version", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     await planner.compileAffected({ projectId: projectA, trigger: "initial", force: true });
     const page = await compile.readActivePage({ projectId: projectA, slug: "client-summary" });
 
@@ -555,7 +555,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   // ---------------------------------------------------------- context packets
 
   it("builds a task packet that separates instructions from facts and stays in budget", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     await instructions.createInstruction(user, {
       projectId: projectA,
       instructionType: "prohibited_claim",
@@ -581,7 +581,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
     expect(rendered).toContain("# Operating instructions");
     expect(rendered).toContain("never restate them as client facts");
     expect(rendered).toContain("# Approved client facts");
-    expect(rendered).toContain("JC Luxury operates in Jersey City.");
+    expect(rendered).toContain("Northvale Demo operates in Jersey City.");
     expect(rendered).toContain("Never describe the client as best, top or leading.");
 
     // Every item carries a reason for being there.
@@ -594,10 +594,10 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   });
 
   it("withholds a non-public claim from a public-audience packet and records it", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     // Same category the template selects, so the claim is genuinely in scope
     // and its exclusion is a privacy decision rather than a scope one.
-    await approveClaim(projectA, "private_deal", "JC Luxury closed a confidential sale.", {
+    await approveClaim(projectA, "private_deal", "Northvale Demo closed a confidential sale.", {
       category: "market",
       privacy: "internal",
     });
@@ -615,7 +615,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   });
 
   it("never lets a restricted claim into any packet", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     await approveClaim(projectA, "restricted_fact", "Do not disclose: pending litigation.", {
       category: "general",
       privacy: "restricted",
@@ -634,11 +634,11 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   });
 
   it("excludes a stale claim from a public packet and discloses the exclusion", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     const rankingId = await approveClaim(
       projectA,
       "ranking_2023",
-      "JC Luxury ranked #3 in Jersey City.",
+      "Northvale Demo ranked #3 in Jersey City.",
       { category: "ranking" }
     );
     await sql`update claims set as_of = '2023-01-01' where id = ${rankingId}`;
@@ -658,7 +658,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   });
 
   it("carries an open contradiction into the packet rather than hiding it", async () => {
-    const first = await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    const first = await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     await sql`
       insert into claim_contradictions (project_id, claim_id, severity, description, detected_by)
       values (${projectA}, ${first}, 'high', 'Two sources disagree on the market.', 'value_divergence')
@@ -692,13 +692,13 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   // ------------------------------------------------------------- isolation
 
   it("never places one client's claim in another client's packet", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     await approveClaim(projectB, "rival_fact", "Hudson Rivals operates in Hoboken.");
 
     const packet = await builder.buildPacket({
       projectId: projectA,
       templateKey: "meeting_preparation",
-      taskObjective: "Prepare for the JC Luxury meeting.",
+      taskObjective: "Prepare for the Northvale Demo meeting.",
     });
     const bodies = packet.items.map((i) => i.body).join(" ");
     expect(bodies).not.toContain("Hudson Rivals");
@@ -714,7 +714,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   });
 
   it("fails validation if a foreign claim is ever smuggled into a packet", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     const foreign = await approveClaim(projectB, "rival_fact", "Hudson Rivals operates in Hoboken.");
 
     const packet = await builder.buildPacket({
@@ -744,7 +744,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
   });
 
   it("keeps one client's compiled pages out of another's", async () => {
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     await approveClaim(projectB, "rival_fact", "Hudson Rivals operates in Hoboken.");
     await planner.compileAffected({ projectId: projectA, trigger: "initial", force: true });
     await planner.compileAffected({ projectId: projectB, trigger: "initial", force: true });
@@ -754,7 +754,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
     expect(a!.body).toContain("Jersey City");
     expect(a!.body).not.toContain("Hudson Rivals");
     expect(b!.body).toContain("Hoboken");
-    expect(b!.body).not.toContain("JC Luxury operates");
+    expect(b!.body).not.toContain("Northvale Demo operates");
   });
 
   // ---------------------------------------------------------- contradictions
@@ -798,7 +798,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
       filename: "site.html",
       bytes: Buffer.from(WEBSITE_HTML.repeat(20), "utf8"),
     });
-    await approveClaim(projectA, "operates_in", "JC Luxury operates in Jersey City.");
+    await approveClaim(projectA, "operates_in", "Northvale Demo operates in Jersey City.");
     await planner.compileAffected({ projectId: projectA, trigger: "initial", force: true });
 
     const result = await experiment.compareContextModes({
@@ -826,7 +826,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
     await entities.upsertEntity(user, {
       projectId: projectA,
       entityType: "organization",
-      canonicalName: "JC Luxury",
+      canonicalName: "Northvale Demo",
     });
     const source = await ingest.ingestSource(user, {
       projectId: projectA,
@@ -846,11 +846,11 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
       {
         caller: stubCaller([
           {
-            subject: "JC Luxury",
+            subject: "Northvale Demo",
             predicate: "operates in",
             object: "Jersey City",
-            originalWording: "JC Luxury operates in Jersey City and Hoboken.",
-            normalizedWording: "JC Luxury operates in Jersey City and Hoboken.",
+            originalWording: "Northvale Demo operates in Jersey City and Hoboken.",
+            normalizedWording: "Northvale Demo operates in Jersey City and Hoboken.",
             category: "market",
             asOf: "2026-01-01",
             value: null,

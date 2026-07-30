@@ -271,11 +271,11 @@ describe("contradiction detection", () => {
 
 function draft(overrides: Partial<ProposedClaimDraft> = {}): ProposedClaimDraft {
   return {
-    subject: "JC Luxury",
+    subject: "Northvale Demo",
     predicate: "operates in",
     object: "Jersey City",
-    originalWording: "JC Luxury operates in Jersey City.",
-    normalizedWording: "JC Luxury operates in Jersey City.",
+    originalWording: "Northvale Demo operates in Jersey City.",
+    normalizedWording: "Northvale Demo operates in Jersey City.",
     category: "market",
     asOf: null,
     value: null,
@@ -286,7 +286,7 @@ function draft(overrides: Partial<ProposedClaimDraft> = {}): ProposedClaimDraft 
 }
 
 describe("claim extraction guards", () => {
-  const document = "About us. JC Luxury operates in Jersey City. We closed 40 homes.";
+  const document = "About us. Northvale Demo operates in Jersey City. We closed 40 homes.";
 
   it("accepts a claim whose quote appears in the document", () => {
     expect(verifyDraft(draft(), document)).toEqual({ ok: true });
@@ -294,7 +294,7 @@ describe("claim extraction guards", () => {
 
   it("rejects a quote the document does not contain — the model wrote it, not found it", () => {
     const result = verifyDraft(
-      draft({ originalWording: "JC Luxury is the top firm in Hoboken." }),
+      draft({ originalWording: "Northvale Demo is the top firm in Hoboken." }),
       document
     );
     expect(result).toMatchObject({ ok: false });
@@ -303,7 +303,10 @@ describe("claim extraction guards", () => {
 
   it("tolerates whitespace reflow, because extraction reflows text", () => {
     expect(
-      verifyDraft(draft({ originalWording: "JC   Luxury\noperates in Jersey City." }), document)
+      verifyDraft(
+        draft({ originalWording: "Northvale   Demo\noperates in Jersey City." }),
+        document
+      )
     ).toEqual({ ok: true });
   });
 
@@ -537,7 +540,7 @@ describe("compiler", () => {
           {
             key: "bad",
             heading: "Bad",
-            body: "JC Luxury closed $180M.",
+            body: "Northvale Demo closed $180M.",
             material: true,
             provenance: {
               claimIds: [],
