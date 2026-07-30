@@ -18,11 +18,23 @@ function getClient(): GoogleGenAI {
 
 export const googleProvider: AIProvider = {
   id: "google",
-  // Model ids pinned 2026-07-27 — UNVERIFIED (post-knowledge-cutoff drift
-  // possible); confirm against Google's model list before the first real run
+  // Model ids VERIFIED BY CALLING THEM, 2026-07-30 — not by reading the model
+  // list, which is not the same test. `gemini-2.5-flash` and `gemini-2.5-pro`
+  // both appear in /v1beta/models on this account and both return
+  // 404 "no longer available to new users" on generateContent. A run pinned to
+  // a listed-but-uncallable model fails every cell and looks like an outage.
+  //
+  // Preview ids are unavoidable here: they are what this account can call. They
+  // are NOT dated snapshots, so a Gemini run is less reproducible than an
+  // OpenAI one (docs/12) — stated rather than papered over.
+  //
+  // NOTE: this adapter calls generateContent WITHOUT search grounding, so it
+  // is the counterpart of a no-search OpenAI run, not of a +search one. It
+  // returns no citations, and a run using it cannot answer "which sources did
+  // the model read".
   models: [
-    { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", provider: "google" },
-    { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", provider: "google" },
+    { id: "gemini-3-flash-preview", label: "Gemini 3 Flash (preview)", provider: "google" },
+    { id: "gemini-3-pro-preview", label: "Gemini 3 Pro (preview)", provider: "google" },
   ],
 
   async runPrompt(req: PromptRequest): Promise<ProviderResult> {

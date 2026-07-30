@@ -14,7 +14,9 @@ import { costMicroUsd, microToUsd, usdToMicro } from "@/lib/ai/pricing";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 import { expandCells, type Cell } from "@/lib/runs/cells";
+import { concurrencyFor, createRateGate } from "@/lib/ai/limits";
 
+/** Ceiling. The effective figure is the lowest limit among the run's providers. */
 const CONCURRENCY = 4;
 const CANCEL_CHECK_EVERY = 5;
 
@@ -69,9 +71,16 @@ export async function executeRun(runId: string): Promise<void> {
     pendingCells: pending.length,
   });
 
+  // Pace by provider. A run mixing providers is bounded by the strictest of
+  // them, because one rate-limited provider failing every cell wastes the whole
+  // run — the Gemini free tier burned 40 of 40 in six seconds before this.
+  const providersInRun = [...new Set(pending.map((cell) => cell.provider))];
+  const effectiveConcurrency = concurrencyFor(providersInRun, CONCURRENCY);
+  const waitForSlot = createRateGate();
+
   let cursor = 0;
   const workers = Array.from(
-    { length: Math.min(CONCURRENCY, pending.length) },
+    { length: Math.min(effectiveConcurrency, pending.length) },
     async () => {
       while (true) {
         const index = cursor;
@@ -93,6 +102,7 @@ export async function executeRun(runId: string): Promise<void> {
           return;
         }
         state.launched += 1;
+        await waitForSlot(cell.provider);
         await executeCell(runId, cell, state);
       }
     }
