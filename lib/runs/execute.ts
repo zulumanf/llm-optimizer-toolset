@@ -115,6 +115,20 @@ async function executeCell(
     );
     const micro = costMicroUsd(cell.model, result.tokensIn, result.tokensOut);
     state.spentMicro += micro;
+
+    // An unrecognised payload shape is a parser failure wearing the costume of
+    // an empty answer (docs/09). The raw payload is still captured below, so
+    // the cell is re-parseable — but it must be loud, or a provider changing
+    // its response format looks like a run of models that said nothing.
+    if (result.shapeRecognized === false) {
+      log("error", "provider.shape_unrecognized", {
+        runId,
+        provider: cell.provider,
+        model: cell.model,
+        promptId: cell.promptId,
+        note: result.shapeNote ?? "",
+      });
+    }
     try {
       await sql`
         insert into responses

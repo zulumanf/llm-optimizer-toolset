@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AIProvider, PromptRequest, ProviderResult } from "@/lib/ai/types";
+import { parseAnthropicMessage } from "@/lib/ai/payloads";
 
 // Cap on thinking + response tokens per answer; billing follows actual usage.
 const MAX_TOKENS = 8192;
@@ -34,19 +35,9 @@ export const anthropicProvider: AIProvider = {
       messages: [{ role: "user", content: req.promptText }],
     });
 
-    // A refusal (stop_reason) is a valid measurement, not an error (docs/12)
-    const refusal = response.stop_reason === "refusal";
-    const responseText = response.content
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("\n");
-
-    return {
-      rawPayload: response,
-      responseText,
-      refusal,
-      tokensIn: response.usage.input_tokens,
-      tokensOut: response.usage.output_tokens,
-    };
+    // Parsing lives in lib/ai/payloads.ts: testable without a network call,
+    // and an unrecognised shape is flagged rather than read as an empty
+    // answer. A refusal (stop_reason) stays a valid measurement (docs/12).
+    return { rawPayload: response, ...parseAnthropicMessage(response) };
   },
 };

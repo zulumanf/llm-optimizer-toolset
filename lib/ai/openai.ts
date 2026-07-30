@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { AIProvider, PromptRequest, ProviderResult } from "@/lib/ai/types";
+import { parseChatCompletion, parseResponsesPayload } from "@/lib/ai/payloads";
 
 let client: OpenAI | undefined;
 
@@ -37,14 +38,6 @@ export function baseModelId(modelId: string): string {
     : modelId;
 }
 
-interface ResponsesPayload {
-  output?: {
-    type: string;
-    content?: { type: string; text?: string }[];
-  }[];
-  usage?: { input_tokens?: number; output_tokens?: number };
-}
-
 export const openaiProvider: AIProvider = {
   id: "openai",
   // Dated snapshots pinned 2026-07-27, VERIFIED against the account's live
@@ -66,44 +59,22 @@ export const openaiProvider: AIProvider = {
   ],
 
   async runPrompt(req: PromptRequest): Promise<ProviderResult> {
+    // Parsing lives in lib/ai/payloads.ts so it is testable without a network
+    // call, and so an unrecognised shape is flagged rather than silently
+    // becoming an empty answer (docs/09).
     if (isSearchModel(req.model)) {
-      const response = (await getClient().responses.create({
+      const response = await getClient().responses.create({
         model: baseModelId(req.model),
         tools: [{ type: "web_search" }],
         input: req.promptText,
-      })) as unknown as ResponsesPayload;
-
-      const text = (response.output ?? [])
-        .filter((item) => item.type === "message")
-        .flatMap((item) => item.content ?? [])
-        .filter((c) => c.type === "output_text")
-        .map((c) => c.text ?? "")
-        .join("\n");
-
-      return {
-        rawPayload: response,
-        responseText: text,
-        refusal: false,
-        tokensIn: response.usage?.input_tokens ?? 0,
-        tokensOut: response.usage?.output_tokens ?? 0,
-      };
+      });
+      return { rawPayload: response, ...parseResponsesPayload(response) };
     }
 
     const response = await getClient().chat.completions.create({
       model: req.model,
       messages: [{ role: "user", content: req.promptText }],
     });
-
-    const choice = response.choices[0];
-    const refusal =
-      Boolean(choice?.message?.refusal) || choice?.finish_reason === "content_filter";
-
-    return {
-      rawPayload: response,
-      responseText: choice?.message?.content ?? "",
-      refusal,
-      tokensIn: response.usage?.prompt_tokens ?? 0,
-      tokensOut: response.usage?.completion_tokens ?? 0,
-    };
+    return { rawPayload: response, ...parseChatCompletion(response) };
   },
 };

@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import type { AIProvider, PromptRequest, ProviderResult } from "@/lib/ai/types";
+import { parseGooglePayload } from "@/lib/ai/payloads";
 
 let client: GoogleGenAI | undefined;
 
@@ -30,16 +31,13 @@ export const googleProvider: AIProvider = {
       contents: req.promptText,
     });
 
-    const refusal =
-      response.promptFeedback?.blockReason !== undefined &&
-      response.promptFeedback?.blockReason !== null;
-
-    return {
-      rawPayload: JSON.parse(JSON.stringify(response)),
-      responseText: response.text ?? "",
-      refusal,
-      tokensIn: response.usageMetadata?.promptTokenCount ?? 0,
-      tokensOut: response.usageMetadata?.candidatesTokenCount ?? 0,
-    };
+    // Serialised first: the SDK object exposes `.text` as a getter that does
+    // not survive storage, so the parser must read what `raw_payload` will
+    // actually hold — otherwise re-parsing captured evidence later sees
+    // nothing. Parsing lives in lib/ai/payloads.ts so it is testable without a
+    // network call, and an unrecognised shape is flagged rather than silently
+    // becoming an empty answer (docs/09).
+    const payload = JSON.parse(JSON.stringify(response));
+    return { rawPayload: payload, ...parseGooglePayload(payload) };
   },
 };
