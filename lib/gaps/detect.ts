@@ -27,8 +27,26 @@ export interface CompanyOutcome {
   companyId: string;
   name: string;
   isSubject: boolean;
+  /** Over every response in the run, including prompts that named the company. */
   mentionRate: number;
   recommendationRate: number;
+  /**
+   * Over responses to prompts that did NOT name this company — the only rate
+   * that measures visibility rather than echo.
+   *
+   * A prompt like "Who are the best SERHANT agents in Jersey City?" will
+   * almost always produce a SERHANT mention, because we put the word in the
+   * question. Counting that as visibility inflates exactly the companies a
+   * brand-probe run was designed to interrogate, and would let a client be
+   * told they are "mentioned 25% of the time" on the strength of questions we
+   * asked about them by name.
+   *
+   * Null when the run contains no such prompt for this company — "not
+   * measured", never zero, because zero here would read as invisibility.
+   */
+  organicMentionRate: number | null;
+  organicRecommendationRate: number | null;
+  organicResponses: number;
 }
 
 export interface DomainCitation {
@@ -101,9 +119,13 @@ export function detectGaps(input: {
   const { subjectName, prompts, companies, domains } = input;
   const findings: GapFinding[] = [];
   const competitors = companies.filter((c) => !c.isSubject);
-  const topCompetitor = [...competitors].sort(
-    (a, b) => b.mentionRate - a.mentionRate
-  )[0];
+  // Ranked on ORGANIC rate: a competitor that only appears because a prompt
+  // named it is not the one out-competing the client for attention. Those
+  // with no organic sample are excluded rather than treated as zero.
+  const topCompetitor = [...competitors]
+    .filter((c) => c.organicMentionRate !== null && c.organicResponses > 0)
+    .sort((a, b) => (b.organicMentionRate ?? 0) - (a.organicMentionRate ?? 0))[0];
+  const topCompetitorRate = topCompetitor?.organicMentionRate ?? 0;
 
   // 1. Entity gap: absent from unbranded prompts while a competitor shows up
   const unbranded = prompts.filter((p) => UNBRANDED.has(p.category));
@@ -111,16 +133,16 @@ export function detectGaps(input: {
   const unbrandedMentions = unbranded.reduce((a, p) => a + p.subjectMentioned, 0);
   if (unbrandedResponses > 0 && topCompetitor) {
     const rate = unbrandedMentions / unbrandedResponses;
-    if (rate < 0.1 && topCompetitor.mentionRate >= 0.3) {
+    if (rate < 0.1 && topCompetitorRate >= 0.3) {
       const severity = 1 - rate / 0.1;
       findings.push({
         gapType: "entity",
         promptCategory: null,
-        finding: `${subjectName} appears in ${(rate * 100).toFixed(0)}% of unbranded answers while ${topCompetitor.name} appears in ${(topCompetitor.mentionRate * 100).toFixed(0)}% — the models' retrieval sources don't surface ${subjectName} for the category at all.`,
+        finding: `${subjectName} appears in ${(rate * 100).toFixed(0)}% of unbranded answers while ${topCompetitor.name} appears in ${(topCompetitorRate * 100).toFixed(0)}% — the models' retrieval sources don't surface ${subjectName} for the category at all.`,
         detail: {
           unbrandedMentionRate: rate,
           topCompetitor: topCompetitor.name,
-          topCompetitorMentionRate: topCompetitor.mentionRate,
+          topCompetitorMentionRate: topCompetitorRate,
         },
         severity,
         opportunityScore: score("entity", severity, 1.0),
@@ -147,15 +169,25 @@ export function detectGaps(input: {
 
   // 3. Recommendation gap: mentioned but never endorsed
   const subject = companies.find((c) => c.isSubject);
-  if (subject && subject.mentionRate > 0 && subject.recommendationRate === 0) {
-    const severity = Math.min(1, subject.mentionRate * 2);
+  // Organic only. "Mentioned but never recommended" is a real and useful
+  // finding — but only when something other than our own question put the
+  // name in the answer.
+  const subjectOrganic = subject?.organicMentionRate ?? null;
+  if (
+    subject &&
+    subjectOrganic !== null &&
+    subjectOrganic > 0 &&
+    (subject.organicRecommendationRate ?? 0) === 0
+  ) {
+    const severity = Math.min(1, subjectOrganic * 2);
     findings.push({
       gapType: "recommendation",
       promptCategory: null,
-      finding: `${subjectName} gets mentioned (${(subject.mentionRate * 100).toFixed(0)}%) but never recommended — answers describe it without endorsing it (weak proof/differentiation signals).`,
+      finding: `${subjectName} gets mentioned (${(subjectOrganic * 100).toFixed(0)}% of answers to questions that did not name it) but never recommended — answers describe it without endorsing it (weak proof/differentiation signals).`,
       detail: {
-        mentionRate: subject.mentionRate,
-        recommendationRate: subject.recommendationRate,
+        organicMentionRate: subjectOrganic,
+        organicRecommendationRate: subject.organicRecommendationRate,
+        organicResponses: subject.organicResponses,
       },
       severity,
       opportunityScore: score("recommendation", severity, 0.9),
@@ -185,12 +217,12 @@ export function detectGaps(input: {
     const mentions = inCategory.reduce((a, p) => a + p.subjectMentioned, 0);
     if (responses === 0 || !topCompetitor) continue;
     const rate = mentions / responses;
-    if (rate < 0.2 && topCompetitor.mentionRate - rate >= 0.3) {
-      const severity = Math.min(1, (topCompetitor.mentionRate - rate) / 0.7);
+    if (rate < 0.2 && topCompetitorRate - rate >= 0.3) {
+      const severity = Math.min(1, (topCompetitorRate - rate) / 0.7);
       findings.push({
         gapType: "category_share",
         promptCategory: category,
-        finding: `"${category}" prompts: ${subjectName} at ${(rate * 100).toFixed(0)}% vs ${topCompetitor.name} at ${(topCompetitor.mentionRate * 100).toFixed(0)}% — the category conversation happens without ${subjectName}.`,
+        finding: `"${category}" prompts: ${subjectName} at ${(rate * 100).toFixed(0)}% vs ${topCompetitor.name} at ${(topCompetitorRate * 100).toFixed(0)}% — the category conversation happens without ${subjectName}.`,
         detail: { category, subjectRate: rate, leader: topCompetitor.name },
         severity,
         opportunityScore: score("category_share", severity, CATEGORY_VALUE[category] ?? 0.5),

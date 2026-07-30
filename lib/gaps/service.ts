@@ -96,11 +96,70 @@ export async function analyzeRun(
           isSubject: id === subject.id,
           mentionRate: 0,
           recommendationRate: 0,
+          organicMentionRate: null,
+          organicRecommendationRate: null,
+          organicResponses: 0,
         });
       }
       const entry = byCompany.get(id)!;
       if (row.metric === "mention_rate") entry.mentionRate = Number(row.value);
       else entry.recommendationRate = Number(row.value);
+    }
+
+    /**
+     * Organic rates: per company, over responses to prompts that did NOT name
+     * that company.
+     *
+     * Prompt *category* cannot decide this. "Who are the best SERHANT agents
+     * in Jersey City?" is categorised `recommendation`, yet a SERHANT mention
+     * in its answer measures nothing but our own question coming back. So the
+     * exclusion is per company and based on the prompt text — a
+     * SERHANT-anchored prompt still counts as organic evidence for Compass.
+     *
+     * Matching uses name plus aliases, the same vocabulary the classifier uses
+     * to detect a mention in the first place. Tokens of 3 characters or fewer
+     * are skipped: a two-letter alias matches half the English language.
+     */
+    const organicRows = await sql`
+      with named as (
+        select c.id as company_id, r.id as response_id,
+          exists (
+            select 1 from unnest(array[c.name] || coalesce(c.aliases, '{}')) as token
+            where length(trim(token)) > 3
+              and r.prompt_text ilike '%' || trim(token) || '%'
+          ) as prompt_named_company
+        from responses r
+        cross join companies c
+        where r.run_id = ${runId} and r.error is null
+          and c.id = any(${[...byCompany.keys()]}::uuid[])
+      )
+      select n.company_id,
+        count(*) filter (where not n.prompt_named_company)::int as organic_responses,
+        count(*) filter (where not n.prompt_named_company and m.mentioned)::int as organic_mentions,
+        count(*) filter (where not n.prompt_named_company and m.recommended)::int as organic_recommendations
+      from named n
+      left join mentions m on m.response_id = n.response_id
+        and m.company_id = n.company_id
+        and not exists (
+          select 1 from mentions later
+          where later.response_id = m.response_id
+            and later.company_id = m.company_id
+            and later.revision > m.revision
+        )
+      group by n.company_id
+    `;
+    for (const row of organicRows) {
+      const entry = byCompany.get(row.companyId as string);
+      if (!entry) continue;
+      const responses = Number(row.organicResponses ?? 0);
+      entry.organicResponses = responses;
+      // Null, not zero: a company that every prompt named has no organic
+      // sample, and 0% there would read as invisibility rather than as "this
+      // run cannot answer that question".
+      entry.organicMentionRate =
+        responses === 0 ? null : Number(row.organicMentions ?? 0) / responses;
+      entry.organicRecommendationRate =
+        responses === 0 ? null : Number(row.organicRecommendations ?? 0) / responses;
     }
 
     // Domain citations: in-text URLs plus the search citations each provider
