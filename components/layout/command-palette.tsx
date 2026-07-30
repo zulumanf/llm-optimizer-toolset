@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PROJECT_SECTIONS as SECTIONS } from "@/components/layout/sections";
 
 interface Target {
   label: string;
@@ -24,24 +25,6 @@ const GLOBAL: Target[] = [
   { label: "Onboard a client", sublabel: "Operations", href: "/onboarding", keywords: "onboard new client add vertical pack" },
 ];
 
-/** Sections mirror the workspace nav; jumping straight to a client's section
- * is the most common navigation and used to take three clicks. */
-const SECTIONS: { path: string; label: string }[] = [
-  { path: "", label: "Dashboard" },
-  { path: "/knowledge", label: "Knowledge" },
-  { path: "/prompts", label: "Prompts" },
-  { path: "/runs", label: "Runs" },
-  { path: "/review", label: "Review" },
-  { path: "/gaps", label: "Gaps" },
-  { path: "/accuracy", label: "Accuracy" },
-  { path: "/content", label: "Content" },
-  { path: "/competitors", label: "Competitors" },
-  { path: "/reports", label: "Reports" },
-  { path: "/validation", label: "Validation" },
-  { path: "/interventions", label: "Interventions" },
-  { path: "/tasks", label: "Tasks" },
-  { path: "/settings", label: "Settings" },
-];
 
 export function CommandPalette({
   projects,
