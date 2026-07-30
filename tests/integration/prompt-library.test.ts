@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import type { FrozenPrompt } from "@/lib/prompts/types";
+import { seedTestActors } from "../helpers/actors";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -37,6 +38,7 @@ describe.skipIf(!TEST_URL)("prompt library (integration)", () => {
       cwd: ROOT,
       stdio: "pipe",
     });
+    await seedTestActors(sql);
   });
 
   beforeEach(async () => {

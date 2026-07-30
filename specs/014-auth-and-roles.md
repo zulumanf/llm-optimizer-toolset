@@ -1,6 +1,6 @@
 # Spec 014 — Real Authentication & Role Enforcement
 
-> Status: **blocked on operator action** (needs a Supabase project)
+> Status: done (2026-07-30) — see "Not built" below
 > Depends on: specs/001 (roles) · docs/10 · DECISIONS (auth deferred)
 > Priority: **P0** (docs/audits/paid-pilot-readiness.md)
 
@@ -61,3 +61,25 @@ client can be given read-only access without real sessions.
 3. Decide whether client users get logins in the pilot, or whether clients
    receive exported evidence packages only (the pilot readiness doc assumes
    exports; logins can wait for pilot #2).
+
+
+## Not built (2026-07-30) — stated so nothing here is over-claimed
+
+- **No client logins are issued.** The operator's answer to checklist item 3
+  was "internal tool, single operator", so `client_viewer` / `client_validator`
+  exist as roles, are enforced everywhere, and have tests — but no such account
+  has been provisioned. Clients receive exported evidence packages, which is
+  what the pilot-readiness doc already assumed. `user_project_access` is the
+  seam that makes issuing one a data change rather than a refactor.
+- **The magic-link flow has not been exercised end to end.** `AUTH_MODE` is
+  still `dev`, so no real sign-in has happened against the live Supabase
+  project. The code paths are typed, built and unit-covered; they are not
+  proven. Flipping the mode is the remaining step.
+- **RLS is defence in depth, not the primary control.** The application
+  connects as the table owner, and owners bypass RLS. Policies bite on the
+  Supabase-client path; service-layer scoping remains the control that governs
+  application queries. Tests connect as a non-owner role precisely so they
+  prove the policies rather than passing vacuously.
+- **`assertRole` still only distinguishes admin and staff.** `reviewer` is
+  defined and treated as staff, but nothing yet grants it narrower rights than
+  `operator`.

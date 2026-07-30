@@ -11,6 +11,7 @@ import { execSync } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { seedTestActors } from "../helpers/actors";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -91,6 +92,7 @@ describe.skipIf(!TEST_URL)("automation layer (integration)", () => {
 
     await sql.unsafe("drop schema public cascade; create schema public;");
     execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, { cwd: ROOT, stdio: "pipe" });
+    await seedTestActors(sql);
   });
 
   beforeEach(async () => {

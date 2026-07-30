@@ -10,6 +10,7 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
+import { seedTestActors } from "../helpers/actors";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -77,6 +78,7 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
       cwd: ROOT,
       stdio: "pipe",
     });
+    await seedTestActors(sql);
     await templates.syncPacketTemplates();
   }, 180_000);
 
