@@ -53,7 +53,20 @@ export interface ComposedPlan {
   supersededId: string | null;
 }
 
-/** Gather the real client state the plays interrogate. */
+/**
+ * Gather the real client state the plays interrogate.
+ *
+ * When a baseline run is named, state is read from that run alone — the plan
+ * then describes one measurement and stays reproducible against it.
+ *
+ * When none is named, each signal is taken from the most recent run that
+ * actually HAS it, per gap type. That distinction is load-bearing: composing
+ * across every run once picked citation state from whichever run owned the
+ * highest-scoring finding, which was the non-search run with zero citations.
+ * Two plays were then excluded for "no citation data" while 318 cited sources
+ * sat in another run. A missing signal must mean "nobody measured it", never
+ * "we looked in the wrong place".
+ */
 async function loadClientState(
   projectId: string,
   baselineRunId: string | null
@@ -159,9 +172,15 @@ export async function composePlan(
       );
     }
 
-    const runId =
-      input.baselineRunId ?? ((findings[0]!.runId as string | null) ?? null);
-    const state = await loadClientState(input.projectId, runId);
+    // Only an explicitly requested baseline pins state to one run. Otherwise
+    // each signal comes from the most recent run that has it — see
+    // loadClientState. The baseline recorded below still names the run whose
+    // findings ranked highest, which is what the plan is anchored to.
+    const runId = (findings[0]!.runId as string | null) ?? null;
+    const state = await loadClientState(
+      input.projectId,
+      input.baselineRunId ?? null
+    );
 
     const gapTypes = new Set(findings.map((f) => f.gapType as string));
     const bestFindingFor = new Map<string, { id: string; score: number }>();

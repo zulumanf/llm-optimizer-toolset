@@ -206,6 +206,27 @@ export const PLAYS: Play[] = [
     measurement: "Ask AI which market you specialise in. Check it answers with your home market.",
   },
   {
+    key: "rental_portal_presence",
+    title: "Get your buildings onto the rental portals",
+    gapTypes: ["citation", "source_target", "category_share"],
+    phase: "foundation",
+    effortHours: 10,
+    owner: "shared",
+    requires: (s) =>
+      (s.entityCounts.property ?? 0) > 0
+        ? null
+        : "No development or building on file — nothing to list yet.",
+    why: () =>
+      "Renter questions are answered from apartments.com, zillow.com and streeteasy.com, and none of your buildings appear there under your name.",
+    steps: () => [
+      "List every building you lease on apartments.com, Zillow Rentals and StreetEasy.",
+      "Put your team as the leasing contact, not just the developer or a generic number.",
+      "Use the building's real name and neighbourhood in the listing title.",
+    ],
+    measurement:
+      "Ask where to rent in your market. Check whether your buildings appear and who is named as contact.",
+  },
+  {
     key: "press_relationships",
     title: "Make press a habit, not an accident",
     gapTypes: ["citation", "source_target"],

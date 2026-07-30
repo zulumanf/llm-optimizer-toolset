@@ -220,4 +220,74 @@ describe.skipIf(!TEST_URL)("program plans (integration)", () => {
     // Two live plans would be two answers to the same question.
     expect(live).toHaveLength(1);
   });
+
+  // ------------------------------------------- composing across several runs
+  /**
+   * The bug these pin: composing without a named baseline took client state
+   * from whichever run owned the highest-scoring finding. That was the
+   * non-search run, which has zero citations — so two plays were excluded for
+   * "no citation data" while 318 cited sources sat in a different run.
+   *
+   * A missing signal must mean "nobody measured it", never "we looked in the
+   * wrong place".
+   */
+  async function makeRun(label: string): Promise<string> {
+    const [set] = await sql`
+      insert into prompt_sets (project_id, name) values (${projectId}, ${label}) returning id`;
+    const [version] = await sql`
+      insert into prompt_set_versions (prompt_set_id, version, frozen_prompts, frozen_by)
+      values (${set!.id}, 1, '[]'::jsonb, ${user.id}) returning id`;
+    const [run] = await sql`
+      insert into runs (project_id, prompt_set_version_id, label, providers, status, trigger, budget_usd)
+      values (${projectId}, ${version!.id}, ${label}, '[]'::jsonb, 'completed', 'manual', 1)
+      returning id`;
+    return run!.id as string;
+  }
+
+  it("takes each signal from the run that actually has it", async () => {
+    // Run A: the highest-scoring finding, but no citation data at all.
+    const runA = await makeRun("no-search run");
+    await sql`
+      insert into gap_findings (project_id, run_id, gap_type, finding, detail, severity, opportunity_score, detector_version, status)
+      values (${projectId}, ${runA}, 'entity', 'invisible', ${sql.json({
+        unbrandedMentionRate: 0, topCompetitor: "Compass", topCompetitorMentionRate: 0.35,
+      } as never)}, 1, 87.5, 'gap-detector-v1', 'open')`;
+
+    // Run B: lower-scoring, but it is where the citations live.
+    const runB = await makeRun("search run");
+    await sql`
+      insert into gap_findings (project_id, run_id, gap_type, finding, detail, severity, opportunity_score, detector_version, status)
+      values (${projectId}, ${runB}, 'source_target', 'retrieval path', ${sql.json({
+        targets: [{ domain: "zillow.com", citations: 92 }],
+      } as never)}, 0.6, 62.5, 'gap-detector-v1', 'open')`;
+
+    const result = await plans.composePlan(user, { projectId });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const directory = result.data.items.find((i) => i.playKey === "claim_directory_profiles");
+    // Before the fix this was excluded as "No citation data yet".
+    expect(directory?.status).toBe("planned");
+    expect(directory?.rationale).toContain("zillow.com");
+  });
+
+  it("still pins state to one run when a baseline is named", async () => {
+    const runA = await makeRun("no-search run");
+    await sql`
+      insert into gap_findings (project_id, run_id, gap_type, finding, detail, severity, opportunity_score, detector_version, status)
+      values (${projectId}, ${runA}, 'entity', 'invisible', '{}'::jsonb, 1, 87.5, 'gap-detector-v1', 'open')`;
+    const runB = await makeRun("search run");
+    await sql`
+      insert into gap_findings (project_id, run_id, gap_type, finding, detail, severity, opportunity_score, detector_version, status)
+      values (${projectId}, ${runB}, 'source_target', 'retrieval', ${sql.json({
+        targets: [{ domain: "zillow.com", citations: 92 }],
+      } as never)}, 0.6, 62.5, 'gap-detector-v1', 'open')`;
+
+    // Explicitly scoped to the run with no citations: the exclusion is then
+    // correct and must still happen.
+    const result = await plans.composePlan(user, { projectId, baselineRunId: runA });
+    if (!result.ok) throw new Error("compose failed");
+    const directory = result.data.items.find((i) => i.playKey === "claim_directory_profiles");
+    expect(directory?.status).toBe("excluded");
+  });
 });
