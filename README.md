@@ -47,6 +47,7 @@ npm run worker         # start background worker (experiment runner)
 npm run db:migrate     # apply pending migrations
 npm run db:rollback    # revert last migration
 npm run seed:graph     # demo portfolio: 3 clients, workflow runs, exceptions, an approval
+npm run seed:knowledge # demo knowledge base: sources, claims, wiki, packets, token comparison
 npm run test           # unit + integration tests
 npm run test:e2e       # Playwright E2E
 npm run lint           # ESLint (zero warnings policy)

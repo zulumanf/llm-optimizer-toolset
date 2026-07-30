@@ -349,3 +349,115 @@ typed `null` and the dashboard prints "not measured". What *is* reported is
 `manualInterventionRate` — the share of live runs where a human had to touch a
 node — computed from `node_runs.human_touch`. That is the number that says
 whether the automation is helping, and it needs no baseline to be honest.
+
+## 2026-07-29 — Tenant is the project; no tenant_id column
+
+The knowledge-compilation spec asked for strict multi-tenant isolation with a
+tenant id on every table. `CLAUDE.md` says the opposite: "Not multi-tenant. One
+team, internal only." Every workflow and event table already uses `project_id`
+as the tenant key and says so in a comment.
+
+Adding `tenant_id` would fabricate a dimension the product does not have, and
+every row would carry the same value forever. So `project_id` remains the
+isolation boundary, and every isolation test is written **client-to-client**,
+which is the leakage that can actually occur here: two clients of the same
+internal team, whose data must never mix in a packet or a compiled page.
+
+## 2026-07-29 — Compiled wiki pages are rows, not files
+
+The spec allowed generated Markdown files. They were rejected.
+
+A `.md` file on disk is editable by anything with filesystem access, and an
+editable artifact that reads as authoritative is exactly the failure this layer
+exists to prevent. Rows get version identity, a `forbid_mutation()` trigger,
+dependency joins and provenance foreign keys for free.
+
+`wiki_page_versions` therefore stores the rendered Markdown **and** a structured
+JSON mirror, and the content hash covers both — two renderings with the same
+prose but different data are different pages. Export to Markdown is a read
+operation, never the store.
+
+## 2026-07-29 — Provenance lives in tables, not in YAML front matter
+
+The spec suggested a `section_id / claim_ids / evidence_ids` block inside the
+page body. Front matter would be unqueryable, hand-editable, and duplicated in
+every rendering of the same section.
+
+`wiki_section_provenance` is a table with one row per section, so the UI joins
+it directly and the compiler writes it without polluting what a human reads.
+
+## 2026-07-29 — Hot files are wiki pages, not a parallel system
+
+A hot file is a `wiki_pages` row with `page_type = 'hot_file'` and a hard token
+budget. One compiler, one dependency graph, one build engine, one provenance
+model. A second subsystem for "the same thing but shorter" would have needed its
+own staleness rules and would have drifted from the first one within a release.
+
+## 2026-07-29 — Retrieval is lexical and structural; no vector index
+
+Selection is deterministic for everything that governs what an agent may *say* —
+identity, approved claims, instructions, methodology, the named entities and
+date range, privacy filtering. Postgres full-text plus entity traversal only
+ranks *supporting* material.
+
+`pgvector` is not in this stack, and the rules that matter here are structural
+(client scope, category, entity, date, privacy, freshness), not similarity-
+shaped. An embedding store would add a dependency, a sync problem and a
+staleness failure mode without changing which claims a drafting agent is
+permitted to use. Revisit when a measured retrieval evaluation (spec 025) shows
+lexical recall is the binding constraint.
+
+## 2026-07-29 — `unpdf` and `read-excel-file`; `exceljs` rejected
+
+PDF text extraction uses `unpdf` (no native binaries, ships the pdf.js text
+layer). Spreadsheet extraction uses `read-excel-file`, which is read-only —
+which is all this layer needs.
+
+`exceljs` was tried first and rejected: it pulls in 95 packages and added seven
+audit findings, almost all through the `archiver` write path this layer never
+uses. The chosen pair adds **zero** audit findings. `xlsx@0.18.5` on npm carries
+known advisories and was not considered.
+
+Both are imported dynamically, so a missing or broken install degrades to
+`extraction_status = 'unsupported'` with a stated reason rather than crashing
+ingestion. Neither performs OCR: a scanned PDF is reported `empty` with an
+explicit note, never as a successful extraction of nothing.
+
+## 2026-07-29 — Token savings are measured; quality is not
+
+`lib/knowledge/context/experiment.ts` compares four context strategies — raw
+documents, full wiki, hot files, task packet — by counting input tokens locally
+and deterministically, at zero cost, in CI.
+
+On the seeded client the measured figures are: raw 8,289 tokens → full wiki
+2,041 (75.4% fewer) → hot files 1,399 (83.1%) → task packet 492 (**94.1%**).
+Those are real counts from `npm run seed:knowledge`, not estimates, and they
+depend on corpus size — a client with three short documents shows no reduction
+at all, which the harness reports honestly.
+
+Accuracy, unsupported-claim rate, human-correction time and verifier-rejection
+rate are **not measured**. Measuring them means running a real provider across
+all four modes and spending money, which is the opt-in live harness deferred to
+spec 025. Every result object carries `qualityMeasured: false` so no reader
+mistakes a cost figure for a quality claim.
+
+## 2026-07-29 — Staleness must never roll back the change that caused it
+
+`publishEvent` marks dependent pages stale inside the publisher's transaction,
+so a claim approval and the invalidation it causes commit together.
+
+The first implementation wrapped that in a try/catch and logged a warning. That
+was not enough: a failed statement aborts the **caller's** entire transaction in
+Postgres, so a malformed id in an event payload would have rolled back a
+legitimate claim approval. The fix is to validate ids against the uuid shape
+*before* issuing the query — a non-uuid can never match a `uuid` column anyway.
+Caught by the existing `automation-layer` suite, which publishes events with
+test ids like `"c-1"`.
+
+## 2026-07-29 — One claim-selection implementation
+
+`buildEvidencePacket` (spec 018) and the new `buildPacket` (spec 022) both need
+"approved claims, privacy filtered, freshness assessed". Rather than let two
+queries drift, `lib/knowledge/packet.ts` now delegates to
+`selectClaims` in the context builder and keeps only its own legacy shape and
+rendering. Four workflow templates keep working unchanged.

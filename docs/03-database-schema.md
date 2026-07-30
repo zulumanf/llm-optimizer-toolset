@@ -306,3 +306,68 @@ second instance of work that already settled.
 | Claims | `claim_versions`, immutable; corrections create versions |
 | Health / capacity | append-only snapshots; recomputing writes a new row |
 | Gate results | immutable, with per-check detail |
+
+## Knowledge compilation layer — migrations 021, 022, 023
+
+Specs 020-024. The five layers described in
+`docs/architecture/knowledge-compilation-and-context-engineering.md` map to
+storage as follows: raw = content-addressed files under `var/knowledge/` plus
+`source_artifacts`; canonical = relations; wiki = immutable page-version rows;
+instructions = immutable version rows; **state = already built** by migration
+017 and unchanged here.
+
+### Raw sources — migration 021
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `source_artifacts` | ingested client material: type, hash, storage key, privacy, retention, version chain | content **IMMUTABLE**; only status/supersession columns may advance, enforced by `forbid_source_content_mutation()` |
+| `extracted_documents` | parsed text, structured content, and spans, per parser version | **IMMUTABLE** |
+| `extraction_runs` | every extraction attempt with duration and error | **IMMUTABLE** |
+| `source_normalizations` | original value beside normalized value, with match confidence and review flag | mutable |
+
+`source_artifacts` is a sibling of `evidence_artifacts` (migration 011), not a
+replacement: that table is response-bound and enumerates LLM-capture kinds.
+The byte-write primitive is shared through `lib/storage/content-addressed.ts`.
+The unique `(project_id, sha256)` index is the ingestion idempotency guarantee.
+
+### Canonical extensions — migration 021
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `knowledge_entities` | people, brokerages, markets, neighbourhoods, specialties, publications, awards. `company_id` **points at** a tracked company rather than copying it; `project_id` null = shared across clients | mutable; a merge sets `status = 'merged'` and never deletes |
+| `entity_aliases` | normalized aliases, optionally sourced from an artifact | mutable |
+| `entity_relationships` | typed, effective-dated, evidence-linked | mutable |
+| `knowledge_instructions` | operating rules, scoped global/project/workflow/agent | mutable |
+| `knowledge_instruction_versions` | versioned rule text with effective dates and approval | **IMMUTABLE** |
+
+`claims` gains `source_artifact_ids`, `materiality`, `subject_entity_id` and
+`last_verified_at`.
+
+### Compiled knowledge — migration 022
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `wiki_pages` | page identity, type (including `hot_file`), token budget, active version, freshness, stale flag | mutable |
+| `wiki_page_versions` | rendered Markdown + structured JSON + content hash + compiler and template versions | **IMMUTABLE** |
+| `wiki_sections` | one row per section of a version | **IMMUTABLE** |
+| `wiki_section_provenance` | claims, claim versions, evidence, instruction versions and sources behind each section | **IMMUTABLE** |
+| `wiki_page_dependencies` | `(page, dependency_type, dependency_id)` — the stale-marking index | replaced wholesale on each compile |
+| `knowledge_builds` | one build; status is `partial` when any page failed, never `completed` | mutable while running |
+| `knowledge_build_items` | per-page outcome: compiled, no-op, failed, skipped | **IMMUTABLE** |
+| `knowledge_build_manifests` | the full before/after version map for a build | **IMMUTABLE** |
+| `wiki_annotations` | human notes, explicitly labelled and never merged into generated content | mutable |
+
+### Context packets — migration 023
+
+`evidence_packets` is **extended**, not forked: it gains `template_key`,
+`agent_key`, `task_objective`, `audience`, `token_count`, `token_budget`,
+`freshness_floor`, `validation`, `missing_context` and `expires_at`. Adding
+columns to an insert-only table is fine — `forbid_mutation()` blocks row
+UPDATE/DELETE, not schema evolution (migration 011 set the precedent).
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `context_packet_items` | every included **and excluded** item with its selection reason, retrieval score and token cost | **IMMUTABLE** |
+| `context_packet_templates` | mirrored from the code registry, the way `agent_definitions` already is | mutable |
+
+Packet access is written to `audit_log`. There is no second audit system.
