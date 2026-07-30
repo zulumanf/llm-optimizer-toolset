@@ -82,6 +82,28 @@ export default async function PlanPage({
         badge={<Badge variant={plan.status === "draft" ? "secondary" : "default"}>{plan.status}</Badge>}
         crumbs={[{ label: project.name, href: `/projects/${id}` }, { label: "Plan" }]}
         description={`Composed from ${baseline.findingCount ?? 0} open findings on ${baseline.composedAt ?? "—"} · ${planned.length} plays · ${totalHours.toFixed(0)}h · composer ${plan.compositionHash.slice(0, 8)}`}
+        actions={
+          plan.status === "draft" ? (
+            <span className="text-xs text-muted-foreground">Approve to enable client export</span>
+          ) : (
+            <>
+              <a
+                href={`/api/plans/${plan.id}/export?format=html`}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+              >
+                Preview for client
+              </a>
+              <a
+                href={`/api/plans/${plan.id}/export`}
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+              >
+                Download .md
+              </a>
+            </>
+          )
+        }
       />
 
       {/* ---------------------------------------------------- baseline */}

@@ -101,7 +101,9 @@ is a plan that will be quoted back.
 - **No effort calibration.** Effort hours are per-play constants, the same
   approach spec 019 took for the queue, and should be replaced with observed
   medians once enough plan items have actually been completed.
-- **No client-facing export.** The plan renders in the internal UI. Turning it
-  into a deliverable is spec 016's reporting path and is not wired here.
+- ~~No client-facing export.~~ **Built 2026-07-30.** `GET /api/plans/:id/export`
+  returns Markdown or printable HTML. Only an approved plan exports — a draft is
+  a working document, and sending one makes an unreviewed composition into a
+  commitment. Downloads are recorded in `artifact_access_log`.
 - **No automatic re-composition.** A plan is composed on request. Wiring it to
   the weekly cycle is deferred until the phasing has been used in anger.
