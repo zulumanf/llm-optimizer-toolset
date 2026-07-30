@@ -227,6 +227,49 @@ export const PLAYS: Play[] = [
       "Ask where to rent in your market. Check whether your buildings appear and who is named as contact.",
   },
   {
+    key: "spanish_language_presence",
+    title: "Claim the Spanish-language market you already qualify for",
+    gapTypes: ["entity", "category_share", "citation"],
+    phase: "foundation",
+    effortHours: 6,
+    owner: "shared",
+    requires: (s) =>
+      s.approvedClaimKeys.includes("award_nahrep") ||
+      s.approvedClaimKeys.includes("team_leadership")
+        ? null
+        : "No Spanish-language credential or named bilingual agent on file yet.",
+    why: () =>
+      "Asked in Spanish for a Jersey City agent, AI names competitors — and never you, despite the recognition you already hold.",
+    steps: () => [
+      "Say which agents speak Spanish on their profile pages and in directory listings.",
+      "Publish the two or three highest-traffic pages in Spanish, not machine-translated.",
+      "State the NAHREP recognition with its year on the site and on Zillow.",
+    ],
+    measurement:
+      "Ask in Spanish for an agent in your market. Check whether anyone on your team is named.",
+  },
+  {
+    key: "developer_track_record",
+    title: "Publish your lease-up track record for developers",
+    gapTypes: ["recommendation", "category_share", "entity"],
+    phase: "authority",
+    effortHours: 8,
+    owner: "shared",
+    requires: (s) =>
+      (s.entityCounts.property ?? 0) > 0
+        ? null
+        : "No completed projects on file to build a track record from.",
+    why: () =>
+      "Asked who should lease up a Jersey City building, AI names national managers like Greystar and Bozzuto — not the team that has actually done it here.",
+    steps: () => [
+      "Publish one page aimed at developers: buildings leased, unit counts, timelines.",
+      "Give the numbers per project — units, lease-up duration, absorption.",
+      "Say plainly that you take lease-up mandates, and who to contact.",
+    ],
+    measurement:
+      "Ask who should lease up a building in your market. Check whether you are named alongside the national firms.",
+  },
+  {
     key: "press_relationships",
     title: "Make press a habit, not an accident",
     gapTypes: ["citation", "source_target"],
