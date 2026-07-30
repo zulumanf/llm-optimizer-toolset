@@ -34,6 +34,8 @@ export interface ClientState {
   organicMentionRate: number | null;
   topCompetitorName: string | null;
   topCompetitorRate: number | null;
+  /** Pages the tool has actually crawled and stored from the client's own site. */
+  ownPagesIngested: number;
 }
 
 export interface Play {
@@ -134,7 +136,7 @@ export const PLAYS: Play[] = [
   // ------------------------------------------------------------ authority
   {
     key: "evidence_proof_assets",
-    title: "Turn your projects into proof",
+    title: "Make your project pages provable",
     gapTypes: ["entity", "recommendation", "category_share"],
     phase: "authority",
     effortHours: 12,
@@ -142,11 +144,11 @@ export const PLAYS: Play[] = [
     requires: (s) =>
       (s.entityCounts.property ?? 0) > 0 ? null : "No named projects on file to build from.",
     why: (s) =>
-      `You have ${s.entityCounts.property ?? 0} named developments on record. AI recommends on evidence, not adjectives.`,
+      `You already publish ${s.entityCounts.property ?? 0} development pages. They describe the buildings, not your results.`,
     steps: () => [
-      "Give each development its own page: address, unit count, your role, dates.",
-      "Add outcomes you can prove — units leased, timeframes, price achieved.",
-      "Link each project page from the relevant neighbourhood page.",
+      "Add your role and the numbers to each page: units leased, timeframe, price achieved.",
+      "Name the neighbourhood in the first line of every project page.",
+      "Link each project from the matching neighbourhood page, and back again.",
     ],
     measurement: "Ask about new developments in your market. Check whether your projects are named.",
   },
@@ -175,13 +177,33 @@ export const PLAYS: Play[] = [
     effortHours: 20,
     owner: "operator",
     why: (s) =>
-      `${s.topCompetitorName ?? "The leader"} shows up in ${pct(s.topCompetitorRate)} of answers. Local depth is where a local team wins.`,
+      `${s.topCompetitorName ?? "The leader"} shows up in ${pct(s.topCompetitorRate)} of answers. Your neighbourhood pages exist but read like brochures.`,
     steps: () => [
-      "Write one substantial page per neighbourhood you genuinely work in.",
-      "Include specifics only a local would know — buildings, blocks, timings, fees.",
-      "Update each page quarterly and show the date.",
+      "Add specifics only a local would know — buildings, blocks, timings, fees.",
+      "Put a real market read on each page and date it.",
+      "Refresh quarterly; show the date so it is obviously current.",
     ],
     measurement: "Ask neighbourhood-level questions. Track how often you appear versus the leader.",
+  },
+  {
+    key: "lead_with_home_market",
+    title: "Lead with Jersey City on your own site",
+    gapTypes: ["entity", "category_share"],
+    phase: "foundation",
+    effortHours: 3,
+    owner: "client",
+    requires: (s) =>
+      s.ownPagesIngested > 0
+        ? null
+        : "Client site not crawled yet — run discovery before judging its positioning.",
+    why: () =>
+      "Your site features six New York neighbourhoods above six New Jersey ones, so Jersey City reads as secondary.",
+    steps: () => [
+      "Put your home market first in the neighbourhoods list and the navigation.",
+      "Say the primary market in the first sentence of the homepage and the about page.",
+      "Keep the New York pages — just stop leading with them.",
+    ],
+    measurement: "Ask AI which market you specialise in. Check it answers with your home market.",
   },
   {
     key: "press_relationships",

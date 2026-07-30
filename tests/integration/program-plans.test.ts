@@ -45,7 +45,7 @@ describe.skipIf(!TEST_URL)("program plans (integration)", () => {
 
   beforeEach(async () => {
     await sql.unsafe(`
-      truncate plan_items, program_plans, gap_findings, knowledge_entities,
+      truncate plan_items, program_plans, gap_findings, knowledge_entities, source_artifacts,
         claims, evidence, runs, prompt_set_versions, prompt_sets, audit_log,
         projects restart identity cascade
     `);

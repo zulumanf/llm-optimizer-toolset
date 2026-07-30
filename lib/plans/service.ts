@@ -61,6 +61,10 @@ async function loadClientState(
   const claimRows = await sql`
     select key from claims where project_id = ${projectId} and status = 'approved'
   `;
+  const [ownPages] = await sql`
+    select count(*)::int as n from source_artifacts
+    where project_id = ${projectId} and origin = 'url_fetch'
+  `;
   const entityRows = await sql`
     select entity_type, count(*)::int as n from knowledge_entities
     where project_id = ${projectId} group by entity_type
@@ -110,6 +114,7 @@ async function loadClientState(
     organicMentionRate: entityDetail.unbrandedMentionRate ?? null,
     topCompetitorName: entityDetail.topCompetitor ?? null,
     topCompetitorRate: entityDetail.topCompetitorMentionRate ?? null,
+    ownPagesIngested: Number(ownPages?.n ?? 0),
   };
 }
 
