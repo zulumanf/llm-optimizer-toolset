@@ -29,7 +29,10 @@ export interface PlanItem {
   position: number;
   playKey: string;
   title: string;
+  /** One short sentence: why this play, for this client. */
   rationale: string;
+  /** What to actually do. The half a plan exists to provide. */
+  steps: string[];
   sourceFindingId: string | null;
   evidenceIds: string[];
   effortHours: number;
@@ -181,7 +184,8 @@ export async function composePlan(
         position: 0,
         playKey: play.key,
         title: play.title,
-        rationale: play.rationale(state),
+        rationale: play.why(state),
+        steps: play.steps(state),
         sourceFindingId: source?.id ?? null,
         evidenceIds: [],
         effortHours: play.effortHours,
@@ -229,7 +233,10 @@ export async function composePlan(
       .update(
         JSON.stringify({
           findings: findings.map((f) => [f.id, f.gapType, f.opportunityScore]),
-          items: items.map((i) => [i.playKey, i.phase, i.position, i.status, i.exclusionReason]),
+          items: items.map((i) => [
+            i.playKey, i.phase, i.position, i.status, i.exclusionReason,
+            i.rationale, i.steps.join("|"),
+          ]),
           composer: PLAN_COMPOSER_VERSION,
         })
       )
@@ -262,12 +269,12 @@ export async function composePlan(
       for (const item of items) {
         await tx`
           insert into plan_items (
-            plan_id, phase, position, play_key, title, rationale,
+            plan_id, phase, position, play_key, title, rationale, steps,
             source_finding_id, evidence_ids, effort_hours, owner, measurement,
             status, exclusion_reason
           ) values (
             ${planId}, ${item.phase}, ${item.position}, ${item.playKey},
-            ${item.title}, ${item.rationale}, ${item.sourceFindingId},
+            ${item.title}, ${item.rationale}, ${item.steps}, ${item.sourceFindingId},
             ${item.evidenceIds}, ${item.effortHours}, ${item.owner},
             ${item.measurement}, ${item.status}, ${item.exclusionReason}
           )
@@ -369,6 +376,7 @@ export async function getActivePlan(projectId: string): Promise<PlanSummary | nu
       playKey: r.playKey as string,
       title: r.title as string,
       rationale: r.rationale as string,
+      steps: (r.steps as string[]) ?? [],
       sourceFindingId: (r.sourceFindingId as string | null) ?? null,
       evidenceIds: (r.evidenceIds as string[]) ?? [],
       effortHours: Number(r.effortHours),

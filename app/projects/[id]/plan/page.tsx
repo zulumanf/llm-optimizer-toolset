@@ -14,9 +14,21 @@ import { getActivePlan } from "@/lib/plans/service";
 export const dynamic = "force-dynamic";
 
 const PHASES = [
-  { key: "foundation", label: "Days 0–30 · Foundation", blurb: "Fix identity and the public record. Nothing downstream works until an assistant can tell who this is." },
-  { key: "authority", label: "Days 31–60 · Authority", blurb: "Build proof on the surfaces the retrieval path already reads." },
-  { key: "compounding", label: "Days 61–90 · Compounding", blurb: "Plays that only work once the first two phases have landed." },
+  {
+    key: "foundation",
+    label: "Days 0–30 · Get found correctly",
+    blurb: "Make sure AI knows who you are. Nothing else works until it does.",
+  },
+  {
+    key: "authority",
+    label: "Days 31–60 · Build proof",
+    blurb: "Put evidence where AI already looks.",
+  },
+  {
+    key: "compounding",
+    label: "Days 61–90 · Compound and check",
+    blurb: "Work that only pays off once the first two phases have landed.",
+  },
 ] as const;
 
 const OWNER_TONE: Record<string, "default" | "secondary" | "outline"> = {
@@ -116,24 +128,32 @@ export default async function PlanPage({
             <ol className="space-y-3">
               {items.map((item) => (
                 <li key={item.playKey} className="rounded-md border p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs tabular-nums text-muted-foreground">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-sm font-medium tabular-nums text-muted-foreground">
                       {item.position}.
                     </span>
-                    <span className="font-medium">{item.title}</span>
+                    <span className="text-sm font-medium">{item.title}</span>
                     <Badge variant={OWNER_TONE[item.owner] ?? "outline"}>{item.owner}</Badge>
                     <span className="text-xs text-muted-foreground">{item.effortHours}h</span>
                   </div>
-                  <p className="mt-2 text-sm text-muted-foreground">{item.rationale}</p>
-                  <p className="mt-2 text-xs">
-                    <span className="text-muted-foreground">Measure: </span>
+
+                  <p className="mt-2 text-sm">{item.rationale}</p>
+
+                  {item.steps.length > 0 && (
+                    <ul className="mt-3 space-y-1.5">
+                      {item.steps.map((step) => (
+                        <li key={step} className="flex gap-2 text-sm text-muted-foreground">
+                          <span aria-hidden="true" className="select-none">•</span>
+                          <span>{step}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <p className="mt-3 border-t pt-2 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">How we check: </span>
                     {item.measurement}
                   </p>
-                  {item.sourceFindingId && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Traces to finding {item.sourceFindingId.slice(0, 8)}
-                    </p>
-                  )}
                 </li>
               ))}
             </ol>
