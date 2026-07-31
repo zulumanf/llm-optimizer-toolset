@@ -47,6 +47,17 @@ owner ambiguity; tiers are optional vocabulary). Settings page edits both;
 portfolio (`/projects`) shows columns and filters by owner/tier via query
 params. Control-tower deep filtering is a recorded follow-up.
 
+## Later batches under this spec (2026-07-31, same day)
+
+- **Batch 2** — roadmap 2.2 (deterministic source classification +
+  "Sources influencing answers" view) and 2.6 (benchmark + visibility
+  event producers). Merged as PR #6.
+- **Batch 3** — roadmap 2.3 (knowledge-graph ↔ measurement bridge:
+  approved works_for/brokerage/affiliated_with relationships roll agents
+  up under brokerages with a distinct-response group rate) and 2.5
+  (platform schedule templates clone per client, enabled, admin-gated;
+  template stays disabled as the canonical default).
+
 ## Not built (recorded)
 
 - Roadmap 2.4 (verdict-outcome feedback into gap weights): needs ≥10
@@ -55,6 +66,9 @@ params. Control-tower deep filtering is a recorded follow-up.
 - Control-tower filter panel (portfolio filters land first).
 - Overtake on metrics beyond mention_rate (recommendation-rate overtakes
   ride the visibility_drop path for now).
+- LLM long-tail source classification (waits for a validation set,
+  docs/12); relationship-creation UI (relationships arrive via extraction
+  + approval today).
 
 ## Acceptance criteria
 
