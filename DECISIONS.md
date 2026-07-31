@@ -686,3 +686,32 @@ user is present, because every scheduled caller (cycles, cron, attribution
 offsets) passes null by design; and worker-path synthetic users carry an
 explicit `role: "operator"` rather than a roleless cast that the new gate
 would reject at runtime.
+
+## 2026-07-31 — Exclusivity conflicts are structural, and checks are decisions
+
+Spec 028. Two shapes worth recording beyond the spec:
+
+- **Geography is an explicit containment tree, not geocoding.** Verdicts
+  derive from same/inside/contains/sibling relations that an operator can
+  read off the tree; the sibling relation is capped at two shared-ancestor
+  levels so "both are in the USA" can never manufacture a conflict. The
+  detector is pure and takes `today` as an argument — a check is a decision
+  made at a moment, and tests hold that moment still.
+- **A check is append-only because it is a business decision record.** The
+  result, the verdict, and any override rationale are frozen at decision
+  time (forbid_mutation trigger); overrides are admin-only with a required
+  written reason.
+
+**Unresolved dev-DB conflict, needs operator decision:** the hosted dev
+database contains tables from an orphan migration `028_markets.sql`
+(applied 2026-07-31 01:38, file absent from this repo): `markets` (7 rows,
+geography_id + service_category_id + price_segment + audience shape),
+`geographies` (23), `service_categories` (5), `project_markets` (0) — a
+competing market model, presumably from a parallel session that never
+committed its migration. Repo migration 032 therefore cannot apply to dev
+(name collision on `markets`). Nothing in this repository references those
+tables. Options: (a) drop the orphan tables and apply 032, losing that
+seeded tree; (b) merge the richer dimensions (price segment, audience)
+into spec 028's model first. Deliberately NOT resolved unilaterally —
+dropping another workstream's data is not this branch's call. CI and the
+test database are unaffected (they build from repo migrations only).
