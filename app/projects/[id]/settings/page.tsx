@@ -5,6 +5,9 @@ import { sql } from "@/db/client";
 import { listAllModels } from "@/lib/ai/registry";
 import { getEnv } from "@/lib/env";
 import { listActiveStaffUsers } from "@/db/users";
+import { listPortalGrants } from "@/lib/portal/invite";
+import { getCurrentUser } from "@/lib/auth";
+import { ClientInviteForm } from "@/components/settings/client-invite-form";
 import { BaselineSettingsForm } from "@/components/settings/baseline-settings-form";
 import { PortfolioFieldsForm } from "@/components/settings/portfolio-fields-form";
 import type { ProviderConfig } from "@/lib/runs/cells";
@@ -24,6 +27,10 @@ export default async function ProjectSettingsPage({
     from projects where id = ${id}
   `;
   const owners = await listActiveStaffUsers();
+  const [grants, currentUser] = await Promise.all([
+    listPortalGrants(id),
+    getCurrentUser(),
+  ]);
   const sets = await sql`
     select s.id, s.name,
       (select max(v.version) from prompt_set_versions v
@@ -79,6 +86,31 @@ export default async function ProjectSettingsPage({
               ?.budgetUsd as number | undefined) ?? null,
         }}
       />
+
+      <div className="mt-6 rounded-md border p-4">
+        <p className="mb-1 text-sm font-medium">Client portal access</p>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Client accounts are read-only and see only this program&apos;s
+          portal — never the internal workspace. Invites are admin-only.
+        </p>
+        {grants.length > 0 && (
+          <ul className="mb-3 space-y-1 text-sm">
+            {grants.map((g) => (
+              <li key={g.userId} className="text-muted-foreground">
+                {g.name} · {g.email}
+                {!g.active && " · deactivated"}
+              </li>
+            ))}
+          </ul>
+        )}
+        {currentUser.role === "admin" ? (
+          <ClientInviteForm projectId={id} />
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Ask an admin to invite client accounts.
+          </p>
+        )}
+      </div>
 
       <div className="mt-6 rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
         <p className="font-medium text-foreground">Cron wiring</p>
