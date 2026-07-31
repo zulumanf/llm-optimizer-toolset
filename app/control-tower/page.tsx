@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { CheckCircle2, AlertTriangle } from "lucide-react";
 import { portfolioMetrics, latestHealthByClient } from "@/db/control-tower";
+import { listActiveProjects } from "@/db/projects";
+import { BriefGenerator } from "@/components/control-tower/brief-generator";
 import { actionRequiredQueue } from "@/lib/control-tower/queue";
 import { computeCapacity, automationByWorkflow } from "@/lib/control-tower/capacity";
 import { PRIORITY_FORMULA_VERSION } from "@/lib/workflow/exceptions";
@@ -61,13 +63,15 @@ function periodOfLastDays(days: number): { start: string; end: string } {
 
 export default async function ControlTowerPage() {
   const period = periodOfLastDays(28);
-  const [metrics, queue, health, capacity, automation] = await Promise.all([
-    portfolioMetrics(),
-    actionRequiredQueue({ limit: 40 }),
-    latestHealthByClient(),
-    computeCapacity(period),
-    automationByWorkflow(period),
-  ]);
+  const [metrics, queue, health, capacity, automation, activeProjects] =
+    await Promise.all([
+      portfolioMetrics(),
+      actionRequiredQueue({ limit: 40 }),
+      latestHealthByClient(),
+      computeCapacity(period),
+      automationByWorkflow(period),
+      listActiveProjects(),
+    ]);
 
   return (
     <div className="mx-auto max-w-6xl p-6">
@@ -192,6 +196,18 @@ export default async function ControlTowerPage() {
       </section>
 
       <section className="mb-8">
+        <h2 className="mb-2 text-lg font-medium">Executive briefs</h2>
+        <div className="mb-6 rounded-lg border p-3">
+          <BriefGenerator
+            projects={activeProjects.map((p) => ({ id: p.id, name: p.name }))}
+          />
+          <p className="mt-2 text-xs text-muted-foreground">
+            Monthly and quarterly briefs cover the previous full period and
+            pass the same executive-reporting gate as the weekly workflow — a
+            refusal means the evidence is not there yet, not an error.
+          </p>
+        </div>
+
         <h2 className="mb-2 text-lg font-medium">
           Client health{" "}
           <span className="text-sm font-normal text-muted-foreground">
