@@ -6,13 +6,21 @@
  */
 import { sql } from "@/db/client";
 import { getSubjectCompany } from "@/db/companies";
+import { extractCitations } from "@/lib/ai/citations";
+import { extractUrls } from "@/lib/parsing/prepass";
 import type { FrozenPrompt } from "@/lib/prompts/types";
 import { stabilityLabel, type Stability } from "@/lib/evidence/stability";
 
+// Metric names here MUST match the names scoring writes to `scores`
+// (lib/scoring/metrics.ts). This list previously said "citation_rate" while
+// scoring stored "citation_score", so the stored-score lookup below found
+// nothing and `matchesStored` was vacuously true for citations — the one
+// metric whose re-derivation check could never fail was the one that
+// silently didn't run.
 export const DRILLDOWN_METRICS = [
   "mention_rate",
   "recommendation_rate",
-  "citation_rate",
+  "citation_score",
 ] as const;
 export type DrilldownMetric = (typeof DRILLDOWN_METRICS)[number];
 
@@ -69,6 +77,7 @@ function positiveFor(metric: DrilldownMetric, row: {
 }): boolean {
   if (metric === "mention_rate") return row.mentioned;
   if (metric === "recommendation_rate") return row.recommended;
+  // citation_score: this company's mention carries an owned citation
   return row.cited;
 }
 
@@ -108,6 +117,7 @@ export async function drilldown(args: {
   const rowsRaw = await sql`
     select r.id as response_id, r.prompt_id, r.prompt_text, r.provider,
       r.model, r.repetition, r.requested_at, r.refusal, r.response_hash,
+      r.response_text, r.raw_payload,
       (r.error is not null) as errored,
       coalesce(
         (select p.category from prompt_set_versions v,
@@ -132,6 +142,14 @@ export async function drilldown(args: {
     const listPosition = r.listPosition == null ? null : Number(r.listPosition);
     const errored = Boolean(r.errored);
     const inProvider = provider === "all" || r.provider === provider;
+    // citation_score's denominator is "responses with any citation at all",
+    // re-derived exactly as scoring derives it (lib/scoring/compute.ts):
+    // in-text URLs or provider search citations in the immutable payload.
+    const anyCitation =
+      !errored &&
+      metric === "citation_score" &&
+      (extractUrls((r.responseText as string) ?? "").length > 0 ||
+        extractCitations(r.provider as string, r.rawPayload).length > 0);
     return {
       responseId: r.responseId as string,
       promptId: r.promptId as string,
@@ -155,8 +173,14 @@ export async function drilldown(args: {
       parserVersion: (r.parserVersion as string | null) ?? null,
       positive: positiveFor(metric, { mentioned, recommended, cited }),
       // Eligible = successful capture in provider scope, non-holdout
-      // (errors excluded per docs/06; refusals count)
-      eligible: !errored && inProvider && !holdoutIds.has(r.promptId as string),
+      // (errors excluded per docs/06; refusals count). For citation_score
+      // the denominator additionally requires the response to carry any
+      // citation — matching the stored metric's formula (docs/06).
+      eligible:
+        !errored &&
+        inProvider &&
+        !holdoutIds.has(r.promptId as string) &&
+        (metric !== "citation_score" || anyCitation),
     };
   });
 
@@ -166,6 +190,13 @@ export async function drilldown(args: {
   );
   const numerator = rows.filter((r) => r.positive).length;
   const denominator = rows.length;
+  // Scoring stores sample_size as ALL valid in-scope responses, even for
+  // citation_score, whose rate denominator is the with-citation subset.
+  // Compare against the same basis or the check would fail while the value
+  // matched.
+  const sampleBasis = all.filter(
+    (r) => !r.errored && !r.isHoldout && (provider === "all" || r.provider === provider)
+  ).length;
 
   const [stored] = await sql`
     select value, sample_size from scores
@@ -206,7 +237,7 @@ export async function drilldown(args: {
     matchesStored:
       storedValue == null ||
       (value != null && Math.abs(value - storedValue) < 1e-6 &&
-        Number(stored?.sampleSize) === denominator),
+        Number(stored?.sampleSize) === sampleBasis),
     rows,
     holdoutRows,
     perPrompt,

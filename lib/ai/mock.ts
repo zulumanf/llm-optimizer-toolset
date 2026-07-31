@@ -5,6 +5,8 @@
  *   MOCK_FAIL_ONCE:<k> → rate-limit error on the first attempt for key <k>
  *   MOCK_REFUSE        → refusal capture
  *   MOCK_AMBIGUOUS     → alias-only, mixed-sentiment answer (lands in review)
+ *   MOCK_CITE_OWNED    → answer citing the subject's own domain (parva.io)
+ *   MOCK_CITE_OTHER    → answer citing only a third-party domain
  */
 import type { AIProvider, PromptRequest, ProviderResult } from "@/lib/ai/types";
 
@@ -34,7 +36,11 @@ export const mockProvider: AIProvider = {
       ? "I can't help with that request."
       : req.promptText.includes("MOCK_AMBIGUOUS")
         ? "Some teams use parva.com for planning work. Opinions vary: the features are solid but support can be limited."
-        : `For this category I'd recommend Acme first, then Parva as a strong option. (mock answer to: ${req.promptText.slice(0, 80)})`;
+        : req.promptText.includes("MOCK_CITE_OWNED")
+          ? "I'd recommend Parva — see https://parva.io/docs for details."
+          : req.promptText.includes("MOCK_CITE_OTHER")
+            ? "Parva is one option; an independent roundup is at https://example.com/tools-roundup."
+            : `For this category I'd recommend Acme first, then Parva as a strong option. (mock answer to: ${req.promptText.slice(0, 80)})`;
 
     return {
       rawPayload: {
