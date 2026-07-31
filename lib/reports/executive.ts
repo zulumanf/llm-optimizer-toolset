@@ -322,6 +322,26 @@ export async function generateWeeklyBrief(
   tx: Tx,
   input: BriefInput
 ): Promise<BriefResult> {
+  return generateExecutiveBrief(tx, input, "weekly");
+}
+
+const BRIEF_HEADLINES: Record<string, (name: string, start: string) => string> = {
+  weekly: (name, start) => `${name} — week of ${start}`,
+  monthly: (name, start) => `${name} — month beginning ${start}`,
+  quarterly: (name, start) => `${name} — quarter beginning ${start}`,
+};
+
+/**
+ * Monthly and quarterly briefs (roadmap 3.4) are the SAME deterministic
+ * composition over a longer window — the enum accepted them since
+ * migration 019 with no generator, spec 019's recorded "Not built". Same
+ * gate, same materiality, same one-draft-per-period uniqueness.
+ */
+export async function generateExecutiveBrief(
+  tx: Tx,
+  input: BriefInput,
+  kind: "weekly" | "monthly" | "quarterly"
+): Promise<BriefResult> {
   const data = await collectBriefData(input);
   const { statements, risks, uncertainties } = composeBrief(data);
 
@@ -343,8 +363,8 @@ export async function generateWeeklyBrief(
       project_id, kind, period_start, period_end, sections, materiality,
       evidence_ids, generated_by
     ) values (
-      ${input.projectId}, 'weekly', ${input.periodStart}, ${input.periodEnd},
-      ${tx.json({ headline: `${data.projectName} — week of ${input.periodStart}`, statements, risks, uncertainties } as never)},
+      ${input.projectId}, ${kind}, ${input.periodStart}, ${input.periodEnd},
+      ${tx.json({ headline: BRIEF_HEADLINES[kind]!(data.projectName, input.periodStart), statements, risks, uncertainties } as never)},
       ${tx.json({ ...MATERIALITY, methodologyVersion: BRIEF_METHODOLOGY_VERSION } as never)},
       ${[...new Set(statements.flatMap((s) => s.evidenceIds))]},
       'deterministic'
