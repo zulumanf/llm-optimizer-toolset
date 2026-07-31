@@ -43,9 +43,16 @@ export default async function PortalReportsPage({
                 <Badge variant="outline">{report.kind.replace(/_/g, " ")}</Badge>
                 <a
                   className="text-xs underline hover:no-underline"
+                  href={`/api/reports/${report.id}/html`}
+                  target="_blank"
+                >
+                  View report
+                </a>
+                <a
+                  className="text-xs underline hover:no-underline"
                   href={`/api/reports/${report.id}/csv`}
                 >
-                  Download CSV
+                  CSV
                 </a>
               </div>
             </li>
