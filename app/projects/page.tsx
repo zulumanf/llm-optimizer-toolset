@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FolderPlus } from "lucide-react";
 import { listPortfolio } from "@/db/projects";
 import { getCurrentUser, visibleProjectIds } from "@/lib/auth";
+import { requireStaffPage } from "@/lib/security/page-gates";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -21,6 +22,7 @@ export default async function ProjectsPage({
 }: {
   searchParams: Promise<{ archived?: string; owner?: string; tier?: string }>;
 }) {
+  await requireStaffPage(); // clients get /portal, not the internal list
   const { archived, owner, tier } = await searchParams;
   const includeArchived = archived === "1";
   const tierFilter = (TIERS as readonly string[]).includes(tier ?? "")
