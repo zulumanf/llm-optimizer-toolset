@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { clientCostRollup } from "@/db/operations";
 import { combinedAttentionFeed } from "@/lib/notifications/feed";
+import { requireStaffPage } from "@/lib/security/page-gates";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -40,6 +41,7 @@ function Tile({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 export default async function OperationsPage() {
+  await requireStaffPage(); // Today is the whole-portfolio view (spec 031)
   const [{ items, metrics }, costs] = await Promise.all([
     combinedAttentionFeed(),
     clientCostRollup(),

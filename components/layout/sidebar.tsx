@@ -1,5 +1,5 @@
 import { listActiveProjects } from "@/db/projects";
-import { getCurrentUserOrNull, visibleProjectIds } from "@/lib/auth";
+import { getCurrentUserOrNull, isStaff, visibleProjectIds } from "@/lib/auth";
 import { unreadCount } from "@/lib/notifications/service";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -19,6 +19,9 @@ import { CommandPalette } from "@/components/layout/command-palette";
 export async function Sidebar(): Promise<React.ReactElement | null> {
   const user = await getCurrentUserOrNull();
   if (!user) return null;
+  // Client roles never see the internal nav — the portal carries its own
+  // shell (spec 031). Rendering decision; every page still gates itself.
+  if (!isStaff(user)) return null;
 
   // Loaded only once the caller is known — an unauthenticated request should
   // not reach the projects or notifications tables at all. Client roles see

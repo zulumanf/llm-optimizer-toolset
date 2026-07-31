@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import {
   assertProjectAccess,
   getCurrentUser,
+  isStaff,
   NotAuthenticatedError,
   ProjectAccessError,
 } from "@/lib/auth";
@@ -32,13 +33,18 @@ export default async function ProjectLayout({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  let staff = true;
   try {
     const user = await getCurrentUser();
     await assertProjectAccess(user, id);
+    staff = isStaff(user);
   } catch (err) {
     if (err instanceof NotAuthenticatedError) redirect("/login");
     if (err instanceof ProjectAccessError) notFound();
     throw err;
   }
+  // A granted client account still doesn't get the INTERNAL workspace —
+  // costs, internal notes, settings live here. Their surface is the portal.
+  if (!staff) redirect(`/portal/${id}`);
   return children;
 }
