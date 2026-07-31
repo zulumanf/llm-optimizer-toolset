@@ -6,6 +6,8 @@
  */
 import { listTriggers, triggerStats, recentReceipts, listWebhookEndpoints } from "@/db/triggers";
 import { listSubscriptions } from "@/db/events";
+import { listActiveProjects } from "@/db/projects";
+import { TriggerClone } from "@/components/automation/trigger-clone";
 import { knownMetricKeys } from "@/lib/triggers/threshold";
 import { Badge } from "@/components/ui/badge";
 import { AutomationNav } from "@/components/automation/nav";
@@ -15,13 +17,16 @@ import { TriggerToggle } from "@/components/automation/trigger-toggle";
 export const dynamic = "force-dynamic";
 
 export default async function TriggersPage() {
-  const [triggers, stats, subscriptions, endpoints, receipts] = await Promise.all([
-    listTriggers(),
-    triggerStats(),
-    listSubscriptions(),
-    listWebhookEndpoints(),
-    recentReceipts(20),
-  ]);
+  const [triggers, stats, subscriptions, endpoints, receipts, projectRows] =
+    await Promise.all([
+      listTriggers(),
+      triggerStats(),
+      listSubscriptions(),
+      listWebhookEndpoints(),
+      recentReceipts(20),
+      listActiveProjects(),
+    ]);
+  const activeProjects = projectRows.map((p) => ({ id: p.id, name: p.name }));
 
   return (
     <div className="mx-auto max-w-7xl p-6">
@@ -98,7 +103,17 @@ export default async function TriggersPage() {
                         ) : null}
                       </td>
                       <td className="p-2">
-                        <TriggerToggle triggerId={trigger.id} enabled={trigger.enabled} />
+                        <div className="flex flex-col gap-1.5">
+                          <TriggerToggle triggerId={trigger.id} enabled={trigger.enabled} />
+                          {trigger.kind === "schedule" &&
+                            trigger.projectId === null &&
+                            activeProjects.length > 0 && (
+                              <TriggerClone
+                                triggerId={trigger.id}
+                                projects={activeProjects}
+                              />
+                            )}
+                        </div>
                       </td>
                     </tr>
                   );

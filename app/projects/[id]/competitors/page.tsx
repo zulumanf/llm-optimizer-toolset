@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { relationshipGroups } from "@/lib/competitors/groups";
 import { AddCompetitorDialog } from "@/components/competitors/add-competitor-dialog";
 import { CompetitorRowControls } from "@/components/competitors/competitor-row-controls";
 import { CandidatePanel } from "@/components/competitors/candidate-panel";
@@ -37,13 +38,14 @@ export default async function CompetitorsPage({
   const project = await getProject(id);
   if (!project) notFound();
 
-  const [comparison, scores, candidates, companies, topSources] =
+  const [comparison, scores, candidates, companies, topSources, groups] =
     await Promise.all([
       listComparisonCompanies(id),
       latestScoresByCompany(id),
       listBrandCandidates(id, CANDIDATE_MIN_HITS),
       listActiveCompanies(),
       listTopSources(id),
+      relationshipGroups(id),
     ]);
   const untracked = companies.filter(
     (c) => !c.isSelf && !comparison.some((k) => k.companyId === c.id)
@@ -127,6 +129,47 @@ export default async function CompetitorsPage({
         n/a = not measurable or insufficient data (docs/06 — never rendered as
         zero). Trend charts arrive with the specs/006 dashboard.
       </p>
+
+      {groups.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-lg font-medium">Entity groups (agent ↔ brokerage)</h2>
+          <p className="mb-3 mt-1 text-sm text-muted-foreground">
+            Approved knowledge-graph relationships bridged onto measurement
+            (spec 030 batch 3). The group rate counts distinct responses
+            mentioning any member — never the sum of member rates, since one
+            answer often names both.
+          </p>
+          <div className="space-y-2">
+            {groups.map((g) => (
+              <div key={g.parentCompanyId} className="rounded-md border p-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{g.parentName}</span>
+                  {g.groupMentionRate !== null && (
+                    <Badge>
+                      group {(g.groupMentionRate * 100).toFixed(1)}%
+                      {g.sampleSize ? ` of ${g.sampleSize}` : ""}
+                    </Badge>
+                  )}
+                </div>
+                <ul className="mt-1.5 space-y-0.5 text-muted-foreground">
+                  {g.members.map((m) => (
+                    <li key={m.companyId}>
+                      {m.name}{" "}
+                      <span className="text-xs">
+                        ({m.relationshipType.replace(/_/g, " ")}
+                        {m.mentionRate !== null
+                          ? ` · ${(m.mentionRate * 100).toFixed(1)}%`
+                          : ""}
+                        )
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {topSources.length > 0 && (
         <section className="mt-8">

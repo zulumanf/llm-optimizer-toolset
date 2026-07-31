@@ -10,7 +10,7 @@
 import { revalidatePath } from "next/cache";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import { assertRole, getCurrentUser } from "@/lib/auth";
+import { assertProjectAccess, assertRole, getCurrentUser } from "@/lib/auth";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { ClassifiedError } from "@/lib/errors";
 import { decideApproval } from "@/db/workflow";
@@ -254,6 +254,27 @@ export async function setTriggerEnabled(input: {
     });
     revalidatePath("/automation/triggers");
     return ok({ enabled: input.enabled });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function cloneTriggerForClient(input: {
+  triggerId: string;
+  projectId: string;
+}): Promise<ActionResult<{ triggerId: string }>> {
+  try {
+    const user = await getCurrentUser();
+    // Same bar as enabling: turning automation loose on a client is an
+    // admin decision.
+    assertRole(user, "admin");
+    await assertProjectAccess(user, input.projectId);
+    const { cloneTriggerForClient: clone } = await import(
+      "@/lib/triggers/service"
+    );
+    const result = await clone({ ...input, createdBy: user.id });
+    revalidatePath("/automation/triggers");
+    return ok({ triggerId: result.triggerId });
   } catch (err) {
     return fail(err);
   }

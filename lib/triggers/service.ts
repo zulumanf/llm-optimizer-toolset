@@ -132,6 +132,80 @@ export type WorkflowStarter = (args: {
   trigger: "scheduled" | "signal" | "manual";
 }) => Promise<string>;
 
+/**
+ * Clone a platform-scoped schedule template to one client, enabled
+ * (roadmap 2.5). The 18 shipped workflows install their schedules disabled
+ * at platform scope on purpose — firing a per-client process with no
+ * client is meaningless — so until now enabling one meant hand-writing a
+ * trigger. The clone keeps the template's cadence and config, gains the
+ * project, and gets its own key so the template stays untouched as the
+ * canonical default.
+ */
+export async function cloneTriggerForClient(input: {
+  triggerId: string;
+  projectId: string;
+  createdBy?: string | null;
+}): Promise<RegisterTriggerResult> {
+  const [source] = await sql`
+    select * from automation_triggers where id = ${input.triggerId}
+  `;
+  if (!source) throw new ClassifiedError("not_found", "Trigger not found.");
+  if (source.projectId) {
+    throw new ClassifiedError(
+      "conflict",
+      "Already client-scoped — clone from the platform template instead."
+    );
+  }
+  if (source.kind !== "schedule") {
+    throw new ClassifiedError(
+      "validation",
+      "Only schedule templates are cloned per client."
+    );
+  }
+  const [project] = await sql`
+    select name from projects where id = ${input.projectId} and status = 'active'
+  `;
+  if (!project) throw new ClassifiedError("not_found", "Active project not found.");
+
+  const key = `${source.key as string}:${input.projectId}`;
+  const [existing] = await sql`
+    select id from automation_triggers where key = ${key}
+  `;
+  if (existing) {
+    throw new ClassifiedError(
+      "conflict",
+      "This client already has a clone of that schedule — toggle it instead."
+    );
+  }
+
+  const result = await registerTrigger({
+    key,
+    kind: "schedule",
+    workflowKey: source.workflowKey as string,
+    projectId: input.projectId,
+    name: `${(source.name as string | null) ?? (source.key as string)} — ${project.name as string}`,
+    description: (source.description as string | null) ?? undefined,
+    enabled: true,
+    config: (source.config as Record<string, unknown> | null) ?? undefined,
+    cron: source.cron as string,
+    timezone: (source.timezone as string | null) ?? undefined,
+    missedRunPolicy:
+      (source.missedRunPolicy as CreateTriggerInput["missedRunPolicy"]) ??
+      undefined,
+    createdBy: input.createdBy ?? null,
+  });
+  await sql.begin((tx) =>
+    writeAudit(tx, {
+      userId: input.createdBy ?? null,
+      action: "trigger.clone_for_client",
+      entity: "automation_trigger",
+      entityId: result.triggerId,
+      detail: { sourceTriggerId: input.triggerId, projectId: input.projectId },
+    })
+  );
+  return result;
+}
+
 export async function dispatchDueTriggers(
   startWorkflow: WorkflowStarter,
   now: Date = new Date()
