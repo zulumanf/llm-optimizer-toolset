@@ -38,6 +38,22 @@ export async function unarchiveProject(input: unknown): Promise<ActionResult<Pro
   return withUserAndRevalidate((user) => service.unarchiveProject(user, input));
 }
 
+export async function updatePortfolioFields(
+  input: unknown
+): Promise<ActionResult<{ projectId: string }>> {
+  try {
+    const user = await getCurrentUser();
+    const result = await service.updatePortfolioFields(user, input);
+    if (result.ok) {
+      revalidatePath("/projects");
+      revalidatePath(`/projects/${result.data.projectId}/settings`);
+    }
+    return result;
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 export async function updateBaselineSettings(
   input: unknown
 ): Promise<ActionResult<{ projectId: string }>> {

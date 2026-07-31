@@ -14,18 +14,35 @@ import {
 import { ProjectFormDialog } from "@/components/projects/project-form-dialog";
 import { formatDate } from "@/lib/format";
 
+const TIERS = ["standard", "premium", "exclusive"] as const;
+
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archived?: string }>;
+  searchParams: Promise<{ archived?: string; owner?: string; tier?: string }>;
 }) {
-  const { archived } = await searchParams;
+  const { archived, owner, tier } = await searchParams;
   const includeArchived = archived === "1";
+  const tierFilter = (TIERS as readonly string[]).includes(tier ?? "")
+    ? (tier as string)
+    : null;
   const user = await getCurrentUser();
   const projects = await listPortfolio({
     includeArchived,
     visibleIds: await visibleProjectIds(user),
+    ownerId: owner ?? null,
+    serviceTier: tierFilter,
   });
+  const filterHref = (next: { owner?: string | null; tier?: string | null }) => {
+    const params = new URLSearchParams();
+    if (includeArchived) params.set("archived", "1");
+    const nextOwner = next.owner === undefined ? owner : next.owner;
+    const nextTier = next.tier === undefined ? tierFilter : next.tier;
+    if (nextOwner) params.set("owner", nextOwner);
+    if (nextTier) params.set("tier", nextTier);
+    const query = params.toString();
+    return query ? `/projects?${query}` : "/projects";
+  };
 
   return (
     <div className="mx-auto max-w-7xl p-6">
@@ -50,6 +67,23 @@ export default async function ProjectsPage({
         </div>
       </div>
 
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-muted-foreground">Tier:</span>
+        <Link href={filterHref({ tier: null })}>
+          <Badge variant={tierFilter === null ? "default" : "outline"}>all</Badge>
+        </Link>
+        {TIERS.map((t) => (
+          <Link key={t} href={filterHref({ tier: t })}>
+            <Badge variant={tierFilter === t ? "default" : "outline"}>{t}</Badge>
+          </Link>
+        ))}
+        {owner && (
+          <Link href={filterHref({ owner: null })}>
+            <Badge variant="secondary">owner filter × clear</Badge>
+          </Link>
+        )}
+      </div>
+
       {projects.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <FolderPlus className="size-8 text-muted-foreground" />
@@ -72,6 +106,8 @@ export default async function ProjectsPage({
             <TableHeader>
               <TableRow>
                 <TableHead>Client / project</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead>Tier</TableHead>
                 <TableHead>Subject</TableHead>
                 <TableHead className="text-right">Authority</TableHead>
                 <TableHead className="text-right">Open gaps</TableHead>
@@ -94,6 +130,23 @@ export default async function ProjectsPage({
                       {p.runCount} run{p.runCount === 1 ? "" : "s"} · since{" "}
                       {formatDate(p.createdAt)}
                     </p>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {p.accountOwnerId ? (
+                      <Link
+                        href={filterHref({ owner: p.accountOwnerId })}
+                        className="hover:underline"
+                      >
+                        {p.accountOwnerName}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {p.serviceTier ?? (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm">
                     {p.subjectName ?? (
