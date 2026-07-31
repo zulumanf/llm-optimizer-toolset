@@ -504,6 +504,45 @@ rewrite branch never executes. The branch is still a trap for the next account
 provisioned after it has accumulated audit rows; fixing it properly means
 provisioning identity and row together, and is not attempted here.
 
+## 2026-07-30 — A search result is a lead, never evidence (spec 027)
+
+External discovery could have stored what a search returned: the snippet, the
+title, the model's summary. It stores none of them. A candidate URL is fetched,
+hashed and written to `source_artifacts`, and only then may a claim be proposed
+from it — so every claim cites bytes we hold and can re-read, not a description
+of a page we never saw.
+
+The cost of that rule is visible and deliberate: a page that 404s, blocks us, or
+renders its content in JavaScript produces **no claim**, however good the
+snippet looked. The alternative — proposing a claim from a search summary — is
+exactly the fabricated-evidence failure PRINCIPLES #5 forbids, wearing the
+costume of a citation.
+
+Queries are templated and filled deterministically (`external-discovery-v1`,
+docs/13) rather than composed by an agent. An agent writing its own searches
+returns a different corpus every run, and two enrichments of the same client
+stop being comparable — which would quietly undo the reproducibility every other
+number here depends on.
+
+`scripts/jc-enrich.ts` stays as the record of how this was done by hand.
+
+## 2026-07-30 — Discovery honours robots.txt; the site crawler still does not
+
+`lib/knowledge/sources/discover.ts` does not read robots.txt, and that is
+defensible for what it does: it crawls the client's own site, which the operator
+has permission to read.
+
+Discovery fetches third-party sites nobody asked. The publisher's stated
+preference is the only signal available, and ignoring it while calling this an
+evidence platform would be a poor trade for a handful of pages. So
+`lib/knowledge/discovery/robots.ts` implements the subset that matters —
+user-agent groups, `Disallow`, `Allow`, longest-match wins — and treats an
+unreachable or unparseable robots.txt as permitting the fetch, which is the
+standard reading: a 500 is a broken server, not a prohibition.
+
+The spec claimed this was reused from `discover.ts`. It was not; the spec is
+corrected rather than the claim quietly dropped.
+
 ## 2026-07-30 — The sidebar renders nothing without a session
 
 `AUTH_MODE=supabase` made `/login` return 500. The root layout renders

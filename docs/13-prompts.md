@@ -138,3 +138,38 @@ prompt instruction — see the leak test in
 |---|---|---|
 | 2026-07-29 | artifact-verifier-v1 | Initial. |
 | 2026-07-29 | adversarial-review-v1 | Initial. |
+
+---
+
+## Spec 027 — External discovery queries (2026-07-30)
+
+Unlike everything above, these are not instructions to a model — they are the
+**search queries** used to find external pages about a client. They live here
+for the same reason the others do: a query that changes silently changes which
+corpus a client's claims were drawn from, and two enrichments stop being
+comparable.
+
+Templates in `lib/knowledge/discovery/queries.ts`, keyed
+`external-discovery-v1` and stored on every `discovery_runs` row.
+
+| Template | Shape | Fires when |
+|---|---|---|
+| `name` | `"{name}"` | always |
+| `name_affiliation` | `"{name}" "{affiliation}"` | an affiliation is known |
+| `principal` | `"{principal}" "{name}"` | person entities exist (max 2) |
+| `name_market` | `"{name}" {market}` | markets supplied (max 3) |
+| `news` | `"{name}" news` | always |
+| `awards` | `"{name}" award OR recognition` | always |
+| `alias` | `"{alias}"` | aliases differ from the name (max 2) |
+
+Filled **deterministically** from stored identity — never composed by an agent.
+Same identity in, same query list out. Priority order is the table order, so a
+run truncated at `MAX_QUERIES_PER_RUN` keeps the identity-bearing queries.
+
+The wrapper (`discoveryPrompt`) asks the model for *the pages it consulted*,
+not for an answer: what this feature stores is citations, and a model answering
+fluently from memory with no citations has produced nothing we can keep.
+
+| Date | Template | Change |
+|---|---|---|
+| 2026-07-30 | external-discovery-v1 | Initial. |
