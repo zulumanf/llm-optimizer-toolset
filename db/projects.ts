@@ -22,6 +22,9 @@ export interface PortfolioRow extends ProjectWithCounts {
   lastRunLabel: string | null;
   lastRunStatus: string | null;
   openFindings: number;
+  accountOwnerId: string | null;
+  accountOwnerName: string | null;
+  serviceTier: string | null;
 }
 
 /** The client-portfolio view: each project with its subject and headline
@@ -30,8 +33,13 @@ export async function listPortfolio(opts: {
   includeArchived: boolean;
   /** null = unrestricted (staff); a list = the caller's project grants. */
   visibleIds?: string[] | null;
+  /** Portfolio filters (spec 030). */
+  ownerId?: string | null;
+  serviceTier?: string | null;
 }): Promise<PortfolioRow[]> {
   const visibleIds = opts.visibleIds ?? null;
+  const ownerId = opts.ownerId ?? null;
+  const serviceTier = opts.serviceTier ?? null;
   return sql<PortfolioRow[]>`
     select p.id, p.name, p.description, p.status, p.created_at, p.archived_at,
       (select count(*)::int from prompt_sets s
@@ -46,8 +54,10 @@ export async function listPortfolio(opts: {
       last_run.label as last_run_label,
       last_run.status as last_run_status,
       (select count(*)::int from gap_findings f
-        where f.project_id = p.id and f.status = 'open') as open_findings
+        where f.project_id = p.id and f.status = 'open') as open_findings,
+      p.account_owner_id, owner.name as account_owner_name, p.service_tier
     from projects p
+    left join users owner on owner.id = p.account_owner_id
     left join companies subject on subject.id = coalesce(
       p.subject_company_id,
       (select id from companies where is_self and archived_at is null limit 1))
@@ -57,6 +67,8 @@ export async function listPortfolio(opts: {
     ) last_run on true
     where (${opts.includeArchived} or p.status = 'active')
     ${visibleIds === null ? sql`` : sql`and p.id = any(${visibleIds})`}
+    ${ownerId === null ? sql`` : sql`and p.account_owner_id = ${ownerId}`}
+    ${serviceTier === null ? sql`` : sql`and p.service_tier = ${serviceTier}`}
     order by p.created_at desc
   `;
 }

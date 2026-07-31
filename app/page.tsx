@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
-import { attentionFeed, clientCostRollup } from "@/db/operations";
+import { clientCostRollup } from "@/db/operations";
+import { combinedAttentionFeed } from "@/lib/notifications/feed";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -40,7 +41,7 @@ function Tile({ label, value, sub }: { label: string; value: string; sub?: strin
 
 export default async function OperationsPage() {
   const [{ items, metrics }, costs] = await Promise.all([
-    attentionFeed(),
+    combinedAttentionFeed(),
     clientCostRollup(),
   ]);
 

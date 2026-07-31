@@ -22,7 +22,11 @@ export type AttentionKind =
   | "never_run"
   | "stale_client"
   | "gaps_open"
-  | "cycle_halted";
+  | "cycle_halted"
+  // Derived in lib/competitors/movement.ts (spec 030) and merged into the
+  // feed by lib/notifications/feed.ts — not produced by signals() below.
+  | "competitor_overtake"
+  | "visibility_drop";
 
 export type Severity = "urgent" | "attention" | "info";
 
@@ -44,6 +48,9 @@ const SEVERITY: Record<AttentionKind, Severity> = {
   gaps_open: "info",
   // Automation stopped and is waiting on a human decision (spec 017)
   cycle_halted: "urgent",
+  // Movement is client-facing news, not broken measurement (spec 030)
+  competitor_overtake: "attention",
+  visibility_drop: "attention",
 };
 
 const SEVERITY_ORDER: Record<Severity, number> = {

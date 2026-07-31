@@ -3,6 +3,7 @@
  * getCurrentUser + revalidatePath; integration tests call them directly.
  * Every mutation runs in a transaction with its audit row (docs/10).
  */
+import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import type { Project } from "@/db/projects";
@@ -46,6 +47,72 @@ export async function createProject(
     return ok(project);
   } catch (err) {
     return fail(duplicateNameConflict(err, "A project with this name already exists."));
+  }
+}
+
+const portfolioFieldsSchema = z.object({
+  projectId: z.string().uuid(),
+  // null clears; absent leaves untouched
+  accountOwnerId: z.string().uuid().nullable().optional(),
+  serviceTier: z.enum(["standard", "premium", "exclusive"]).nullable().optional(),
+});
+
+/** Portfolio operations fields (spec 030): who runs this account, at what
+ * tier. Kept apart from updateProject so the name/description flow keeps
+ * its shape. */
+export async function updatePortfolioFields(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ projectId: string }>> {
+  const parsed = portfolioFieldsSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    await sql.begin(async (tx) => {
+      const [project] = await tx`
+        select account_owner_id, service_tier from projects
+        where id = ${input.projectId} for update
+      `;
+      if (!project) throw new ClassifiedError("not_found", "Project not found.");
+      if (input.accountOwnerId != null) {
+        const [owner] = await tx`
+          select 1 from users where id = ${input.accountOwnerId} and active
+        `;
+        if (!owner) {
+          throw new ClassifiedError("not_found", "Owner is not an active user.");
+        }
+      }
+      await tx`
+        update projects set
+          account_owner_id = ${
+            input.accountOwnerId !== undefined
+              ? input.accountOwnerId
+              : (project.accountOwnerId as string | null)
+          },
+          service_tier = ${
+            input.serviceTier !== undefined
+              ? input.serviceTier
+              : (project.serviceTier as string | null)
+          }
+        where id = ${input.projectId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "project.update_portfolio_fields",
+        entity: "project",
+        entityId: input.projectId,
+        detail: {
+          accountOwnerId: input.accountOwnerId,
+          serviceTier: input.serviceTier,
+        },
+      });
+    });
+    return ok({ projectId: input.projectId });
+  } catch (err) {
+    return fail(err);
   }
 }
 

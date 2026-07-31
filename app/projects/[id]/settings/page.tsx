@@ -4,7 +4,9 @@ import { getProject } from "@/db/projects";
 import { sql } from "@/db/client";
 import { listAllModels } from "@/lib/ai/registry";
 import { getEnv } from "@/lib/env";
+import { listActiveStaffUsers } from "@/db/users";
 import { BaselineSettingsForm } from "@/components/settings/baseline-settings-form";
+import { PortfolioFieldsForm } from "@/components/settings/portfolio-fields-form";
 import type { ProviderConfig } from "@/lib/runs/cells";
 
 export default async function ProjectSettingsPage({
@@ -17,8 +19,11 @@ export default async function ProjectSettingsPage({
   if (!project) notFound();
 
   const [config] = await sql`
-    select baseline_prompt_set_id, baseline_config from projects where id = ${id}
+    select baseline_prompt_set_id, baseline_config, account_owner_id,
+      service_tier
+    from projects where id = ${id}
   `;
+  const owners = await listActiveStaffUsers();
   const sets = await sql`
     select s.id, s.name,
       (select max(v.version) from prompt_set_versions v
@@ -45,6 +50,16 @@ export default async function ProjectSettingsPage({
         Weekly baseline: every Monday the cron runs the chosen set&rsquo;s
         latest frozen version with this configuration (docs/07 cadence).
       </p>
+
+      <div className="mb-6 rounded-md border p-4">
+        <p className="mb-3 text-sm font-medium">Portfolio (spec 030)</p>
+        <PortfolioFieldsForm
+          projectId={id}
+          owners={owners}
+          currentOwnerId={(config?.accountOwnerId as string | null) ?? null}
+          currentTier={(config?.serviceTier as string | null) ?? null}
+        />
+      </div>
 
       <BaselineSettingsForm
         projectId={id}
