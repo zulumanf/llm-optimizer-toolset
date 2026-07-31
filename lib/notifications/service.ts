@@ -14,7 +14,8 @@ import { writeAudit } from "@/db/audit";
 import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
-import { attentionFeed, type Severity } from "@/db/operations";
+import type { Severity } from "@/db/operations";
+import { combinedAttentionFeed } from "@/lib/notifications/feed";
 import { log } from "@/lib/logger";
 
 /** Hygiene items stay in the Today console; only real work notifies —
@@ -48,7 +49,7 @@ export interface SyncResult {
  * it twice in a row creates nothing new and resolves nothing twice.
  */
 export async function syncNotifications(): Promise<SyncResult> {
-  const { items } = await attentionFeed();
+  const { items } = await combinedAttentionFeed();
   const notifiable = items.filter((i) => NOTIFY_SEVERITIES.includes(i.severity));
 
   const seenKeys = new Set<string>();
