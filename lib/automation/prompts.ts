@@ -15,6 +15,7 @@
  */
 import { AGENT_MODEL } from "@/lib/ai/agent";
 import { CLASSIFIER_MODEL } from "@/lib/constants";
+import { registerAgentVersions } from "@/lib/workflow/agent-versions";
 
 export const AUTOMATION_AGENT_KEYS = [
   "classify_lead",
@@ -327,3 +328,12 @@ export function automationPromptVersions(): Record<string, string> {
     Object.entries(AUTOMATION_PROMPTS).map(([key, value]) => [key, value.version])
   );
 }
+
+/** The version an automation agent node must name to pass graph validation. */
+export function automationAgentVersion(key: AutomationAgentKey): string {
+  return AUTOMATION_PROMPTS[key].version;
+}
+
+// These agents are as real as the spec-018 registry's, so a graph may name
+// them. Registered at import time, before any automation graph is published.
+registerAgentVersions(Object.values(AUTOMATION_PROMPTS).map((p) => p.version));

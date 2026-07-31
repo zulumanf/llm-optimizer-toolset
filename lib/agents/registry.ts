@@ -16,6 +16,7 @@ import { z } from "zod";
 import { sql } from "@/db/client";
 import { AGENT_MODEL } from "@/lib/ai/agent";
 import { CLASSIFIER_MODEL } from "@/lib/constants";
+import { registerAgentVersions } from "@/lib/workflow/agent-versions";
 
 export type AgentStatus = "implemented" | "declared";
 
@@ -472,6 +473,11 @@ function declaredOnly(
     escalationConditions: ["insufficient evidence"],
   }));
 }
+
+// A graph may name any agent whose contract is fixed, implemented or not, so
+// every version here is publishable. Registered at import time; the workflow
+// bootstrap imports this module before it registers a definition.
+registerAgentVersions(AGENTS.map((a) => a.version));
 
 export function getAgent(key: string): AgentDefinition | undefined {
   return AGENTS.find((a) => a.key === key);

@@ -26,9 +26,20 @@ export interface GraphError {
     | "unreachable"
     | "undeclared_cycle"
     | "missing_handler"
+    | "missing_agent_version"
+    | "unknown_agent_version"
     | "invalid_fan_in"
     | "invalid_loop";
   message: string;
+}
+
+export interface GraphValidationOptions {
+  /**
+   * Agent versions that resolve. Supplied by the caller rather than imported,
+   * because this module stays pure — the registries that own agents do I/O.
+   * Omitted means "do not check", which is what the graph-shape unit tests want.
+   */
+  knownAgentVersions?: ReadonlySet<string>;
 }
 
 function nodeMap(nodes: NodeDefinition[]): Map<string, NodeDefinition> {
@@ -116,11 +127,17 @@ const HANDLER_REQUIRED = new Set([
   "condition",
 ]);
 
+/** Node types that run an agent, and must therefore name which one. */
+const AGENT_REQUIRED = new Set(["agent_task", "verification_task"]);
+
 /**
  * Full structural validation. Returns every problem rather than the first —
  * a template author fixing a graph wants the whole list.
  */
-export function validateGraph(def: WorkflowDefinition): GraphError[] {
+export function validateGraph(
+  def: WorkflowDefinition,
+  opts: GraphValidationOptions = {}
+): GraphError[] {
   const errors: GraphError[] = [];
   const nodes = nodeMap(def.nodes);
 
@@ -169,6 +186,24 @@ export function validateGraph(def: WorkflowDefinition): GraphError[] {
       errors.push({
         code: "missing_handler",
         message: `Node "${node.key}" (${node.type}) must name a handler.`,
+      });
+    }
+    // An agent node without a version is an unpinned model call, and the agent
+    // metric buckets by this field — an unnamed agent is invisible in it.
+    if (AGENT_REQUIRED.has(node.type) && !node.agentVersion) {
+      errors.push({
+        code: "missing_agent_version",
+        message: `Node "${node.key}" (${node.type}) must name an agent version.`,
+      });
+    }
+    if (
+      node.agentVersion &&
+      opts.knownAgentVersions &&
+      !opts.knownAgentVersions.has(node.agentVersion)
+    ) {
+      errors.push({
+        code: "unknown_agent_version",
+        message: `Node "${node.key}" names agent version "${node.agentVersion}", which is in no agent registry.`,
       });
     }
     // A fan-in exists to join branches; one input means the author wanted a

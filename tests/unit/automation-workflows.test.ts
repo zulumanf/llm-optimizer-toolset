@@ -19,6 +19,7 @@ import {
   AUTOMATION_NODES,
 } from "@/lib/automation/nodes";
 import { hasHandler } from "@/lib/workflow/handlers";
+import { knownAgentVersions } from "@/lib/workflow/agent-versions";
 import { AUTOMATION_PROMPTS, AUTOMATION_AGENT_KEYS } from "@/lib/automation/prompts";
 import { agentSchema, implementedAgentKeys } from "@/lib/automation/nodes/agent";
 import { providersFor } from "@/lib/connectors/registry";
@@ -171,9 +172,32 @@ describe("the shipped workflows", () => {
 
   it("validates every graph", () => {
     for (const workflow of AUTOMATION_WORKFLOWS) {
-      const errors = validateGraph(workflow);
+      const errors = validateGraph(workflow, { knownAgentVersions: knownAgentVersions() });
       expect(errors.map((e) => e.message), `${workflow.key} graph`).toEqual([]);
     }
+  });
+
+  /**
+   * `agentVersion` used to hold an agent *key* here and a *version* in the
+   * spec-018 templates, so the agent metric grouped by two different identifier
+   * spaces. It is a version everywhere now, and publishing enforces it.
+   */
+  it("names a resolvable agent version, never a key, on every agent node", () => {
+    const versions = knownAgentVersions();
+    let checked = 0;
+    for (const workflow of AUTOMATION_WORKFLOWS) {
+      for (const node of workflow.nodes) {
+        if (node.type !== "agent_task" && node.type !== "verification_task") continue;
+        expect(node.agentVersion, `${workflow.key}/${node.key}`).toBeDefined();
+        expect(
+          versions.has(node.agentVersion!),
+          `${workflow.key}/${node.key} → ${node.agentVersion}`
+        ).toBe(true);
+        expect(AUTOMATION_AGENT_KEYS).not.toContain(node.agentVersion);
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 
   it("passes the operational-metadata validator", () => {

@@ -134,8 +134,14 @@ describe("validateGraph", () => {
   it("permits a cycle whose closing edge declares a bounded loop", () => {
     const rework = graph({
       nodes: [
-        { key: "draft", type: "agent_task", name: "Draft", handler: "h" },
-        { key: "review", type: "verification_task", name: "Review", handler: "h" },
+        { key: "draft", type: "agent_task", name: "Draft", handler: "h", agentVersion: "a-v1" },
+        {
+          key: "review",
+          type: "verification_task",
+          name: "Review",
+          handler: "h",
+          agentVersion: "b-v1",
+        },
         { key: "done", type: "terminal_success", name: "Done" },
       ],
       edges: [
@@ -146,6 +152,56 @@ describe("validateGraph", () => {
     });
     expect(findUndeclaredCycles(rework)).toEqual([]);
     expect(validateGraph(rework)).toEqual([]);
+  });
+
+  it("requires an agent version on a node that runs an agent", () => {
+    const bad = graph({
+      nodes: [
+        { key: "draft", type: "agent_task", name: "Draft", handler: "h" },
+        { key: "done", type: "terminal_success", name: "Done" },
+      ],
+      edges: [{ from: "draft", to: "done" }],
+    });
+    expect(validateGraph(bad).map((e) => e.code)).toContain("missing_agent_version");
+  });
+
+  it("rejects an agent version that is in no registry", () => {
+    const typo = graph({
+      nodes: [
+        {
+          key: "draft",
+          type: "agent_task",
+          name: "Draft",
+          handler: "h",
+          agentVersion: "content-draft-v2",
+        },
+        { key: "done", type: "terminal_success", name: "Done" },
+      ],
+      edges: [{ from: "draft", to: "done" }],
+    });
+    const known = new Set(["content-draft-v1"]);
+    expect(validateGraph(typo, { knownAgentVersions: known }).map((e) => e.code)).toContain(
+      "unknown_agent_version"
+    );
+    // The same graph naming the version that exists is clean.
+    const fixed = graph({
+      nodes: typo.nodes.map((n) =>
+        n.key === "draft" ? { ...n, agentVersion: "content-draft-v1" } : n
+      ),
+      edges: typo.edges,
+    });
+    expect(validateGraph(fixed, { knownAgentVersions: known })).toEqual([]);
+  });
+
+  it("checks an agent version only when the caller supplies a registry", () => {
+    const anyVersion = graph({
+      nodes: [
+        { key: "draft", type: "agent_task", name: "Draft", handler: "h", agentVersion: "x-v9" },
+        { key: "done", type: "terminal_success", name: "Done" },
+      ],
+      edges: [{ from: "draft", to: "done" }],
+    });
+    expect(validateGraph(anyVersion)).toEqual([]);
   });
 
   it("rejects a loop that allows zero iterations", () => {

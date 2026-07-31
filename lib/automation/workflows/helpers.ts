@@ -12,7 +12,7 @@ import type {
   NodeDefinition,
   RiskLevel,
 } from "@/lib/workflow/types";
-import type { AutomationAgentKey } from "@/lib/automation/prompts";
+import { automationAgentVersion, type AutomationAgentKey } from "@/lib/automation/prompts";
 import type { ConnectorCapability } from "@/lib/connectors/types";
 import type {
   AutomationWorkflowDefinition,
@@ -104,7 +104,7 @@ export function agent(
     type: "agent_task",
     name,
     handler: `agt.${agentKey}`,
-    agentVersion: agentKey,
+    agentVersion: automationAgentVersion(agentKey),
     config: { actionType: ACTION_TYPES.drafting, ...config },
     timeoutSeconds: 300,
     riskLevel: "low",
@@ -127,7 +127,7 @@ export function verify(
     type: "verification_task",
     name,
     handler: `agt.${agentKey}`,
-    agentVersion: agentKey,
+    agentVersion: automationAgentVersion(agentKey),
     config: { actionType: ACTION_TYPES.verification, ...config },
     timeoutSeconds: 300,
     failureStrategy: "safe_stop",

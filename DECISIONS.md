@@ -595,3 +595,31 @@ blind spot for any component doing identity work above the page level.
 counts only after the caller is known. It is a rendering decision, not a
 security boundary — every page and server action still calls `getCurrentUser()`
 and throws on its own.
+
+## 2026-07-31 — `agentVersion` is a validated reference, not a label
+
+Auditing spec 018 turned up a node field that meant two different things.
+`lib/workflow/templates/*` put an agent *version* in `NodeDefinition.agentVersion`
+(`content-draft-v1`); `lib/automation/workflows/helpers.ts` put an agent *key*
+in the same field (`draft_content`). Nothing validated either, because
+`validateGraph` checked every other reference a graph makes — node keys,
+handlers, terminals, cycles — and not this one.
+
+Two consequences, one latent and one live. Latent: a typo in an agent version
+published cleanly and failed, if at all, inside a node run. Live: `agentMetrics()`
+groups by `workflow_nodes.agent_version`, so the agent-performance table was
+bucketing two identifier spaces at once and no bucket meant what the column
+header said.
+
+`agentVersion` is now a version everywhere, and validation enforces it: an
+`agent_task` or `verification_task` without one is a publish-time error, and a
+version in no registry is a publish-time error. Because two modules own agents —
+`lib/agents/registry.ts` and `lib/automation/prompts.ts` — the known set is a
+small registry (`lib/workflow/agent-versions.ts`) that both write into at import,
+rather than an import from `graph.ts`, which stays pure and takes the set as an
+argument. A *declared* agent's version is publishable: its contract is fixed, and
+the node safe-stops for want of a handler, not for want of a contract.
+
+Fixing the automation helpers changes those graphs' hashes, so the next bootstrap
+publishes version 2 of each. That is the versioning model working, not a
+migration: version 1 stays exactly as it ran.

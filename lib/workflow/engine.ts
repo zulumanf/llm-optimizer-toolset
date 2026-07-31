@@ -36,6 +36,7 @@ import {
   isEffectful,
 } from "@/lib/workflow/autonomy";
 import { raiseException } from "@/lib/workflow/exceptions";
+import { knownAgentVersions } from "@/lib/workflow/agent-versions";
 import { getHandler } from "@/lib/workflow/handlers";
 import type {
   NodeContext,
@@ -78,7 +79,7 @@ export async function registerDefinition(
   def: WorkflowDefinition,
   createdBy: string | null = null
 ): Promise<{ versionId: string; created: boolean; version: number }> {
-  const errors = validateGraph(def);
+  const errors = validateGraph(def, { knownAgentVersions: knownAgentVersions() });
   if (errors.length > 0) {
     throw new ClassifiedError(
       "validation",
