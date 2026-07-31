@@ -283,6 +283,36 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     ).rejects.toThrow(/immutable|not allowed|forbid/i);
   });
 
+  it("parse classifies sources and the run publishes lifecycle events", async () => {
+    const { runId, projectId } = await seedScoredRun({ cite: true });
+    const [owned] = await sql`
+      select source_type, relationship, classifier_version from sources
+      where project_id = ${projectId} and domain = 'parva.io'
+    `;
+    expect(owned?.sourceType).toBe("client_site");
+    expect(owned?.relationship).toBe("owned");
+    expect(owned?.classifierVersion).toBe("source-classifier-v1");
+    const [thirdParty] = await sql`
+      select source_type, relationship from sources
+      where project_id = ${projectId} and domain = 'example.com'
+    `;
+    expect(thirdParty?.sourceType).toBe("other");
+    expect(thirdParty?.relationship).toBe("third_party");
+
+    // Lifecycle events (roadmap 2.6): declared since migration 020, now
+    // actually produced — started at launch, completed at finalize.
+    const events = await sql`
+      select type from domain_events
+      where project_id = ${projectId} and type like 'benchmark.%'
+      order by occurred_at asc
+    `;
+    expect(events.map((e) => e.type)).toEqual([
+      "benchmark.started",
+      "benchmark.completed",
+    ]);
+    void runId;
+  });
+
   it("source intelligence is scoped per client (migration 029)", async () => {
     // Before 029, sources.url was globally unique and citation_count
     // accumulated across every client's runs. Two clients citing the same

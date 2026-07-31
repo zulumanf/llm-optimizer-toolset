@@ -235,4 +235,40 @@ export async function computeScores(runId: string): Promise<void> {
     }
   });
   log("info", "scoring.computed", { runId, rows: rows.length });
+
+  // Movement events (spec 030 / roadmap 2.6): a material decline is
+  // published exactly once per (run, metric) — the dedupe key, not the
+  // caller, guarantees a re-score cannot double-fire the automation layer.
+  // Catalogue type visibility.materially_declined existed producer-less
+  // since migration 020.
+  try {
+    const { movementForProject } = await import("@/lib/competitors/movement");
+    const { publishEvent } = await import("@/lib/events/bus");
+    const drops = (await movementForProject(run.projectId as string)).filter(
+      (event) => event.kind === "visibility_drop"
+    );
+    for (const drop of drops) {
+      await publishEvent(sql, {
+        type: "visibility.materially_declined",
+        projectId: run.projectId as string,
+        payload: {
+          metric: drop.metric,
+          previous: drop.previous,
+          current: drop.current,
+          deltaPct: Number(((drop.current - drop.previous) * 100).toFixed(2)),
+          sampleSize: drop.sampleSize,
+          periodStart: drop.periodStart ?? "",
+          periodEnd: drop.periodEnd ?? "",
+          material: true,
+        },
+        dedupeKey: `visibility-drop:${runId}:${drop.metric}`,
+      });
+    }
+  } catch (err) {
+    // Scores are committed; an event hiccup must not fail the job.
+    log("warn", "scoring.movement_events_failed", {
+      runId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+  }
 }

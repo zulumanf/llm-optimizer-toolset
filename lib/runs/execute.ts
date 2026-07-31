@@ -244,11 +244,33 @@ async function finalizeRun(
     detail = `${totalCells - successes} of ${totalCells} cells failed`;
   }
 
-  await sql`
-    update runs set status = ${status}, status_detail = ${detail},
-      completed_at = now()
-    where id = ${runId}
+  // Status and lifecycle event commit together (the bus's design point:
+  // an event cannot exist for a write that rolled back). These events were
+  // declared in the catalogue since migration 020 with no producer — the
+  // exact "promise, not a contract" the catalogue docblock warns about.
+  const { publishEvent } = await import("@/lib/events/bus");
+  const [run] = await sql`
+    select project_id, prompt_set_version_id from runs where id = ${runId}
   `;
+  await sql.begin(async (tx) => {
+    await tx`
+      update runs set status = ${status}, status_detail = ${detail},
+        completed_at = now()
+      where id = ${runId}
+    `;
+    await publishEvent(tx, {
+      type:
+        status === "completed" ? "benchmark.completed" : "benchmark.partially_failed",
+      projectId: (run?.projectId as string) ?? null,
+      payload: {
+        runId,
+        promptSetVersionId: (run?.promptSetVersionId as string) ?? undefined,
+        cellsTotal: totalCells,
+        cellsSucceeded: successes,
+      },
+      dedupeKey: `benchmark-final:${runId}`,
+    });
+  });
   log("info", "run.execute.done", { runId, status, successes, totalCells });
 
   // Parsing kicks off automatically after execution (spec 004 / docs/07 step 5)
