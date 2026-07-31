@@ -28,7 +28,10 @@ export interface PortfolioRow extends ProjectWithCounts {
  * numbers (latest scored run's 'all' authority for the subject). */
 export async function listPortfolio(opts: {
   includeArchived: boolean;
+  /** null = unrestricted (staff); a list = the caller's project grants. */
+  visibleIds?: string[] | null;
 }): Promise<PortfolioRow[]> {
+  const visibleIds = opts.visibleIds ?? null;
   return sql<PortfolioRow[]>`
     select p.id, p.name, p.description, p.status, p.created_at, p.archived_at,
       (select count(*)::int from prompt_sets s
@@ -52,7 +55,8 @@ export async function listPortfolio(opts: {
       select label, status from runs
       where project_id = p.id order by started_at desc limit 1
     ) last_run on true
-    ${opts.includeArchived ? sql`` : sql`where p.status = 'active'`}
+    where (${opts.includeArchived} or p.status = 'active')
+    ${visibleIds === null ? sql`` : sql`and p.id = any(${visibleIds})`}
     order by p.created_at desc
   `;
 }
@@ -72,11 +76,20 @@ export async function listProjects(opts: {
   `;
 }
 
-export async function listActiveProjects(): Promise<Project[]> {
+/**
+ * `visibleIds` is the caller's project grant from `visibleProjectIds()`:
+ * null means unrestricted (staff), a list means exactly those projects.
+ * The filter lives in SQL so a client account's sidebar and portfolio never
+ * even read other clients' names.
+ */
+export async function listActiveProjects(
+  visibleIds: string[] | null = null
+): Promise<Project[]> {
   return sql<Project[]>`
     select id, name, description, status, created_at, archived_at
     from projects
     where status = 'active'
+    ${visibleIds === null ? sql`` : sql`and id = any(${visibleIds})`}
     order by name asc
   `;
 }

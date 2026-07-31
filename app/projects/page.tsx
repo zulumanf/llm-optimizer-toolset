@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FolderPlus } from "lucide-react";
 import { listPortfolio } from "@/db/projects";
+import { getCurrentUser, visibleProjectIds } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -20,7 +21,11 @@ export default async function ProjectsPage({
 }) {
   const { archived } = await searchParams;
   const includeArchived = archived === "1";
-  const projects = await listPortfolio({ includeArchived });
+  const user = await getCurrentUser();
+  const projects = await listPortfolio({
+    includeArchived,
+    visibleIds: await visibleProjectIds(user),
+  });
 
   return (
     <div className="mx-auto max-w-7xl p-6">

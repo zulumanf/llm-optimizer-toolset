@@ -5,17 +5,12 @@
  */
 import { NextResponse } from "next/server";
 import { startWeeklyCycles } from "@/lib/cycles/service";
-import { getEnv } from "@/lib/env";
+import { requireCronSecret } from "@/lib/security/cron-auth";
 import { log } from "@/lib/logger";
 
-export async function POST(request: Request): Promise<NextResponse> {
-  const secret = getEnv().CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json({ error: "CRON_SECRET is not configured" }, { status: 503 });
-  }
-  if (request.headers.get("authorization") !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export async function POST(request: Request): Promise<Response> {
+  const denied = requireCronSecret(request);
+  if (denied) return denied;
   try {
     const result = await startWeeklyCycles();
     return NextResponse.json(result);

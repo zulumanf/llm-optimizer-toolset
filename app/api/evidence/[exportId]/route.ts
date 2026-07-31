@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { sql } from "@/db/client";
-import { getCurrentUser } from "@/lib/auth";
+import { assertProjectAccess, getCurrentUser } from "@/lib/auth";
 import { artifactPath } from "@/lib/evidence/storage";
 import { recordArtifactAccessAsync } from "@/lib/security/access-log";
 
@@ -31,6 +31,12 @@ export async function GET(
     where e.id = ${exportId}
   `;
   if (!row || row.status !== "completed" || !row.storageKey) {
+    return NextResponse.json({ error: "Export not found" }, { status: 404 });
+  }
+  try {
+    // 404, not 403: an export id resolving at all is client information.
+    await assertProjectAccess(user, row.projectId as string);
+  } catch {
     return NextResponse.json({ error: "Export not found" }, { status: 404 });
   }
   const bytes = await readFile(artifactPath(row.storageKey as string));

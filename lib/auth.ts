@@ -150,3 +150,30 @@ export async function visibleProjectIds(user: CurrentUser): Promise<string[] | n
   `;
   return rows.map((row) => row.projectId as string);
 }
+
+/**
+ * Thrown when a user references a project outside their grant. Classified as
+ * `not_found`, not `forbidden`: telling a client account that a project id
+ * exists but is off-limits confirms another client's existence.
+ */
+export class ProjectAccessError extends ClassifiedError {
+  constructor() {
+    super("not_found", "Project not found.");
+    this.name = "ProjectAccessError";
+  }
+}
+
+/**
+ * The project gate. Staff see every project; client accounts see exactly
+ * their `user_project_access` grants. Call this wherever a request names a
+ * project — pages via the `/projects/[id]` layout, download routes, and any
+ * action that resolves data through a project id.
+ */
+export async function assertProjectAccess(
+  user: CurrentUser,
+  projectId: string
+): Promise<void> {
+  const visible = await visibleProjectIds(user);
+  if (visible === null) return; // staff — unrestricted by design
+  if (!visible.includes(projectId)) throw new ProjectAccessError();
+}

@@ -4,23 +4,13 @@
  * run of the latest frozen version — unless one already exists for this ISO
  * week (UTC), in which case it no-ops with an alert log.
  */
-import { timingSafeEqual } from "node:crypto";
 import { sql } from "@/db/client";
 import { startRun } from "@/lib/runs/service";
+import { requireCronSecret } from "@/lib/security/cron-auth";
 import { log } from "@/lib/logger";
 import type { ProviderConfig } from "@/lib/runs/cells";
 
 export const dynamic = "force-dynamic";
-
-function authorized(request: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const header = request.headers.get("authorization") ?? "";
-  const expected = `Bearer ${secret}`;
-  const a = Buffer.from(header);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 interface BaselineConfig {
   providers: ProviderConfig[];
@@ -28,9 +18,10 @@ interface BaselineConfig {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  if (!authorized(request)) {
+  const denied = requireCronSecret(request);
+  if (denied) {
     log("warn", "cron.baseline.unauthorized", {});
-    return Response.json({ error: "unauthorized" }, { status: 401 });
+    return denied;
   }
 
   const projects = await sql`

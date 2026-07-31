@@ -100,9 +100,16 @@ RLS applies) serves requests.
 
 **Row-level security is defence in depth.** The app connects as the table
 owner, and owners bypass RLS, so these policies govern the Supabase-client path
-rather than application queries. Service-layer scoping via `visibleProjectIds`
-remains the primary control. Isolation tests connect as a non-owner role so
-they prove the policies instead of passing vacuously.
+rather than application queries. The primary control is service-layer scoping:
+`assertProjectAccess` (backed by `visibleProjectIds`) gates every
+`/projects/[id]/*` page through the segment layout, the three artifact
+download routes (report CSV, evidence export, plan export — denials render as
+404, because confirming an id exists is itself a leak), and the run-scoped job
+actions; project listings (`listActiveProjects`, `listPortfolio`) filter by
+the caller's grant in SQL. The 2026-07-31 audit found `visibleProjectIds`
+defined but never called — the wiring above is what made this paragraph true.
+Isolation tests connect as a non-owner role so they prove the policies instead
+of passing vacuously.
 
 **Evidence downloads are recorded.** `artifact_access_log` is insert-only and
 captures who took a copy of raw client material off the platform, which the

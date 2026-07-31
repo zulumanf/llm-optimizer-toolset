@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "@/lib/auth";
+import { assertRole, getCurrentUser } from "@/lib/auth";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import {
   onboardClient as onboard,
@@ -24,13 +24,16 @@ export async function onboardClient(
 }
 
 /** Live preview of the prompts a pack + variables would generate, so the
- * operator sees the benchmark before committing to it. */
+ * operator sees the benchmark before committing to it. Pure, but still an
+ * authenticated staff surface — server actions are open POST endpoints. */
 export async function previewPrompts(input: {
   packKey: string;
   variables: Record<string, string[]>;
   brand: string;
   competitors: string[];
 }): Promise<{ text: string; category: string; tier: number; isHoldout: boolean }[]> {
+  const user = await getCurrentUser();
+  assertRole(user, "operator");
   const pack = findPack(input.packKey);
   if (!pack) return [];
   return expandPack({
