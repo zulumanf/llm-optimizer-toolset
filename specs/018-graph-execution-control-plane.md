@@ -168,6 +168,7 @@ Rollback drops all of the above; no existing table is altered destructively.
 | `lib/workflow/handlers.ts` | Node-type dispatch (deterministic/agent/gate/approval/…). |
 | `lib/workflow/gates.ts` | The six reusable quality gates. |
 | `lib/workflow/autonomy.ts` | Autonomy level resolution and enforcement. |
+| `lib/workflow/agent-versions.ts` | The set of agent versions a graph may name. Both agent-owning modules register into it at import; `registerDefinition` validates against it. |
 | `lib/workflow/exceptions.ts` | Exception raise/resolve + prioritisation formula. |
 | `lib/workflow/templates/*.ts` | Versioned workflow templates; `index.ts` exposes `bootstrapWorkflows()`. |
 | `lib/agents/registry.ts` | Agent definitions, versions, evaluation hooks. |
@@ -176,16 +177,30 @@ Rollback drops all of the above; no existing table is altered destructively.
 
 ## Workflow definitions shipped
 
-1. `benchmark_v1` — frozen benchmark → fan out by prompt × provider ×
-   repetition → capture → classify → confidence routing → independent
-   verification → fan in → metrics → evidence completeness gate → evidence
-   package. Autonomy 4.
-2. `content_production_v1` — gap finding → brief (agent) → draft (agent) →
-   claim verification gate → adversarial review (agent, fresh context) →
-   content quality gate → approval gate → publish record → schedule
-   remeasurement. Autonomy 2.
-3. `weekly_brief_v1` — collect period deltas → materiality filter → brief
-   (agent) → executive reporting gate → deliver draft. Autonomy 3.
+Node lists below are the graphs **as built**. Where a step named in the goal is
+not a node, it is stated — the graph is the thing an operator reads when a run
+stops, so a step it does not contain must not be described as if it does.
+
+1. `benchmark_v1` (autonomy 4) — `validate_baseline → start_capture →
+   await_capture → fan_providers → provider_evidence → join_providers →
+   evidence_gate → terminal`. Per the migration strategy, this **wraps**
+   `startRun`/`executeRun` rather than replacing them: capture, classification,
+   confidence routing, and independent verification happen inside that proven
+   path, and `await_capture` waits on it. The graph's own fan-out is by
+   provider, over the evidence of a completed capture — prompt × provider ×
+   repetition fan-out lives in `lib/runs/cells.ts` and is not re-expressed here.
+2. `content_production_v1` (autonomy 2) — `load_asset → build_packet → draft
+   (agent) → fact_verify (verification) → adversarial (verification, fresh
+   context) → claim_gate → approval → record_action → terminal`. It starts from
+   an existing content asset: gap finding and the brief are upstream of the
+   graph, in `lib/gaps` and `lib/content/service.ts`, not nodes.
+3. `weekly_brief_v1` (autonomy 3) — `resolve_period → client_health →
+   compose_brief → join → terminal`. `compose_brief` is one deterministic node
+   that calls `generateWeeklyBrief`, which runs the brief agent and applies the
+   executive reporting gate internally; a failed gate safe-stops the run and
+   raises an exception, so the brief is withheld rather than written. The gate
+   is therefore real but **not a node** — the graph cannot show which of the two
+   steps stopped the run. Splitting them is the obvious next revision.
 
 ## Security requirements
 
@@ -229,6 +244,9 @@ Additive and parallel. Nothing existing is rewritten in this spec:
       graph creates a new version and never mutates the old one.
 - [ ] Graph validation rejects: unknown node references, unreachable nodes,
       missing terminals, and cycles that are not declared bounded loops.
+- [ ] Every reference a graph makes resolves at publish time, not at 3am: an
+      agent node names an agent version, and a version in no registry is a
+      publish-time error exactly as an unregistered handler is.
 - [ ] Independent nodes execute concurrently up to a configured bound.
 - [ ] Fan-in gates wait for every *required* upstream branch and disclose
       partial failures rather than silently proceeding.
@@ -284,13 +302,17 @@ Additive and parallel. Nothing existing is rewritten in this spec:
 - **Cycle migration.** `lib/cycles/service.ts` and `cycle_runs` are untouched
   and still drive the weekly cycle. The graph runs alongside them. Retiring
   `cycle_runs` needs its own spec after a quarter of graph runs.
-- **16 of 26 registry agents are `declared`, not `implemented`.** Their
-  contracts (schemas, scopes, prohibitions) are fixed and visible at `/agents`;
-  no runner is wired. `/agents` labels each one, and `implementedAgents()` is
-  the honest count.
-- **Node types with no template using them yet:** `condition`, `notification`,
-  `delay`/`timer` have built-in or trivial handlers but no shipped template
-  exercises them, so they are untested beyond the graph algebra.
+- **15 of 26 registry agents are `declared`, not `implemented`** (11 implemented,
+  verified 2026-07-31). Their contracts (schemas, scopes, prohibitions) are fixed
+  and visible at `/agents`; no runner is wired. `implementedAgents()` in
+  `lib/agents/registry.ts` is the authority — if this line and that function
+  disagree, this line is the one that is wrong. A graph may still *name* a
+  declared agent: its version is publishable, and the node safe-stops for want
+  of a handler, not for want of a contract.
+- **Node types no shipped graph uses yet:** `condition`, `notification`,
+  `delay`/`timer`, and `manual_task` have built-in or trivial handlers, but
+  neither the three templates here nor the 18 automation-library workflows
+  exercise them, so they are untested beyond the graph algebra.
 - **Row-level security.** Tenant isolation is a service-layer invariant with
   integration tests. RLS lands in the same change as real auth (spec 014,
   blocked on a Supabase project).
