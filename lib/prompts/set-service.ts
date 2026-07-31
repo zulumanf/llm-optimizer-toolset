@@ -6,7 +6,7 @@
 import { sql, type TransactionSql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import type { PromptSet } from "@/db/prompt-sets";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { isSameContent } from "@/lib/prompts/freeze";
@@ -31,6 +31,7 @@ export async function createPromptSet(
   }
   const { projectId, name, description } = parsed.data;
   try {
+    assertCanWrite(user);
     const set = await sql.begin(async (tx) => {
       const [project] = await tx`
         select status from projects where id = ${projectId}
@@ -70,6 +71,7 @@ export async function updatePromptSet(
   }
   const { id, name, description } = parsed.data;
   try {
+    assertCanWrite(user);
     const set = await sql.begin(async (tx) => {
       const [row] = await tx<PromptSet[]>`
         update prompt_sets set
@@ -103,6 +105,7 @@ export async function archivePromptSet(
     return fail(new ClassifiedError("validation", "Invalid prompt set id."));
   }
   try {
+    assertCanWrite(user);
     const set = await sql.begin(async (tx) => {
       const [row] = await tx<PromptSet[]>`
         update prompt_sets set archived_at = now()
@@ -139,6 +142,7 @@ export async function freezePromptSet(
   }
   const setId = parsed.data.id;
   try {
+    assertCanWrite(user);
     const result = await sql.begin(async (tx) => {
       const [set] = await tx<PromptSet[]>`
         select ${SET_COLUMNS} from prompt_sets
@@ -215,6 +219,7 @@ export async function duplicatePromptSet(
   }
   const { setId, versionId, newName } = parsed.data;
   try {
+    assertCanWrite(user);
     const set = await sql.begin(async (tx) => {
       let sourceSetId: string;
       let entries: { text: string; category: string; language: string }[];

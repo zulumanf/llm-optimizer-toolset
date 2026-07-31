@@ -21,7 +21,7 @@
 import { z } from "zod";
 import { sql, type TransactionSql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { publishEvent } from "@/lib/events/bus";
 import { log } from "@/lib/logger";
@@ -123,6 +123,7 @@ export async function ingestSource(
   const input = parsed.data;
 
   try {
+    assertCanWrite(user);
     const [project] = await sql`
       select id, status from projects where id = ${input.projectId}
     `;
@@ -293,6 +294,7 @@ export async function reprocessSource(
     return fail(new ClassifiedError("validation", "Invalid source id."));
   }
   try {
+    assertCanWrite(user);
     const [artifact] = await sql`
       select id, project_id, storage_key, mime_type, source_type, sha256,
         original_filename

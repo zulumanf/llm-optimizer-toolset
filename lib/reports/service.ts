@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage, duplicateNameConflict } from "@/lib/service-helpers";
@@ -63,6 +63,7 @@ export async function generateReportDraft(
     return fail(new ClassifiedError("validation", "Period end precedes start."));
   }
   try {
+    assertCanWrite(user);
     const body = await buildSnapshot(projectId, periodStart, periodEnd, kind);
     const report = await sql.begin(async (tx) => {
       const [row] = await tx<Report[]>`
@@ -105,6 +106,7 @@ export async function updateReportNarrative(
   }
   const { reportId, sectionKey, markdown } = parsed.data;
   try {
+    assertCanWrite(user);
     await sql.begin(async (tx) => {
       const [report] = await tx`
         select status, body from reports where id = ${reportId} for update
@@ -143,6 +145,7 @@ export async function regenerateReportDraft(
   }
   const { reportId } = parsed.data;
   try {
+    assertCanWrite(user);
     const [report] = await sql`
       select status, project_id,
         to_char(period_start, 'YYYY-MM-DD') as period_start,
@@ -189,6 +192,7 @@ export async function publishReport(
   }
   const { reportId, acknowledgePendingReviews } = parsed.data;
   try {
+    assertCanWrite(user);
     await sql.begin(async (tx) => {
       const [report] = await tx`
         select status, body from reports where id = ${reportId} for update
@@ -255,6 +259,7 @@ export async function deleteDraft(
     return fail(new ClassifiedError("validation", "Invalid report id."));
   }
   try {
+    assertCanWrite(user);
     await sql.begin(async (tx) => {
       const [row] = await tx`
         delete from reports where id = ${parsed.data.reportId} and status = 'draft'

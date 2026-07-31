@@ -7,7 +7,7 @@ import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany } from "@/db/companies";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
@@ -30,6 +30,7 @@ export async function createAuditSample(
   }
   const { runId, size } = parsed.data;
   try {
+    assertCanWrite(user);
     const [run] = await sql`select id, project_id from runs where id = ${runId}`;
     if (!run) return fail(new ClassifiedError("not_found", "Run not found."));
     const subject = await getSubjectCompany(run.projectId as string);
@@ -110,6 +111,7 @@ export async function createClientValidationRun(
   }
   const input = parsed.data;
   try {
+    assertCanWrite(user);
     const [version] = await sql`
       select v.frozen_prompts, s.project_id
       from prompt_set_versions v join prompt_sets s on s.id = v.prompt_set_id
@@ -187,6 +189,9 @@ export async function recordClientValidationObservation(
   }
   const input = parsed.data;
   try {
+    // Staff records what the client performed; client accounts stay read-only
+    // (spec 014) even for the validation flow that carries their name.
+    assertCanWrite(user);
     const [validationRun] = await sql`
       select id, status, selected_prompt_ids from client_validation_runs
       where id = ${input.validationRunId}

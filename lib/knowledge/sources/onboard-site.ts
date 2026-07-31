@@ -73,7 +73,9 @@ export async function discoverAndIngestSite(raw: unknown): Promise<SiteIngestRes
     ((await sql`select id from users where active order by created_at limit 1`)[0]?.id as
       | string
       | undefined);
-  const user = { id: actorId ?? null } as unknown as CurrentUser;
+  // The role satisfies ingestSource's write gate (assertCanWrite): the worker
+  // acts with staff privilege; client accounts can never reach this path.
+  const user = { id: actorId ?? null, role: "operator" } as unknown as CurrentUser;
 
   const candidates = found.data.pages.filter((p) => !p.error && p.score >= MIN_SCORE);
   const worth = candidates.filter((p) => p.textLength >= MIN_TEXT_LENGTH);

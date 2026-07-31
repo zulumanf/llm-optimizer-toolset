@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
@@ -42,6 +42,7 @@ export async function updateBaselineSettings(
     );
   }
   try {
+    assertCanWrite(user);
     await sql.begin(async (tx) => {
       if (baselinePromptSetId) {
         const [set] = await tx`

@@ -155,6 +155,19 @@ describe.skipIf(!TEST_URL)("auth and roles (integration)", () => {
     });
   });
 
+  it("write services refuse a client account before touching data", async () => {
+    // Representative sample of the assertCanWrite boundary (Phase 0.2) —
+    // the gate sits before input parsing, so even a malformed call from a
+    // client role is refused as read-only, not rejected as invalid.
+    const claims = await import("@/lib/claims/service");
+    const tasks = await import("@/lib/tasks/service");
+    const competitors = await import("@/lib/competitors/service");
+    await expect(claims.proposeClaim(CLIENT, {})).rejects.toThrow(/read-only/i);
+    await expect(tasks.suggestTask(CLIENT, {})).rejects.toThrow(/read-only/i);
+    await expect(tasks.approveTask(CLIENT, {})).rejects.toThrow(/read-only/i);
+    await expect(competitors.addCompetitor(CLIENT, {})).rejects.toThrow(/read-only/i);
+  });
+
   it("scopes project listings to the caller's grant in SQL", async () => {
     const { listActiveProjects, listPortfolio } = await import("@/db/projects");
     const staffList = await listActiveProjects(await auth.visibleProjectIds(STAFF));

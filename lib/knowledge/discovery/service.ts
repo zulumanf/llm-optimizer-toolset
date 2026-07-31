@@ -14,7 +14,7 @@
  */
 import { z } from "zod";
 import { sql } from "@/db/client";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
@@ -112,6 +112,7 @@ export async function runExternalDiscovery(
   const costCap = input.costCapMicroUsd ?? DEFAULT_COST_CAP_MICRO_USD;
 
   try {
+    assertCanWrite(user);
     const identity = await loadIdentity(input.projectId, {
       markets: input.markets,
       principals: input.principals,

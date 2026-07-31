@@ -19,7 +19,7 @@
 import { z } from "zod";
 import { sql, type TransactionSql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { publishEvent } from "@/lib/events/bus";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
@@ -113,6 +113,7 @@ export async function createInstruction(
   }
 
   try {
+    assertCanWrite(user);
     const result = await sql.begin(async (tx) => {
       const [instruction] = await tx`
         insert into knowledge_instructions (
@@ -177,6 +178,7 @@ export async function reviseInstruction(
   }
   const input = parsed.data;
   try {
+    assertCanWrite(user);
     const result = await sql.begin(async (tx) => {
       const [instruction] = await tx`
         select i.id, i.project_id, i.instruction_type, i.scope, i.status,
@@ -241,6 +243,7 @@ export async function approveInstructionVersion(
     return fail(new ClassifiedError("validation", "Invalid version id."));
   }
   try {
+    assertCanWrite(user);
     await sql.begin(async (tx) => {
       // The version row is immutable, so approval is recorded on the parent and
       // the version's own approval columns are set at insert time. An approval

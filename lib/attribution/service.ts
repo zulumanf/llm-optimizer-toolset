@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
@@ -62,6 +62,7 @@ export async function createIntervention(
     );
   }
   try {
+    assertCanWrite(user);
     const result = await sql.begin(async (tx) => {
       const [version] = await tx`
         select v.id, s.project_id from prompt_set_versions v
@@ -169,6 +170,7 @@ export async function updateInterventionSchedule(
   }
   const { interventionId, postOffsets } = parsed.data;
   try {
+    assertCanWrite(user);
     const result = await sql.begin(async (tx) => {
       const [intervention] = await tx`
         select shipped_at from interventions where id = ${interventionId}

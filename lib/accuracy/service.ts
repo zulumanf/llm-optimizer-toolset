@@ -9,7 +9,7 @@ import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany } from "@/db/companies";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { runAgent, type AgentCaller, AGENT_MODEL } from "@/lib/ai/agent";
@@ -44,6 +44,7 @@ export async function analyzeRunAccuracy(
   }
   const { runId } = parsed.data;
   try {
+    assertCanWrite(user);
     const [run] = await sql`
       select id, project_id, prompt_set_version_id from runs where id = ${runId}
     `;
@@ -220,6 +221,7 @@ export async function setFindingStatus(
     return fail(new ClassifiedError("validation", "Invalid input."));
   }
   try {
+    assertCanWrite(user);
     const target = parsed.data.status;
     const [row] = await sql`
       update accuracy_findings set status = ${target}
@@ -262,6 +264,7 @@ export async function createCorrectionTask(
     return fail(new ClassifiedError("validation", "Invalid finding id."));
   }
   try {
+    assertCanWrite(user);
     const [finding] = await sql`
       select * from accuracy_findings where id = ${parsed.data.findingId}
     `;
