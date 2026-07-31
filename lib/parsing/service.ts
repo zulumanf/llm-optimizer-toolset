@@ -153,9 +153,9 @@ export async function parseResponse(responseId: string): Promise<void> {
     // Scoped per project (migration 029): the same URL is a separate row with
     // a separate counter for each client, so citation counts never blend
     // across clients.
-    const allUrls = [
-      ...new Set([...extractUrls(text), ...searchCitations.map((c) => c.url)]),
-    ];
+    const inTextUrls = extractUrls(text);
+    const searchUrls = searchCitations.map((c) => c.url);
+    const allUrls = [...new Set([...inTextUrls, ...searchUrls])];
     for (const url of allUrls) {
       const domain = urlDomain(url);
       if (!domain) continue;
@@ -166,6 +166,29 @@ export async function parseResponse(responseId: string): Promise<void> {
         on conflict (project_id, url) where project_id is not null do update set
           citation_count = sources.citation_count + 1,
           last_seen_at = now()
+      `;
+    }
+    // Per-response ledger (migration 033): the join the counter above throws
+    // away. A URL both written in the answer AND retrieved by search gets a
+    // row per kind — those are different citation facts.
+    const citationRows: { url: string; kind: "in_text" | "search" }[] = [
+      ...[...new Set(inTextUrls)].map((url) => ({
+        url,
+        kind: "in_text" as const,
+      })),
+      ...[...new Set(searchUrls)].map((url) => ({
+        url,
+        kind: "search" as const,
+      })),
+    ];
+    for (const row of citationRows) {
+      const domain = urlDomain(row.url);
+      if (!domain) continue;
+      const owner = companies.find((c) => c.domain && domain.endsWith(c.domain));
+      await tx`
+        insert into response_citations (response_id, url, domain, kind, company_id)
+        values (${responseId}, ${row.url}, ${domain}, ${row.kind}, ${owner?.id ?? null})
+        on conflict (response_id, url, kind) do nothing
       `;
     }
 
