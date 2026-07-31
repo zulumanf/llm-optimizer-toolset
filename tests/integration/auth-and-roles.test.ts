@@ -134,6 +134,56 @@ describe.skipIf(!TEST_URL)("auth and roles (integration)", () => {
     expect(visible).not.toContain(projectB);
   });
 
+  // ---------------------------------------------------- project access gate
+
+  it("lets staff through the project gate for any project", async () => {
+    await expect(auth.assertProjectAccess(STAFF, projectA)).resolves.toBeUndefined();
+    await expect(auth.assertProjectAccess(STAFF, projectB)).resolves.toBeUndefined();
+  });
+
+  it("lets a client account through only for its granted project", async () => {
+    await expect(auth.assertProjectAccess(CLIENT, projectA)).resolves.toBeUndefined();
+  });
+
+  it("denies a client account another client's project — as not-found", async () => {
+    // 404-shaped on purpose: confirming a project id exists is itself a leak.
+    await expect(auth.assertProjectAccess(CLIENT, projectB)).rejects.toThrow(
+      auth.ProjectAccessError
+    );
+    await expect(auth.assertProjectAccess(CLIENT, projectB)).rejects.toMatchObject({
+      kind: "not_found",
+    });
+  });
+
+  it("write services refuse a client account before touching data", async () => {
+    // Representative sample of the assertCanWrite boundary (Phase 0.2) —
+    // the gate sits before input parsing, so even a malformed call from a
+    // client role is refused as read-only, not rejected as invalid.
+    const claims = await import("@/lib/claims/service");
+    const tasks = await import("@/lib/tasks/service");
+    const competitors = await import("@/lib/competitors/service");
+    await expect(claims.proposeClaim(CLIENT, {})).rejects.toThrow(/read-only/i);
+    await expect(tasks.suggestTask(CLIENT, {})).rejects.toThrow(/read-only/i);
+    await expect(tasks.approveTask(CLIENT, {})).rejects.toThrow(/read-only/i);
+    await expect(competitors.addCompetitor(CLIENT, {})).rejects.toThrow(/read-only/i);
+  });
+
+  it("scopes project listings to the caller's grant in SQL", async () => {
+    const { listActiveProjects, listPortfolio } = await import("@/db/projects");
+    const staffList = await listActiveProjects(await auth.visibleProjectIds(STAFF));
+    expect(staffList.map((p) => p.id).sort()).toEqual([projectA, projectB].sort());
+
+    const clientVisible = await auth.visibleProjectIds(CLIENT);
+    const clientList = await listActiveProjects(clientVisible);
+    expect(clientList.map((p) => p.id)).toEqual([projectA]);
+
+    const clientPortfolio = await listPortfolio({
+      includeArchived: true,
+      visibleIds: clientVisible,
+    });
+    expect(clientPortfolio.map((p) => p.id)).toEqual([projectA]);
+  });
+
   // ------------------------------------------------------------------- RLS
 
   /** Run a query as a non-owner adopting `userId`, so policies apply. */

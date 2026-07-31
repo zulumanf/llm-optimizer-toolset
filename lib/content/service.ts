@@ -8,7 +8,7 @@ import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany } from "@/db/companies";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { runAgent, type AgentCaller } from "@/lib/ai/agent";
@@ -58,6 +58,7 @@ export async function createBriefFromFinding(
     return fail(new ClassifiedError("validation", "Invalid finding id."));
   }
   try {
+    assertCanWrite(user);
     const [finding] = await sql`
       select id, project_id, gap_type, finding, prompt_category
       from gap_findings where id = ${parsed.data.findingId}
@@ -137,6 +138,7 @@ export async function generateDraft(
     return fail(new ClassifiedError("validation", "Invalid asset id."));
   }
   try {
+    assertCanWrite(user);
     const [asset] = await sql`
       select id, project_id, status, brief from content_assets
       where id = ${parsed.data.assetId}
@@ -221,6 +223,7 @@ export async function verifyDraft(
     return fail(new ClassifiedError("validation", "Invalid asset id."));
   }
   try {
+    assertCanWrite(user);
     const [asset] = await sql`
       select a.id, a.project_id, a.status from content_assets a
       where a.id = ${parsed.data.assetId}
@@ -307,6 +310,7 @@ export async function approveAsset(
     return fail(new ClassifiedError("validation", "Invalid asset id."));
   }
   try {
+    assertCanWrite(user);
     await sql.begin(async (tx) => {
       const [row] = await tx`
         update content_assets set status = 'approved', approved_by = ${user.id},
@@ -352,6 +356,7 @@ export async function markPublished(
   }
   const input = parsed.data;
   try {
+    assertCanWrite(user);
     const [asset] = await sql`
       select id, project_id, title, status from content_assets
       where id = ${input.assetId}

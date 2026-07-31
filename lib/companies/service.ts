@@ -5,7 +5,7 @@ import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import type { Company } from "@/db/companies";
-import { assertRole, type CurrentUser } from "@/lib/auth";
+import { assertCanWrite, assertRole, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage, duplicateNameConflict } from "@/lib/service-helpers";
@@ -44,6 +44,7 @@ export async function upsertCompany(
   );
 
   try {
+    assertCanWrite(user);
     const company = await sql.begin(async (tx) => {
       if (input.isSelf !== undefined && input.id) {
         const [existing] = await tx`select is_self from companies where id = ${input.id}`;

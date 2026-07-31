@@ -623,3 +623,66 @@ the node safe-stops for want of a handler, not for want of a contract.
 Fixing the automation helpers changes those graphs' hashes, so the next bootstrap
 publishes version 2 of each. That is the versioning model working, not a
 migration: version 1 stays exactly as it ran.
+
+## 2026-07-31 — Project access is a layout concern; denial is a 404
+
+The full-repo audit (docs/current-system-audit.md) found `visibleProjectIds`
+with zero call sites: every project page trusted its URL parameter, three
+download routes served any client's artifacts to any authenticated user, and
+two server actions ran with no caller at all. Authorization was
+authentication-deep only.
+
+The gate now lives in `app/projects/[id]/layout.tsx` rather than in each of
+the ~30 workspace pages — a page added next month cannot forget a check it
+never had to write. Server actions and route handlers do not pass through
+layouts, so the download routes and run-scoped job actions carry their own
+`assertProjectAccess` call.
+
+Two shapes were chosen deliberately:
+
+- **Denial renders as 404, not 403.** `ProjectAccessError` is classified
+  `not_found` because telling a client account "this project exists but is
+  not yours" confirms another client's existence — the exact leak the check
+  prevents.
+- **Listing scope is a SQL filter, not an app-side filter.** For client
+  roles, other clients' names never leave the database
+  (`listActiveProjects`/`listPortfolio` take the caller's grant). Staff pass
+  `null`, meaning unrestricted — an explicit list for staff would silently
+  drop newly created projects.
+
+Same commit: the four cron routes share one constant-time secret comparison
+(`lib/security/cron-auth.ts`) — three of them compared with `!==`, a timing
+side-channel on the exact header an attacker controls; and the evidence
+drill-down asked `scores` for `citation_rate` where scoring writes
+`citation_score`, so its stored-score check was vacuously green for the one
+metric it never actually looked up. The drill-down now uses the stored name
+and re-derives the same denominator scoring uses (responses with any
+citation), with a regression test that fails on either regression.
+
+## 2026-07-31 — Client intelligence is not shared telemetry (migration 029)
+
+Three tables aggregated data across clients on globally-unique natural keys:
+`sources.citation_count` and `brand_candidates.hit_count` blended every
+client's runs into one counter, and `evidence` — the table every
+`evidence_ids[]` array points into — had no tenant column at all.
+
+Each now carries `project_id`. Two shapes worth recording:
+
+- **Nullable, with an honest backfill.** Historical rows whose project can
+  be derived with certainty are attributed (evidence through its ref chain,
+  brand candidates through `first_seen_run_id`, sources only when exactly
+  one project's mentions cite the URL). Ambiguous rows stay null as
+  "legacy, unattributed" — a wrong tenant label is worse than a missing one.
+  Legacy null rows no longer absorb new counts; the parse upserts target
+  `(project_id, url)` and `(project_id, normalized)`.
+- **The down migration is lossy and says so.** Restoring the global unique
+  constraints requires collapsing per-project duplicates; the down keeps one
+  row per natural key and records the loss in the migration comment.
+
+Same batch: `assertCanWrite` now guards every mutating service that takes a
+request caller (46 functions across 20 modules — previously enforced in
+exactly one). Two exceptions are deliberate: `startRun` gates only when a
+user is present, because every scheduled caller (cycles, cron, attribution
+offsets) passes null by design; and worker-path synthetic users carry an
+explicit `role: "operator"` rather than a roleless cast that the new gate
+would reject at runtime.

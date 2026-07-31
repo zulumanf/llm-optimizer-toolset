@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
@@ -37,6 +37,7 @@ export async function suggestTask(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<{ taskId: string }>> {
+  assertCanWrite(user);
   const parsed = suggestSchema.safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
@@ -47,8 +48,8 @@ export async function suggestTask(
       const evidenceIds: string[] = [];
       for (const item of input.evidence) {
         const [row] = await tx`
-          insert into evidence (kind, ref_id, note, created_by)
-          values (${item.kind}, ${item.refId}, ${item.note}, ${user.id})
+          insert into evidence (project_id, kind, ref_id, note, created_by)
+          values (${input.projectId}, ${item.kind}, ${item.refId}, ${item.note}, ${user.id})
           returning id
         `;
         evidenceIds.push(row?.id as string);
@@ -86,6 +87,7 @@ async function transition(
   raw: unknown,
   action: keyof typeof TRANSITIONS
 ): Promise<ActionResult<{ taskId: string }>> {
+  assertCanWrite(user);
   const parsed = z.object({ taskId: z.string().uuid() }).safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", "Invalid task id."));
@@ -144,6 +146,7 @@ export async function completeTaskAsIntervention(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<{ taskId: string; interventionId: string }>> {
+  assertCanWrite(user);
   const parsed = completeAsInterventionSchema.safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
@@ -182,6 +185,7 @@ export async function suggestTasksFromIntervention(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<{ created: number }>> {
+  assertCanWrite(user);
   const parsed = z.object({ interventionId: z.string().uuid() }).safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", "Invalid intervention id."));

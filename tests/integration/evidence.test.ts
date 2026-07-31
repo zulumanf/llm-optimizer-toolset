@@ -97,23 +97,40 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     }
   }
 
-  async function seedScoredRun(opts?: { holdout?: boolean }): Promise<{
+  async function seedScoredRun(opts?: {
+    holdout?: boolean;
+    cite?: boolean;
+    name?: string;
+  }): Promise<{
     projectId: string;
     runId: string;
     versionId: string;
   }> {
-    const company = await companySvc.upsertCompany(user, {
-      name: "Parva",
-      aliases: ["parva.io"],
-      domain: "parva.io",
+    // Reused across seeds: a second project shares the same tracked
+    // companies (upsertCompany rejects duplicate names by design).
+    const [existing] = await sql`
+      select id from companies where name = 'Parva' and archived_at is null
+    `;
+    let companyId: string;
+    if (existing) {
+      companyId = existing.id as string;
+    } else {
+      const company = await companySvc.upsertCompany(user, {
+        name: "Parva",
+        aliases: ["parva.io"],
+        domain: "parva.io",
+      });
+      if (!company.ok) throw new Error(company.error.message);
+      companyId = company.data.id;
+      await companySvc.upsertCompany(user, { name: "Acme" });
+    }
+    const project = await projectSvc.createProject(user, {
+      name: opts?.name ?? "Evidence Test",
     });
-    if (!company.ok) throw new Error(company.error.message);
-    await companySvc.upsertCompany(user, { name: "Acme" });
-    const project = await projectSvc.createProject(user, { name: "Evidence Test" });
     if (!project.ok) throw new Error(project.error.message);
     await claimsSvc.setSubjectCompany(user, {
       projectId: project.data.id,
-      companyId: company.data.id,
+      companyId,
     });
     const set = await setSvc.createPromptSet(user, {
       projectId: project.data.id,
@@ -136,6 +153,18 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
         text: "holdout question about tools?",
         category: "recommendation",
         isHoldout: true,
+      });
+    }
+    if (opts?.cite) {
+      await promptSvc.addPrompt(user, {
+        setId: set.data.id,
+        text: "MOCK_CITE_OWNED where do I read about Parva?",
+        category: "branded",
+      });
+      await promptSvc.addPrompt(user, {
+        setId: set.data.id,
+        text: "MOCK_CITE_OTHER is there an independent review?",
+        category: "comparison",
       });
     }
     await setSvc.freezePromptSet(user, { id: set.data.id });
@@ -201,6 +230,48 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
       expect(result!.denominator - result!.numerator).toBeGreaterThan(0);
       expect(result!.rows.every((r) => r.responseHash)).toBe(true);
     }
+  });
+
+  it("citation drill-down finds the stored score and uses its denominator", async () => {
+    // Regression: the drill-down previously asked `scores` for a metric named
+    // "citation_rate" while scoring stores "citation_score", so storedValue
+    // was always null and matchesStored was vacuously true. It also divided
+    // by all responses where scoring divides by responses-with-any-citation.
+    const { runId } = await seedScoredRun({ cite: true });
+    const result = await observations.drilldown({
+      runId,
+      metric: "citation_score",
+      scoringVersion: constants.SCORING_VERSION,
+    });
+    expect(result).not.toBeNull();
+    // The stored row must be FOUND — the whole point of the fix.
+    expect(result!.storedValue).not.toBeNull();
+    expect(result!.matchesStored).toBe(true);
+    // Denominator = responses with any citation: 2 cite prompts × 3 reps.
+    // Numerator = responses whose Parva mention carries an owned citation:
+    // only the OWNED prompt's 3 reps.
+    expect(result!.denominator).toBe(6);
+    expect(result!.numerator).toBe(3);
+    expect(result!.value).toBeCloseTo(0.5, 6);
+    expect(result!.storedValue).toBeCloseTo(0.5, 6);
+  });
+
+  it("source intelligence is scoped per client (migration 029)", async () => {
+    // Before 029, sources.url was globally unique and citation_count
+    // accumulated across every client's runs. Two clients citing the same
+    // URL must now produce two rows with independent counters.
+    const a = await seedScoredRun({ cite: true });
+    const b = await seedScoredRun({ cite: true, name: "Evidence Test B" });
+    const rows = await sql`
+      select project_id, citation_count from sources
+      where url = 'https://parva.io/docs' order by first_seen_at
+    `;
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.projectId as string).sort()).toEqual(
+      [a.projectId, b.projectId].sort()
+    );
+    // 3 repetitions each — each client's counter reflects only its own runs.
+    for (const row of rows) expect(Number(row.citationCount)).toBe(3);
   });
 
   it("holdout prompts run but stay out of standard denominators", async () => {

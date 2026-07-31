@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import { assertRole, type CurrentUser } from "@/lib/auth";
+import { assertCanWrite, assertRole, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
@@ -37,6 +37,7 @@ export async function reviewMention(
   }
   const { mentionId, verdict, corrections } = parsed.data;
   try {
+    assertCanWrite(user);
     const runId = await sql.begin(async (tx) => {
       const [mention] = await tx`
         select m.*, r.run_id

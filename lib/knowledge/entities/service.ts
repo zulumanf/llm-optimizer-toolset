@@ -16,7 +16,7 @@
 import { z } from "zod";
 import { sql, type TransactionSql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
@@ -78,6 +78,7 @@ export async function upsertEntity(
   const slug = slugify(input.canonicalName);
 
   try {
+    assertCanWrite(user);
     const entity = await sql.begin(async (tx) => {
       if (input.companyId) {
         const [company] = await tx`
@@ -138,6 +139,7 @@ export async function addAlias(
   }
   const input = parsed.data;
   try {
+    assertCanWrite(user);
     await sql.begin(async (tx) => {
       const [entity] = await tx`
         select id from knowledge_entities where id = ${input.entityId} and status = 'active'
@@ -205,6 +207,7 @@ export async function mergeEntities(
   }
 
   try {
+    assertCanWrite(user);
     const result = await sql.begin(async (tx) => {
       const rows = await tx`
         select id, project_id, entity_type, status from knowledge_entities

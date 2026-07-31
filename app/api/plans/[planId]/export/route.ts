@@ -11,7 +11,7 @@
  *    log records what changed, this records what left.
  */
 import { sql } from "@/db/client";
-import { getCurrentUser } from "@/lib/auth";
+import { assertProjectAccess, getCurrentUser } from "@/lib/auth";
 import { getActivePlan } from "@/lib/plans/service";
 import { renderPlanHtml, renderPlanMarkdown } from "@/lib/plans/export";
 import { recordArtifactAccessAsync } from "@/lib/security/access-log";
@@ -37,6 +37,12 @@ export async function GET(
     where p.id = ${planId}
   `;
   if (!row) return new Response("not found", { status: 404 });
+  try {
+    // 404, not 403: a plan id resolving at all is client information.
+    await assertProjectAccess(user, row.projectId as string);
+  } catch {
+    return new Response("not found", { status: 404 });
+  }
 
   if (row.status !== "approved" && row.status !== "active") {
     // A draft is a working document. Exporting one turns an unreviewed

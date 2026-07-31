@@ -7,7 +7,7 @@ import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import { enqueueJob } from "@/db/jobs";
 import type { Run } from "@/db/runs";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
@@ -34,6 +34,8 @@ export async function startRun(
   }
   const input = parsed.data;
   try {
+    // Null caller = scheduler (no identity by design); a real caller must be staff.
+    if (user) assertCanWrite(user);
     const run = await sql.begin(async (tx) => {
       const [version] = await tx`
         select v.id, s.project_id, p.status as project_status
@@ -116,6 +118,7 @@ export async function retryFailedCells(
   }
   const { runId } = parsed.data;
   try {
+    assertCanWrite(user);
     await sql.begin(async (tx) => {
       const [run] = await tx`select status from runs where id = ${runId} for update`;
       if (!run) throw new ClassifiedError("not_found", "Run not found.");
@@ -150,6 +153,7 @@ export async function cancelRun(
   }
   const { runId } = parsed.data;
   try {
+    assertCanWrite(user);
     await sql.begin(async (tx) => {
       const [row] = await tx`
         update runs set status = 'partial', status_detail = 'cancelled'

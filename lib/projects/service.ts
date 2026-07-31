@@ -6,7 +6,7 @@
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import type { Project } from "@/db/projects";
-import { assertRole, type CurrentUser } from "@/lib/auth";
+import { assertCanWrite, assertRole, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import {
@@ -26,6 +26,7 @@ export async function createProject(
   }
   const { name, description } = parsed.data;
   try {
+    assertCanWrite(user);
     const project = await sql.begin(async (tx) => {
       const [row] = await tx<Project[]>`
         insert into projects (name, description)
@@ -61,6 +62,7 @@ export async function updateProject(
     return fail(new ClassifiedError("validation", "Nothing to update."));
   }
   try {
+    assertCanWrite(user);
     const project = await sql.begin(async (tx) => {
       // Edits to archived projects are blocked except unarchive (spec 001)
       const [row] = await tx<Project[]>`

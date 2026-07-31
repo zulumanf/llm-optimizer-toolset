@@ -7,7 +7,7 @@ import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany } from "@/db/companies";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { suggestTask } from "@/lib/tasks/service";
@@ -32,6 +32,7 @@ export async function analyzeRun(
   }
   const { runId } = parsed.data;
   try {
+    assertCanWrite(user);
     const [run] = await sql`
       select id, project_id, status from runs where id = ${runId}
     `;
@@ -237,6 +238,7 @@ export async function createTaskFromFinding(
     return fail(new ClassifiedError("validation", "Invalid finding id."));
   }
   try {
+    assertCanWrite(user);
     const [finding] = await sql`
       select f.*, s.id as score_id
       from gap_findings f
@@ -287,6 +289,7 @@ export async function reopenFinding(
     return fail(new ClassifiedError("validation", "Invalid finding id."));
   }
   try {
+    assertCanWrite(user);
     const [row] = await sql`
       update gap_findings set status = 'open'
       where id = ${parsed.data.findingId} and status = 'dismissed'
@@ -318,6 +321,7 @@ export async function dismissFinding(
     return fail(new ClassifiedError("validation", "Invalid finding id."));
   }
   try {
+    assertCanWrite(user);
     const [row] = await sql`
       update gap_findings set status = 'dismissed'
       where id = ${parsed.data.findingId} and status = 'open'

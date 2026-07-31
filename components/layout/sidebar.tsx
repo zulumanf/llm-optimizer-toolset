@@ -1,5 +1,5 @@
 import { listActiveProjects } from "@/db/projects";
-import { getCurrentUserOrNull } from "@/lib/auth";
+import { getCurrentUserOrNull, visibleProjectIds } from "@/lib/auth";
 import { unreadCount } from "@/lib/notifications/service";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -21,9 +21,11 @@ export async function Sidebar(): Promise<React.ReactElement | null> {
   if (!user) return null;
 
   // Loaded only once the caller is known — an unauthenticated request should
-  // not reach the projects or notifications tables at all.
+  // not reach the projects or notifications tables at all. Client roles see
+  // only their granted projects; other clients' names never leave the DB.
+  const visible = await visibleProjectIds(user);
   const [projects, unread] = await Promise.all([
-    listActiveProjects(),
+    listActiveProjects(visible),
     unreadCount(),
   ]);
 

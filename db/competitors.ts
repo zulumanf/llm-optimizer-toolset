@@ -62,11 +62,17 @@ export async function latestScoresByCompany(
   return map;
 }
 
-export async function listBrandCandidates(minHits: number): Promise<BrandCandidate[]> {
+export async function listBrandCandidates(
+  projectId: string,
+  minHits: number
+): Promise<BrandCandidate[]> {
+  // Project-scoped (migration 029): which brands surface in a client's
+  // answers is that client's competitive intelligence, not shared telemetry.
   return sql<BrandCandidate[]>`
     select id, name, hit_count, last_seen_at
     from brand_candidates
-    where dismissed_at is null and promoted_company_id is null
+    where project_id = ${projectId}
+      and dismissed_at is null and promoted_company_id is null
       and hit_count >= ${minHits}
     order by hit_count desc, last_seen_at desc
     limit 20

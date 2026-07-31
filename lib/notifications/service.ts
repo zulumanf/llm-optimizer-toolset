@@ -11,7 +11,7 @@
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { attentionFeed, type Severity } from "@/db/operations";
@@ -150,6 +150,7 @@ export async function setNotificationStatus(
   }
   const { notificationId, status } = parsed.data;
   try {
+    assertCanWrite(user);
     const allowedFrom =
       status === "unread"
         ? ["dismissed", "read"]

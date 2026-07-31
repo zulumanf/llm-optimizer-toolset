@@ -6,7 +6,7 @@
 import { sql, type TransactionSql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import type { Prompt } from "@/db/prompt-sets";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import {
@@ -40,6 +40,7 @@ export async function addPrompt(
   }
   const { setId, text, category, language, isHoldout } = parsed.data;
   try {
+    assertCanWrite(user);
     const prompt = await sql.begin(async (tx) => {
       await requireActiveSet(tx, setId);
       const [row] = await tx<Prompt[]>`
@@ -79,6 +80,7 @@ export async function updatePrompt(
   }
   const { promptId, text, category, language } = parsed.data;
   try {
+    assertCanWrite(user);
     const prompt = await sql.begin(async (tx) => {
       const [existing] = await tx`
         select prompt_set_id, archived_at from prompts where id = ${promptId}
@@ -120,6 +122,7 @@ export async function archivePrompt(
     return fail(new ClassifiedError("validation", "Invalid prompt id."));
   }
   try {
+    assertCanWrite(user);
     const prompt = await sql.begin(async (tx) => {
       const [existing] = await tx`
         select prompt_set_id from prompts
@@ -162,6 +165,7 @@ export async function reorderPrompts(
   }
   const { setId, orderedPromptIds } = parsed.data;
   try {
+    assertCanWrite(user);
     const result = await sql.begin(async (tx) => {
       await requireActiveSet(tx, setId);
       const activeRows = await tx`
