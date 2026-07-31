@@ -69,6 +69,14 @@ export async function startRun(
       `;
       if (!row) throw new ClassifiedError("internal", "Insert returned no row.");
       await enqueueJob(tx, "execute_run", { runId: row.id });
+      const { publishEvent } = await import("@/lib/events/bus");
+      await publishEvent(tx, {
+        type: "benchmark.started",
+        projectId: input.projectId,
+        actorId: user?.id ?? null,
+        payload: { runId: row.id, promptSetVersionId: input.promptSetVersionId },
+        dedupeKey: `benchmark-start:${row.id}`,
+      });
       await writeAudit(tx, {
         userId: user?.id ?? null,
         action: "run.start",

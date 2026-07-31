@@ -6,6 +6,7 @@ import {
   listComparisonCompanies,
   latestScoresByCompany,
   listBrandCandidates,
+  listTopSources,
 } from "@/db/competitors";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -36,12 +37,14 @@ export default async function CompetitorsPage({
   const project = await getProject(id);
   if (!project) notFound();
 
-  const [comparison, scores, candidates, companies] = await Promise.all([
-    listComparisonCompanies(id),
-    latestScoresByCompany(id),
-    listBrandCandidates(id, CANDIDATE_MIN_HITS),
-    listActiveCompanies(),
-  ]);
+  const [comparison, scores, candidates, companies, topSources] =
+    await Promise.all([
+      listComparisonCompanies(id),
+      latestScoresByCompany(id),
+      listBrandCandidates(id, CANDIDATE_MIN_HITS),
+      listActiveCompanies(),
+      listTopSources(id),
+    ]);
   const untracked = companies.filter(
     (c) => !c.isSelf && !comparison.some((k) => k.companyId === c.id)
   );
@@ -124,6 +127,57 @@ export default async function CompetitorsPage({
         n/a = not measurable or insufficient data (docs/06 — never rendered as
         zero). Trend charts arrive with the specs/006 dashboard.
       </p>
+
+      {topSources.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-lg font-medium">Sources influencing answers</h2>
+          <p className="mb-3 mt-1 text-sm text-muted-foreground">
+            Domains the engines cited across this client&apos;s runs
+            (project-scoped registry, deterministic classifier v1). Owned and
+            competitor labels are relative to this client&apos;s tracked set.
+          </p>
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Domain</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Relationship</TableHead>
+                  <TableHead className="text-right">Citations</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {topSources.map((s) => (
+                  <TableRow key={s.domain}>
+                    <TableCell className="font-medium">{s.domain}</TableCell>
+                    <TableCell>
+                      {s.sourceType ? (
+                        <Badge variant="outline">{s.sourceType}</Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          unclassified
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {s.relationship === "owned" ? (
+                        <Badge>owned</Badge>
+                      ) : s.relationship === "competitor" ? (
+                        <Badge variant="destructive">competitor</Badge>
+                      ) : s.relationship ? (
+                        <Badge variant="secondary">{s.relationship}</Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">{s.citationCount}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+      )}
 
       {candidates.length > 0 && (
         <section className="mt-8">

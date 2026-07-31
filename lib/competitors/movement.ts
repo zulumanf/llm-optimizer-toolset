@@ -37,6 +37,15 @@ export interface MovementEvent {
   metric: MovementMetric;
   competitorId?: string;
   competitorName?: string;
+  /** The moving party's aggregate — subject for drops, competitor for
+   * overtakes — so event consumers get numbers, not just prose. */
+  previous: number;
+  current: number;
+  sampleSize: number;
+  /** Stamped by movementForProject from the two runs' start dates;
+   * absent when events come straight from detectMovement fixtures. */
+  periodStart?: string;
+  periodEnd?: string;
   /** The numbers that justify the event — subject then competitor. */
   detail: string;
 }
@@ -62,6 +71,9 @@ export function detectMovement(
       events.push({
         kind: "visibility_drop",
         metric,
+        previous: s.aggregate.previous,
+        current: s.aggregate.current,
+        sampleSize: s.aggregate.nCurrent,
         detail: `${subject.name} ${metric.replace(/_/g, " ")} fell ${pct(
           s.aggregate.previous
         )} → ${pct(s.aggregate.current)} (n=${s.aggregate.nCurrent}/side)`,
@@ -88,6 +100,9 @@ export function detectMovement(
         metric,
         competitorId: competitor.companyId,
         competitorName: competitor.name,
+        previous: c.aggregate.previous,
+        current: c.aggregate.current,
+        sampleSize: c.aggregate.nCurrent,
         detail: `${competitor.name} overtook ${subject.name} on ${metric.replace(
           /_/g,
           " "
@@ -169,7 +184,7 @@ export async function movementForProject(
   if (!subject) return [];
 
   const [latest] = await sql`
-    select r.id, r.prompt_set_version_id,
+    select r.id, r.prompt_set_version_id, r.started_at,
       (select s.scoring_version from scores s where s.run_id = r.id limit 1)
         as scoring_version
     from runs r
@@ -180,7 +195,7 @@ export async function movementForProject(
   if (!latest) return [];
 
   const [previous] = await sql`
-    select r.id from runs r
+    select r.id, r.started_at from runs r
     where r.project_id = ${projectId}
       and r.id != ${latest.id}
       and r.prompt_set_version_id = ${latest.promptSetVersionId}
@@ -216,5 +231,11 @@ export async function movementForProject(
   const competitorSeries = competitors.map((c) =>
     buildSeries(c.companyId as string, c.name as string, currentRows, previousRows)
   );
-  return detectMovement(subjectSeries, competitorSeries);
+  const periodStart = (previous.startedAt as Date).toISOString().slice(0, 10);
+  const periodEnd = (latest.startedAt as Date).toISOString().slice(0, 10);
+  return detectMovement(subjectSeries, competitorSeries).map((event) => ({
+    ...event,
+    periodStart,
+    periodEnd,
+  }));
 }

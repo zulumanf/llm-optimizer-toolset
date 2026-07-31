@@ -176,7 +176,13 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
     });
     const job = await jobs.claimNextJob("test-worker");
     await execute.executeRun(job!.payload.runId as string);
-    const parseJob = await jobs.claimNextJob("test-worker");
+    // Lifecycle events (2.6) enqueue deliver_events between execute and
+    // parse — claim past anything that isn't the parse job.
+    let parseJob = await jobs.claimNextJob("test-worker");
+    while (parseJob && parseJob.type !== "parse_response") {
+      await jobs.completeJob(parseJob.id);
+      parseJob = await jobs.claimNextJob("test-worker");
+    }
     await expect(
       parsing.parseResponse(parseJob!.payload.responseId as string)
     ).rejects.toThrow(/subject company/);

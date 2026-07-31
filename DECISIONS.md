@@ -739,3 +739,23 @@ service-category keys (residential, luxury-residential, new-development,
 rentals, commercial) are the recommended vocabulary for scope categories;
 the backup CSVs hold the exact seven market tuples if they are ever
 wanted verbatim.
+
+## 2026-07-31 — Source classification is deterministic lists, not a model
+
+Roadmap 2.2 (spec 030 batch two). A source's type (portal, news, social…)
+comes from named domain lists in `lib/sources/classify.ts`, and its
+relationship (owned / competitor / third_party) from the project's own
+tracked domains. A wrong deterministic label is debuggable and fixable in
+one line; a wrong model label is a mood. LLM-assisted classification for
+the long tail is deferred until it can ship WITH a validation set
+(docs/12) — the honest label for an unknown domain is `other`, not a
+guess. Versioned (`source-classifier-v1`) so a v2 reclassifies exactly
+once per row. Legacy project-less source rows stay unclassified:
+relationship is project-relative and they have no subject to be relative
+to.
+
+Same batch closes the audit's "declared but producer-less events" gap for
+the core loop: benchmark.started/completed/partially_failed now publish
+transactionally with the run writes, and visibility.materially_declined
+publishes after scoring with a (run, metric) dedupe key so a re-score
+cannot double-fire the automation layer.
