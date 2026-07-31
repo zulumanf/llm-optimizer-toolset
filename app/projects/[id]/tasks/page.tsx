@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { sql } from "@/db/client";
-import { TaskCard, type TaskWithEvidence } from "@/components/tasks/task-card";
+import { listActiveStaffUsers } from "@/db/users";
+import { listProjectTasks } from "@/lib/tasks/service";
+import { TaskCard } from "@/components/tasks/task-card";
 
 const COLUMNS = [
   { status: "suggested", title: "Suggested" },
@@ -20,17 +22,8 @@ export default async function TasksPage({
   const project = await getProject(id);
   if (!project) notFound();
 
-  const [tasks, versions] = await Promise.all([
-    sql`
-      select t.*, (
-        select json_agg(json_build_object('id', e.id, 'kind', e.kind,
-          'refId', e.ref_id, 'note', e.note))
-        from evidence e where e.id = any(t.evidence_ids)
-      ) as evidence
-      from tasks t
-      where t.project_id = ${id}
-      order by t.priority asc, t.created_at desc
-    `,
+  const [tasks, versions, staff] = await Promise.all([
+    listProjectTasks(id),
     sql`
       select v.id, s.name as set_name, v.version
       from prompt_set_versions v
@@ -38,6 +31,7 @@ export default async function TasksPage({
       where s.project_id = ${id}
       order by s.name asc, v.version desc
     `,
+    listActiveStaffUsers(),
   ]);
   const rejected = tasks.filter((t) => t.status === "rejected").length;
   const versionOptions = versions.map((v) => ({
@@ -76,10 +70,11 @@ export default async function TasksPage({
               <div className="space-y-3">
                 {items.map((task) => (
                   <TaskCard
-                    key={task.id as string}
-                    task={task as unknown as TaskWithEvidence}
+                    key={task.id}
+                    task={task}
                     projectId={id}
                     versions={versionOptions}
+                    staff={staff}
                   />
                 ))}
                 {items.length === 0 && (

@@ -46,3 +46,9 @@ export async function completeTaskAsIntervention(input: unknown) {
 export async function suggestTasksFromIntervention(input: unknown) {
   return run((u) => taskSvc.suggestTasksFromIntervention(u, input));
 }
+export async function updateTaskDetails(input: unknown) {
+  return run((u) => taskSvc.updateTaskDetails(u, input));
+}
+export async function addTaskComment(input: unknown) {
+  return run((u) => taskSvc.addTaskComment(u, input));
+}

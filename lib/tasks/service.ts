@@ -133,6 +133,209 @@ export const rejectTask = (u: CurrentUser, raw: unknown) => transition(u, raw, "
 export const startTask = (u: CurrentUser, raw: unknown) => transition(u, raw, "start");
 export const completeTask = (u: CurrentUser, raw: unknown) => transition(u, raw, "complete");
 
+const updateDetailsSchema = z
+  .object({
+    taskId: z.string().uuid(),
+    // null unassigns/clears; absent leaves the field untouched.
+    ownerId: z.string().uuid().nullable().optional(),
+    dueDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Due date must be YYYY-MM-DD.")
+      .nullable()
+      .optional(),
+    clientVisible: z.boolean().optional(),
+  })
+  .refine(
+    (v) =>
+      v.ownerId !== undefined ||
+      v.dueDate !== undefined ||
+      v.clientVisible !== undefined,
+    { message: "Nothing to update." }
+  );
+
+/** Management fields (roadmap 1.4): owner, due date, client visibility. */
+export async function updateTaskDetails(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ taskId: string }>> {
+  assertCanWrite(user);
+  const parsed = updateDetailsSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    await sql.begin(async (tx) => {
+      const [task] = await tx`
+        select owner_id, due_date::text as due_date, client_visible from tasks
+        where id = ${input.taskId} for update
+      `;
+      if (!task) throw new ClassifiedError("not_found", "Task not found.");
+
+      if (input.ownerId !== undefined && input.ownerId !== null) {
+        const [owner] = await tx`
+          select 1 from users where id = ${input.ownerId} and active
+        `;
+        if (!owner) {
+          throw new ClassifiedError("not_found", "Owner is not an active user.");
+        }
+      }
+
+      const changed: Record<string, string | boolean | null> = {};
+      if (input.ownerId !== undefined) changed.ownerId = input.ownerId;
+      if (input.dueDate !== undefined) changed.dueDate = input.dueDate;
+      if (input.clientVisible !== undefined) changed.clientVisible = input.clientVisible;
+
+      await tx`
+        update tasks set
+          owner_id = ${input.ownerId !== undefined ? input.ownerId : (task.ownerId as string | null)},
+          -- due_date round-trips as text: the driver converts date columns
+          -- to JS Dates at UTC midnight, and writing one back shifts a day
+          -- in negative-offset timezones.
+          due_date = ${input.dueDate !== undefined ? input.dueDate : (task.dueDate as string | null)},
+          client_visible = ${input.clientVisible !== undefined ? input.clientVisible : (task.clientVisible as boolean)},
+          updated_at = now()
+        where id = ${input.taskId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "task.update_details",
+        entity: "task",
+        entityId: input.taskId,
+        detail: changed,
+      });
+    });
+    return ok({ taskId: input.taskId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+const commentSchema = z.object({
+  taskId: z.string().uuid(),
+  body: z.string().min(1, "Comment cannot be empty.").max(4000),
+});
+
+/** Append-only discussion — task_comments carries the immutability trigger. */
+export async function addTaskComment(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ commentId: string }>> {
+  assertCanWrite(user);
+  const parsed = commentSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    const commentId = await sql.begin(async (tx) => {
+      const [task] = await tx`select 1 from tasks where id = ${input.taskId}`;
+      if (!task) throw new ClassifiedError("not_found", "Task not found.");
+      const [row] = await tx`
+        insert into task_comments (task_id, author_id, body)
+        values (${input.taskId}, ${user.id}, ${input.body})
+        returning id
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "task.comment",
+        entity: "task",
+        entityId: input.taskId,
+        detail: { commentId: row?.id as string },
+      });
+      return row?.id as string;
+    });
+    return ok({ commentId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export interface TaskComment {
+  id: string;
+  body: string;
+  createdAt: Date;
+  authorName: string;
+  authorEmail: string;
+}
+
+export async function listTaskComments(taskId: string): Promise<TaskComment[]> {
+  const rows = await sql`
+    select c.id, c.body, c.created_at, u.name as author_name, u.email as author_email
+    from task_comments c
+    join users u on u.id = c.author_id
+    where c.task_id = ${taskId}
+    order by c.created_at asc
+  `;
+  return rows.map((row) => ({
+    id: row.id as string,
+    body: row.body as string,
+    createdAt: row.createdAt as Date,
+    authorName: row.authorName as string,
+    authorEmail: row.authorEmail as string,
+  }));
+}
+
+export interface TaskListItem {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  ownerId: string | null;
+  ownerName: string | null;
+  ownerEmail: string | null;
+  dueDate: string | null;
+  clientVisible: boolean;
+  overdue: boolean;
+  evidence: { id: string; kind: string; refId: string; note: string }[];
+  comments: { id: string; body: string; createdAt: string; author: string }[];
+}
+
+/** The kanban's read: tasks with owner, due date, overdue flag, and comments. */
+export async function listProjectTasks(projectId: string): Promise<TaskListItem[]> {
+  const rows = await sql`
+    select t.id, t.title, t.description, t.status, t.priority,
+      t.owner_id, u.name as owner_name, u.email as owner_email,
+      to_char(t.due_date, 'YYYY-MM-DD') as due_date,
+      t.client_visible,
+      (t.due_date is not null and t.due_date < current_date
+        and t.status not in ('done', 'rejected')) as overdue,
+      coalesce((
+        select json_agg(json_build_object('id', e.id, 'kind', e.kind,
+          'refId', e.ref_id, 'note', e.note))
+        from evidence e where e.id = any(t.evidence_ids)
+      ), '[]') as evidence,
+      coalesce((
+        select json_agg(json_build_object('id', c.id, 'body', c.body,
+          'createdAt', to_char(c.created_at, 'YYYY-MM-DD HH24:MI'),
+          'author', coalesce(nullif(cu.name, ''), cu.email))
+          order by c.created_at asc)
+        from task_comments c join users cu on cu.id = c.author_id
+        where c.task_id = t.id
+      ), '[]') as comments
+    from tasks t
+    left join users u on u.id = t.owner_id
+    where t.project_id = ${projectId}
+    order by t.priority asc, t.created_at desc
+  `;
+  return rows.map((row) => ({
+    id: row.id as string,
+    title: row.title as string,
+    description: row.description as string | null,
+    status: row.status as string,
+    priority: row.priority as string,
+    ownerId: row.ownerId as string | null,
+    ownerName: row.ownerName as string | null,
+    ownerEmail: row.ownerEmail as string | null,
+    dueDate: row.dueDate as string | null,
+    clientVisible: row.clientVisible as boolean,
+    overdue: row.overdue as boolean,
+    evidence: row.evidence as TaskListItem["evidence"],
+    comments: row.comments as TaskListItem["comments"],
+  }));
+}
+
 const completeAsInterventionSchema = z.object({
   taskId: z.string().uuid(),
   shippedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
