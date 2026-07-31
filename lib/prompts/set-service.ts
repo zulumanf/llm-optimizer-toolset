@@ -154,7 +154,8 @@ export async function freezePromptSet(
       }
 
       const prompts = await tx`
-        select id, text, category, language, position, is_holdout from prompts
+        select id, text, category, language, position, is_holdout, tier
+        from prompts
         where prompt_set_id = ${setId} and archived_at is null
         order by position asc, created_at asc
       `;
@@ -168,6 +169,9 @@ export async function freezePromptSet(
         language: p.language as string,
         position: i + 1,
         isHoldout: Boolean(p.isHoldout),
+        // Metadata, not identity (lib/prompts/freeze.ts) — carried so
+        // historical runs can be segmented by tier.
+        tier: (p.tier as number | null) ?? null,
       }));
 
       const [latest] = await tx`
@@ -222,7 +226,12 @@ export async function duplicatePromptSet(
     assertCanWrite(user);
     const set = await sql.begin(async (tx) => {
       let sourceSetId: string;
-      let entries: { text: string; category: string; language: string }[];
+      let entries: {
+        text: string;
+        category: string;
+        language: string;
+        tier?: number | null;
+      }[];
 
       if (versionId) {
         const [version] = await tx`
@@ -233,11 +242,16 @@ export async function duplicatePromptSet(
         sourceSetId = version.promptSetId as string;
         entries = (version.frozenPrompts as FrozenPrompt[])
           .sort((a, b) => a.position - b.position)
-          .map(({ text, category, language }) => ({ text, category, language }));
+          .map(({ text, category, language, tier }) => ({
+            text,
+            category,
+            language,
+            tier,
+          }));
       } else {
         sourceSetId = setId as string;
         entries = await tx`
-          select text, category, language from prompts
+          select text, category, language, tier from prompts
           where prompt_set_id = ${sourceSetId} and archived_at is null
           order by position asc, created_at asc
         `;
@@ -257,8 +271,10 @@ export async function duplicatePromptSet(
 
       for (const [i, e] of entries.entries()) {
         await tx`
-          insert into prompts (prompt_set_id, text, category, language, position)
-          values (${row.id}, ${e.text}, ${e.category}, ${e.language}, ${i + 1})
+          insert into prompts
+            (prompt_set_id, text, category, language, position, tier)
+          values (${row.id}, ${e.text}, ${e.category}, ${e.language}, ${i + 1},
+            ${e.tier ?? null})
         `;
       }
       await writeAudit(tx, {

@@ -20,8 +20,9 @@ export interface PackVariable {
 /**
  * Intent tiers from the agency blueprint: 1 = narrow high-intent (closest to
  * a buying decision), 4 = broad category. Tiers drive nothing automatically —
- * they tell the operator what a prompt is for, and let reports segment by
- * commercial value.
+ * they tell the operator what a prompt is for. Persisted on prompts and in
+ * frozen snapshots (migration 030) so reports CAN segment by commercial
+ * value; no report does yet.
  */
 export type IntentTier = 1 | 2 | 3 | 4;
 

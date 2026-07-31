@@ -40,6 +40,9 @@ const promptText = z
   );
 
 const category = z.enum(PROMPT_CATEGORIES);
+// Intent tier bounds mirror the prompts.tier check constraint (migration 030)
+// and IntentTier (lib/verticals/types.ts).
+const tier = z.number().int().min(1).max(4);
 const language = z
   .string()
   .transform((s) => s.trim().toLowerCase())
@@ -65,6 +68,7 @@ export const addPromptSchema = z.object({
   category,
   language: language.optional(),
   isHoldout: z.boolean().optional(),
+  tier: tier.optional(),
 });
 
 export const updatePromptSchema = z.object({
@@ -72,6 +76,7 @@ export const updatePromptSchema = z.object({
   text: promptText.optional(),
   category: category.optional(),
   language: language.optional(),
+  tier: tier.optional(),
 });
 
 export const promptIdSchema = z.object({ promptId: z.string().uuid() });

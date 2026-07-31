@@ -122,12 +122,15 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
       select distinct metric from scores order by metric
     `;
     // position/sentiment need ≥5 cells (we have 2) → absent; citation has no
-    // urls in mock text → absent. Present: rates, SoV, authority.
+    // urls in mock text → absent. Present: rates, first/top-three (v1.1 —
+    // 0-valued here, prose answers carry no list positions), SoV, authority.
     expect(metrics.map((m) => m.metric)).toEqual([
       "authority_score",
+      "first_position_rate",
       "mention_rate",
       "recommendation_rate",
       "share_of_voice",
+      "top_three_rate",
     ]);
     const [authority] = await sql`
       select value from scores

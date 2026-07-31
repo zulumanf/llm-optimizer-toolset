@@ -1,5 +1,5 @@
 /**
- * Scoring v1.0 metric math (docs/06) as pure functions over per-provider
+ * Scoring v1.1 metric math (docs/06) as pure functions over per-provider
  * inputs. Null = insufficient data / not measurable — never rendered as 0.
  */
 import type { Sentiment } from "@/lib/constants";
@@ -15,6 +15,12 @@ export const AUTHORITY_WEIGHTS = {
 
 export type ComponentMetric = keyof typeof AUTHORITY_WEIGHTS;
 
+/** v1.1 stored metrics outside the authority composite — the weights above
+ * are unchanged from v1.0 (docs/06 changelog). */
+export type StandaloneMetric = "first_position_rate" | "top_three_rate";
+
+export type ScoredMetric = ComponentMetric | StandaloneMetric;
+
 export const MIN_CELLS_FOR_POSITION = 5;
 export const MIN_CELLS_FOR_SENTIMENT = 5;
 
@@ -29,6 +35,10 @@ export interface CompanyProviderInput {
   totalTrackedMentions: number;
   /** 1-indexed list positions where the company appeared in a list */
   listPositions: number[];
+  /** responses where the company's mention holds list_position === 1 */
+  firstPositionResponses: number;
+  /** responses where the company's mention holds list_position ≤ 3 */
+  topThreeResponses: number;
   /** sentiments across the company's mention cells */
   sentiments: Sentiment[];
   /** responses where this company's mention carries an owned citation */
@@ -37,7 +47,7 @@ export interface CompanyProviderInput {
   responsesWithAnyCitation: number;
 }
 
-export type MetricValues = Partial<Record<ComponentMetric, number | null>>;
+export type MetricValues = Partial<Record<ScoredMetric, number | null>>;
 
 export function computeProviderMetrics(input: CompanyProviderInput): MetricValues {
   const {
@@ -47,6 +57,8 @@ export function computeProviderMetrics(input: CompanyProviderInput): MetricValue
     companyMentions,
     totalTrackedMentions,
     listPositions,
+    firstPositionResponses,
+    topThreeResponses,
     sentiments,
     citedResponses,
     responsesWithAnyCitation,
@@ -56,6 +68,13 @@ export function computeProviderMetrics(input: CompanyProviderInput): MetricValue
   const values: MetricValues = {
     mention_rate: mentionedResponses / n,
     recommendation_rate: recommendedResponses / n,
+    // Rate metrics over all valid responses, denominator N like mention_rate —
+    // NOT the position_score convention. MIN_CELLS_FOR_POSITION guards a mean
+    // over only-listing cells (a tiny sample distorts the average); here a
+    // response without a list position is simply not in the numerator, so no
+    // minimum applies and 0 is a real measurement, never a data gap.
+    first_position_rate: firstPositionResponses / n,
+    top_three_rate: topThreeResponses / n,
     share_of_voice:
       totalTrackedMentions > 0 ? companyMentions / totalTrackedMentions : null,
     position_score:

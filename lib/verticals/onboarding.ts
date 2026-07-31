@@ -195,6 +195,7 @@ export async function onboardClient(
         text: prompt.text,
         category: prompt.category,
         isHoldout: prompt.isHoldout,
+        tier: prompt.tier,
       });
       if (added.ok) promptsCreated += 1;
     }

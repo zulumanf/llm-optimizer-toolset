@@ -175,15 +175,23 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
       where s.run_id = ${runId}
       order by c.name, s.metric, s.provider
     `;
-    // 2 companies × 4 metrics (rates, SoV, authority) × (mock + all) = 16 rows;
-    // position/sentiment need ≥5 cells, citation needs URLs — absent here
-    expect(scores).toHaveLength(16);
+    // 2 companies × 6 metrics (rates, first/top-three v1.1, SoV, authority)
+    // × (mock + all) = 24 rows; position/sentiment need ≥5 cells, citation
+    // needs URLs — absent here
+    expect(scores).toHaveLength(24);
     for (const row of scores) {
       const value = Number(row.value);
       if (row.metric === "share_of_voice") expect(value).toBeCloseTo(0.5);
       else if (row.metric === "authority_score")
         // (1×.35 + 1×.2 + .5×.15) / (.35+.2+.15) × 100
         expect(value).toBeCloseTo(100 * (0.625 / 0.7), 3);
+      else if (
+        row.metric === "first_position_rate" ||
+        row.metric === "top_three_rate"
+      )
+        // Prose answers carry no list positions — 0 is a real measurement
+        // here (v1.1 null rule: no minimum, absent position ∉ numerator).
+        expect(value).toBe(0);
       else expect(value).toBe(1); // both responses mention+recommend both
       expect(row.sampleSize).toBe(2);
     }

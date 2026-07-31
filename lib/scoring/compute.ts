@@ -1,6 +1,6 @@
 /**
- * Scoring v1.0 (docs/06): mention_rate and recommendation_rate, computed per
- * provider then as an unweighted cross-provider mean ('all'). Scores are
+ * Scoring v1.1 (docs/06): per-company metrics computed per provider then as
+ * an unweighted cross-provider mean ('all'). Scores are
  * written as new rows stamped with SCORING_VERSION — never recomputed in
  * place. The review gate blocks scoring until the run's queue is clear;
  * after REVIEW_TIMEOUT_HOURS, still-pending responses are excluded from N
@@ -18,7 +18,7 @@ import {
   computeProviderMetrics,
   authorityScore,
   aggregateAcrossProviders,
-  type ComponentMetric,
+  type ScoredMetric,
   type MetricValues,
 } from "@/lib/scoring/metrics";
 
@@ -145,6 +145,18 @@ export async function computeScores(runId: string): Promise<void> {
         listPositions: companyMentions
           .map((m) => m.listPosition)
           .filter((p): p is number => p !== null),
+        // Distinct responses, not mention rows — a rate's numerator must
+        // count in the same unit as its denominator N.
+        firstPositionResponses: new Set(
+          companyMentions
+            .filter((m) => m.listPosition === 1)
+            .map((m) => m.responseId)
+        ).size,
+        topThreeResponses: new Set(
+          companyMentions
+            .filter((m) => m.listPosition !== null && m.listPosition <= 3)
+            .map((m) => m.responseId)
+        ).size,
         sentiments: companyMentions.map((m) => m.sentiment),
         citedResponses: new Set(
           companyMentions.filter((m) => m.citedUrls.length > 0).map((m) => m.responseId)
@@ -185,7 +197,7 @@ export async function computeScores(runId: string): Promise<void> {
     for (const metric of metricKeys) {
       const aggregate = aggregateAcrossProviders(
         Object.values(perProviderValues).map(
-          (v) => v[metric as ComponentMetric]
+          (v) => v[metric as ScoredMetric]
         )
       );
       if (aggregate === null) continue;

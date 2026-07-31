@@ -9,6 +9,7 @@ import {
   Building2,
   Gauge,
   LayoutDashboard,
+  Shield,
   Users,
   Workflow,
 } from "lucide-react";
@@ -133,6 +134,11 @@ export function SidebarNav({
         <li>
           <NavLink href="/companies" active={pathname.startsWith("/companies")}>
             <Building2 className="size-4" /> Companies
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/exclusivity" active={pathname.startsWith("/exclusivity")}>
+            <Shield className="size-4" /> Exclusivity
           </NavLink>
         </li>
       </ul>
