@@ -11,6 +11,10 @@ import { classifyResponse } from "@/lib/parsing/classify";
 import { classifyResponseLlm } from "@/lib/parsing/classify-llm";
 import { extractUrls, urlDomain } from "@/lib/parsing/prepass";
 import {
+  classifySource,
+  SOURCE_CLASSIFIER_VERSION,
+} from "@/lib/sources/classify";
+import {
   detectBrandCandidates,
   normalizeCandidate,
 } from "@/lib/parsing/candidates";
@@ -156,13 +160,23 @@ export async function parseResponse(responseId: string): Promise<void> {
     const inTextUrls = extractUrls(text);
     const searchUrls = searchCitations.map((c) => c.url);
     const allUrls = [...new Set([...inTextUrls, ...searchUrls])];
+    const classificationContext = {
+      subjectDomain: subject.domain?.toLowerCase() ?? null,
+      competitorDomains: companies
+        .filter((c) => c.id !== subject.id && c.domain)
+        .map((c) => (c.domain as string).toLowerCase()),
+    };
     for (const url of allUrls) {
       const domain = urlDomain(url);
       if (!domain) continue;
       const owner = companies.find((c) => c.domain && domain.endsWith(c.domain));
+      const classified = classifySource(domain, classificationContext);
       await tx`
-        insert into sources (project_id, url, domain, company_id, citation_count)
-        values (${projectId}, ${url}, ${domain}, ${owner?.id ?? null}, 1)
+        insert into sources (project_id, url, domain, company_id, citation_count,
+          source_type, relationship, classifier_version, classified_at)
+        values (${projectId}, ${url}, ${domain}, ${owner?.id ?? null}, 1,
+          ${classified.sourceType}, ${classified.relationship},
+          ${SOURCE_CLASSIFIER_VERSION}, now())
         on conflict (project_id, url) where project_id is not null do update set
           citation_count = sources.citation_count + 1,
           last_seen_at = now()

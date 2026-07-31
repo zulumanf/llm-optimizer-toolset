@@ -62,6 +62,36 @@ export async function latestScoresByCompany(
   return map;
 }
 
+export interface TopSource {
+  domain: string;
+  citationCount: number;
+  sourceType: string | null;
+  relationship: string | null;
+  attributedCompany: string | null;
+}
+
+/** Which sources the answer engines actually lean on for this client —
+ * aggregated per domain from the project-scoped registry (spec 030 batch 2,
+ * roadmap 2.2). */
+export async function listTopSources(
+  projectId: string,
+  limit = 15
+): Promise<TopSource[]> {
+  return sql<TopSource[]>`
+    select s.domain,
+      sum(s.citation_count)::int as citation_count,
+      min(s.source_type) as source_type,
+      min(s.relationship) as relationship,
+      min(c.name) as attributed_company
+    from sources s
+    left join companies c on c.id = s.company_id
+    where s.project_id = ${projectId}
+    group by s.domain
+    order by citation_count desc, s.domain asc
+    limit ${limit}
+  `;
+}
+
 export async function listBrandCandidates(
   projectId: string,
   minHits: number
