@@ -1,6 +1,6 @@
 # 06 — Scoring Methodology
 
-**Current version: `v1.0`** (changelog at bottom). Every equation and weight lives here. Every `scores` row stores the `scoring_version` it was computed with. Changing anything below — even a weight — requires a new version and a changelog entry. Old scores are never recomputed in place (`PRINCIPLES.md` #4, #10).
+**Current version: `v1.1`** (changelog at bottom). Every equation and weight lives here. Every `scores` row stores the `scoring_version` it was computed with. Changing anything below — even a weight — requires a new version and a changelog entry. Old scores are never recomputed in place (`PRINCIPLES.md` #4, #10).
 
 ## Definitions
 
@@ -11,7 +11,7 @@ For a run *R*, company *C*, and provider *P*:
 - Only mentions at their **highest revision** and with `confidence ≥ 0.7` or human review count toward scores. Unreviewed low-confidence mentions block scoring for their run until cleared (or 72h timeout → excluded and flagged in coverage).
 - All rates are computed **per provider** first, then aggregated across providers by unweighted mean (each provider counts equally — sample sizes per provider are equal by design).
 
-## Metrics (v1.0)
+## Metrics (v1.1)
 
 ### Mention Rate
 Fraction of valid cells where *C* is mentioned at all.
@@ -45,6 +45,26 @@ Quality of placement when the answer ranks/lists options. For each cell where *C
 cell_position_score = 1 / list_position          (1st → 1.0, 2nd → 0.5, 3rd → 0.33 …)
 position_score(C)   = mean(cell_position_score)  over listing cells; null if < 5 listing cells
 ```
+
+### First Position Rate (v1.1)
+Fraction of valid cells where *C* holds the **first** list position.
+
+```
+first_position_rate(C) = cells_where_C_at_position_1 / N
+```
+
+Denominator is `N` (all valid cells), like `mention_rate` — **not** the position-score convention. `position_score`'s 5-cell minimum guards a mean computed over only-listing cells; here a cell without a list position simply isn't in the numerator, so no minimum applies and 0 is a real measurement.
+
+### Top Three Rate (v1.1)
+Fraction of valid cells where *C* appears at list position ≤ 3.
+
+```
+top_three_rate(C) = cells_where_C_at_position_≤_3 / N
+```
+
+Same null rule as `first_position_rate`: no minimum, denominator `N`.
+
+Neither v1.1 metric enters the Authority Score — the composite and its weights are unchanged from v1.0.
 
 ### Citation Score
 How often answers cite sources owned by *C* (domain match via `companies.domain`).
@@ -112,3 +132,4 @@ A week-over-week delta is **notable** when `|Δ| ≥ 0.10` on a rate metric with
 | Version | Date | Change |
 |---|---|---|
 | v1.0 | 2026-07-27 | Initial methodology. |
+| v1.1 | 2026-07-31 | Added stored `first_position_rate` and `top_three_rate` (denominator `N`, no minimum-cell rule, outside the Authority composite). Authority weights and every v1.0 formula unchanged. v1.0 and v1.1 scores must never be compared in UI or reports (standing cross-version rule); v1.0 rows are never recomputed. Expected consequence: the first report after the bump shows deltas as not-comparable/insufficient against v1.0 baselines — that is the versioning model working, not a data problem. |

@@ -17,6 +17,8 @@ import { stabilityLabel, type Stability } from "@/lib/evidence/stability";
 // nothing and `matchesStored` was vacuously true for citations — the one
 // metric whose re-derivation check could never fail was the one that
 // silently didn't run.
+// v1.1's first_position_rate / top_three_rate have no drill-down yet:
+// the topThree column below already shows placement per row.
 export const DRILLDOWN_METRICS = [
   "mention_rate",
   "recommendation_rate",

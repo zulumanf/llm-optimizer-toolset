@@ -16,6 +16,8 @@ function input(overrides: Partial<CompanyProviderInput>): CompanyProviderInput {
     companyMentions: 0,
     totalTrackedMentions: 0,
     listPositions: [],
+    firstPositionResponses: 0,
+    topThreeResponses: 0,
     sentiments: [],
     citedResponses: 0,
     responsesWithAnyCitation: 0,
@@ -73,6 +75,32 @@ describe("computeProviderMetrics (docs/06 known answers)", () => {
     expect(
       computeProviderMetrics(input({ totalTrackedMentions: 0 })).share_of_voice
     ).toBeNull();
+  });
+
+  it("first_position_rate and top_three_rate are rates over N (v1.1)", () => {
+    const values = computeProviderMetrics(
+      input({ firstPositionResponses: 2, topThreeResponses: 5 })
+    );
+    expect(values.first_position_rate).toBeCloseTo(0.2);
+    expect(values.top_three_rate).toBeCloseTo(0.5);
+  });
+
+  it("position rates are 0 with no listed responses — a measurement, not null", () => {
+    // Unlike position_score's 5-cell minimum: denominator is N, so zero
+    // listed responses means the company measurably never placed.
+    const values = computeProviderMetrics(
+      input({ firstPositionResponses: 0, topThreeResponses: 0 })
+    );
+    expect(values.first_position_rate).toBe(0);
+    expect(values.top_three_rate).toBe(0);
+  });
+
+  it("position rates are absent when there are no valid cells at all", () => {
+    const values = computeProviderMetrics(
+      input({ n: 0, firstPositionResponses: 0, topThreeResponses: 0 })
+    );
+    expect(values.first_position_rate).toBeUndefined();
+    expect(values.top_three_rate).toBeUndefined();
   });
 });
 
