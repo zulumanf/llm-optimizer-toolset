@@ -168,6 +168,43 @@ describe.skipIf(!TEST_URL)("report delivery & executive briefs (integration)", (
     expect(html).toContain("&lt;script&gt;");
   });
 
+  it("HTML route: published renders, drafts 409, unknown ids 404", async () => {
+    const { GET } = await import("@/app/api/reports/[reportId]/html/route");
+    const projectId = await seedScoredProject("Route Client");
+    const [inserted] = await sql`
+      insert into reports (project_id, title, period_start, period_end, body, status, published_at)
+      values (${projectId}, 'Route report', '2026-07-01', '2026-07-28',
+        ${sql.json({
+          kind: "monthly", scoringVersion: "v1.1", generatedAt: "x", runs: [],
+          currentRunId: "r", previousRunId: null, comparable: false,
+          comparabilityNote: "", scores: [], deltas: [], excerpts: [],
+          coverage: {}, program: {}, categoryOwnership: [],
+          narrative: { summary: "All good.", competitors: "", notable_responses: "", suggested_actions: "" },
+        } as never)}, 'published', now())
+      returning id
+    `;
+    const call = (id: string) =>
+      GET(new Request(`http://localhost/api/reports/${id}/html`), {
+        params: Promise.resolve({ reportId: id }),
+      });
+
+    const published = await call(inserted?.id as string);
+    expect(published.status).toBe(200);
+    const html = await published.text();
+    expect(html).toContain("Route Client");
+    expect(html).toContain("All good.");
+
+    const [draft] = await sql`
+      insert into reports (project_id, title, period_start, period_end, body, status)
+      values (${projectId}, 'Draft', '2026-07-01', '2026-07-28', '{}'::jsonb, 'draft')
+      returning id
+    `;
+    expect((await call(draft?.id as string)).status).toBe(409);
+    expect(
+      (await call("00000000-0000-4000-8000-00000000dead")).status
+    ).toBe(404);
+  });
+
   it("monthly and quarterly briefs generate behind the gate, once per period", async () => {
     const projectId = await seedScoredProject("Brief Client");
     const period = { periodStart: isoDaysAgo(27), periodEnd: isoDaysAgo(0) };

@@ -226,6 +226,81 @@ describe.skipIf(!TEST_URL)("campaigns (integration)", () => {
     expect(detail?.members[0]?.title).toBe("A task");
   });
 
+  it("terminal transitions freeze members; removal is audited while open", async () => {
+    const projectId = await seedProject("Lifecycle Co", { scoredRun: true });
+    const campaign = await svc.createCampaign(user, {
+      projectId,
+      name: "Lifecycle",
+      objective: "Finish well.",
+    });
+    if (!campaign.ok) throw new Error(campaign.error.message);
+    const campaignId = campaign.data.campaignId;
+
+    const [responseRow] = await sql`
+      select r.id from responses r join runs ru on ru.id = r.run_id
+      where ru.project_id = ${projectId} limit 1
+    `;
+    const task = await tasksSvc.suggestTask(user, {
+      projectId,
+      title: "Removable",
+      evidence: [
+        { kind: "response", refId: responseRow?.id as string, note: "seed" },
+      ],
+    });
+    if (!task.ok) throw new Error(task.error.message);
+    await svc.addCampaignMember(user, {
+      campaignId,
+      kind: "task",
+      refId: task.data.taskId,
+    });
+    const removed = await svc.removeCampaignMember(user, {
+      campaignId,
+      kind: "task",
+      refId: task.data.taskId,
+    });
+    expect(removed.ok).toBe(true);
+    expect((await svc.campaignDetail(campaignId))?.members).toHaveLength(0);
+
+    // draft → active → completed; completed is terminal and freezes members.
+    await svc.transitionCampaign(user, { campaignId, action: "activate" });
+    const completed = await svc.transitionCampaign(user, {
+      campaignId,
+      action: "complete",
+    });
+    expect(completed.ok).toBe(true);
+    const frozen = await svc.addCampaignMember(user, {
+      campaignId,
+      kind: "task",
+      refId: task.data.taskId,
+    });
+    expect(frozen.ok).toBe(false);
+    if (!frozen.ok) expect(frozen.error.message).toMatch(/frozen/i);
+    const reopen = await svc.transitionCampaign(user, {
+      campaignId,
+      action: "activate",
+    });
+    expect(reopen.ok).toBe(false);
+
+    // draft → abandon is legal and frees the unique active-name slot.
+    const second = await svc.createCampaign(user, {
+      projectId,
+      name: "Short lived",
+      objective: "x.",
+    });
+    if (!second.ok) throw new Error(second.error.message);
+    const abandoned = await svc.transitionCampaign(user, {
+      campaignId: second.data.campaignId,
+      action: "abandon",
+    });
+    expect(abandoned.ok).toBe(true);
+    const reuse = await svc.createCampaign(user, {
+      projectId,
+      name: "Short lived",
+      objective: "again.",
+    });
+    expect(reuse.ok).toBe(true);
+  });
+
   it("denies client accounts and writes audit rows for staff actions", async () => {
     const projectId = await seedProject("Audited Client");
     const denied = await svc.createCampaign(client, {

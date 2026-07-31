@@ -102,6 +102,25 @@ describe("detectMovement", () => {
     expect(events[0]?.detail).toContain("40%");
   });
 
+  it("recommendation_rate moves independently of mention_rate", () => {
+    // Mentions steady, recommendations collapse — the drop must name the
+    // metric that actually moved.
+    const subject: CompanySeries = {
+      companyId: "id-Parva",
+      name: "Parva",
+      metrics: {
+        mention_rate: series(0.6, 0.62),
+        recommendation_rate: series(0.2, 0.45),
+      },
+    };
+    const events = detectMovement(subject, []);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.kind).toBe("visibility_drop");
+    expect(events[0]?.metric).toBe("recommendation_rate");
+    expect(events[0]?.previous).toBe(0.45);
+    expect(events[0]?.current).toBe(0.2);
+  });
+
   it("no comparable window (missing metric series) → nothing", () => {
     const events = detectMovement(company("Parva", null), [
       company("Acme", series(0.9, 0.1)),
