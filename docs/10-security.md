@@ -107,3 +107,28 @@ they prove the policies instead of passing vacuously.
 **Evidence downloads are recorded.** `artifact_access_log` is insert-only and
 captures who took a copy of raw client material off the platform, which the
 audit log (what changed) does not answer.
+
+## The public REST API is closed (2026-07-30)
+
+Hosting the database on Supabase adds an attack surface that does not exist on
+a laptop: **PostgREST**, which publishes every table in `public` at
+`https://<ref>.supabase.co/rest/v1/<table>` to whoever holds the publishable
+key — a key designed to be embedded in browsers.
+
+Supabase's default privileges grant `anon` and `authenticated` full rights
+(`arwdDxtm`) on every table `postgres` creates. Left alone, restoring this
+schema would have exposed `responses`, `claims`, `audit_log` and
+`connector_credentials` to the internet, writable, with only three tables
+covered by RLS.
+
+Both roles therefore hold **no privileges on `public`** — revoked at the default
+level before the restore and explicitly after it. Nothing breaks, because the
+application connects as the owner over postgres.js and never used `anon` for
+data; the Supabase client is for sessions only. Verified by request: every table
+returns 401 through the REST API.
+
+This supersedes the line above describing the app as "anon key + RLS". RLS is
+defence in depth for the Supabase-client path; the primary control is that the
+API roles cannot read anything at all. **Any future table must be created by a
+migration, never through the Supabase dashboard** — a table created there can
+pick up default grants and land on the public API.

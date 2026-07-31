@@ -461,3 +461,61 @@ test ids like `"c-1"`.
 queries drift, `lib/knowledge/packet.ts` now delegates to
 `selectClaims` in the context builder and keeps only its own legacy shape and
 rendering. Four workflow templates keep working unchanged.
+
+---
+
+## 2026-07-30 — The database moved to Supabase; only `public` went with it
+
+Spec 014 was unblocked by a real Supabase project, so identity and data both
+moved. Three decisions were forced during the move, none of them obvious.
+
+**Only the `public` schema was restored.** A full `pg_restore` of the local dump
+would have carried our own `auth.uid()` stub — migration 025 installs one when
+the real function is absent, and local development is exactly that case. The
+dump contains `SCHEMA auth` and `FUNCTION auth.uid()`, so restoring it wholesale
+would have overwritten Supabase's genuine `auth.uid()`, which migration 025's
+own comment calls catastrophic. `pg_restore -n public` leaves it untouched;
+verified afterwards by reading `prosrc` on the server. The migration ledger came
+across inside `schema_migrations`, so the 27 migrations are recorded as applied
+rather than re-run.
+
+**`anon` and `authenticated` were stripped of every privilege on `public`.**
+Supabase's default ACLs grant `arwdDxtm` on every new table created by
+`postgres`, and PostgREST exposes those tables to anyone holding the
+publishable key — which is public by design. Restoring 111 tables under those
+defaults would have published the raw response captures, `claims`, `audit_log`
+and `connector_credentials` to the internet, writable. This hazard does not
+exist locally, which is why nothing in the repo guarded against it: there is no
+PostgREST and no `anon` role on a laptop. Default privileges were revoked before
+the restore and explicit grants after it; every table now returns 401 through
+the REST API. The app is unaffected because it connects as the owner over
+postgres.js — `anon` was never in its path. RLS (migration 025) remains defence
+in depth for the Supabase-client path, not the primary control.
+
+**The operator's auth user was minted with the id it already had.**
+`app/auth/callback/route.ts` adopts the Supabase uid on first sign-in with
+`update users set id = …`. That statement cannot succeed for an account with
+history: five foreign keys reference `users(id)` with no `ON UPDATE CASCADE`,
+and 253 of the referencing rows live in `audit_log`, whose immutability trigger
+forbids UPDATE outright. The append-only guarantee that makes the evidence
+trustworthy also makes the user id un-rewritable. Rather than weaken either,
+the auth user was created through the admin API with the existing uuid, so the
+rewrite branch never executes. The branch is still a trap for the next account
+provisioned after it has accumulated audit rows; fixing it properly means
+provisioning identity and row together, and is not attempted here.
+
+## 2026-07-30 — The sidebar renders nothing without a session
+
+`AUTH_MODE=supabase` made `/login` return 500. The root layout renders
+`Sidebar`, which called `getCurrentUser()` and threw — and `/login` lives inside
+that layout, so the one page whose job is to resolve an unauthenticated state
+crashed before it could render. The workspace was unenterable.
+
+963 tests did not catch it, and could not: they run under `AUTH_MODE=dev`, where
+a user always exists, so the throwing path is unreachable. That is the same
+blind spot for any component doing identity work above the page level.
+
+`Sidebar` now returns `null` without a session and loads projects and unread
+counts only after the caller is known. It is a rendering decision, not a
+security boundary — every page and server action still calls `getCurrentUser()`
+and throws on its own.

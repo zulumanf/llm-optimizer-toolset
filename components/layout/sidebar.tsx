@@ -1,14 +1,29 @@
 import { listActiveProjects } from "@/db/projects";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUserOrNull } from "@/lib/auth";
 import { unreadCount } from "@/lib/notifications/service";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { CommandPalette } from "@/components/layout/command-palette";
 
-export async function Sidebar(): Promise<React.ReactElement> {
-  const [projects, user, unread] = await Promise.all([
+/**
+ * Renders nothing without a session.
+ *
+ * `/login` lives inside the root layout, so throwing here would 500 the one
+ * page whose entire job is to resolve an unauthenticated state — locking the
+ * workspace out with no way back in. Invisible under `AUTH_MODE=dev`, where a
+ * user always exists, which is why the test suite cannot catch it.
+ *
+ * This is a rendering decision, not the security boundary: every page and
+ * server action calls `getCurrentUser()` itself and throws without a session.
+ */
+export async function Sidebar(): Promise<React.ReactElement | null> {
+  const user = await getCurrentUserOrNull();
+  if (!user) return null;
+
+  // Loaded only once the caller is known — an unauthenticated request should
+  // not reach the projects or notifications tables at all.
+  const [projects, unread] = await Promise.all([
     listActiveProjects(),
-    getCurrentUser(),
     unreadCount(),
   ]);
 
