@@ -171,4 +171,69 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
     expect(await portal.portalWork(project.data.id)).toHaveLength(0);
     expect(await portal.portalReports(project.data.id)).toHaveLength(0);
   });
+
+
+  it("refuses under dev auth, non-admins, and staff-email collisions", async () => {
+    const { sql } = await import("@/db/client");
+    const invite = await import("@/lib/portal/invite");
+    const projectSvc = await import("@/lib/projects/service");
+    const admin: CurrentUser = { ...user, role: "admin" };
+
+    const project = await projectSvc.createProject(admin, { name: "Invite Co" });
+    if (!project.ok) throw new Error(project.error.message);
+
+    // Operator (non-admin) is refused before anything else.
+    const asOperator = await invite.inviteClientViewer(user, {
+      projectId: project.data.id,
+      email: "client@example.com",
+      name: "Client",
+    });
+    expect(asOperator.ok).toBe(false);
+    if (!asOperator.ok) expect(asOperator.error.kind).toBe("forbidden");
+
+    // Under dev auth there is no identity provider to invite into.
+    const devMode = await invite.inviteClientViewer(admin, {
+      projectId: project.data.id,
+      email: "client@example.com",
+      name: "Client",
+    });
+    expect(devMode.ok).toBe(false);
+    if (!devMode.ok) expect(devMode.error.message).toMatch(/AUTH_MODE=supabase/);
+
+    // A staff email is never converted into a client account.
+    await sql`
+      insert into users (id, email, name, role)
+      values ('00000000-0000-4000-8000-00000000f001', 'staff@parva.local',
+        'Staff Member', 'operator')
+      on conflict (id) do nothing
+    `;
+    const collision = await invite.inviteClientViewer(admin, {
+      projectId: project.data.id,
+      email: "staff@parva.local",
+      name: "X",
+    });
+    expect(collision.ok).toBe(false);
+    if (!collision.ok) expect(collision.error.message).toMatch(/non-client/);
+
+    // Granting an EXISTING client account works in any auth mode.
+    await sql`
+      insert into users (id, email, name, role)
+      values ('00000000-0000-4000-8000-00000000f002', 'existing@client.com',
+        'Existing Client', 'client_viewer')
+      on conflict (id) do nothing
+    `;
+    const granted = await invite.inviteClientViewer(admin, {
+      projectId: project.data.id,
+      email: "existing@client.com",
+      name: "Existing Client",
+    });
+    expect(granted.ok).toBe(true);
+    if (granted.ok) expect(granted.data.existing).toBe(true);
+    const [grant] = await sql`
+      select 1 from user_project_access
+      where user_id = '00000000-0000-4000-8000-00000000f002'
+        and project_id = ${project.data.id}
+    `;
+    expect(grant).toBeDefined();
+  });
 });

@@ -1,5 +1,15 @@
 # Implementation Roadmap — AI Visibility Operating System
 
+> **Status 2026-07-31 (end of day): Phases 0–3 are COMPLETE** — PRs #2–#9,
+> all merged or open-green: authorization depth + tenant scoping (0),
+> scoring v1.1 / tiers / tasks / exclusivity / campaigns / citation ledger
+> (1), movement alerts / source classification / entity bridge / event
+> producers / trigger enablement / portfolio fields (2), client portal /
+> proof of work / printable reports / executive briefs / client invites
+> (3). Exceptions: 0.0 + hosting remain operator actions; 1.7 blocked on
+> provider keys; 2.4 deferred until ~10 intervention verdicts accumulate.
+> Phase 4 not started.
+>
 > Date: 2026-07-31 · Derived from `current-system-audit.md` and
 > `target-gap-analysis.md`. Complexity: S (< half day), M (1–2 days),
 > L (3–5 days), XL (> a week). Every task follows the repo's standing
