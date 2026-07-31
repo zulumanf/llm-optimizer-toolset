@@ -28,6 +28,7 @@ import { publishEvent } from "@/lib/events/bus";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { log } from "@/lib/logger";
 import { HIGH_RISK_CATEGORIES, SUPERLATIVE_MARKERS, type Materiality } from "@/lib/knowledge/constants";
+import { scoreNameMatch } from "@/lib/knowledge/normalize";
 import { latestExtraction } from "@/lib/knowledge/sources/ingest";
 import { resolveEntityByName } from "@/lib/knowledge/entities/service";
 import { scanProjectContradictions } from "@/lib/knowledge/contradictions/detect";
@@ -119,6 +120,18 @@ export async function extractClaimsFromSource(
     .object({
       sourceArtifactId: z.string().uuid(),
       maxClaims: z.number().int().min(1).max(40).default(20),
+      /**
+       * Names a claim's subject must match to be kept — the client, its
+       * aliases, and its named people.
+       *
+       * Omitted, every claim on the page is proposed, which is right for a
+       * document the client supplied about themselves. Supplied, it keeps a
+       * third-party page from filling the review queue with facts about other
+       * businesses that happen to share an article (spec 027, first live run:
+       * a Jersey Digs page proposed penthouse listings from unrelated
+       * developments as claims about the client).
+       */
+      subjectAllowList: z.array(z.string().min(1)).optional(),
     })
     .safeParse(raw);
   if (!parsed.success) {
@@ -168,6 +181,13 @@ export async function extractClaimsFromSource(
       const guard = verifyDraft(draft, extraction.text);
       if (!guard.ok) {
         rejected.push({ wording: draft.originalWording, reason: guard.reason });
+        continue;
+      }
+      if (!subjectIsInScope(draft.subject, parsed.data.subjectAllowList)) {
+        rejected.push({
+          wording: draft.originalWording,
+          reason: `The subject "${draft.subject}" is not this client or one of its people.`,
+        });
         continue;
       }
       const resolved = await resolveEntityByName({
@@ -289,6 +309,27 @@ export function verifyDraft(
     return { ok: false, reason: "The normalized wording is empty." };
   }
   return { ok: true };
+}
+
+/**
+ * Whether a claim's subject is the client or someone belonging to it.
+ *
+ * An empty or absent allow-list means "no scoping" — the caller is reading a
+ * document about the client and everything in it is fair game. Discovery
+ * supplies one because a third-party article is mostly *not* about the client:
+ * the first live run proposed "The James unveiled two penthouses" as a claim,
+ * which is true, sourced, verbatim, and about a different building entirely.
+ *
+ * `probable` counts: "JC Luxury at SERHANT." and "JC Luxury Group" are the same
+ * subject, and demanding an exact string would reject the client's own name as
+ * written by a journalist.
+ */
+export function subjectIsInScope(subject: string, allowList?: string[]): boolean {
+  if (!allowList || allowList.length === 0) return true;
+  return allowList.some((known) => {
+    const match = scoreNameMatch(subject, known);
+    return match.matchStatus === "exact" || match.matchStatus === "probable";
+  });
 }
 
 /** Whitespace-insensitive containment: extraction reflows text, quotes should survive it. */

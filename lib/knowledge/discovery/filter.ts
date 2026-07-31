@@ -19,6 +19,7 @@ export const SKIP_REASONS = [
   "already_ingested",
   "private_host",
   "unsupported_scheme",
+  "unattributable_source",
   "robots_disallowed",
   "fetch_failed",
   "empty_extraction",
@@ -33,6 +34,7 @@ export const SKIP_REASON_LABEL: Record<SkipReason, string> = {
   already_ingested: "already held from a previous run",
   private_host: "resolves to a private or internal address",
   unsupported_scheme: "not an http(s) page",
+  unattributable_source: "hosted on storage with no identifiable publisher",
   robots_disallowed: "robots.txt disallows fetching it",
   fetch_failed: "could not be fetched",
   empty_extraction: "fetched but yielded no usable text",
@@ -104,6 +106,12 @@ export function screenCandidate(raw: RawCandidate, ctx: ScreenContext): ScreenRe
     return { keep: false, candidate, reason: "own_domain" };
   }
 
+  // Checked before the fetch: a page we could never attribute is not worth
+  // spending a request, an extraction and an agent call on.
+  if (!isAttributableSource(domain)) {
+    return { keep: false, candidate, reason: "unattributable_source" };
+  }
+
   if (ctx.seenInRun.has(normalizedUrl)) {
     return { keep: false, candidate, reason: "duplicate_in_run" };
   }
@@ -149,6 +157,44 @@ export function domainsMatch(candidate: string, own: string): boolean {
   const b = normalizeDomain(own);
   if (a.length === 0 || b.length === 0) return false;
   return a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
+}
+
+/**
+ * Hosts that serve bytes but have no editorial identity.
+ *
+ * Added after the first live run (2026-07-30) captured two PDFs from S3
+ * buckets — one an SEO vendor's artifact, one an unrelated press-release dump —
+ * and proposed 38 claims from them, all rejected by hand.
+ *
+ * The rule is not "these sites are low quality". It is that **attribution to
+ * them is meaningless**: `attributionPrefix` yields "s3.amazonaws.com reports
+ * that", which names a filesystem rather than a publisher. A claim whose
+ * strongest provenance is a bucket path cannot be defended to a client, so the
+ * page is not worth the fetch.
+ *
+ * A legitimate press release hosted on S3 is lost by this rule. That is the
+ * accepted cost: the publisher's own page is the source we want, and if only
+ * the bucket copy exists, nobody can attribute the statement anyway.
+ */
+const UNATTRIBUTABLE_HOST_PATTERNS = [
+  /(^|\.)s3[.-][a-z0-9-]*\.?amazonaws\.com$/,
+  /(^|\.)s3\.amazonaws\.com$/,
+  /(^|\.)blob\.core\.windows\.net$/,
+  /(^|\.)storage\.googleapis\.com$/,
+  /(^|\.)r2\.cloudflarestorage\.com$/,
+  /(^|\.)digitaloceanspaces\.com$/,
+  /(^|\.)backblazeb2\.com$/,
+  // Link shorteners: the destination is the source, and we cannot see it here.
+  /^(bit\.ly|t\.co|tinyurl\.com|lnkd\.in|goo\.gl|ow\.ly)$/,
+  // Generic file/document hosts with no editorial control.
+  /^(drive\.google\.com|docs\.google\.com|dropbox\.com|www\.dropbox\.com)$/,
+  /^(scribd\.com|www\.scribd\.com|slideshare\.net|www\.slideshare\.net)$/,
+];
+
+/** Whether a claim sourced here could name a publisher a client would recognise. */
+export function isAttributableSource(domain: string): boolean {
+  const host = domain.toLowerCase();
+  return !UNATTRIBUTABLE_HOST_PATTERNS.some((pattern) => pattern.test(host));
 }
 
 /**

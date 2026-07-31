@@ -206,6 +206,51 @@ describe("contradiction detection", () => {
     expect(ordinary[0]!.severity).toBe("medium");
   });
 
+  it("does not flag two facts about different objects as a disagreement", () => {
+    // Same subject, same predicate, different objects: two buildings' unit
+    // counts. Regression from the first live discovery run, which raised three
+    // "contradictions" comparing bare unit counts for unrelated developments.
+    const found = detectContradictions(
+      [
+        claim({
+          id: "a",
+          normalizedPredicate: "unit_count",
+          canonicalText: "Metrovue is a 148-unit tower.",
+          value: 148,
+        }),
+        claim({
+          id: "b",
+          normalizedPredicate: "unit_count",
+          canonicalText: "The Summit is a 99-unit building.",
+          value: 99,
+        }),
+      ],
+      NOW
+    );
+    expect(found.filter((f) => f.type === "value_divergence")).toHaveLength(0);
+  });
+
+  it("still flags two values for the same object", () => {
+    const found = detectContradictions(
+      [
+        claim({
+          id: "a",
+          normalizedPredicate: "unit_count",
+          canonicalText: "Metrovue is a 148-unit tower.",
+          value: 148,
+        }),
+        claim({
+          id: "b",
+          normalizedPredicate: "unit_count",
+          canonicalText: "Metrovue is a 148-unit tower.",
+          value: 152,
+        }),
+      ],
+      NOW
+    );
+    expect(found.filter((f) => f.type === "value_divergence")).toHaveLength(1);
+  });
+
   it("does not invent a value conflict between two claims that carry no values", () => {
     const found = detectContradictions(
       [

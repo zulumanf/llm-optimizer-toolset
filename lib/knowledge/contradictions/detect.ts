@@ -103,7 +103,16 @@ export function detectContradictions(
         continue;
       }
 
-      if (differentValue(a, b)) {
+      // Same subject and predicate but a *different object* is not a
+      // disagreement — it is two facts. "Metrovue: 148 units" and "The Summit:
+      // 99 units" share a subject and a predicate and contradict nothing.
+      //
+      // Found by the first live discovery run (2026-07-30), which raised three
+      // "contradictions" reading "Overlapping claims disagree on general: 25165
+      // versus 3737" — bare unit counts for unrelated buildings. Noise like
+      // that is worse than silence: an operator who learns the contradiction
+      // queue is junk stops reading the one that matters.
+      if (differentValue(a, b) && !differentObject(a, b)) {
         const material = HIGH_RISK_CATEGORIES.includes(a.category);
         found.push({
           claimId: a.id,

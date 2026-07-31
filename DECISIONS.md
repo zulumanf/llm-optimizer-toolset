@@ -526,6 +526,43 @@ number here depends on.
 
 `scripts/jc-enrich.ts` stays as the record of how this was done by hand.
 
+## 2026-07-30 — Three fixes the first live discovery run earned
+
+Run 1 (10 searches, 5 pages, $0.28) produced 91 proposed claims and 3
+contradictions. Almost all of it was unusable, and each failure had a distinct
+cause worth fixing separately rather than tuning away.
+
+**A source must have an identifiable publisher.** Two of five captures were PDFs
+in S3 buckets — one an SEO vendor's artifact, one an unrelated press-release
+dump — contributing 38 claims, all rejected by hand. The rule added is not
+"these are low quality"; it is that `attributionPrefix` would yield
+"s3.amazonaws.com reports that", which names a filesystem. A claim whose best
+provenance is a bucket path cannot be defended to a client. Object storage,
+shorteners and generic document hosts are now screened out *before* the fetch.
+A legitimate press release hosted only on S3 is lost by this; accepted, because
+nobody could attribute it anyway.
+
+**A claim on a third-party page is usually not about the client.** Three of five
+pages hit the extractor's 20-claim ceiling, proposing things like "The James
+unveiled two penthouses" — true, sourced, verbatim, and about a different
+building. `extractClaimsFromSource` now takes an optional `subjectAllowList`
+(client, aliases, named people); discovery supplies one, and callers reading a
+client-supplied document still omit it and keep everything. `probable` name
+matching counts, so "JC Luxury at SERHANT." is recognised as the client written
+the way a journalist writes it.
+
+**Different objects are two facts, not a disagreement.** All 3 contradictions
+read "Overlapping claims disagree on general: 25165 versus 3737" — bare unit
+counts for unrelated buildings sharing a subject and predicate.
+`value_divergence` now requires the objects to match. Noise here is worse than
+silence: an operator who learns the contradiction queue is junk stops reading
+the one that matters.
+
+Run 2, same client, same cost: claims per page fell from ~18 to 6, all on-topic;
+12 unattributable pages were skipped before costing a fetch; contradictions went
+from 3 to 0. The searches also found *more* (76 pages vs 60) — the corpus was
+never the constraint, the filtering was.
+
 ## 2026-07-30 — Discovery honours robots.txt; the site crawler still does not
 
 `lib/knowledge/sources/discover.ts` does not read robots.txt, and that is

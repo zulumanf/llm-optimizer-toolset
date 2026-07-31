@@ -20,6 +20,7 @@ import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 import { writeAudit } from "@/db/audit";
 import { getProvider } from "@/lib/ai/registry";
+import { costMicroUsd } from "@/lib/ai/pricing";
 import { extractCitations } from "@/lib/ai/citations";
 import type { AgentCaller } from "@/lib/ai/agent";
 import { ingestSource } from "@/lib/knowledge/sources/ingest";
@@ -139,6 +140,13 @@ export async function runExternalDiscovery(
     const alreadyIngested = await loadIngestedUrls(input.projectId);
     const seenInRun = new Set<string>();
     const robotsCache = new Map<string, RobotsRules>();
+    // The client, its aliases, and its named people — everything a claim on a
+    // third-party page may legitimately be about.
+    const subjectAllowList = [
+      identity.name,
+      ...(identity.aliases ?? []),
+      ...(identity.principals ?? []),
+    ];
 
     for (const query of queries) {
       if (state.stopReason) break;
@@ -165,6 +173,7 @@ export async function runExternalDiscovery(
           ...options,
           robotsCache,
           alreadyIngested,
+          subjectAllowList,
         });
         if (state.stopReason) break;
       }
@@ -267,7 +276,16 @@ async function liveSearch(
     model: DISCOVERY_SEARCH_MODEL,
     promptText,
   });
-  return { rawPayload: res.rawPayload, costMicroUsd: 0 };
+  // Token cost only. OpenAI bills the web_search tool per call *outside* token
+  // usage (DECISIONS, 2026-07-28), so the true spend is higher than this figure
+  // and the cost cap is correspondingly optimistic. Understating it here is
+  // better than inventing a per-call price we have not verified — but it means
+  // the cap is a floor on spend, not a ceiling, until +search pricing is
+  // confirmed against a real invoice.
+  return {
+    rawPayload: res.rawPayload,
+    costMicroUsd: costMicroUsd(DISCOVERY_SEARCH_MODEL, res.tokensIn, res.tokensOut),
+  };
 }
 
 /** Fetch, store, and extract claims from one surviving candidate. */
@@ -283,6 +301,7 @@ async function ingestAndExtract(
     delayMs?: number;
     robotsCache: Map<string, RobotsRules>;
     alreadyIngested: Set<string>;
+    subjectAllowList: string[];
   }
 ): Promise<void> {
   const allowed = await isFetchAllowed(
@@ -342,7 +361,14 @@ async function ingestAndExtract(
 
   const extracted = await extractClaimsFromSource(
     user,
-    { sourceArtifactId: ingested.data.sourceArtifactId },
+    {
+      sourceArtifactId: ingested.data.sourceArtifactId,
+      // A third-party page is mostly not about this client. Without this, an
+      // article mentioning them once contributes twenty claims about other
+      // businesses — 91 proposals from five pages on the first live run, which
+      // is a review queue nobody works through.
+      subjectAllowList: options.subjectAllowList,
+    },
     { caller: options.agentCaller }
   );
   if (!extracted.ok) {

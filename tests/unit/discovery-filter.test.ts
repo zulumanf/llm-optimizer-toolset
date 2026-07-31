@@ -10,9 +10,11 @@ import {
   domainsMatch,
   requiresAttribution,
   attributionPrefix,
+  isAttributableSource,
   SKIP_REASON_LABEL,
   type ScreenContext,
 } from "@/lib/knowledge/discovery/filter";
+import { subjectIsInScope } from "@/lib/knowledge/extraction/claims";
 import { parseRobots, isPathAllowed } from "@/lib/knowledge/discovery/robots";
 
 const IDENTITY = {
@@ -169,6 +171,73 @@ describe("candidate screening", () => {
     for (const reason of Object.keys(SKIP_REASON_LABEL)) {
       expect(SKIP_REASON_LABEL[reason as keyof typeof SKIP_REASON_LABEL].length).toBeGreaterThan(5);
     }
+  });
+});
+
+describe("source attributability", () => {
+  it("rejects object storage — 's3.amazonaws.com reports that' names a filesystem", () => {
+    for (const host of [
+      "s3.amazonaws.com",
+      "s3.us-east-1.amazonaws.com",
+      "legiit-service.s3.amazonaws.com",
+      "example.blob.core.windows.net",
+      "storage.googleapis.com",
+    ]) {
+      expect(isAttributableSource(host)).toBe(false);
+    }
+  });
+
+  it("rejects shorteners and generic document hosts", () => {
+    for (const host of ["bit.ly", "t.co", "drive.google.com", "scribd.com"]) {
+      expect(isAttributableSource(host)).toBe(false);
+    }
+  });
+
+  it("keeps real publishers", () => {
+    for (const host of [
+      "jerseydigs.example",
+      "serhant.example",
+      "nytimes.example",
+      "hobokengirl.example",
+    ]) {
+      expect(isAttributableSource(host)).toBe(true);
+    }
+  });
+
+  it("screens an unattributable page out before it costs a fetch", () => {
+    const r = screenCandidate(
+      {
+        url: "https://legiit-service.s3.amazonaws.com/abc/def.pdf",
+        title: null,
+        sourceQuery: "q",
+      },
+      ctx()
+    );
+    expect(r.keep).toBe(false);
+    if (!r.keep) expect(r.reason).toBe("unattributable_source");
+  });
+});
+
+describe("claim subject scoping", () => {
+  it("permits everything when no allow-list is supplied", () => {
+    expect(subjectIsInScope("Anyone At All", undefined)).toBe(true);
+    expect(subjectIsInScope("Anyone At All", [])).toBe(true);
+  });
+
+  it("keeps claims about the client and its people", () => {
+    const allow = ["JC Luxury Group", "JC Luxury", "Alexander Calle"];
+    expect(subjectIsInScope("JC Luxury Group", allow)).toBe(true);
+    expect(subjectIsInScope("Alexander Calle", allow)).toBe(true);
+  });
+
+  it("accepts the client's name as a journalist writes it", () => {
+    expect(subjectIsInScope("JC Luxury at SERHANT.", ["JC Luxury Group"])).toBe(true);
+  });
+
+  it("drops facts about other businesses on the same page", () => {
+    const allow = ["JC Luxury Group", "Alexander Calle"];
+    expect(subjectIsInScope("The James", allow)).toBe(false);
+    expect(subjectIsInScope("Greystar", allow)).toBe(false);
   });
 });
 
