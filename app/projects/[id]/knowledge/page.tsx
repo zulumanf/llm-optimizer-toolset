@@ -8,6 +8,19 @@ import { Badge } from "@/components/ui/badge";
 import { SubjectSelector } from "@/components/knowledge/subject-selector";
 import { ClaimCard } from "@/components/knowledge/claim-card";
 import { ProposeClaimDialog } from "@/components/knowledge/propose-claim-dialog";
+import { KnowledgeLayerNav } from "@/components/knowledge/layer-nav";
+import { knowledgeSummary } from "@/db/knowledge";
+
+/** A single figure with the caveat that matters attached, never bare. */
+function Stat({ label, value, sub }: { label: string; value: number; sub: string }) {
+  return (
+    <div className="rounded-lg border p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-2xl font-semibold">{value}</p>
+      <p className="text-xs text-muted-foreground">{sub}</p>
+    </div>
+  );
+}
 
 export default async function KnowledgePage({
   params,
@@ -18,10 +31,11 @@ export default async function KnowledgePage({
   const project = await getProject(id);
   if (!project) notFound();
 
-  const [subject, companies, claims] = await Promise.all([
+  const [subject, companies, claims, summary] = await Promise.all([
     getSubjectCompany(id),
     listActiveCompanies(),
     listClaims(id),
+    knowledgeSummary(id),
   ]);
   const evidenceIds = [...new Set(claims.flatMap((c) => c.evidenceIds))];
   const evidenceRows =
@@ -48,13 +62,36 @@ export default async function KnowledgePage({
         {" / "}Knowledge
       </nav>
 
-      <div className="mb-6">
+      <div className="mb-4">
         <h1 className="text-2xl font-semibold">Client knowledge</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           The verified factual record. Agents may only use approved claims —
           never invented or recalled facts (docs/15).
         </p>
       </div>
+
+      <KnowledgeLayerNav projectId={id} />
+
+      {/* The state of the layer at a glance, so a problem is visible before an
+          operator goes looking for it. */}
+      <section className="mb-8 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Stat label="Sources" value={summary.sources} sub={`${summary.unreadableSources} unreadable`} />
+        <Stat
+          label="Approved claims"
+          value={summary.approvedClaims}
+          sub={`${summary.proposedClaims} awaiting review`}
+        />
+        <Stat
+          label="Compiled pages"
+          value={summary.pages}
+          sub={summary.stalePages > 0 ? `${summary.stalePages} stale` : "all current"}
+        />
+        <Stat
+          label="Open contradictions"
+          value={summary.openContradictions}
+          sub={`${summary.instructions} active instructions`}
+        />
+      </section>
 
       <section className="mb-8">
         <h2 className="mb-2 text-lg font-medium">Subject (the client)</h2>

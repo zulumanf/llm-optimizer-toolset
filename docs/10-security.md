@@ -72,3 +72,63 @@ npm run restore -- var/backups/<stamp>   # drill into llm_optimizer_restore
 - `npm audit` in CI (fail on high/critical), Dependabot/Renovate enabled.
 - No secrets or real captured data in test fixtures — fixtures are sanitized copies.
 - Prompt-injection awareness: AI responses are untrusted text. They are rendered escaped, never executed, never fed into tool-calling contexts, and parser prompts treat response content as data (see `docs/12-ai-guidelines.md`).
+
+
+## Authentication and identity (spec 014, 2026-07-30)
+
+`AUTH_MODE=dev` serves one hardcoded user and is the mode the test suite runs
+in — 893 tests must not depend on an inbox. `AUTH_MODE=supabase` reads a real
+session.
+
+**The role comes from the `users` table, never from the JWT.** A token is a
+claim about identity; letting it also assert privilege means a stale or
+compromised token carries whatever role it was minted with. One extra query per
+request buys revocation that takes effect immediately — deactivating an account
+hides its data on the next query, not at the next token refresh.
+
+**Sign-in is magic link, and cannot self-provision.** `shouldCreateUser: false`,
+and the address must already exist in `users` and be active. The login form
+returns the same response for a known and an unknown address, so it cannot be
+used to enumerate who works here.
+
+**The service-role key never reaches a browser.** `lib/supabase/server.ts`
+begins with `import "server-only"`, so any client component importing it —
+directly or through a chain — fails the build rather than shipping the key.
+That key bypasses row-level security entirely; `supabaseAdminClient()` exists
+for provisioning only, and `supabaseRouteClient()` (anon key + session cookie,
+RLS applies) serves requests.
+
+**Row-level security is defence in depth.** The app connects as the table
+owner, and owners bypass RLS, so these policies govern the Supabase-client path
+rather than application queries. Service-layer scoping via `visibleProjectIds`
+remains the primary control. Isolation tests connect as a non-owner role so
+they prove the policies instead of passing vacuously.
+
+**Evidence downloads are recorded.** `artifact_access_log` is insert-only and
+captures who took a copy of raw client material off the platform, which the
+audit log (what changed) does not answer.
+
+## The public REST API is closed (2026-07-30)
+
+Hosting the database on Supabase adds an attack surface that does not exist on
+a laptop: **PostgREST**, which publishes every table in `public` at
+`https://<ref>.supabase.co/rest/v1/<table>` to whoever holds the publishable
+key — a key designed to be embedded in browsers.
+
+Supabase's default privileges grant `anon` and `authenticated` full rights
+(`arwdDxtm`) on every table `postgres` creates. Left alone, restoring this
+schema would have exposed `responses`, `claims`, `audit_log` and
+`connector_credentials` to the internet, writable, with only three tables
+covered by RLS.
+
+Both roles therefore hold **no privileges on `public`** — revoked at the default
+level before the restore and explicitly after it. Nothing breaks, because the
+application connects as the owner over postgres.js and never used `anon` for
+data; the Supabase client is for sessions only. Verified by request: every table
+returns 401 through the REST API.
+
+This supersedes the line above describing the app as "anon key + RLS". RLS is
+defence in depth for the Supabase-client path; the primary control is that the
+API roles cannot read anything at all. **Any future table must be created by a
+migration, never through the Supabase dashboard** — a table created there can
+pick up default grants and land on the public API.

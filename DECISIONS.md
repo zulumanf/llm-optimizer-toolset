@@ -185,3 +185,441 @@ Spec 001's unit/integration coverage exercises every acceptance criterion includ
 
 ### Why `specs/` separate from `docs/`?
 `docs/` explains why the system exists and how it holds together — stable, read for context. `specs/` are executable work orders — one feature, implemented exactly, then done. Mixing them makes docs churn and specs vague.
+
+---
+
+## 2026-07-29 — Graph execution: keep the Postgres queue, add a graph layer (spec 018)
+
+The recorded revisit point ("our Postgres queue is the orchestrator until
+multi-step graphs outgrow it", 2026-07-27; restated as "DAG dependencies or
+human-wait steps measured in days" in `docs/audits/architecture-consolidation-recommendations.md`
+#8) came due: the content and reporting workflows need real dependencies,
+fan-in, and approvals that pause for days. **The answer is still the queue.**
+
+What was actually missing was *tables*, not *infrastructure*: dependency
+resolution, fan-in, and a resumable human wait. The queue already provides the
+two hard parts — durable at-least-once delivery and crash recovery — and it
+provides one thing no external engine can: node completion, state transition,
+audit row, and the next node's enqueue all commit in **one transaction**. With
+Temporal/Trigger.dev/Inngest they cannot, and we would need an outbox to fake
+it. Rejected, with the costs stated: a second runtime and failure domain, a
+tunnel or cloud account for local dev, re-homing every existing handler in a
+foreign execution model against a 246-test baseline, and a workflow history
+that is not portable the way Postgres rows are.
+
+The engine is a **tick** (`advanceWorkflow(runId)`), generalising the proven
+shape of `lib/cycles/service.ts` from one hard-coded process to any declared
+graph. Substitution stays cheap: everything outside `lib/workflow/engine.ts`
+depends on the `WorkflowEngine` interface, so a durable orchestrator can be
+dropped in without touching a template, handler, or page.
+
+## 2026-07-29 — Autonomy gates the nodes that act, not every node (spec 018)
+
+First implementation demanded an approval for every node in a level-≤2
+workflow. That makes `content_production_v1` unusable — its claim gate,
+fact verification, and adversarial review would each need a human decision
+before the actual publish approval — and an operator asked to approve nine
+things to publish one thing will rubber-stamp all nine, which is worse than
+having no gate. Autonomy now gates **effectful** node types
+(`deterministic_task`, `agent_task`, `integration_task`, `manual_task`) plus
+anything declaring `requiresApproval`; gates, conditions, fan-outs, and
+verifications are the checks that guard the act, not the act. Templates name
+each node's own `config.actionType`, so the approval lands on the consequential
+step. See `isEffectful()` in `lib/workflow/autonomy.ts`.
+
+## 2026-07-29 — Edge semantics: settled is not the same as succeeded (spec 018)
+
+Found by the integration suite. An edge with no explicit condition means "B
+needs A's output"; a source that failed, timed out, or was cancelled has no
+output, so it blocks its target. Error-routing edges say so explicitly with a
+`node_state` condition. Two related rules fell out of the same review:
+
+- A node with incoming edges needs at least **one** satisfied. Without it, a
+  node reachable only by an optional error-routing edge fired immediately,
+  before its source had run — "not required" is not "not waited for".
+- A `fan_in` is the exception: it receives the failed branches too, because
+  disclosing what did not arrive is its entire job. A fan-in that silently
+  proceeds on whatever showed up is the undisclosed-partial-sample failure
+  this platform exists to prevent.
+
+## 2026-07-29 — Correlation is capped in code, not in prose (spec 019)
+
+`outcome_relationships.confidence_label` is guarded by `boundConfidence()`:
+an agent can never write `confirmed` at any confidence, and deterministic code
+reaches it only with a matching identifier or a client self-report. A lowered
+label records *why* it was lowered in `basis`, so a reader sees the system
+declined to overclaim rather than merely lacking data. The rows are immutable,
+so nobody upgrades a label later without a new, attributable row.
+
+## 2026-07-29 — Capacity and automation are measured or withheld (spec 019)
+
+`supportableClients` is `null` below 20 human-touch observations and the view
+says "insufficient data" rather than printing an extrapolation from two weeks
+of one client. Automation rate is computed from `node_runs` settled without a
+human transition — the architectural targets in
+`docs/architecture/automation-quality-operating-model.md` are stated as intent
+and shown next to the measured number, never as a claim about current
+performance.
+
+## 2026-07-29 — `timeout` added to the ErrorKind taxonomy
+
+Node timeouts are a distinct failure class from `internal`: they are expected,
+bounded, and retryable, and the operator's response differs. One-word addition
+to `lib/errors.ts`; no consumer switches exhaustively on `ErrorKind`.
+
+## 2026-07-29 — The automation layer is first-party, on the spec-018 engine
+
+`specs/native-automation-and-connector-layer.md` asked for an
+`AutomationRuntime`. It is a ~250-line **adapter** over
+`lib/workflow/engine.ts`, not a second execution model. A run's state, retry
+semantics, audit trail and "what is this waiting on?" must have exactly one
+home; spec 018 already built it, and the revisit conditions it recorded
+(external orchestrator when multi-worker throughput or 30-day waits bite) are
+still not met. The adapter adds only what does not belong in a graph engine:
+run mode, connector preflight, per-client concurrency, and exception querying.
+
+Full build-vs-borrow reasoning, including what we deliberately refuse to build
+(arbitrary code nodes, a connector marketplace, a customer-facing builder), is
+in `docs/architecture/build-vs-borrow-boundaries.md`.
+
+## 2026-07-29 — `transform: postgres.camel` rewrites JSON keys, not just columns
+
+Discovered while wiring test-mode fixtures: the shared client's camel transform
+rewrites keys **inside jsonb** on read. A stored `analytics.fetch_sessions`
+comes back as `analytics.fetchSessions`, and `__test` comes back as `_Test`.
+
+Consequences, both now enforced:
+
+- Any name that must survive a round trip lives in a **value**, not a key.
+  `WorkflowFixtureBundle` is therefore an array of `{capability, response}`
+  entries, not an object keyed by capability.
+- Reserved keys in stored JSON are camelCase with no leading underscores
+  (`automationTestConfig`).
+
+Workflow definitions were audited and are safe: every node `config` key is
+already camelCase, and capability names appear only as values.
+
+## 2026-07-29 — Edges govern execution; paths govern reading
+
+A template routinely needs a value produced several nodes back — a report's
+approval node needs the metric section computed four nodes earlier. The obvious
+fix, adding a shortcut edge, is actively unsafe: `computeReady` fires a node
+when *any* incoming edge is satisfied, so a shortcut around a gate would let
+the gated node run before its gate cleared.
+
+So `lib/automation/nodes/paths.ts` resolves a config path from direct upstream
+outputs, then the run input, then any node in the run that has already
+**succeeded**. That is a read, never a permission: a node that has not run has
+no output, so a bypassed gate still starves its downstream nodes.
+`validateNodePaths` refuses a path rooted at a node that is not an ancestor,
+because nothing orders it first — that one is a genuine race.
+
+## 2026-07-29 — Per-node action types, so a level-2 workflow is usable
+
+`lib/workflow/autonomy.ts` classifies `deterministic_task`, `agent_task` and
+`integration_task` as effectful, and gates every effectful node at autonomy ≤ 2.
+Without a per-node action type, a level-2 workflow would demand a human decision
+on every read and every calculation — which that same file warns "would train
+the operator to rubber-stamp, which is worse than no gate at all".
+
+`lib/automation/workflows/helpers.ts` therefore sets `config.actionType` per node
+category (reads → `analytics_ingestion`, calculations → `metric_calculation`,
+agent drafts → `content_drafting`), following the convention spec 018's own
+`content_production_v1` established. Nodes that actually act inherit the
+workflow's action type and stay gated.
+
+## 2026-07-29 — Adapter status is labelled, never inflated
+
+Sixteen connector adapters ship. Five are `verified` — fixture, CSV, manual,
+internal notification, local file store — and every one of those runs entirely
+inside this platform. Nine provider adapters are `implemented_unverified`:
+written against the documented HTTP contract, shape-tested against captured
+fixtures, and **never executed against the live API**, because no provider
+credentials exist in this environment. Two are `contract_only`.
+
+`tests/unit/connector-security.test.ts` asserts that no adapter talking to a
+third party can claim `verified`, and that every non-verified adapter documents
+what remains. The connectors page states the same thing in prose.
+
+## 2026-07-29 — Labour savings are not reported
+
+The request asks for human-time-saved metrics "unless actual baseline and
+operating data exist". None does, so `businessMetrics().humanTimeSavedHours` is
+typed `null` and the dashboard prints "not measured". What *is* reported is
+`manualInterventionRate` — the share of live runs where a human had to touch a
+node — computed from `node_runs.human_touch`. That is the number that says
+whether the automation is helping, and it needs no baseline to be honest.
+
+## 2026-07-29 — Tenant is the project; no tenant_id column
+
+The knowledge-compilation spec asked for strict multi-tenant isolation with a
+tenant id on every table. `CLAUDE.md` says the opposite: "Not multi-tenant. One
+team, internal only." Every workflow and event table already uses `project_id`
+as the tenant key and says so in a comment.
+
+Adding `tenant_id` would fabricate a dimension the product does not have, and
+every row would carry the same value forever. So `project_id` remains the
+isolation boundary, and every isolation test is written **client-to-client**,
+which is the leakage that can actually occur here: two clients of the same
+internal team, whose data must never mix in a packet or a compiled page.
+
+## 2026-07-29 — Compiled wiki pages are rows, not files
+
+The spec allowed generated Markdown files. They were rejected.
+
+A `.md` file on disk is editable by anything with filesystem access, and an
+editable artifact that reads as authoritative is exactly the failure this layer
+exists to prevent. Rows get version identity, a `forbid_mutation()` trigger,
+dependency joins and provenance foreign keys for free.
+
+`wiki_page_versions` therefore stores the rendered Markdown **and** a structured
+JSON mirror, and the content hash covers both — two renderings with the same
+prose but different data are different pages. Export to Markdown is a read
+operation, never the store.
+
+## 2026-07-29 — Provenance lives in tables, not in YAML front matter
+
+The spec suggested a `section_id / claim_ids / evidence_ids` block inside the
+page body. Front matter would be unqueryable, hand-editable, and duplicated in
+every rendering of the same section.
+
+`wiki_section_provenance` is a table with one row per section, so the UI joins
+it directly and the compiler writes it without polluting what a human reads.
+
+## 2026-07-29 — Hot files are wiki pages, not a parallel system
+
+A hot file is a `wiki_pages` row with `page_type = 'hot_file'` and a hard token
+budget. One compiler, one dependency graph, one build engine, one provenance
+model. A second subsystem for "the same thing but shorter" would have needed its
+own staleness rules and would have drifted from the first one within a release.
+
+## 2026-07-29 — Retrieval is lexical and structural; no vector index
+
+Selection is deterministic for everything that governs what an agent may *say* —
+identity, approved claims, instructions, methodology, the named entities and
+date range, privacy filtering. Postgres full-text plus entity traversal only
+ranks *supporting* material.
+
+`pgvector` is not in this stack, and the rules that matter here are structural
+(client scope, category, entity, date, privacy, freshness), not similarity-
+shaped. An embedding store would add a dependency, a sync problem and a
+staleness failure mode without changing which claims a drafting agent is
+permitted to use. Revisit when a measured retrieval evaluation (spec 025) shows
+lexical recall is the binding constraint.
+
+## 2026-07-29 — `unpdf` and `read-excel-file`; `exceljs` rejected
+
+PDF text extraction uses `unpdf` (no native binaries, ships the pdf.js text
+layer). Spreadsheet extraction uses `read-excel-file`, which is read-only —
+which is all this layer needs.
+
+`exceljs` was tried first and rejected: it pulls in 95 packages and added seven
+audit findings, almost all through the `archiver` write path this layer never
+uses. The chosen pair adds **zero** audit findings. `xlsx@0.18.5` on npm carries
+known advisories and was not considered.
+
+Both are imported dynamically, so a missing or broken install degrades to
+`extraction_status = 'unsupported'` with a stated reason rather than crashing
+ingestion. Neither performs OCR: a scanned PDF is reported `empty` with an
+explicit note, never as a successful extraction of nothing.
+
+## 2026-07-29 — Token savings are measured; quality is not
+
+`lib/knowledge/context/experiment.ts` compares four context strategies — raw
+documents, full wiki, hot files, task packet — by counting input tokens locally
+and deterministically, at zero cost, in CI.
+
+On the seeded client the measured figures are: raw 8,289 tokens → full wiki
+2,041 (75.4% fewer) → hot files 1,399 (83.1%) → task packet 492 (**94.1%**).
+Those are real counts from `npm run seed:knowledge`, not estimates, and they
+depend on corpus size — a client with three short documents shows no reduction
+at all, which the harness reports honestly.
+
+Accuracy, unsupported-claim rate, human-correction time and verifier-rejection
+rate are **not measured**. Measuring them means running a real provider across
+all four modes and spending money, which is the opt-in live harness deferred to
+spec 025. Every result object carries `qualityMeasured: false` so no reader
+mistakes a cost figure for a quality claim.
+
+## 2026-07-29 — Staleness must never roll back the change that caused it
+
+`publishEvent` marks dependent pages stale inside the publisher's transaction,
+so a claim approval and the invalidation it causes commit together.
+
+The first implementation wrapped that in a try/catch and logged a warning. That
+was not enough: a failed statement aborts the **caller's** entire transaction in
+Postgres, so a malformed id in an event payload would have rolled back a
+legitimate claim approval. The fix is to validate ids against the uuid shape
+*before* issuing the query — a non-uuid can never match a `uuid` column anyway.
+Caught by the existing `automation-layer` suite, which publishes events with
+test ids like `"c-1"`.
+
+## 2026-07-29 — One claim-selection implementation
+
+`buildEvidencePacket` (spec 018) and the new `buildPacket` (spec 022) both need
+"approved claims, privacy filtered, freshness assessed". Rather than let two
+queries drift, `lib/knowledge/packet.ts` now delegates to
+`selectClaims` in the context builder and keeps only its own legacy shape and
+rendering. Four workflow templates keep working unchanged.
+
+---
+
+## 2026-07-30 — The database moved to Supabase; only `public` went with it
+
+Spec 014 was unblocked by a real Supabase project, so identity and data both
+moved. Three decisions were forced during the move, none of them obvious.
+
+**Only the `public` schema was restored.** A full `pg_restore` of the local dump
+would have carried our own `auth.uid()` stub — migration 025 installs one when
+the real function is absent, and local development is exactly that case. The
+dump contains `SCHEMA auth` and `FUNCTION auth.uid()`, so restoring it wholesale
+would have overwritten Supabase's genuine `auth.uid()`, which migration 025's
+own comment calls catastrophic. `pg_restore -n public` leaves it untouched;
+verified afterwards by reading `prosrc` on the server. The migration ledger came
+across inside `schema_migrations`, so the 27 migrations are recorded as applied
+rather than re-run.
+
+**`anon` and `authenticated` were stripped of every privilege on `public`.**
+Supabase's default ACLs grant `arwdDxtm` on every new table created by
+`postgres`, and PostgREST exposes those tables to anyone holding the
+publishable key — which is public by design. Restoring 111 tables under those
+defaults would have published the raw response captures, `claims`, `audit_log`
+and `connector_credentials` to the internet, writable. This hazard does not
+exist locally, which is why nothing in the repo guarded against it: there is no
+PostgREST and no `anon` role on a laptop. Default privileges were revoked before
+the restore and explicit grants after it; every table now returns 401 through
+the REST API. The app is unaffected because it connects as the owner over
+postgres.js — `anon` was never in its path. RLS (migration 025) remains defence
+in depth for the Supabase-client path, not the primary control.
+
+**The operator's auth user was minted with the id it already had.**
+`app/auth/callback/route.ts` adopts the Supabase uid on first sign-in with
+`update users set id = …`. That statement cannot succeed for an account with
+history: five foreign keys reference `users(id)` with no `ON UPDATE CASCADE`,
+and 253 of the referencing rows live in `audit_log`, whose immutability trigger
+forbids UPDATE outright. The append-only guarantee that makes the evidence
+trustworthy also makes the user id un-rewritable. Rather than weaken either,
+the auth user was created through the admin API with the existing uuid, so the
+rewrite branch never executes. The branch is still a trap for the next account
+provisioned after it has accumulated audit rows; fixing it properly means
+provisioning identity and row together, and is not attempted here.
+
+## 2026-07-30 — A search result is a lead, never evidence (spec 027)
+
+External discovery could have stored what a search returned: the snippet, the
+title, the model's summary. It stores none of them. A candidate URL is fetched,
+hashed and written to `source_artifacts`, and only then may a claim be proposed
+from it — so every claim cites bytes we hold and can re-read, not a description
+of a page we never saw.
+
+The cost of that rule is visible and deliberate: a page that 404s, blocks us, or
+renders its content in JavaScript produces **no claim**, however good the
+snippet looked. The alternative — proposing a claim from a search summary — is
+exactly the fabricated-evidence failure PRINCIPLES #5 forbids, wearing the
+costume of a citation.
+
+Queries are templated and filled deterministically (`external-discovery-v1`,
+docs/13) rather than composed by an agent. An agent writing its own searches
+returns a different corpus every run, and two enrichments of the same client
+stop being comparable — which would quietly undo the reproducibility every other
+number here depends on.
+
+`scripts/jc-enrich.ts` stays as the record of how this was done by hand.
+
+## 2026-07-30 — Three fixes the first live discovery run earned
+
+Run 1 (10 searches, 5 pages, $0.28) produced 91 proposed claims and 3
+contradictions. Almost all of it was unusable, and each failure had a distinct
+cause worth fixing separately rather than tuning away.
+
+**A source must have an identifiable publisher.** Two of five captures were PDFs
+in S3 buckets — one an SEO vendor's artifact, one an unrelated press-release
+dump — contributing 38 claims, all rejected by hand. The rule added is not
+"these are low quality"; it is that `attributionPrefix` would yield
+"s3.amazonaws.com reports that", which names a filesystem. A claim whose best
+provenance is a bucket path cannot be defended to a client. Object storage,
+shorteners and generic document hosts are now screened out *before* the fetch.
+A legitimate press release hosted only on S3 is lost by this; accepted, because
+nobody could attribute it anyway.
+
+**A claim on a third-party page is usually not about the client.** Three of five
+pages hit the extractor's 20-claim ceiling, proposing things like "The James
+unveiled two penthouses" — true, sourced, verbatim, and about a different
+building. `extractClaimsFromSource` now takes an optional `subjectAllowList`
+(client, aliases, named people); discovery supplies one, and callers reading a
+client-supplied document still omit it and keep everything. `probable` name
+matching counts, so "JC Luxury at SERHANT." is recognised as the client written
+the way a journalist writes it.
+
+**Different objects are two facts, not a disagreement.** All 3 contradictions
+read "Overlapping claims disagree on general: 25165 versus 3737" — bare unit
+counts for unrelated buildings sharing a subject and predicate.
+`value_divergence` now requires the objects to match. Noise here is worse than
+silence: an operator who learns the contradiction queue is junk stops reading
+the one that matters.
+
+Run 2, same client, same cost: claims per page fell from ~18 to 6, all on-topic;
+12 unattributable pages were skipped before costing a fetch; contradictions went
+from 3 to 0. The searches also found *more* (76 pages vs 60) — the corpus was
+never the constraint, the filtering was.
+
+## 2026-07-30 — Discovery honours robots.txt; the site crawler still does not
+
+`lib/knowledge/sources/discover.ts` does not read robots.txt, and that is
+defensible for what it does: it crawls the client's own site, which the operator
+has permission to read.
+
+Discovery fetches third-party sites nobody asked. The publisher's stated
+preference is the only signal available, and ignoring it while calling this an
+evidence platform would be a poor trade for a handful of pages. So
+`lib/knowledge/discovery/robots.ts` implements the subset that matters —
+user-agent groups, `Disallow`, `Allow`, longest-match wins — and treats an
+unreachable or unparseable robots.txt as permitting the fetch, which is the
+standard reading: a 500 is a broken server, not a prohibition.
+
+The spec claimed this was reused from `discover.ts`. It was not; the spec is
+corrected rather than the claim quietly dropped.
+
+## 2026-07-30 — The sidebar renders nothing without a session
+
+`AUTH_MODE=supabase` made `/login` return 500. The root layout renders
+`Sidebar`, which called `getCurrentUser()` and threw — and `/login` lives inside
+that layout, so the one page whose job is to resolve an unauthenticated state
+crashed before it could render. The workspace was unenterable.
+
+963 tests did not catch it, and could not: they run under `AUTH_MODE=dev`, where
+a user always exists, so the throwing path is unreachable. That is the same
+blind spot for any component doing identity work above the page level.
+
+`Sidebar` now returns `null` without a session and loads projects and unread
+counts only after the caller is known. It is a rendering decision, not a
+security boundary — every page and server action still calls `getCurrentUser()`
+and throws on its own.
+
+## 2026-07-31 — `agentVersion` is a validated reference, not a label
+
+Auditing spec 018 turned up a node field that meant two different things.
+`lib/workflow/templates/*` put an agent *version* in `NodeDefinition.agentVersion`
+(`content-draft-v1`); `lib/automation/workflows/helpers.ts` put an agent *key*
+in the same field (`draft_content`). Nothing validated either, because
+`validateGraph` checked every other reference a graph makes — node keys,
+handlers, terminals, cycles — and not this one.
+
+Two consequences, one latent and one live. Latent: a typo in an agent version
+published cleanly and failed, if at all, inside a node run. Live: `agentMetrics()`
+groups by `workflow_nodes.agent_version`, so the agent-performance table was
+bucketing two identifier spaces at once and no bucket meant what the column
+header said.
+
+`agentVersion` is now a version everywhere, and validation enforces it: an
+`agent_task` or `verification_task` without one is a publish-time error, and a
+version in no registry is a publish-time error. Because two modules own agents —
+`lib/agents/registry.ts` and `lib/automation/prompts.ts` — the known set is a
+small registry (`lib/workflow/agent-versions.ts`) that both write into at import,
+rather than an import from `graph.ts`, which stays pure and takes the set as an
+argument. A *declared* agent's version is publishable: its contract is fixed, and
+the node safe-stops for want of a handler, not for want of a contract.
+
+Fixing the automation helpers changes those graphs' hashes, so the next bootstrap
+publishes version 2 of each. That is the versioning model working, not a
+migration: version 1 stays exactly as it ran.

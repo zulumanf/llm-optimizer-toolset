@@ -8,13 +8,15 @@ import { z } from "zod";
 import { sql } from "@/db/client";
 import { getCurrentUser } from "@/lib/auth";
 import { artifactPath } from "@/lib/evidence/storage";
+import { recordArtifactAccessAsync } from "@/lib/security/access-log";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ exportId: string }> }
 ): Promise<NextResponse> {
+  let user;
   try {
-    await getCurrentUser();
+    user = await getCurrentUser();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -23,12 +25,29 @@ export async function GET(
     return NextResponse.json({ error: "Invalid export id" }, { status: 400 });
   }
   const [row] = await sql`
-    select storage_key, status from evidence_exports where id = ${exportId}
+    select e.storage_key, e.status, r.project_id
+    from evidence_exports e
+    join runs r on r.id = e.run_id
+    where e.id = ${exportId}
   `;
   if (!row || row.status !== "completed" || !row.storageKey) {
     return NextResponse.json({ error: "Export not found" }, { status: 404 });
   }
   const bytes = await readFile(artifactPath(row.storageKey as string));
+
+  // Taking a copy of a client's raw evidence off the platform is an access
+  // event, not just a read (docs/10). Non-blocking: a download must not fail
+  // because logging did, but an unlogged download is reported loudly.
+  recordArtifactAccessAsync({
+    userId: user.id,
+    artifactType: "evidence_export",
+    artifactId: exportId,
+    projectId: (row.projectId as string | null) ?? null,
+    action: "download",
+    ipAddress: request.headers.get("x-forwarded-for"),
+    userAgent: request.headers.get("user-agent"),
+  });
+
   return new NextResponse(new Uint8Array(bytes), {
     headers: {
       "content-type": "application/gzip",

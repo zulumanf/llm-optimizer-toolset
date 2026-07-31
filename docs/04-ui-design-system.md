@@ -32,6 +32,28 @@ Status colors (badges, trends): `success` (green) = improvement/completed, `warn
 
 Sidebar sections: **Dashboard · Prompts · Runs · Review · Competitors · Reports · Tasks · Settings**. Active item highlighted with `primary`. Project switcher at the top of the sidebar. Breadcrumbs on detail pages (`Runs / Weekly baseline 2026-W31`).
 
+## Page primitives (`components/layout/page.tsx`) — use these, don't hand-roll
+
+This section exists because the rules above were documented from day one and
+drifted anyway: an audit on 2026-07-30 found **six different container widths
+across 52 pages, 35 of them hand-rolling the same breadcrumb-and-title block**.
+A design system nobody can import is a style guide, and style guides lose to
+whatever the last page did.
+
+| Primitive | Use |
+|---|---|
+| `PageShell` | The page container. One width (`max-w-7xl`), one padding (`p-6`). Never set a page width by hand. |
+| `PageHeader` | Breadcrumbs, `h1`, description, status badge, actions. Owns the only `h1` on the page. |
+| `Section` | A titled block at `text-lg`. No page invents its own heading size. |
+| `EmptyState` | The mandatory empty state: one sentence saying *why* it is empty, plus an action where one exists. |
+| `StatGrid` / `Stat` | Metric tiles. `tabular-nums` built in; pass `"not measured"` rather than `0` when nothing was observed. |
+
+`tests/unit/layout-consistency.test.ts` enforces the mechanically checkable
+rules — content width, the type scale, one `h1` per page, no raw hex, no inline
+styles — by reading the page files. It also prints how many pages remain on a
+hand-rolled shell, so the migration debt is visible in CI rather than
+discovered a year later.
+
 ## Components (shadcn/ui unless noted)
 
 - **Buttons:** `default` for primary action (one per view), `outline` secondary, `ghost` inline row actions, `destructive` for irreversible ops — destructive always behind a confirm dialog naming the object ("Archive project 'Parva Core'?").

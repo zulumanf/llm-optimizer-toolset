@@ -46,6 +46,31 @@ platform now grows into the multi-client operations system:
 5. **`specs/012-vertical-packs.md`** — industries as versioned configuration
    (generic-product, real-estate-agent, medical-aesthetics)
 
+## Done — the automation & connector layer (post-018/019)
+
+`specs/native-automation-and-connector-layer.md` and its three companions.
+Triggers, a typed domain event bus, a provider-neutral connector SDK with
+encrypted credentials, 112 reusable nodes, 18 workflows, test mode, and the
+outreach send gate — all on the spec-018 engine, no second runtime.
+
+Next steps for this layer, in priority order:
+
+1. **OAuth authorisation-code flow.** The credential store, refresh, rotation and
+   revocation all work and are tested; the browser redirect is not built, so a
+   connection is created by pasting a token.
+2. **Run one adapter against a real provider.** Until that happens, nine adapters
+   stay `implemented_unverified` and reporting that depends on them must disclose
+   it. GA4 is the highest-value first target.
+3. **Row-level security**, in the same change as real auth (spec 014, still
+   blocked on a Supabase project). Tenant isolation is currently a service-layer
+   invariant with security tests.
+4. **Visual DAG editor.** Read-only visualisation, a template configurator and a
+   test-run inspector ship now; the canvas is a UI project over data that is
+   already in the right shape.
+5. **Agent evaluation suites.** Workflows declare an `evaluationSuite`; three name
+   one and none is implemented. Lead qualification and outreach drafting are the
+   two worth building first.
+
 ## Future (prioritized backlog — see `docs/14-future-ideas.md` for the parked list)
 1. Statistical inference upgrade to change detection (scoring v2)
 2. Prompt-set coverage advisor (which query categories are unmeasured)

@@ -5,46 +5,21 @@ import { usePathname } from "next/navigation";
 import {
   ArrowLeft,
   Bell,
-  BookOpen,
+  Bot,
   Building2,
-  CheckCheck,
-  ClipboardCheck,
-  Crosshair,
-  FileEdit,
-  FileText,
-  FlaskConical,
+  Gauge,
   LayoutDashboard,
-  ListTodo,
-  MessageSquareText,
-  PlayCircle,
-  Settings,
-  ShieldAlert,
-  Swords,
   Users,
+  Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PROJECT_SECTIONS } from "@/components/layout/sections";
 
 export interface SidebarProject {
   id: string;
   name: string;
 }
 
-const PROJECT_SECTIONS = [
-  { path: "", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/knowledge", label: "Knowledge", icon: BookOpen },
-  { path: "/prompts", label: "Prompts", icon: MessageSquareText },
-  { path: "/runs", label: "Runs", icon: PlayCircle },
-  { path: "/review", label: "Review", icon: CheckCheck },
-  { path: "/gaps", label: "Gaps", icon: Crosshair },
-  { path: "/accuracy", label: "Accuracy", icon: ShieldAlert },
-  { path: "/content", label: "Content", icon: FileEdit },
-  { path: "/competitors", label: "Competitors", icon: Swords },
-  { path: "/reports", label: "Reports", icon: FileText },
-  { path: "/validation", label: "Validation", icon: ClipboardCheck },
-  { path: "/interventions", label: "Interventions", icon: FlaskConical },
-  { path: "/tasks", label: "Tasks", icon: ListTodo },
-  { path: "/settings", label: "Settings", icon: Settings },
-] as const;
 
 function NavLink({
   href,
@@ -133,6 +108,21 @@ export function SidebarNav({
                 {unreadCount}
               </span>
             )}
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/control-tower" active={pathname.startsWith("/control-tower")}>
+            <Gauge className="size-4" /> Control tower
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/workflows" active={pathname.startsWith("/workflows")}>
+            <Workflow className="size-4" /> Workflows
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/agents" active={pathname.startsWith("/agents")}>
+            <Bot className="size-4" /> Agents
           </NavLink>
         </li>
         <li>

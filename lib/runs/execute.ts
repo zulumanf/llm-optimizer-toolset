@@ -14,13 +14,22 @@ import { costMicroUsd, microToUsd, usdToMicro } from "@/lib/ai/pricing";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 import { expandCells, type Cell } from "@/lib/runs/cells";
+import { concurrencyFor, createRateGate } from "@/lib/ai/limits";
 
+/** Ceiling. The effective figure is the lowest limit among the run's providers. */
 const CONCURRENCY = 4;
 const CANCEL_CHECK_EVERY = 5;
 
 interface ExecState {
   cancelled: boolean;
   budgetExhausted: boolean;
+  /**
+   * Set when a provider says its quota is spent for the window. Every
+   * remaining cell for that provider would fail, so the run stops rather than
+   * working through them one failure at a time — a Gemini run burned 20 cells
+   * this way before the distinction existed.
+   */
+  quotaExhausted: string | null;
   spentMicro: number;
   failed: number;
   launched: number;
@@ -57,6 +66,7 @@ export async function executeRun(runId: string): Promise<void> {
   const state: ExecState = {
     cancelled: false,
     budgetExhausted: false,
+    quotaExhausted: null,
     spentMicro: await runCostMicroUsd(runId),
     failed: 0,
     launched: 0,
@@ -69,9 +79,16 @@ export async function executeRun(runId: string): Promise<void> {
     pendingCells: pending.length,
   });
 
+  // Pace by provider. A run mixing providers is bounded by the strictest of
+  // them, because one rate-limited provider failing every cell wastes the whole
+  // run — the Gemini free tier burned 40 of 40 in six seconds before this.
+  const providersInRun = [...new Set(pending.map((cell) => cell.provider))];
+  const effectiveConcurrency = concurrencyFor(providersInRun, CONCURRENCY);
+  const waitForSlot = createRateGate();
+
   let cursor = 0;
   const workers = Array.from(
-    { length: Math.min(CONCURRENCY, pending.length) },
+    { length: Math.min(effectiveConcurrency, pending.length) },
     async () => {
       while (true) {
         const index = cursor;
@@ -88,11 +105,13 @@ export async function executeRun(runId: string): Promise<void> {
           }
         }
         if (state.cancelled) return;
+        if (state.quotaExhausted !== null) return;
         if (state.spentMicro >= budgetMicro) {
           state.budgetExhausted = true;
           return;
         }
         state.launched += 1;
+        await waitForSlot(cell.provider);
         await executeCell(runId, cell, state);
       }
     }
@@ -115,6 +134,20 @@ async function executeCell(
     );
     const micro = costMicroUsd(cell.model, result.tokensIn, result.tokensOut);
     state.spentMicro += micro;
+
+    // An unrecognised payload shape is a parser failure wearing the costume of
+    // an empty answer (docs/09). The raw payload is still captured below, so
+    // the cell is re-parseable — but it must be loud, or a provider changing
+    // its response format looks like a run of models that said nothing.
+    if (result.shapeRecognized === false) {
+      log("error", "provider.shape_unrecognized", {
+        runId,
+        provider: cell.provider,
+        model: cell.model,
+        promptId: cell.promptId,
+        note: result.shapeNote ?? "",
+      });
+    }
     try {
       await sql`
         insert into responses
@@ -145,6 +178,18 @@ async function executeCell(
         ? err
         : new ClassifiedError("internal", err instanceof Error ? err.message : "Unknown");
     state.failed += 1;
+    if (classified.kind === "provider_quota_exhausted" && state.quotaExhausted === null) {
+      // First cell to hit it stops the run. The failure is still recorded —
+      // a failed cell is evidence, and PRINCIPLES #5 forbids pretending
+      // otherwise — but no further calls are made against a spent quota.
+      state.quotaExhausted = cell.provider;
+      log("warn", "run.quota_exhausted", {
+        runId,
+        provider: cell.provider,
+        model: cell.model,
+        message: classified.message.slice(0, 200),
+      });
+    }
     await sql`
       insert into responses
         (run_id, prompt_id, prompt_text, provider, model, repetition,
@@ -180,7 +225,13 @@ async function finalizeRun(
   const successes = (await successfulCellKeys(runId)).size;
   let status: "completed" | "partial" | "failed";
   let detail: string | null = null;
-  if (state.budgetExhausted) {
+  if (state.quotaExhausted) {
+    // Named explicitly: "20 of 40 cells failed" reads as flaky, while
+    // "provider quota exhausted" tells the operator to come back tomorrow or
+    // enable billing.
+    status = successes === 0 ? "failed" : "partial";
+    detail = `provider quota exhausted (${state.quotaExhausted}) — ${successes} of ${totalCells} cells captured before stopping`;
+  } else if (state.budgetExhausted) {
     status = "partial";
     detail = "budget cap reached";
   } else if (successes === totalCells) {

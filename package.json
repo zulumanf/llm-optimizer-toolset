@@ -15,12 +15,16 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "tsx scripts/migrate.ts up",
-    "db:rollback": "tsx scripts/migrate.ts down"
+    "db:rollback": "tsx scripts/migrate.ts down",
+    "seed:graph": "tsx scripts/seed-graph.ts",
+    "seed:knowledge": "tsx scripts/seed-knowledge.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "@google/genai": "^2.13.0",
     "@hookform/resolvers": "^5.0.0",
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.109.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.510.0",
@@ -31,9 +35,12 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-hook-form": "^7.56.0",
+    "read-excel-file": "^9.3.5",
     "recharts": "^3.10.1",
+    "server-only": "^0.0.1",
     "sonner": "^2.0.0",
     "tailwind-merge": "^3.2.0",
+    "unpdf": "^1.8.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {

@@ -68,7 +68,10 @@ export async function runAgent<T>(args: {
   agentVersion: string;
   system: string;
   user: string;
-  schema: z.ZodType<T>;
+  /** Input side is `unknown` on purpose: the value parsed comes from
+   * JSON.parse, and schemas that apply `.default()` have an input type that
+   * differs from their output type (spec 018 agent schemas). */
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>;
   /** Model override — cheap snapshots for narrow, high-volume judgments. */
   model?: string;
   caller?: AgentCaller;

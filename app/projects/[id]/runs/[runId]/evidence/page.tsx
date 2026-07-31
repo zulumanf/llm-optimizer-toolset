@@ -97,9 +97,9 @@ export default async function EvidencePage({
           <h1 className="text-2xl font-semibold">
             {result.companyName} — {metric.replace(/_/g, " ")}
           </h1>
-          <p className="mt-1 text-3xl font-semibold tabular-nums">
+          <p className="mt-1 text-2xl font-semibold tabular-nums">
             {result.numerator} / {result.denominator}
-            <span className="ml-3 text-xl text-muted-foreground">
+            <span className="ml-3 text-sm text-muted-foreground">
               {result.value == null ? "—" : `${(result.value * 100).toFixed(1)}%`}
             </span>
           </p>

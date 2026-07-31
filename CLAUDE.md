@@ -114,6 +114,9 @@ Never optimize for "ranking." Always optimize for:
 | AI feature rules? | `docs/12-ai-guidelines.md` |
 | Prompt templates? | `docs/13-prompts.md` — never hardcode prompts elsewhere |
 | Postponed ideas? | `docs/14-future-ideas.md` |
+| How does work get executed? | `docs/architecture/graph-native-platform-architecture.md` + `specs/018` |
+| What may run without a human? | `docs/architecture/automation-quality-operating-model.md` |
+| How is the portfolio managed? | `specs/019` |
 | Why did we decide X? | `DECISIONS.md` |
 | Unbreakable rules? | `PRINCIPLES.md` |
 

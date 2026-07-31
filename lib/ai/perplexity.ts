@@ -6,6 +6,7 @@
  */
 import OpenAI from "openai";
 import type { AIProvider, PromptRequest, ProviderResult } from "@/lib/ai/types";
+import { parseChatCompletion } from "@/lib/ai/payloads";
 
 let client: OpenAI | undefined;
 
@@ -39,13 +40,10 @@ export const perplexityProvider: AIProvider = {
       messages: [{ role: "user", content: req.promptText }],
     });
 
-    const choice = response.choices[0];
-    return {
-      rawPayload: response,
-      responseText: choice?.message?.content ?? "",
-      refusal: choice?.finish_reason === "content_filter",
-      tokensIn: response.usage?.prompt_tokens ?? 0,
-      tokensOut: response.usage?.completion_tokens ?? 0,
-    };
+    // Perplexity serves the OpenAI chat-completions contract, so it shares
+    // that parser rather than keeping a second copy of the same logic that
+    // could drift. An unrecognised shape is flagged, not read as an empty
+    // answer (docs/09).
+    return { rawPayload: response, ...parseChatCompletion(response) };
   },
 };

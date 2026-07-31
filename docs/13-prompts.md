@@ -113,3 +113,63 @@ Data:
 | 2026-07-27 | REPORT_DRAFTER_V1 | Initial. |
 
 Rules for changes: new version constant (never edit an existing one), changelog row here, accuracy harness re-run for parser prompts (`docs/09`), and the version recorded in produced data (`parser_version`).
+
+---
+
+## Spec 018 additions (2026-07-29)
+
+Two new platform prompts live as versioned constants in
+`lib/agents/verification.ts`, and the full contract for every agent (scopes,
+prohibitions, evidence requirements, cost caps) is declared in
+`lib/agents/registry.ts` and mirrored to `agent_definitions`/`agent_versions`.
+
+| Prompt | Current | Used by | Model |
+|---|---|---|---|
+| Independent Artifact Verifier | `artifact-verifier-v1` | `lib/agents/verification.ts` (VERIFIER_SYSTEM) — allow-listed context; never sees the creator's reasoning | `AGENT_MODEL` |
+| Adversarial Reviewer | `adversarial-review-v1` | `lib/agents/verification.ts` (ADVERSARIAL_SYSTEM) — ten fixed attack questions | `AGENT_MODEL` |
+
+The verifier's payload is assembled by `buildVerifierContext()`, which is an
+**allow-list**: artifact, evidence, rubric, approved claims. The ban on seeing
+the creator's reasoning, confidence, or self-evaluation is structural, not a
+prompt instruction — see the leak test in
+`tests/unit/agent-verification.test.ts`.
+
+| Date | Prompt | Change |
+|---|---|---|
+| 2026-07-29 | artifact-verifier-v1 | Initial. |
+| 2026-07-29 | adversarial-review-v1 | Initial. |
+
+---
+
+## Spec 027 — External discovery queries (2026-07-30)
+
+Unlike everything above, these are not instructions to a model — they are the
+**search queries** used to find external pages about a client. They live here
+for the same reason the others do: a query that changes silently changes which
+corpus a client's claims were drawn from, and two enrichments stop being
+comparable.
+
+Templates in `lib/knowledge/discovery/queries.ts`, keyed
+`external-discovery-v1` and stored on every `discovery_runs` row.
+
+| Template | Shape | Fires when |
+|---|---|---|
+| `name` | `"{name}"` | always |
+| `name_affiliation` | `"{name}" "{affiliation}"` | an affiliation is known |
+| `principal` | `"{principal}" "{name}"` | person entities exist (max 2) |
+| `name_market` | `"{name}" {market}` | markets supplied (max 3) |
+| `news` | `"{name}" news` | always |
+| `awards` | `"{name}" award OR recognition` | always |
+| `alias` | `"{alias}"` | aliases differ from the name (max 2) |
+
+Filled **deterministically** from stored identity — never composed by an agent.
+Same identity in, same query list out. Priority order is the table order, so a
+run truncated at `MAX_QUERIES_PER_RUN` keeps the identity-bearing queries.
+
+The wrapper (`discoveryPrompt`) asks the model for *the pages it consulted*,
+not for an answer: what this feature stores is citations, and a model answering
+fluently from memory with no citations has produced nothing we can keep.
+
+| Date | Template | Change |
+|---|---|---|
+| 2026-07-30 | external-discovery-v1 | Initial. |

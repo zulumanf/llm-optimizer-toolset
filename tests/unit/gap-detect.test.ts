@@ -18,12 +18,17 @@ function prompt(overrides: Partial<PromptOutcome>): PromptOutcome {
   };
 }
 
+// Organic rates match the overall ones here: no prompt in this fixture names
+// a company, so every response is organic evidence for every company.
 const subject: CompanyOutcome = {
   companyId: "s",
   name: "Parva",
   isSubject: true,
   mentionRate: 0.25,
   recommendationRate: 0,
+  organicMentionRate: 0.25,
+  organicRecommendationRate: 0,
+  organicResponses: 16,
 };
 const leader: CompanyOutcome = {
   companyId: "l",
@@ -31,6 +36,9 @@ const leader: CompanyOutcome = {
   isSubject: false,
   mentionRate: 0.69,
   recommendationRate: 0.31,
+  organicMentionRate: 0.69,
+  organicRecommendationRate: 0.31,
+  organicResponses: 16,
 };
 
 describe("detectGaps (day-zero client shape — the real Parva case)", () => {
@@ -87,6 +95,10 @@ describe("detectGaps (healthy client shape)", () => {
       ...subject,
       mentionRate: 0.7,
       recommendationRate: 0.4,
+      // Organic too: a client is only genuinely strong when answers name them
+      // without the question having done it first.
+      organicMentionRate: 0.7,
+      organicRecommendationRate: 0.4,
     };
     const domains: DomainCitation[] = [
       { domain: "parva.io", citations: 2, ownedBySubject: true },
@@ -118,5 +130,100 @@ describe("detectGaps (healthy client shape)", () => {
       domains: [],
     });
     expect(findings.filter((f) => f.gapType !== "recommendation")).toHaveLength(0);
+  });
+});
+
+describe("brand-anchored prompts must not read as visibility", () => {
+  /**
+   * The bug this pins: a probe run built around brand names ("Who are the best
+   * SERHANT agents in Jersey City?") produced a finding that the client "gets
+   * mentioned 25% of the time" — entirely because three of twelve prompts
+   * named the client. Reported to a client, that is a false reassurance built
+   * on a question we asked ourselves.
+   */
+  const anchored: CompanyOutcome = {
+    companyId: "s",
+    name: "JC Luxury Group",
+    isSubject: true,
+    // Every mention came from a prompt that named them…
+    mentionRate: 0.25,
+    recommendationRate: 0,
+    // …so organically they are invisible.
+    organicMentionRate: 0,
+    organicRecommendationRate: 0,
+    organicResponses: 9,
+  };
+  const brandLeader: CompanyOutcome = {
+    companyId: "b",
+    name: "SERHANT.",
+    isSubject: false,
+    mentionRate: 0.5,
+    recommendationRate: 0.1,
+    organicMentionRate: 0.08,
+    organicRecommendationRate: 0,
+    organicResponses: 12,
+  };
+
+  it("does not claim a recommendation gap from echoed mentions", () => {
+    const findings = detectGaps({
+      subjectName: "JC Luxury Group",
+      subjectDomain: "jcluxury.com",
+      prompts: [prompt({ subjectMentioned: 0 })],
+      companies: [anchored, brandLeader],
+      domains: [],
+    });
+    // 25% overall would have fired this. 0% organic must not.
+    expect(findings.map((f) => f.gapType)).not.toContain("recommendation");
+  });
+
+  it("ranks competitors on organic rate, not on prompts that named them", () => {
+    const findings = detectGaps({
+      subjectName: "JC Luxury Group",
+      subjectDomain: "jcluxury.com",
+      prompts: [prompt({ responses: 40, subjectMentioned: 0 })],
+      companies: [
+        anchored,
+        brandLeader, // 50% overall, 8% organic
+        {
+          companyId: "c",
+          name: "Compass",
+          isSubject: false,
+          mentionRate: 0.35,
+          recommendationRate: 0.2,
+          organicMentionRate: 0.35,
+          organicRecommendationRate: 0.2,
+          organicResponses: 40,
+        },
+      ],
+      domains: [],
+    });
+    const entity = findings.find((f) => f.gapType === "entity");
+    // Compass genuinely out-competes them; SERHANT's 50% was our own question.
+    expect(entity?.finding).toContain("Compass");
+    expect(entity?.finding).not.toContain("SERHANT");
+  });
+
+  it("ignores a competitor with no organic sample rather than scoring it zero", () => {
+    const findings = detectGaps({
+      subjectName: "JC Luxury Group",
+      subjectDomain: "jcluxury.com",
+      prompts: [prompt({ subjectMentioned: 0 })],
+      companies: [
+        anchored,
+        {
+          companyId: "x",
+          name: "Named In Every Prompt",
+          isSubject: false,
+          mentionRate: 1,
+          recommendationRate: 1,
+          organicMentionRate: null,
+          organicResponses: 0,
+          organicRecommendationRate: null,
+        },
+      ],
+      domains: [],
+    });
+    // No organic competitor evidence ⇒ no entity comparison can be made.
+    expect(findings.map((f) => f.gapType)).not.toContain("entity");
   });
 });

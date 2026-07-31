@@ -29,6 +29,19 @@ export interface ProviderResult {
   refusal: boolean;
   tokensIn: number;
   tokensOut: number;
+  /**
+   * False when the payload did not match a shape the adapter knows (docs/09:
+   * "unknown shape → captured raw + flagged, never silently dropped").
+   *
+   * An empty `responseText` means two very different things — the model
+   * answered with nothing, or our parser broke because the provider changed
+   * its format. Without this flag they are indistinguishable, and a format
+   * change shows up as a run of silently empty answers. Absent means
+   * recognised, so existing adapters and the mock provider need no change.
+   */
+  shapeRecognized?: boolean;
+  /** Why the shape was not recognised. Set only when shapeRecognized is false. */
+  shapeNote?: string;
 }
 
 export interface AIProvider {
