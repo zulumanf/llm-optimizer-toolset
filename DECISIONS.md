@@ -715,3 +715,27 @@ seeded tree; (b) merge the richer dimensions (price segment, audience)
 into spec 028's model first. Deliberately NOT resolved unilaterally —
 dropping another workstream's data is not this branch's call. CI and the
 test database are unaffected (they build from repo migrations only).
+
+## 2026-07-31 — Orphan market model resolved: keep spec 028, keep their data
+
+Resolution of the conflict recorded above, decided with the operator. The
+orphan model's schema is gone; its *work product* is not:
+
+1. All four orphan tables were exported to `var/backups/orphan-028-*.csv`
+   (35 rows) before anything was dropped.
+2. The 23-node geography tree — the genuinely valuable part — was imported
+   into spec 028's `markets` table with ids, parents, and timestamps
+   preserved (`country`/`metro` fold into kind `region`; city, borough,
+   neighborhood map 1:1).
+3. The orphan tables, their enum types, and the phantom
+   `schema_migrations` row were dropped in one transaction; migration 032
+   then applied cleanly.
+
+The tuple dimensions the orphan model carried (price segment, audience,
+service-category tree) were deliberately NOT resurrected as tables: in
+spec 028 a protected tuple is a property of an agreement *scope*, not of
+geography — `service_category` and `segment` live there. The five
+service-category keys (residential, luxury-residential, new-development,
+rentals, commercial) are the recommended vocabulary for scope categories;
+the backup CSVs hold the exact seven market tuples if they are ever
+wanted verbatim.
