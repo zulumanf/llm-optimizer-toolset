@@ -21,7 +21,7 @@
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { runAgent, type AgentCaller, AGENT_MODEL } from "@/lib/ai/agent";
 import { ClassifiedError } from "@/lib/errors";
 import { publishEvent } from "@/lib/events/bus";
@@ -116,6 +116,7 @@ export async function extractClaimsFromSource(
   raw: unknown,
   options: { caller?: AgentCaller } = {}
 ): Promise<ActionResult<ClaimExtractionResult>> {
+  assertCanWrite(user);
   const parsed = z
     .object({
       sourceArtifactId: z.string().uuid(),
@@ -208,8 +209,8 @@ export async function extractClaimsFromSource(
     await sql.begin(async (tx) => {
       for (const draft of accepted) {
         const [evidenceRow] = await tx`
-          insert into evidence (kind, ref_id, url, note, created_by)
-          values ('source', ${artifact.id}, ${artifact.originalUrl ?? null},
+          insert into evidence (project_id, kind, ref_id, url, note, created_by)
+          values (${projectId}, 'source', ${artifact.id}, ${artifact.originalUrl ?? null},
             ${excerptNote(draft)}, ${user.id})
           returning id
         `;

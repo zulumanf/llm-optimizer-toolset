@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage, duplicateNameConflict } from "@/lib/service-helpers";
@@ -26,6 +26,7 @@ export async function addCompetitor(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<{ competitorId: string; backfilledRuns: number }>> {
+  assertCanWrite(user);
   const parsed = addSchema.safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
@@ -73,6 +74,7 @@ export async function updateCompetitorTier(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<{ competitorId: string }>> {
+  assertCanWrite(user);
   const parsed = z
     .object({ competitorId: z.string().uuid(), tier: z.enum(["primary", "secondary"]) })
     .safeParse(raw);
@@ -105,6 +107,7 @@ export async function archiveCompetitor(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<{ competitorId: string }>> {
+  assertCanWrite(user);
   const parsed = z.object({ competitorId: z.string().uuid() }).safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", "Invalid competitor id."));
@@ -143,6 +146,7 @@ export async function trackBrandCandidate(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<{ companyId: string; backfilledRuns: number }>> {
+  assertCanWrite(user);
   const parsed = trackSchema.safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
@@ -151,7 +155,8 @@ export async function trackBrandCandidate(
   try {
     const [candidate] = await sql`
       select id, name, promoted_company_id, dismissed_at
-      from brand_candidates where id = ${input.candidateId}
+      from brand_candidates
+      where id = ${input.candidateId} and project_id = ${input.projectId}
     `;
     if (!candidate) return fail(new ClassifiedError("not_found", "Candidate not found."));
     if (candidate.promotedCompanyId) {
@@ -185,6 +190,7 @@ export async function dismissBrandCandidate(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<{ candidateId: string }>> {
+  assertCanWrite(user);
   const parsed = z.object({ candidateId: z.string().uuid() }).safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", "Invalid candidate id."));

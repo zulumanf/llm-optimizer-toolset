@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { drilldown, DRILLDOWN_METRICS } from "@/lib/evidence/observations";
@@ -39,6 +39,7 @@ export async function generateEvidenceExport(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<{ exportId: string; storageKey: string; sha256: string }>> {
+  assertCanWrite(user);
   const parsed = z.object({ runId: z.string().uuid() }).safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", "Invalid run id."));
@@ -110,10 +111,12 @@ export async function generateEvidenceExport(
       where r.run_id = ${runId}
       order by m.response_id, c.name, m.revision
     `;
-    // --- sources.csv ---
+    // --- sources.csv --- (this client's registry only; migration 029 scoped
+    // sources per project so an export never carries another client's counts)
     const sourceRows = await sql`
       select s.url, s.domain, c.name as attributed_company, s.citation_count
       from sources s left join companies c on c.id = s.company_id
+      where s.project_id = (select project_id from runs where id = ${runId})
       order by s.citation_count desc
     `;
     // --- audit-history.csv (run-scoped) ---

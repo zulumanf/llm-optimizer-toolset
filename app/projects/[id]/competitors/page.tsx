@@ -39,7 +39,7 @@ export default async function CompetitorsPage({
   const [comparison, scores, candidates, companies] = await Promise.all([
     listComparisonCompanies(id),
     latestScoresByCompany(id),
-    listBrandCandidates(CANDIDATE_MIN_HITS),
+    listBrandCandidates(id, CANDIDATE_MIN_HITS),
     listActiveCompanies(),
   ]);
   const untracked = companies.filter(

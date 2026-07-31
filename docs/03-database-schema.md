@@ -155,16 +155,19 @@ Computed metrics. Never overwritten — new scoring version = new rows.
 Unique: (run_id, company_id, metric, provider, scoring_version).
 
 ## sources
-External URLs cited in AI answers.
+External URLs cited in AI answers. Project-scoped since migration 029: the
+same URL is a separate row with a separate counter per client. Rows with a
+null project_id are legacy/unattributed and no longer absorb new counts.
 
 | field | type | notes |
 |---|---|---|
 | id | uuid pk | |
-| url | text unique | |
+| project_id | uuid fk nullable | null = legacy, unattributed (029) |
+| url | text | unique per (project_id, url) where project_id not null |
 | domain | text | indexed |
 | company_id | uuid fk nullable | owner if known |
 | first_seen_at / last_seen_at | timestamptz | |
-| citation_count | int | maintained by parser |
+| citation_count | int | maintained by parser, per project |
 
 ## evidence
 Links a claim (task/report finding) to its proof.
@@ -172,7 +175,8 @@ Links a claim (task/report finding) to its proof.
 | field | type | notes |
 |---|---|---|
 | id | uuid pk | |
-| kind | enum: response, mention, score, source | |
+| project_id | uuid fk nullable | tenant scope (029); null = legacy, unattributed |
+| kind | enum: response, mention, score, source, report, url | url added in 008 |
 | ref_id | uuid | id in the referenced table |
 | note | text | why this supports the claim |
 | created_by | uuid fk → users | |

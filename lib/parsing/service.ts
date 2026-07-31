@@ -149,7 +149,10 @@ export async function parseResponse(responseId: string): Promise<void> {
     }
 
     // Source intelligence: upsert every cited URL — in-text links plus the
-    // search citations the provider actually retrieved (spec 004 / docs/03)
+    // search citations the provider actually retrieved (spec 004 / docs/03).
+    // Scoped per project (migration 029): the same URL is a separate row with
+    // a separate counter for each client, so citation counts never blend
+    // across clients.
     const allUrls = [
       ...new Set([...extractUrls(text), ...searchCitations.map((c) => c.url)]),
     ];
@@ -158,22 +161,23 @@ export async function parseResponse(responseId: string): Promise<void> {
       if (!domain) continue;
       const owner = companies.find((c) => c.domain && domain.endsWith(c.domain));
       await tx`
-        insert into sources (url, domain, company_id, citation_count)
-        values (${url}, ${domain}, ${owner?.id ?? null}, 1)
-        on conflict (url) do update set
+        insert into sources (project_id, url, domain, company_id, citation_count)
+        values (${projectId}, ${url}, ${domain}, ${owner?.id ?? null}, 1)
+        on conflict (project_id, url) where project_id is not null do update set
           citation_count = sources.citation_count + 1,
           last_seen_at = now()
       `;
     }
 
     // Unrecognized-brand discovery (spec 005): surfaced for human promotion,
-    // never auto-tracked (PRINCIPLES.md #8)
+    // never auto-tracked (PRINCIPLES.md #8). Also project-scoped: which
+    // brands surface in a client's answers is that client's intelligence.
     const knownTerms = companies.flatMap((c) => [c.name, ...c.aliases]);
     for (const candidate of detectBrandCandidates(text, knownTerms)) {
       await tx`
-        insert into brand_candidates (name, normalized, first_seen_run_id)
-        values (${candidate}, ${normalizeCandidate(candidate)}, ${response.runId})
-        on conflict (normalized) do update set
+        insert into brand_candidates (project_id, name, normalized, first_seen_run_id)
+        values (${projectId}, ${candidate}, ${normalizeCandidate(candidate)}, ${response.runId})
+        on conflict (project_id, normalized) where project_id is not null do update set
           hit_count = brand_candidates.hit_count + 1,
           last_seen_at = now()
       `;

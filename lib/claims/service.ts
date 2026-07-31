@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import type { CurrentUser } from "@/lib/auth";
+import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { publishEvent } from "@/lib/events/bus";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
@@ -56,6 +56,7 @@ export async function proposeClaim(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<Claim>> {
+  assertCanWrite(user);
   const parsed = proposeSchema.safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
@@ -66,8 +67,8 @@ export async function proposeClaim(
       const evidenceIds: string[] = [];
       for (const item of input.evidence) {
         const [row] = await tx`
-          insert into evidence (kind, ref_id, url, note, created_by)
-          values ('url', gen_random_uuid(), ${item.url}, ${item.note}, ${user.id})
+          insert into evidence (project_id, kind, ref_id, url, note, created_by)
+          values (${input.projectId}, 'url', gen_random_uuid(), ${item.url}, ${item.note}, ${user.id})
           returning id
         `;
         evidenceIds.push(row?.id as string);
@@ -99,6 +100,7 @@ export async function approveClaim(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<{ claimId: string; supersededId: string | null }>> {
+  assertCanWrite(user);
   const parsed = z.object({ claimId: z.string().uuid() }).safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", "Invalid claim id."));
@@ -177,6 +179,7 @@ export async function rejectClaim(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<{ claimId: string }>> {
+  assertCanWrite(user);
   const parsed = z.object({ claimId: z.string().uuid() }).safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", "Invalid claim id."));
@@ -209,6 +212,7 @@ export async function setSubjectCompany(
   user: CurrentUser,
   raw: unknown
 ): Promise<ActionResult<{ projectId: string }>> {
+  assertCanWrite(user);
   const parsed = z
     .object({ projectId: z.string().uuid(), companyId: z.string().uuid() })
     .safeParse(raw);

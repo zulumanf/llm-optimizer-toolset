@@ -658,3 +658,31 @@ drill-down asked `scores` for `citation_rate` where scoring writes
 metric it never actually looked up. The drill-down now uses the stored name
 and re-derives the same denominator scoring uses (responses with any
 citation), with a regression test that fails on either regression.
+
+## 2026-07-31 — Client intelligence is not shared telemetry (migration 029)
+
+Three tables aggregated data across clients on globally-unique natural keys:
+`sources.citation_count` and `brand_candidates.hit_count` blended every
+client's runs into one counter, and `evidence` — the table every
+`evidence_ids[]` array points into — had no tenant column at all.
+
+Each now carries `project_id`. Two shapes worth recording:
+
+- **Nullable, with an honest backfill.** Historical rows whose project can
+  be derived with certainty are attributed (evidence through its ref chain,
+  brand candidates through `first_seen_run_id`, sources only when exactly
+  one project's mentions cite the URL). Ambiguous rows stay null as
+  "legacy, unattributed" — a wrong tenant label is worse than a missing one.
+  Legacy null rows no longer absorb new counts; the parse upserts target
+  `(project_id, url)` and `(project_id, normalized)`.
+- **The down migration is lossy and says so.** Restoring the global unique
+  constraints requires collapsing per-project duplicates; the down keeps one
+  row per natural key and records the loss in the migration comment.
+
+Same batch: `assertCanWrite` now guards every mutating service that takes a
+request caller (46 functions across 20 modules — previously enforced in
+exactly one). Two exceptions are deliberate: `startRun` gates only when a
+user is present, because every scheduled caller (cycles, cron, attribution
+offsets) passes null by design; and worker-path synthetic users carry an
+explicit `role: "operator"` rather than a roleless cast that the new gate
+would reject at runtime.

@@ -219,7 +219,7 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
   it("brand candidates surface from parsing and promote into tracked competitors", async () => {
     const { projectId } = await seedProjectWithRun();
     // Mock canned text contains "Acme" (untracked) mid-sentence → candidate
-    const candidates = await competitorsDb.listBrandCandidates(1);
+    const candidates = await competitorsDb.listBrandCandidates(projectId, 1);
     const acmeCandidate = candidates.find((c) => c.name === "Acme");
     expect(acmeCandidate).toBeDefined();
     expect(acmeCandidate!.hitCount).toBeGreaterThanOrEqual(2);
