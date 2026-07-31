@@ -256,6 +256,33 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     expect(result!.storedValue).toBeCloseTo(0.5, 6);
   });
 
+  it("per-response citation ledger records url, kind, and owner (033)", async () => {
+    const { runId } = await seedScoredRun({ cite: true });
+    const rows = await sql`
+      select rc.url, rc.kind, rc.company_id, rc.response_id
+      from response_citations rc
+      join responses r on r.id = rc.response_id
+      where r.run_id = ${runId}
+      order by rc.url
+    `;
+    // 2 cite prompts × 3 reps, one in-text URL each = 6 ledger rows.
+    expect(rows).toHaveLength(6);
+    const owned = rows.filter((r) => r.url === "https://parva.io/docs");
+    const thirdParty = rows.filter((r) =>
+      (r.url as string).startsWith("https://example.com")
+    );
+    expect(owned).toHaveLength(3);
+    expect(thirdParty).toHaveLength(3);
+    // Owner attribution matches parse-time domain matching.
+    expect(owned.every((r) => r.companyId !== null)).toBe(true);
+    expect(thirdParty.every((r) => r.companyId === null)).toBe(true);
+    expect(rows.every((r) => r.kind === "in_text")).toBe(true);
+    // Immutable: the ledger is a derived record, never edited.
+    await expect(
+      sql`update response_citations set kind = 'search'`
+    ).rejects.toThrow(/immutable|not allowed|forbid/i);
+  });
+
   it("source intelligence is scoped per client (migration 029)", async () => {
     // Before 029, sources.url was globally unique and citation_count
     // accumulated across every client's runs. Two clients citing the same
