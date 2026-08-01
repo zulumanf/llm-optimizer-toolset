@@ -75,7 +75,9 @@ describe("micro-dollar cost math", () => {
     expect(usdToMicro(0.5)).toBe(500_000);
   });
 
-  it("returns 0 for unknown models rather than guessing", () => {
-    expect(costMicroUsd("unknown-model", 1000, 1000)).toBe(0);
+  it("throws for unknown models rather than recording $0 (A2: a silent 0 disables budget caps)", () => {
+    expect(() => costMicroUsd("unknown-model", 1000, 1000)).toThrowError(
+      /No pricing entry/
+    );
   });
 });
