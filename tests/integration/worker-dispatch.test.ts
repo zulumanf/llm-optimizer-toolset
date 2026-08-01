@@ -45,11 +45,13 @@ describe.skipIf(!TEST_URL)("worker dispatch substrate (integration)", () => {
     status?: string;
     lockedAgoMinutes?: number;
     attempts?: number;
+    payload?: Record<string, unknown>;
   }): Promise<string> {
     const [row] = await sql`
       insert into jobs (type, payload, status, attempts, locked_by, locked_at)
       values (
-        ${args.type}, '{}', ${args.status ?? "queued"}, ${args.attempts ?? 0},
+        ${args.type}, ${sql.json((args.payload ?? {}) as never)},
+        ${args.status ?? "queued"}, ${args.attempts ?? 0},
         ${args.lockedAgoMinutes !== undefined ? "dead-worker" : null},
         ${
           args.lockedAgoMinutes !== undefined
@@ -160,6 +162,27 @@ describe.skipIf(!TEST_URL)("worker dispatch substrate (integration)", () => {
 
     const [row] = await sql`select status, locked_by from jobs where id = ${jobId}`;
     expect(row!.status).toBe("done");
+    expect(row!.lockedBy).toBeNull();
+  });
+
+  it("an extract_claims failure fails the job cleanly with the error preserved (D3)", async () => {
+    // A missing artifact (or a missing API key in production) must produce a
+    // requeued-then-dead-lettered job with the reason on it — not a stranded
+    // lease, and never a silent success.
+    const jobId = await insertJob({
+      type: "extract_claims",
+      payload: { sourceArtifactId: "00000000-0000-4000-8000-00000000dead" },
+    });
+
+    const outcome = await core.dispatchOnce("test-worker");
+    expect(outcome).toEqual({ status: "failed", jobId, type: "extract_claims" });
+
+    const [row] = await sql`
+      select status, attempts, last_error, locked_by from jobs where id = ${jobId}
+    `;
+    expect(row!.status).toBe("queued"); // backoff, retriable
+    expect(Number(row!.attempts)).toBe(1);
+    expect(String(row!.lastError).length).toBeGreaterThan(0);
     expect(row!.lockedBy).toBeNull();
   });
 

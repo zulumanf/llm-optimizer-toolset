@@ -27,8 +27,12 @@ describe.skipIf(!TEST_URL)("workflow engine (integration)", () => {
 
   /** Per-test recording of what each handler was asked to do. */
   let calls: { node: string; fanKey: string; attempt: number }[] = [];
-  /** Behaviour overrides keyed by node key, set per test. */
-  let behaviour: Record<string, (attempt: number, fanKey: string) => NodeResult> = {};
+  /** Behaviour overrides keyed by node key, set per test. Async allowed so a
+   * test can simulate a handler that outlives its timeout. */
+  let behaviour: Record<
+    string,
+    (attempt: number, fanKey: string) => NodeResult | Promise<NodeResult>
+  > = {};
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
@@ -472,6 +476,95 @@ describe.skipIf(!TEST_URL)("workflow engine (integration)", () => {
     const approvalNode = nodeRuns.find((n) => n.nodeKey === "approval")!;
     expect(approvalNode.state).toBe("succeeded");
     expect(approvalNode.humanTouch).toBe(true);
+  });
+
+  it("times out a hung node handler and settles it, never leaving the run open", async () => {
+    // A handler that outlives its declared timeout: withTimeout must convert
+    // the hang into a failure the retry machinery can settle. Direct test
+    // was missing — the constant was declared, the race untested.
+    behaviour.a = () =>
+      new Promise((resolve) =>
+        setTimeout(() => resolve({ outcome: "succeeded", output: {} }), 3_000)
+      );
+    await engine.registerDefinition({
+      ...fanGraph(),
+      key: "timeout_test",
+      nodes: fanGraph().nodes.map((n) =>
+        n.key === "a"
+          ? { ...n, timeoutSeconds: 1, maxAttempts: 1, retryBackoffSeconds: 0 }
+          : n
+      ),
+    });
+    const projectId = await newProject("Timeout");
+    const run = await engine.startWorkflow({
+      definitionKey: "timeout_test",
+      projectId,
+      idempotencyKey: "timeout-node-1",
+    });
+    await drain();
+
+    const nodeRuns = await store.listNodeRuns(run.id);
+    const nodeA = nodeRuns.find((n) => n.nodeKey === "a")!;
+    expect(nodeA.state).toBe("failed_terminal");
+    expect(nodeA.error).toContain("exceeded 1000ms");
+
+    const final = await store.getRun(run.id);
+    expect(final?.state).toBe("failed");
+  });
+
+  it("lists pending approvals across runs by urgency; decisions move to the trail (C2)", async () => {
+    await engine.registerDefinition(approvalGraph());
+    const projectA = await newProject("Inbox A");
+    const projectB = await newProject("Inbox B");
+    const runA = await engine.startWorkflow({
+      definitionKey: "approval_test",
+      projectId: projectA,
+      idempotencyKey: "inbox-a",
+    });
+    const runB = await engine.startWorkflow({
+      definitionKey: "approval_test",
+      projectId: projectB,
+      idempotencyKey: "inbox-b",
+    });
+    await drain();
+
+    // B's deadline has passed; the inbox must rank it first.
+    await sql`
+      update workflow_approvals set due_at = now() - interval '2 hours'
+      where workflow_run_id = ${runB.id}
+    `;
+
+    const pending = await store.pendingApprovalsAcrossRuns();
+    expect(pending).toHaveLength(2);
+    expect(pending[0]!.runId).toBe(runB.id);
+    expect(pending[0]!.projectName).toBe("Inbox B");
+    expect(pending[0]!.definitionKey).toBe("approval_test");
+    expect(pending[0]!.requiredRole).toBe("operator");
+
+    // Decide A: it leaves the pending list and lands on the evidence trail
+    // with its rationale and decider.
+    const [approvalA] = await sql`
+      select id, node_run_id from workflow_approvals where workflow_run_id = ${runA.id}
+    `;
+    await sql.begin((tx) =>
+      store.decideApproval(tx, {
+        approvalId: approvalA!.id as string,
+        decision: "approved",
+        decidedBy: OPERATOR,
+        rationale: "Checked the artifact against its claims.",
+      })
+    );
+
+    const after = await store.pendingApprovalsAcrossRuns();
+    expect(after).toHaveLength(1);
+    expect(after[0]!.runId).toBe(runB.id);
+
+    const decided = await store.recentApprovalDecisions(10);
+    expect(decided).toHaveLength(1);
+    expect(decided[0]!.runId).toBe(runA.id);
+    expect(decided[0]!.decision).toBe("approved");
+    expect(decided[0]!.rationale).toBe("Checked the artifact against its claims.");
+    expect(decided[0]!.projectName).toBe("Inbox A");
   });
 
   it("binds an approval to the artifact hash from the real write path (A7)", async () => {
