@@ -474,6 +474,50 @@ describe.skipIf(!TEST_URL)("workflow engine (integration)", () => {
     expect(approvalNode.humanTouch).toBe(true);
   });
 
+  it("times out an unanswered approval through the queue, not by luck (A4)", async () => {
+    await engine.registerDefinition(approvalGraph());
+    const projectId = await newProject("Approval timeout");
+    const run = await engine.startWorkflow({
+      definitionKey: "approval_test",
+      projectId,
+      idempotencyKey: "timeout-1",
+    });
+    await drain();
+    expect((await store.getRun(run.id))?.state).toBe("waiting_for_approval");
+
+    // Parking must have scheduled the deadline tick — without it,
+    // checkApprovalTimeouts was unreachable and approvals waited forever.
+    const [deadline] = await sql`
+      select id, run_after from jobs
+      where type = 'advance_workflow' and payload->>'runId' = ${run.id}
+        and status = 'queued' and run_after > now()
+    `;
+    expect(deadline).toBeDefined();
+
+    // Fast-forward: the 72h deadline passes with no human decision.
+    await sql`
+      update workflow_approvals set due_at = now() - interval '1 hour'
+      where workflow_run_id = ${run.id}
+    `;
+    await sql`update jobs set run_after = now() where id = ${deadline!.id}`;
+    await drain();
+
+    const final = await store.getRun(run.id);
+    expect(final?.state).toBe("safely_stopped");
+    expect(final?.stopReason).toContain("approval timeout");
+
+    const nodeRuns = await store.listNodeRuns(run.id);
+    expect(nodeRuns.find((n) => n.nodeKey === "approval")?.state).toBe("timed_out");
+    expect(calls.some((c) => c.node === "after")).toBe(false);
+
+    const [exception] = await sql`
+      select kind, severity from workflow_exceptions
+      where workflow_run_id = ${run.id} and kind = 'client_approval'
+    `;
+    expect(exception).toBeDefined();
+    expect(exception!.severity).toBe("high");
+  });
+
   it("stops safely when a human rejects", async () => {
     await engine.registerDefinition(approvalGraph());
     const projectId = await newProject("Rejection");

@@ -680,6 +680,16 @@ async function settleRun(
       );
     }
     await checkApprovalTimeouts(run, workflowVersion);
+    // If the timeout just fired, report the real state instead of a wait.
+    const afterCheck = await store.getRun(run.id);
+    if (afterCheck && afterCheck.state !== "waiting_for_approval") {
+      return { state: afterCheck.state, executed: 0 };
+    }
+    // A parked run receives no further ticks on its own, which used to make
+    // checkApprovalTimeouts unreachable — an unanswered approval waited
+    // forever. Schedule one future tick at the earliest undecided deadline
+    // so the timeout path actually executes.
+    await scheduleApprovalDeadlineTick(run.id);
     return { state: "waiting_for_approval", executed: 0 };
   }
 
@@ -827,6 +837,32 @@ function summariseOutput(
 }
 
 /** An approval that nobody answers must not hold a client's work open forever. */
+/**
+ * Enqueue exactly one future advance_workflow at the earliest undecided
+ * approval's due_at. Idempotent per park: if a future tick for this run is
+ * already queued, do nothing — an approval decided early makes the delayed
+ * tick a harmless no-op against a terminal or resumed run.
+ */
+async function scheduleApprovalDeadlineTick(runId: string): Promise<void> {
+  const [next] = await sql`
+    select min(due_at) as due from workflow_approvals
+    where workflow_run_id = ${runId} and decision is null
+  `;
+  if (!next?.due) return;
+  const [pending] = await sql`
+    select 1 as present from jobs
+    where type = 'advance_workflow' and payload->>'runId' = ${runId}
+      and status = 'queued' and run_after > now()
+    limit 1
+  `;
+  if (pending) return;
+  await sql`
+    insert into jobs (type, payload, run_after)
+    values ('advance_workflow', ${sql.json({ runId } as never)},
+      greatest(${next.due as Date}, now()) + interval '1 second')
+  `;
+}
+
 async function checkApprovalTimeouts(run: WorkflowRun, workflowVersion: number): Promise<void> {
   const overdue = await sql`
     select a.id, a.node_run_id, n.node_key
