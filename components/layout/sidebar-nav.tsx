@@ -12,6 +12,7 @@ import {
   Shield,
   Users,
   Workflow,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PROJECT_SECTIONS } from "@/components/layout/sections";
@@ -119,6 +120,11 @@ export function SidebarNav({
         <li>
           <NavLink href="/workflows" active={pathname.startsWith("/workflows")}>
             <Workflow className="size-4" /> Workflows
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/automation" active={pathname.startsWith("/automation")}>
+            <Zap className="size-4" /> Automation
           </NavLink>
         </li>
         <li>
