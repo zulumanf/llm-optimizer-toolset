@@ -21,7 +21,7 @@ import { AutomationNav } from "@/components/automation/nav";
 import { GraphView } from "@/components/automation/graph-view";
 import { StateBadge } from "@/components/automation/state-badge";
 import { EmptyState } from "@/components/automation/empty-state";
-import { ApprovalDecision } from "@/components/automation/approval-decision";
+import { ApprovalDecision } from "@/components/approvals/approval-decision";
 import { RetryNodeButton } from "@/components/automation/retry-node-button";
 
 export const dynamic = "force-dynamic";
@@ -212,7 +212,7 @@ export default async function RunDetailPage({
                       id(s) attached.
                     </p>
                   </details>
-                  <ApprovalDecision approvalId={approval.id as string} />
+                  <ApprovalDecision approvalId={approval.id as string} compact />
                 </CardContent>
               </Card>
             ))}

@@ -18,10 +18,10 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
 import {
   startWorkflow,
-  resumeWorkflow,
   cancelWorkflow,
   retryNode,
 } from "@/lib/workflow/engine";
+import { signalWorkflow } from "@/lib/automation/runtime";
 import { resolveException } from "@/lib/workflow/exceptions";
 import { bootstrapWorkflows } from "@/lib/workflow/templates";
 
@@ -70,7 +70,7 @@ const decisionSchema = z.object({
   rationale: z
     .string()
     .transform((s) => s.trim())
-    .pipe(z.string().min(1, "A rationale is required — an approval without one is not evidence.").max(2000)),
+    .pipe(z.string().min(3, "A rationale is required — an approval without one is not evidence.").max(2000)),
 });
 
 /**
@@ -119,14 +119,19 @@ export async function decideApprovalAction(
       return fail(new ClassifiedError("conflict", "This approval was decided by someone else."));
     }
 
-    await resumeWorkflow(decided.runId, {
+    // signalWorkflow = engine resume + run-mode cache invalidation. The
+    // automation layer's runs need the second half, and there is exactly one
+    // decide path now (C2), so it does the superset for every run.
+    await signalWorkflow(decided.runId, {
       kind: "approval_decision",
       nodeRunId: decided.nodeRunId,
       payload: { decision: parsed.data.decision, rationale: parsed.data.rationale },
       sentBy: user.id,
     });
+    revalidatePath("/approvals");
     revalidatePath("/control-tower");
     revalidatePath(`/workflows/${decided.runId}`);
+    revalidatePath(`/automation/runs/${decided.runId}`);
     return ok({ runId: decided.runId });
   } catch (err) {
     return fail(err);

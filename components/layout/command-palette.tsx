@@ -21,6 +21,7 @@ const GLOBAL: Target[] = [
   { label: "Today", sublabel: "Operations", href: "/", keywords: "today operations attention feed home" },
   { label: "Inbox", sublabel: "Operations", href: "/notifications", keywords: "inbox notifications alerts" },
   { label: "Control tower", sublabel: "Operations", href: "/control-tower", keywords: "control tower portfolio queue health capacity" },
+  { label: "Approvals", sublabel: "Operations", href: "/approvals", keywords: "approvals inbox pending decisions approve reject" },
   { label: "Automation", sublabel: "Operations", href: "/automation", keywords: "automation workflows connectors triggers events outreach safety" },
   { label: "Connectors", sublabel: "Automation", href: "/automation/connectors", keywords: "connectors integrations health ga4 crm gmail" },
   { label: "Workflow library", sublabel: "Automation", href: "/automation/workflows", keywords: "workflow library templates automation graphs" },

@@ -546,6 +546,66 @@ export async function consumeSignals(
 
 // ------------------------------------------------------------ approvals
 
+export interface PendingApprovalRow {
+  id: string;
+  summary: string;
+  riskLevel: string;
+  requiredRole: string;
+  actionType: string;
+  requestedAt: Date;
+  dueAt: Date | null;
+  runId: string;
+  definitionKey: string;
+  projectName: string | null;
+}
+
+/** Every undecided approval across every run — the /approvals inbox (C2).
+ * Ordered by urgency: overdue first, then nearest deadline. */
+export async function pendingApprovalsAcrossRuns(): Promise<PendingApprovalRow[]> {
+  return sql<PendingApprovalRow[]>`
+    select a.id, a.summary, a.risk_level, a.required_role, a.action_type,
+      a.requested_at, a.due_at,
+      r.id as run_id, d.key as definition_key, p.name as project_name
+    from workflow_approvals a
+    join workflow_runs r on r.id = a.workflow_run_id
+    join workflow_versions v on v.id = r.version_id
+    join workflow_definitions d on d.id = v.definition_id
+    left join projects p on p.id = a.project_id
+    where a.decision is null
+    order by a.due_at asc nulls last, a.requested_at asc
+  `;
+}
+
+export interface DecidedApprovalRow {
+  id: string;
+  summary: string;
+  decision: string;
+  rationale: string | null;
+  decidedAt: Date;
+  decidedByName: string | null;
+  runId: string;
+  definitionKey: string;
+  projectName: string | null;
+}
+
+/** Recent decisions, newest first — the inbox's evidence trail. */
+export async function recentApprovalDecisions(limit: number): Promise<DecidedApprovalRow[]> {
+  return sql<DecidedApprovalRow[]>`
+    select a.id, a.summary, a.decision, a.rationale, a.decided_at,
+      u.name as decided_by_name,
+      r.id as run_id, d.key as definition_key, p.name as project_name
+    from workflow_approvals a
+    join workflow_runs r on r.id = a.workflow_run_id
+    join workflow_versions v on v.id = r.version_id
+    join workflow_definitions d on d.id = v.definition_id
+    left join projects p on p.id = a.project_id
+    left join users u on u.id = a.decided_by
+    where a.decision is not null
+    order by a.decided_at desc
+    limit ${limit}
+  `;
+}
+
 export async function insertApproval(
   tx: Tx,
   args: {

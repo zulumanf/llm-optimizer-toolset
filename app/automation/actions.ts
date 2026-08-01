@@ -13,14 +13,12 @@ import { writeAudit } from "@/db/audit";
 import { assertProjectAccess, assertRole, getCurrentUser } from "@/lib/auth";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { ClassifiedError } from "@/lib/errors";
-import { decideApproval } from "@/db/workflow";
 import { resolveException } from "@/lib/workflow/exceptions";
 import * as triggerStore from "@/db/triggers";
 import { replayDelivery } from "@/db/events";
 import {
   cancelWorkflow,
   retryNode,
-  signalWorkflow,
   startWorkflow,
 } from "@/lib/automation/runtime";
 import { bundleFromStored, getFixture } from "@/lib/automation/testmode";
@@ -117,60 +115,6 @@ export async function startAutomationRun(input: {
     );
     revalidatePath(`/automation/workflows/${input.workflowKey}`);
     return ok({ runId: result.runId, mode: "live" });
-  } catch (err) {
-    return fail(err);
-  }
-}
-
-export async function decideAutomationApproval(input: {
-  approvalId: string;
-  decision: "approved" | "rejected";
-  rationale: string;
-}): Promise<ActionResult<{ resumed: boolean }>> {
-  try {
-    const user = await getCurrentUser();
-    if (input.rationale.trim().length < 3) {
-      throw new ClassifiedError(
-        "validation",
-        "A rationale is required — the decision is recorded permanently."
-      );
-    }
-
-    const [approval] = await sql`
-      select required_role, workflow_run_id from workflow_approvals
-      where id = ${input.approvalId} and decision is null
-    `;
-    if (!approval) {
-      throw new ClassifiedError(
-        "conflict",
-        "That approval no longer needs a decision — it was already decided."
-      );
-    }
-    // The node names the role; honouring it is the whole point of naming it.
-    if ((approval.requiredRole as string) === "admin") assertRole(user, "admin");
-
-    const decided = await sql.begin((tx) =>
-      decideApproval(tx, {
-        approvalId: input.approvalId,
-        decision: input.decision,
-        decidedBy: user.id,
-        rationale: input.rationale,
-      })
-    );
-    if (!decided) {
-      throw new ClassifiedError("conflict", "The approval was decided by someone else.");
-    }
-
-    await signalWorkflow(decided.runId, {
-      kind: "approval_decision",
-      nodeRunId: decided.nodeRunId,
-      payload: { decision: input.decision, rationale: input.rationale },
-      sentBy: user.id,
-    });
-
-    revalidatePath("/automation");
-    revalidatePath(`/automation/runs/${decided.runId}`);
-    return ok({ resumed: true });
   } catch (err) {
     return fail(err);
   }

@@ -7,6 +7,7 @@ import {
   Bell,
   Bot,
   Building2,
+  CheckSquare,
   Gauge,
   LayoutDashboard,
   Shield,
@@ -115,6 +116,11 @@ export function SidebarNav({
         <li>
           <NavLink href="/control-tower" active={pathname.startsWith("/control-tower")}>
             <Gauge className="size-4" /> Control tower
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/approvals" active={pathname.startsWith("/approvals")}>
+            <CheckSquare className="size-4" /> Approvals
           </NavLink>
         </li>
         <li>

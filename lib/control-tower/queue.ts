@@ -162,7 +162,10 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
       severity,
       dueAt,
       createdAt: row.requestedAt as Date,
-      href: `/workflows/${row.workflowRunId}`,
+      // The inbox decides inline and picks the right run page per
+      // definition — deep-linking the legacy run page dropped the automation
+      // context (C2).
+      href: "/approvals",
       // An approval blocks its whole workflow by construction — maximum
       // dependency impact is a fact here, not an estimate.
       priority: computePriority({
