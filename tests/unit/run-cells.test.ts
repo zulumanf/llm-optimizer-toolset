@@ -5,7 +5,7 @@ import type { FrozenPrompt } from "@/lib/prompts/types";
 
 const prompts: FrozenPrompt[] = [
   { promptId: "p1", text: "What are the best tools?", category: "recommendation", language: "en", position: 1 },
-  { promptId: "p2", text: "Compare Parva and Acme", category: "comparison", language: "en", position: 2 },
+  { promptId: "p2", text: "Compare Lumina and Acme", category: "comparison", language: "en", position: 2 },
 ];
 
 describe("expandCells", () => {

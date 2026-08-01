@@ -88,12 +88,12 @@ describe.skipIf(!TEST_URL)("weekly cycle (integration)", () => {
   }
 
   async function seedClient(opts: { promptText?: string } = {}): Promise<string> {
-    // MOCK_AMBIGUOUS names "parva.com" — the subject must be findable for the
+    // MOCK_AMBIGUOUS names "lumina.com" — the subject must be findable for the
     // review-gate test to exercise a real low-confidence classification.
     const company = await companySvc.upsertCompany(user, {
-      name: "Parva",
-      aliases: ["parva.com"],
-      domain: "parva.com",
+      name: "Lumina",
+      aliases: ["lumina.com"],
+      domain: "lumina.com",
     });
     if (!company.ok) throw new Error(company.error.message);
     const project = await projectSvc.createProject(user, { name: "Cycle Client" });

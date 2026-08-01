@@ -6,9 +6,9 @@ This file tells Claude Code how to think. It is not documentation — it is oper
 
 ## Mission
 
-This repository is the **internal operating system used to grow Parva through AI visibility experiments**.
+This repository is the **AI Visibility OS — the internal operating system used to grow clients through AI visibility experiments**.
 
-We measure how AI assistants (ChatGPT, Claude, Gemini, Perplexity, etc.) mention, describe, and recommend Parva versus competitors. We run controlled, versioned prompt experiments; capture raw responses immutably; score them with transparent, versioned methodology; and turn findings into evidence-backed tasks.
+We measure how AI assistants (ChatGPT, Claude, Gemini, Perplexity, etc.) mention, describe, and recommend each client versus its competitors. We run controlled, versioned prompt experiments; capture raw responses immutably; score them with transparent, versioned methodology; and turn findings into evidence-backed tasks.
 
 - **Not SaaS.** No billing, no plans, no marketing pages.
 - **Not multi-tenant.** One team, internal only.

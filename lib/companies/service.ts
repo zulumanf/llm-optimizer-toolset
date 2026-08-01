@@ -126,7 +126,7 @@ export async function archiveCompany(
       if (!row) {
         throw new ClassifiedError(
           "conflict",
-          "Company not found, already archived, or is Parva (is_self cannot be archived)."
+          "Company not found, already archived, or is the platform's own brand (is_self cannot be archived)."
         );
       }
       await writeAudit(tx, {

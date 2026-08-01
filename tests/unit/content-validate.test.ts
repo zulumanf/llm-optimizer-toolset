@@ -4,12 +4,12 @@ import { validateContent, renderPublishable } from "@/lib/content/validate";
 const CLAIM_A = "11111111-2222-4333-8444-555555555555";
 const CLAIM_B = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const approved = new Set([CLAIM_A]);
-const terms = ["Parva", "parva.io"];
+const terms = ["Lumina", "lumina.io"];
 
 describe("validateContent (the content citation gate)", () => {
   it("fails on claim-level prohibited wording, case-insensitively (D4)", () => {
     const result = validateContent(
-      `Parva is the #1 Brokerage in the area [claim:${CLAIM_A}]. Agents juggle many platforms.`,
+      `Lumina is the #1 Brokerage in the area [claim:${CLAIM_A}]. Agents juggle many platforms.`,
       terms,
       approved,
       [],
@@ -23,7 +23,7 @@ describe("validateContent (the content citation gate)", () => {
 
   it("passes when prohibited phrases are absent (D4)", () => {
     const result = validateContent(
-      `Parva is a link-in-bio tool built for real estate agents [claim:${CLAIM_A}].`,
+      `Lumina is a link-in-bio tool built for real estate agents [claim:${CLAIM_A}].`,
       terms,
       approved,
       [],
@@ -34,7 +34,7 @@ describe("validateContent (the content citation gate)", () => {
 
   it("passes subject sentences with resolvable citations", () => {
     const result = validateContent(
-      `Parva is a link-in-bio tool built for real estate agents [claim:${CLAIM_A}]. Agents juggle many platforms.`,
+      `Lumina is a link-in-bio tool built for real estate agents [claim:${CLAIM_A}]. Agents juggle many platforms.`,
       terms,
       approved
     );
@@ -43,7 +43,7 @@ describe("validateContent (the content citation gate)", () => {
 
   it("fails uncited subject sentences", () => {
     const result = validateContent(
-      "Parva makes realtors more productive.",
+      "Lumina makes realtors more productive.",
       terms,
       approved
     );
@@ -53,7 +53,7 @@ describe("validateContent (the content citation gate)", () => {
 
   it("fails citations that don't resolve to approved claims", () => {
     const result = validateContent(
-      `Parva is great [claim:${CLAIM_B}].`,
+      `Lumina is great [claim:${CLAIM_B}].`,
       terms,
       approved
     );
@@ -73,7 +73,7 @@ describe("validateContent (the content citation gate)", () => {
 
   it("fails uncited superiority claims about the subject", () => {
     const result = validateContent(
-      "Parva is the best choice for realtors, obviously.",
+      "Lumina is the best choice for realtors, obviously.",
       terms,
       approved
     );
@@ -90,13 +90,13 @@ describe("validateContent (the content citation gate)", () => {
   });
 
   it("matches aliases with domain-aware boundaries", () => {
-    const result = validateContent("Try parva.io today.", terms, approved);
+    const result = validateContent("Try lumina.io today.", terms, approved);
     expect(result.uncitedSubjectSentences).toHaveLength(1);
   });
 
   it("accepts citations placed after the sentence period (real GPT habit)", () => {
     const result = validateContent(
-      `Parva is a link-in-bio tool built for real estate agents. [claim:${CLAIM_A}]`,
+      `Lumina is a link-in-bio tool built for real estate agents. [claim:${CLAIM_A}]`,
       terms,
       approved
     );
@@ -107,9 +107,9 @@ describe("validateContent (the content citation gate)", () => {
 describe("renderPublishable", () => {
   it("strips citation tokens cleanly", () => {
     const out = renderPublishable(
-      `Parva is a link-in-bio tool [claim:${CLAIM_A}]. It helps.`
+      `Lumina is a link-in-bio tool [claim:${CLAIM_A}]. It helps.`
     );
-    expect(out).toBe("Parva is a link-in-bio tool. It helps.");
+    expect(out).toBe("Lumina is a link-in-bio tool. It helps.");
     expect(out).not.toContain("[claim:");
   });
 });

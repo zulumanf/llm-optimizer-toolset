@@ -40,19 +40,19 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 
 **User flow:** automatic after each run → Review queue lists `needs_review` mentions with excerpt + highlighted raw response → operator confirms or corrects → correction saved as new revision, original kept.
 
-**Edge cases:** brand alias collisions ("Parva" vs. an unrelated "Parva Labs"); answers with no brands at all (valid, counts in denominators); non-English answers; parser version upgrade (re-parse creates new revisions, never overwrites).
+**Edge cases:** brand alias collisions ("Lumina" vs. an unrelated "Lumina Labs"); answers with no brands at all (valid, counts in denominators); non-English answers; parser version upgrade (re-parse creates new revisions, never overwrites).
 
 **Acceptance criteria:** every mention row carries `parser_version` + `confidence`; below-threshold parses never enter scoring until reviewed; correction history fully visible.
 
 ## Competitor Analysis
 
-**Purpose:** the same metrics we compute for Parva, computed for tracked competitors, compared.
+**Purpose:** the same metrics we compute for the client, computed for tracked competitors, compared.
 
 **User flow:** manage competitor list per project (company + aliases + tier) → dashboard comparison view: share of voice, recommendation rate side by side, per provider, over time.
 
 **Edge cases:** competitor added mid-history (metrics computed from existing raw data retroactively — raw data makes this free); competitor rebrands (alias update, re-parse forward); untracked brands appearing often (surfaced as "unrecognized brands" suggestions).
 
-**Acceptance criteria:** identical methodology for Parva and competitors — no metric exists for one and not the other.
+**Acceptance criteria:** identical methodology for the client and competitors — no metric exists for one and not the other.
 
 ## Reports
 

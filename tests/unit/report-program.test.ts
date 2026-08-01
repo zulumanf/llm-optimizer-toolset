@@ -20,7 +20,7 @@ function body(overrides: Partial<ReportBody> = {}): Omit<ReportBody, "narrative"
       {
         scoreId: SCORE_ID,
         companyId: "c1",
-        companyName: "Parva",
+        companyName: "Lumina",
         isSelf: true,
         metric: "recommendation_rate",
         provider: "all",
@@ -53,7 +53,7 @@ function body(overrides: Partial<ReportBody> = {}): Omit<ReportBody, "narrative"
           accuracyId: ACCURACY_ID,
           kind: "entity_confusion",
           severity: "high",
-          quote: "Parva is a healthcare claims operations platform.",
+          quote: "Lumina is a healthcare claims operations platform.",
           status: "open",
         },
       ],
@@ -68,7 +68,7 @@ function body(overrides: Partial<ReportBody> = {}): Omit<ReportBody, "narrative"
       ],
       tasksCompleted: [{ taskId: "t1", title: "Fix profile", priority: "p1" }],
       contentPublished: [
-        { assetId: "a1", title: "Link-in-bio guide", url: "https://parva.io/guide" },
+        { assetId: "a1", title: "Link-in-bio guide", url: "https://lumina.io/guide" },
       ],
     },
     categoryOwnership: [

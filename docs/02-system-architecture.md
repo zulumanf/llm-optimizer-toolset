@@ -76,7 +76,7 @@ No third-party analytics. The dashboard reads computed score tables directly. He
 Postgres for everything including raw payloads. Supabase Storage only for report exports (PDF/CSV) if/when needed.
 
 ### Authentication
-Supabase Auth, email allowlist (Parva team only). Every session maps to a `users` row; all approvals/reviews record `user_id`. Details in `docs/10-security.md`.
+Supabase Auth, email allowlist (operating team only). Every session maps to a `users` row; all approvals/reviews record `user_id`. Details in `docs/10-security.md`.
 
 ### Background job scheduling
 Vercel Cron hits `/api/cron/weekly-baseline` → enqueues `execute_run` for the active baseline prompt-set version. Manual runs enqueue the same job type from a server action — one code path.

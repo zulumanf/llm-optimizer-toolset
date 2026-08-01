@@ -2,15 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import { classifyResponseLlm } from "@/lib/parsing/classify-llm";
 import type { AgentCaller } from "@/lib/ai/agent";
 
-const PARVA = "11111111-1111-4111-8111-111111111111";
+const LUMINA = "11111111-1111-4111-8111-111111111111";
 const ACME = "22222222-2222-4222-8222-222222222222";
 
 const companies = [
-  { id: PARVA, name: "Parva", aliases: ["parva.io"], domain: "parva.io" },
+  { id: LUMINA, name: "Lumina", aliases: ["lumina.io"], domain: "lumina.io" },
   { id: ACME, name: "Acme", aliases: [], domain: "acme.com" },
 ];
 const identityContext = {
-  [PARVA]: ["Parva is a link-in-bio tool built for real estate agents."],
+  [LUMINA]: ["Lumina is a link-in-bio tool built for real estate agents."],
 };
 
 /** Canned agent responses in call order. */
@@ -27,15 +27,15 @@ describe("classifyResponseLlm — entity resolution (the P0 fix)", () => {
   it("rejects a same-name different-entity match (the Mahabharata case)", async () => {
     const drafts = await classifyResponseLlm({
       responseText:
-        "“Parva” usually means a “book” or “section” of a larger text. The Mahabharata is divided into 18 parvas.",
-      promptText: "What is Parva and what does it do?",
+        "“Lumina” usually means a “book” or “section” of a larger text. The Mahabharata is divided into 18 luminas.",
+      promptText: "What is Lumina and what does it do?",
       companies,
       identityContext,
       caller: caller([
         {
           companies: [
             {
-              companyId: PARVA,
+              companyId: LUMINA,
               isSameEntity: false,
               entityRationale: "Refers to Sanskrit epic sections, not the link-in-bio tool.",
               mentioned: false,
@@ -56,7 +56,7 @@ describe("classifyResponseLlm — entity resolution (the P0 fix)", () => {
   it("keeps a genuine client mention with its recommendation status", async () => {
     const drafts = await classifyResponseLlm({
       responseText:
-        "For realtors, Parva (parva.io) is a solid link-in-bio option. Visit https://parva.io to start.",
+        "For realtors, Lumina (lumina.io) is a solid link-in-bio option. Visit https://lumina.io to start.",
       promptText: "best link in bio tool for real estate agents?",
       companies,
       identityContext,
@@ -64,14 +64,14 @@ describe("classifyResponseLlm — entity resolution (the P0 fix)", () => {
         {
           companies: [
             {
-              companyId: PARVA,
+              companyId: LUMINA,
               isSameEntity: true,
               entityRationale: "Matches the approved positioning and domain.",
               mentioned: true,
               recommended: true,
               listPosition: 2,
               sentiment: "positive",
-              excerpt: "Parva (parva.io) is a solid link-in-bio option",
+              excerpt: "Lumina (lumina.io) is a solid link-in-bio option",
               confidence: 0.92,
             },
           ],
@@ -80,7 +80,7 @@ describe("classifyResponseLlm — entity resolution (the P0 fix)", () => {
     });
     expect(drafts).toHaveLength(1);
     expect(drafts[0]).toMatchObject({
-      companyId: PARVA,
+      companyId: LUMINA,
       mentioned: true,
       recommended: true,
       listPosition: 2,
@@ -88,7 +88,7 @@ describe("classifyResponseLlm — entity resolution (the P0 fix)", () => {
       needsReview: false,
     });
     // Cited URLs stay deterministic (domain match), never model-supplied
-    expect(drafts[0]?.citedUrls).toEqual(["https://parva.io"]);
+    expect(drafts[0]?.citedUrls).toEqual(["https://lumina.io"]);
   });
 
   it("never calls the model when no alias matches (cost + recall discipline)", async () => {
@@ -112,14 +112,14 @@ describe("classifyResponseLlm — independent verification", () => {
   const lowConfidenceClassification = {
     companies: [
       {
-        companyId: PARVA,
+        companyId: LUMINA,
         isSameEntity: true,
         entityRationale: "Probably the tool.",
         mentioned: true,
         recommended: true,
         listPosition: null,
         sentiment: "positive",
-        excerpt: "Parva may work",
+        excerpt: "Lumina may work",
         confidence: 0.55,
       },
     ],
@@ -127,8 +127,8 @@ describe("classifyResponseLlm — independent verification", () => {
 
   it("flags review when the fresh-context verifier disagrees", async () => {
     const drafts = await classifyResponseLlm({
-      responseText: "Parva may work, though it's unclear which Parva they mean.",
-      promptText: "is Parva good?",
+      responseText: "Lumina may work, though it's unclear which Lumina they mean.",
+      promptText: "is Lumina good?",
       companies,
       identityContext,
       caller: caller([
@@ -142,8 +142,8 @@ describe("classifyResponseLlm — independent verification", () => {
 
   it("verifier agreement does not remove the confidence-threshold review", async () => {
     const drafts = await classifyResponseLlm({
-      responseText: "Parva may work for agents.",
-      promptText: "is Parva good?",
+      responseText: "Lumina may work for agents.",
+      promptText: "is Lumina good?",
       companies,
       identityContext,
       caller: caller([
@@ -159,8 +159,8 @@ describe("classifyResponseLlm — independent verification", () => {
   it("a failed verification forces review rather than trusting the classifier", async () => {
     let call = 0;
     const drafts = await classifyResponseLlm({
-      responseText: "Parva may work for agents.",
-      promptText: "is Parva good?",
+      responseText: "Lumina may work for agents.",
+      promptText: "is Lumina good?",
       companies,
       identityContext,
       caller: async () => {
@@ -181,7 +181,7 @@ describe("classifyResponseLlm — independent verification", () => {
   it("high-confidence rows skip verification entirely", async () => {
     let calls = 0;
     await classifyResponseLlm({
-      responseText: "Parva is great for agents.",
+      responseText: "Lumina is great for agents.",
       promptText: "best tool?",
       companies,
       identityContext,
@@ -191,13 +191,13 @@ describe("classifyResponseLlm — independent verification", () => {
           text: JSON.stringify({
             companies: [
               {
-                companyId: PARVA,
+                companyId: LUMINA,
                 isSameEntity: true,
                 mentioned: true,
                 recommended: true,
                 listPosition: 1,
                 sentiment: "positive",
-                excerpt: "Parva is great",
+                excerpt: "Lumina is great",
                 confidence: 0.9,
               },
             ],
@@ -212,8 +212,8 @@ describe("classifyResponseLlm — independent verification", () => {
 
   it("ignores company ids the model invented", async () => {
     const drafts = await classifyResponseLlm({
-      responseText: "Parva is a tool for agents.",
-      promptText: "what is Parva?",
+      responseText: "Lumina is a tool for agents.",
+      promptText: "what is Lumina?",
       companies,
       identityContext,
       caller: caller([

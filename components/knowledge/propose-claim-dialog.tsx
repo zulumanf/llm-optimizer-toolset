@@ -94,7 +94,7 @@ export function ProposeClaimDialog({ projectId }: { projectId: string }) {
               rows={2}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Parva is a link-in-bio tool built for real estate agents."
+              placeholder="Lumina is a link-in-bio tool built for real estate agents."
             />
           </div>
           <div className="space-y-1.5">

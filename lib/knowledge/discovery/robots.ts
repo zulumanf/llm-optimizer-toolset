@@ -18,7 +18,7 @@ import { log } from "@/lib/logger";
 
 /** Ours, matching discover.ts so a webmaster sees one identity, not two. */
 export const DISCOVERY_USER_AGENT =
-  "ParvaVisibilityAudit/1.0 (internal AI-visibility audit; contact the operator who scheduled it)";
+  "AvosVisibilityAudit/1.0 (internal AI-visibility audit; contact the operator who scheduled it)";
 
 const ROBOTS_TIMEOUT_MS = 5_000;
 
@@ -40,7 +40,7 @@ const PERMISSIVE: RobotsRules = { disallow: [], allow: [] };
  * than merging, which is what the standard specifies and what a webmaster
  * writing a targeted rule expects.
  */
-export function parseRobots(body: string, userAgentToken = "parvavisibilityaudit"): RobotsRules {
+export function parseRobots(body: string, userAgentToken = "avosvisibilityaudit"): RobotsRules {
   const wildcard: RobotsRules = { disallow: [], allow: [] };
   const specific: RobotsRules = { disallow: [], allow: [] };
   let sawSpecific = false;

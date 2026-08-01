@@ -28,7 +28,7 @@ Set detail (`/projects/[id]/prompts/[setId]`):
 │ 12 prompts · last frozen v3 (2026-07-20) · edited since ⚠    │
 ├──────────────────────────────────────────────────────────────┤
 │ ≡ 1  "What are the best tools for …"      recommendation  ⋮  │
-│ ≡ 2  "Compare Parva and Acme for …"       comparison      ⋮  │
+│ ≡ 2  "Compare Lumina and Acme for …"      comparison      ⋮  │
 │ …                                     [+ Add prompt]         │
 ├──────────────────────────────────────────────────────────────┤
 │ Versions: v3 · v2 · v1        (click → read-only view, diff) │

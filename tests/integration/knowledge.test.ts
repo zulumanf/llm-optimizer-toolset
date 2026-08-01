@@ -125,8 +125,8 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
   }
 
   it("two clients, two subjects — measurements never cross-talk", async () => {
-    // Mock canned text mentions "Acme" and "Parva"
-    const clientA = await makeClientProject("Client A", "Parva", ["parva.com"]);
+    // Mock canned text mentions "Acme" and "Lumina"
+    const clientA = await makeClientProject("Client A", "Lumina", ["lumina.com"]);
     const clientB = await makeClientProject("Client B", "Acme");
 
     const runA = await runForProject(clientA.projectId, "best tools?");
@@ -189,7 +189,7 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
   });
 
   it("legacy is_self still works as the fallback subject", async () => {
-    await companySvc.upsertCompany(user, { name: "Parva", isSelf: true });
+    await companySvc.upsertCompany(user, { name: "Lumina", isSelf: true });
     const project = await projectSvc.createProject(user, { name: "Legacy" });
     if (!project.ok) throw new Error(project.error.message);
     const runId = await runForProject(project.data.id, "best tools?");
@@ -200,7 +200,7 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
   });
 
   it("claims: evidence required, approve supersedes, only proposed rejectable", async () => {
-    const { projectId } = await makeClientProject("Claims Co", "Parva");
+    const { projectId } = await makeClientProject("Claims Co", "Lumina");
 
     const noEvidence = await claims.proposeClaim(user, {
       projectId,
@@ -213,9 +213,9 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
     const v1 = await claims.proposeClaim(user, {
       projectId,
       key: "Category Positioning", // normalizes to category_positioning
-      canonicalText: "Parva is a link-in-bio tool built for real estate agents.",
+      canonicalText: "Lumina is a link-in-bio tool built for real estate agents.",
       asOf: "2026-07-27",
-      evidence: [{ url: "https://parva.com", note: "Homepage positioning" }],
+      evidence: [{ url: "https://lumina.com", note: "Homepage positioning" }],
     });
     expect(v1.ok).toBe(true);
     if (!v1.ok) return;
@@ -229,8 +229,8 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
     const v2 = await claims.proposeClaim(user, {
       projectId,
       key: "category_positioning",
-      canonicalText: "Parva is the link-in-bio platform for real estate agents.",
-      evidence: [{ url: "https://parva.com/about", note: "Updated wording" }],
+      canonicalText: "Lumina is the link-in-bio platform for real estate agents.",
+      evidence: [{ url: "https://lumina.com/about", note: "Updated wording" }],
     });
     if (!v2.ok) throw new Error(v2.error.message);
     const approved2 = await claims.approveClaim(user, { claimId: v2.data.id });
@@ -264,12 +264,12 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
   });
 
   it("operator-set review dates enable expiry detection; contradictions are resolvable (D2)", async () => {
-    const { projectId } = await makeClientProject("Lifecycle Co", "Parva");
+    const { projectId } = await makeClientProject("Lifecycle Co", "Lumina");
     const proposed = await claims.proposeClaim(user, {
       projectId,
       key: "office_count",
-      canonicalText: "Parva operates three offices.",
-      evidence: [{ url: "https://parva.com/about", note: "About page" }],
+      canonicalText: "Lumina operates three offices.",
+      evidence: [{ url: "https://lumina.com/about", note: "About page" }],
     });
     if (!proposed.ok) throw new Error(proposed.error.message);
     await claims.approveClaim(user, { claimId: proposed.data.id });
@@ -338,7 +338,7 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
   });
 
   it("instructions: create governs immediately, approval gates, revision versions (D3)", async () => {
-    const { projectId } = await makeClientProject("Rules Co", "Parva");
+    const { projectId } = await makeClientProject("Rules Co", "Lumina");
     const instructions = await import("@/lib/knowledge/instructions/service");
 
     // The layer was schema-complete with no writer: production tables were

@@ -21,7 +21,7 @@ const user: CurrentUser = {
 
 const owner: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000101",
-  email: "fixture+00000000-0000-4000-8000-000000000101@parva.local",
+  email: "fixture+00000000-0000-4000-8000-000000000101@avos.local",
   name: "Fixture Actor",
   role: "operator",
 };
@@ -197,7 +197,7 @@ describe.skipIf(!TEST_URL)("task management (integration)", () => {
       first.data.commentId,
       second.data.commentId,
     ]);
-    expect(listed[0]?.authorEmail).toBe("fixture+00000000-0000-4000-8000-000000000201@parva.local");
+    expect(listed[0]?.authorEmail).toBe("fixture+00000000-0000-4000-8000-000000000201@avos.local");
     expect(listed[1]?.body).toBe("Agreed.");
 
     // Kanban read carries the same thread.

@@ -12,8 +12,8 @@
 > the existing approval machinery. The LLM competitor-evidence agent (web
 > enrichment via the OpenAI Responses search tool) lands as detector v2 —
 > same versioned-upgrade path as the parser. Known limitation surfaced by
-> live data: the heuristic parser counts the Sanskrit word "parva" (in the
-> Mahabharata answer) as a brand mention, so branded_recognition under-fires
+> live data: the heuristic parser counted an unrelated same-name dictionary
+> word as a brand mention, so branded_recognition under-fires
 > for name-collision clients — an LLM parser version fixes detection; the
 > entity gap still fires correctly. Also shipped: the client-portfolio view
 > on the projects list (subject, authority, open gaps, last run per client).

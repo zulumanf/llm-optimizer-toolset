@@ -16,7 +16,7 @@
 > both fixed: GPT places citations after the sentence period (validator now
 > attaches trailing tokens), and the verifier flagged a bare FAQ "Yes." as
 > unsupported (prompt now judges substance, not sentence boundaries). Live
-> result: Parva's entity-gap category page briefed, drafted, gate-passed,
+> result: the client's entity-gap category page briefed, drafted, gate-passed,
 > fact-verified, and approved for ~$0.06 total.
 
 ## Goal

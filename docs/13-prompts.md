@@ -71,7 +71,7 @@ mentioned=false for all companies.
 
 **Expected output:** JSON array validated by `mentionParserOutputSchema` (Zod) — one object per company, fields above. Schema violation → one retry → `needs_review`.
 
-**Example:** response "For teams in this space I'd start with Acme; Parva is also solid for smaller setups." → Acme: mentioned, recommended, position 1, positive; Parva: mentioned, recommended (qualified), position 2, positive, certainty ~0.85 ("qualified recommendation").
+**Example:** response "For teams in this space I'd start with Acme; Lumina is also solid for smaller setups." → Acme: mentioned, recommended, position 1, positive; Lumina: mentioned, recommended (qualified), position 2, positive, certainty ~0.85 ("qualified recommendation").
 
 ---
 

@@ -203,7 +203,7 @@ describe.skipIf(!TEST_URL)("worker dispatch substrate (integration)", () => {
     const user = await auth.systemUser();
     expect(user.id).toBe(auth.SYSTEM_USER_ID);
     expect(user.role).toBe("operator");
-    expect(user.email).toBe("system@parva.internal");
+    expect(user.email).toBe("system@avos.internal");
   });
 
   it("keeps session lookups out of worker-reachable code", async () => {

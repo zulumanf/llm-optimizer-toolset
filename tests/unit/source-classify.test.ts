@@ -2,17 +2,17 @@ import { describe, expect, it } from "vitest";
 import { classifySource } from "@/lib/sources/classify";
 
 const context = {
-  subjectDomain: "parva.io",
+  subjectDomain: "lumina.io",
   competitorDomains: ["gambino.com", "elliman.com"],
 };
 
 describe("classifySource (deterministic v1)", () => {
   it("owned domains are client_site regardless of type lists", () => {
-    expect(classifySource("parva.io", context)).toEqual({
+    expect(classifySource("lumina.io", context)).toEqual({
       sourceType: "client_site",
       relationship: "owned",
     });
-    expect(classifySource("blog.parva.io", context)).toEqual({
+    expect(classifySource("blog.lumina.io", context)).toEqual({
       sourceType: "client_site",
       relationship: "owned",
     });
@@ -50,7 +50,7 @@ describe("classifySource (deterministic v1)", () => {
   });
 
   it("no subject domain → nothing is owned", () => {
-    const result = classifySource("parva.io", {
+    const result = classifySource("lumina.io", {
       subjectDomain: null,
       competitorDomains: [],
     });
@@ -58,7 +58,7 @@ describe("classifySource (deterministic v1)", () => {
   });
 
   it("suffix matching never crosses domain boundaries", () => {
-    // notparva.io must not match parva.io
-    expect(classifySource("notparva.io", context).relationship).toBe("third_party");
+    // notlumina.io must not match lumina.io
+    expect(classifySource("notlumina.io", context).relationship).toBe("third_party");
   });
 });

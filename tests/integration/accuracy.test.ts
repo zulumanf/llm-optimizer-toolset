@@ -88,9 +88,9 @@ describe.skipIf(!TEST_URL)("accuracy monitoring (integration)", () => {
 
   async function seed(): Promise<{ projectId: string; runId: string }> {
     const company = await companySvc.upsertCompany(user, {
-      name: "Parva",
-      aliases: ["parva.io"],
-      domain: "parva.io",
+      name: "Lumina",
+      aliases: ["lumina.io"],
+      domain: "lumina.io",
     });
     if (!company.ok) throw new Error(company.error.message);
     const project = await projectSvc.createProject(user, { name: "Accuracy Test" });
@@ -102,8 +102,8 @@ describe.skipIf(!TEST_URL)("accuracy monitoring (integration)", () => {
     const claim = await claimsSvc.proposeClaim(user, {
       projectId: project.data.id,
       key: "category_positioning",
-      canonicalText: "Parva is a link-in-bio tool built for real estate agents.",
-      evidence: [{ url: "https://parva.io", note: "homepage" }],
+      canonicalText: "Lumina is a link-in-bio tool built for real estate agents.",
+      evidence: [{ url: "https://lumina.io", note: "homepage" }],
     });
     if (!claim.ok) throw new Error(claim.error.message);
     await claimsSvc.approveClaim(user, { claimId: claim.data.id });
@@ -116,7 +116,7 @@ describe.skipIf(!TEST_URL)("accuracy monitoring (integration)", () => {
     // A branded prompt: monitored even when the client is never mentioned
     await promptSvc.addPrompt(user, {
       setId: set.data.id,
-      text: "What is Parva?",
+      text: "What is Lumina?",
       category: "branded",
     });
     await setSvc.freezePromptSet(user, { id: set.data.id });
@@ -196,7 +196,7 @@ describe.skipIf(!TEST_URL)("accuracy monitoring (integration)", () => {
         findings: [
           {
             kind: "contradicted",
-            quote: "Parva was founded in 1823 by Napoleon Bonaparte.",
+            quote: "Lumina was founded in 1823 by Napoleon Bonaparte.",
             claimKey: null,
             rationale: "Invented assertion never present in the answer.",
             confidence: 0.99,

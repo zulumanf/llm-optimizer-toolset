@@ -27,10 +27,10 @@ Fraction of valid cells where *C* is **explicitly recommended** (the answer endo
 recommendation_rate(C) = cells_recommending_C / N
 ```
 
-The primary headline metric for Parva.
+The primary headline metric for the client.
 
 ### Share of Voice
-Parva's mentions relative to all tracked-company mentions in the run.
+the client's mentions relative to all tracked-company mentions in the run.
 
 ```
 share_of_voice(C) = mentions_of_C / Σ mentions_of_all_tracked_companies

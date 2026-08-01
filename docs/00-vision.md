@@ -2,9 +2,9 @@
 
 ## Mission
 
-Make Parva the answer AI assistants give — measurably, honestly, and reproducibly.
+Make each client the answer AI assistants give — measurably, honestly, and reproducibly.
 
-When someone asks ChatGPT, Claude, Gemini, or Perplexity a question in Parva's category, we want Parva mentioned, described accurately, and recommended — because the evidence supports it. This toolset is how we measure where we stand, run experiments, and turn findings into work.
+When someone asks ChatGPT, Claude, Gemini, or Perplexity a question in the client's category, we want that client mentioned, described accurately, and recommended — because the evidence supports it. This toolset is how we measure where we stand, run experiments, and turn findings into work.
 
 ## Why AI visibility matters
 
@@ -14,22 +14,22 @@ When someone asks ChatGPT, Claude, Gemini, or Perplexity a question in Parva's c
 
 ## Long-term vision
 
-1. **Now:** a measurement instrument — reliable, versioned visibility scores for Parva and competitors across providers.
+1. **Now:** a measurement instrument — reliable, versioned visibility scores for each client and its competitors across providers.
 2. **Next:** an experiment engine — before/after measurement around specific interventions (content, PR, documentation), so we learn what actually moves AI answers.
 3. **Later:** an operating system — findings automatically become prioritized, evidence-backed tasks; the loop from "measured gap" to "shipped fix" to "re-measured" runs weekly.
 
 ## Success metrics
 
-- Recommendation Rate for Parva on the core prompt set, tracked weekly with a defensible trend
+- Recommendation Rate for the client on the core prompt set, tracked weekly with a defensible trend
 - Share of Voice vs. named competitors, per provider
-- Citation Rate of Parva-owned sources in AI answers
+- Citation Rate of client-owned sources in AI answers
 - Cycle time: finding → task → intervention → re-measurement
 - Zero instances of unreproducible or fabricated data (this metric must stay at zero forever)
 
 ## Non-goals
 
 > Amended 2026-07-27 (see DECISIONS.md and docs/15): the platform now serves
-> **multiple client engagements** — each project is a client (Parva first;
+> **multiple client engagements** — each project is a client (the pilot client first;
 > real-estate agents, medical practices, and others follow), with verticals
 > as configuration packs. What remains a non-goal is *self-serve SaaS*: no
 > client logins, billing, or tenant self-service — operators run every

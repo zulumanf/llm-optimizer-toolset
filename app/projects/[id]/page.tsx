@@ -199,7 +199,7 @@ export default async function ProjectDashboardPage({
         <Card>
           <CardContent className="p-4">
             <p className="mb-2 text-sm font-medium">
-              Parva authority over runs{" "}
+              Subject authority over runs{" "}
               <span className="font-normal text-muted-foreground">
                 (scoring v1.0 — boundaries annotated)
               </span>

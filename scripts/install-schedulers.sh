@@ -6,10 +6,10 @@
 #   ./scripts/install-schedulers.sh uninstall  remove them
 #
 # Agents (all curl a bearer-authenticated cron route on localhost):
-#   com.parva.weekly-cycle          Mon 09:00        /api/cron/weekly-cycle
-#   com.parva.automation-heartbeat  every 5 min      /api/cron/automation
-#   com.parva.automation-health     daily 07:00      /api/cron/automation?health=true
-#   com.parva.notifications         every 15 min     /api/cron/notifications
+#   com.avos.weekly-cycle          Mon 09:00        /api/cron/weekly-cycle
+#   com.avos.automation-heartbeat  every 5 min      /api/cron/automation
+#   com.avos.automation-health     daily 07:00      /api/cron/automation?health=true
+#   com.avos.notifications         every 15 min     /api/cron/notifications
 #
 # Honesty caveat (same as the old weekly-baseline template): these fire only
 # while this machine is awake AND `npm run app` is serving, with
@@ -18,7 +18,7 @@
 # Monday morning starts nothing — the stale_client notification (>=14 days
 # without a run) is the tripwire, and the durable fix is hosted deployment.
 #
-# The legacy com.parva.weekly-baseline agent is removed if present: the
+# The legacy com.avos.weekly-baseline agent is removed if present: the
 # weekly cycle starts (or reuses) the baseline run itself, and one entry
 # point is easier to reason about than two.
 set -euo pipefail
@@ -27,10 +27,10 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 AGENTS_DIR="$HOME/Library/LaunchAgents"
 PORT="${APP_PORT:-3000}"
 LABELS=(
-  com.parva.weekly-cycle
-  com.parva.automation-heartbeat
-  com.parva.automation-health
-  com.parva.notifications
+  com.avos.weekly-cycle
+  com.avos.automation-heartbeat
+  com.avos.automation-health
+  com.avos.notifications
 )
 
 unload_agent() {
@@ -44,7 +44,7 @@ unload_agent() {
 }
 
 if [ "${1:-install}" = "uninstall" ]; then
-  for label in "${LABELS[@]}" com.parva.weekly-baseline; do
+  for label in "${LABELS[@]}" com.avos.weekly-baseline; do
     unload_agent "$label"
   done
   exit 0
@@ -84,9 +84,9 @@ write_agent() {
   </array>
 $schedule
   <key>StandardOutPath</key>
-  <string>/tmp/parva-${label#com.parva.}.log</string>
+  <string>/tmp/avos-${label#com.avos.}.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/parva-${label#com.parva.}.err</string>
+  <string>/tmp/avos-${label#com.avos.}.err</string>
 </dict>
 </plist>
 EOF
@@ -95,29 +95,29 @@ EOF
 }
 
 # Retire the legacy single-purpose agent before installing the successors.
-unload_agent com.parva.weekly-baseline
+unload_agent com.avos.weekly-baseline
 
-write_agent com.parva.weekly-cycle "/api/cron/weekly-cycle" '  <key>StartCalendarInterval</key>
+write_agent com.avos.weekly-cycle "/api/cron/weekly-cycle" '  <key>StartCalendarInterval</key>
   <dict>
     <key>Weekday</key><integer>1</integer>
     <key>Hour</key><integer>9</integer>
     <key>Minute</key><integer>0</integer>
   </dict>'
 
-write_agent com.parva.automation-heartbeat "/api/cron/automation" '  <key>StartInterval</key>
+write_agent com.avos.automation-heartbeat "/api/cron/automation" '  <key>StartInterval</key>
   <integer>300</integer>'
 
-write_agent com.parva.automation-health "/api/cron/automation?health=true" '  <key>StartCalendarInterval</key>
+write_agent com.avos.automation-health "/api/cron/automation?health=true" '  <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key><integer>7</integer>
     <key>Minute</key><integer>0</integer>
   </dict>'
 
-write_agent com.parva.notifications "/api/cron/notifications" '  <key>StartInterval</key>
+write_agent com.avos.notifications "/api/cron/notifications" '  <key>StartInterval</key>
   <integer>900</integer>'
 
 echo
 echo "Loaded agents:"
-launchctl list | grep com.parva || true
+launchctl list | grep com.avos || true
 echo
 echo "Remember: these need 'npm run app' serving on :$PORT and 'npm run worker' running."

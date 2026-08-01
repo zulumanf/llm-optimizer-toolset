@@ -93,7 +93,7 @@ export function CreateInterventionDialog({ projectId, versions }: Props) {
               id="int-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Comparison page: Parva vs Acme"
+              placeholder="Comparison page: Lumina vs Acme"
               autoFocus
             />
           </div>
@@ -127,7 +127,7 @@ export function CreateInterventionDialog({ projectId, versions }: Props) {
               id="int-urls"
               value={urls}
               onChange={(e) => setUrls(e.target.value)}
-              placeholder="https://parva.com/vs/acme"
+              placeholder="https://lumina.com/vs/acme"
             />
           </div>
           <div className="space-y-1.5">

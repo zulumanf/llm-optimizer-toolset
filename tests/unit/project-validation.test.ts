@@ -9,8 +9,8 @@ import {
 
 describe("createProjectSchema", () => {
   it("accepts a valid name and trims whitespace", () => {
-    const parsed = createProjectSchema.parse({ name: "  Parva Core  " });
-    expect(parsed.name).toBe("Parva Core");
+    const parsed = createProjectSchema.parse({ name: "  Lumina Core  " });
+    expect(parsed.name).toBe("Lumina Core");
     expect(parsed.description).toBeUndefined();
   });
 

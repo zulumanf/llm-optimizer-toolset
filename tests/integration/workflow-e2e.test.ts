@@ -125,7 +125,7 @@ describe.skipIf(!TEST_URL)("graph platform end-to-end", () => {
     // multi-tenant test needs its own subject.
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const company = await companySvc.upsertCompany(user, {
-      name: `Parva ${name}`,
+      name: `Lumina ${name}`,
       aliases: [`${slug}.example.com`],
       domain: `${slug}.example.com`,
     });
@@ -253,9 +253,9 @@ describe.skipIf(!TEST_URL)("graph platform end-to-end", () => {
     const proposePublic = await claimsSvc.proposeClaim(user, {
       projectId,
       key: "founded_year",
-      canonicalText: "Parva was founded in 2019.",
+      canonicalText: "Lumina was founded in 2019.",
       asOf: "2026-01-01",
-      evidence: [{ url: "https://parva.com/about", note: "About page" }],
+      evidence: [{ url: "https://lumina.com/about", note: "About page" }],
     });
     if (!proposePublic.ok) throw new Error(proposePublic.error.message);
     const approvedPublic = await claimsSvc.approveClaim(user, {

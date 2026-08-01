@@ -46,7 +46,7 @@ function company(
 
 describe("detectMovement", () => {
   it("flags an overtake when the competitor flips above with a notable gain", () => {
-    const events = detectMovement(company("Parva", series(0.45, 0.55)), [
+    const events = detectMovement(company("Lumina", series(0.45, 0.55)), [
       company("Acme", series(0.62, 0.4)),
     ]);
     const overtake = events.find((e) => e.kind === "competitor_overtake");
@@ -58,7 +58,7 @@ describe("detectMovement", () => {
 
   it("flags an overtake when only the subject's fall is notable", () => {
     // Competitor drifts +0.04 (within noise); subject drops 0.15 → flip.
-    const events = detectMovement(company("Parva", series(0.4, 0.55)), [
+    const events = detectMovement(company("Lumina", series(0.4, 0.55)), [
       company("Acme", series(0.5, 0.46)),
     ]);
     expect(events.some((e) => e.kind === "competitor_overtake")).toBe(true);
@@ -67,7 +67,7 @@ describe("detectMovement", () => {
 
   it("stays silent on a flip inside noise", () => {
     // Both moved < 0.10 — a coin toss, not an overtake.
-    const events = detectMovement(company("Parva", series(0.5, 0.53)), [
+    const events = detectMovement(company("Lumina", series(0.5, 0.53)), [
       company("Acme", series(0.55, 0.5)),
     ]);
     expect(events).toHaveLength(0);
@@ -75,7 +75,7 @@ describe("detectMovement", () => {
 
   it("stays silent on small samples even with a big flip", () => {
     const events = detectMovement(
-      company("Parva", series(0.2, 0.8, { n: 10 })),
+      company("Lumina", series(0.2, 0.8, { n: 10 })),
       [company("Acme", series(0.8, 0.2, { n: 10 }))]
     );
     expect(events).toHaveLength(0);
@@ -83,7 +83,7 @@ describe("detectMovement", () => {
 
   it("requires provider agreement — a one-provider move is not notable", () => {
     // Aggregate rises 0.22 but the two providers disagree in direction.
-    const events = detectMovement(company("Parva", series(0.4, 0.5)), [
+    const events = detectMovement(company("Lumina", series(0.4, 0.5)), [
       company(
         "Acme",
         series(0.62, 0.4, { providers: [[0.9, 0.3], [0.34, 0.5]] })
@@ -93,7 +93,7 @@ describe("detectMovement", () => {
   });
 
   it("reports a visibility drop without any competitor flip", () => {
-    const events = detectMovement(company("Parva", series(0.4, 0.55)), [
+    const events = detectMovement(company("Lumina", series(0.4, 0.55)), [
       company("Acme", series(0.3, 0.3)),
     ]);
     expect(events).toHaveLength(1);
@@ -106,8 +106,8 @@ describe("detectMovement", () => {
     // Mentions steady, recommendations collapse — the drop must name the
     // metric that actually moved.
     const subject: CompanySeries = {
-      companyId: "id-Parva",
-      name: "Parva",
+      companyId: "id-Lumina",
+      name: "Lumina",
       metrics: {
         mention_rate: series(0.6, 0.62),
         recommendation_rate: series(0.2, 0.45),
@@ -122,7 +122,7 @@ describe("detectMovement", () => {
   });
 
   it("no comparable window (missing metric series) → nothing", () => {
-    const events = detectMovement(company("Parva", null), [
+    const events = detectMovement(company("Lumina", null), [
       company("Acme", series(0.9, 0.1)),
     ]);
     expect(events).toHaveLength(0);

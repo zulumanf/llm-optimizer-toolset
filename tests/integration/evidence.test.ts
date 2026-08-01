@@ -109,16 +109,16 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     // Reused across seeds: a second project shares the same tracked
     // companies (upsertCompany rejects duplicate names by design).
     const [existing] = await sql`
-      select id from companies where name = 'Parva' and archived_at is null
+      select id from companies where name = 'Lumina' and archived_at is null
     `;
     let companyId: string;
     if (existing) {
       companyId = existing.id as string;
     } else {
       const company = await companySvc.upsertCompany(user, {
-        name: "Parva",
-        aliases: ["parva.io"],
-        domain: "parva.io",
+        name: "Lumina",
+        aliases: ["lumina.io"],
+        domain: "lumina.io",
       });
       if (!company.ok) throw new Error(company.error.message);
       companyId = company.data.id;
@@ -139,7 +139,7 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     if (!set.ok) throw new Error(set.error.message);
     await promptSvc.addPrompt(user, {
       setId: set.data.id,
-      text: "best tools for the job?", // mock mentions Parva + Acme
+      text: "best tools for the job?", // mock mentions Lumina + Acme
       category: "recommendation",
     });
     await promptSvc.addPrompt(user, {
@@ -158,7 +158,7 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     if (opts?.cite) {
       await promptSvc.addPrompt(user, {
         setId: set.data.id,
-        text: "MOCK_CITE_OWNED where do I read about Parva?",
+        text: "MOCK_CITE_OWNED where do I read about Lumina?",
         category: "branded",
       });
       await promptSvc.addPrompt(user, {
@@ -248,7 +248,7 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     expect(result!.storedValue).not.toBeNull();
     expect(result!.matchesStored).toBe(true);
     // Denominator = responses with any citation: 2 cite prompts × 3 reps.
-    // Numerator = responses whose Parva mention carries an owned citation:
+    // Numerator = responses whose Lumina mention carries an owned citation:
     // only the OWNED prompt's 3 reps.
     expect(result!.denominator).toBe(6);
     expect(result!.numerator).toBe(3);
@@ -267,7 +267,7 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     `;
     // 2 cite prompts × 3 reps, one in-text URL each = 6 ledger rows.
     expect(rows).toHaveLength(6);
-    const owned = rows.filter((r) => r.url === "https://parva.io/docs");
+    const owned = rows.filter((r) => r.url === "https://lumina.io/docs");
     const thirdParty = rows.filter((r) =>
       (r.url as string).startsWith("https://example.com")
     );
@@ -287,7 +287,7 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     const { runId, projectId } = await seedScoredRun({ cite: true });
     const [owned] = await sql`
       select source_type, relationship, classifier_version from sources
-      where project_id = ${projectId} and domain = 'parva.io'
+      where project_id = ${projectId} and domain = 'lumina.io'
     `;
     expect(owned?.sourceType).toBe("client_site");
     expect(owned?.relationship).toBe("owned");
@@ -321,7 +321,7 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     const b = await seedScoredRun({ cite: true, name: "Evidence Test B" });
     const rows = await sql`
       select project_id, citation_count from sources
-      where url = 'https://parva.io/docs' order by first_seen_at
+      where url = 'https://lumina.io/docs' order by first_seen_at
     `;
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.projectId as string).sort()).toEqual(
@@ -390,7 +390,7 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
       promptId,
       provider: "chatgpt-consumer",
       performedOn: "2026-07-29",
-      rawResponse: "The client answer mentioned Parva favorably.",
+      rawResponse: "The client answer mentioned Lumina favorably.",
       claimedMentioned: true,
       claimedRecommended: false,
     });

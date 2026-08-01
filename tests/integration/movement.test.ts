@@ -82,7 +82,7 @@ describe.skipIf(!TEST_URL)("competitor movement & portfolio fields (integration)
   }
 
   async function seed(): Promise<Seeded> {
-    const subject = await companySvc.upsertCompany(user, { name: "Parva" });
+    const subject = await companySvc.upsertCompany(user, { name: "Lumina" });
     if (!subject.ok) throw new Error(subject.error.message);
     const competitor = await companySvc.upsertCompany(user, { name: "Acme" });
     if (!competitor.ok) throw new Error(competitor.error.message);

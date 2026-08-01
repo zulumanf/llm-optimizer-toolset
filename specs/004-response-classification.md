@@ -17,7 +17,7 @@
 > heuristic parser (too false-positive-prone without an LLM check).
 
 ## Goal
-Turn raw responses into structured `mentions` (mentioned/recommended/position/sentiment/citations) with per-field confidence, route low-confidence parses to a human review queue, and compute the first scores (mention rate, recommendation rate) behind the review gate. Includes `companies` management (Parva + aliases) and the accuracy harness.
+Turn raw responses into structured `mentions` (mentioned/recommended/position/sentiment/citations) with per-field confidence, route low-confidence parses to a human review queue, and compute the first scores (mention rate, recommendation rate) behind the review gate. Includes `companies` management (the client's brand + aliases) and the accuracy harness.
 
 ## User stories
 - As the system, every captured response is parsed automatically after its run completes.
@@ -31,8 +31,8 @@ Review queue (`/projects/[id]/review`):
 ```
 │ Review queue — 7 items                       run: [All ▾]    │
 │ ┌──────────────────────────────────────────────────────────┐ │
-│ │ Parva · conf 0.62 (fuzzy alias) · run W31 · openai rep 3 │ │
-│ │ "…for smaller teams, **Parva's** planner is decent…"     │ │
+│ │ Lumina · conf 0.62 (fuzzy alias) · run W31 · openai rep 3│ │
+│ │ "…for smaller teams, **the client's** planner is decent…"     │ │
 │ │ mentioned [✓]  recommended [ ]→[?]  pos [–] sent [neu ▾] │ │
 │ │            [Confirm as parsed]  [Save correction]        │ │
 │ └──────────────────────────────────────────────────────────┘ │
@@ -69,7 +69,7 @@ Jobs: `parse_response` (per response, enqueued on run completion), `compute_scor
 
 ## Edge cases
 - Response with zero brand mentions → valid; one "no mentions" marker per company is NOT written — absence of a mention row for the current parser revision means not-mentioned; denominators come from response counts, not mention rows.
-- Alias collision discovered later ("Parva" matches an unrelated "Parva Labs") → operator narrows aliases → `reparseRun` for affected runs → new revisions; old scores stand (new scoring rows computed from new revisions get the same scoring_version but later `computed_at`? **No** — re-scoring after re-parse writes rows only if none exist for that (run, metric, version); if they exist, re-scoring requires an explicit new scoring version. Keep v1 simple: re-parse before scoring, or accept and annotate.)
+- Alias collision discovered later ("Lumina" matches an unrelated "Lumina Labs") → operator narrows aliases → `reparseRun` for affected runs → new revisions; old scores stand (new scoring rows computed from new revisions get the same scoring_version but later `computed_at`? **No** — re-scoring after re-parse writes rows only if none exist for that (run, metric, version); if they exist, re-scoring requires an explicit new scoring version. Keep v1 simple: re-parse before scoring, or accept and annotate.)
 - Refusal-flagged responses → parsed as no-mentions, counted in N (a refusal is a real answer users would see); coverage notes refusal count.
 - Non-English response to an English prompt → parser handles it (model is multilingual); language recorded; no special casing in v1.
 - Parser JSON invalid twice → all companies for that response flagged `needs_review` with confidence 0.
@@ -85,7 +85,7 @@ Jobs: `parse_response` (per response, enqueued on run completion), `compute_scor
 - [ ] Alias collision is blocked at company save with a clear message.
 
 ## Test cases
-- **Unit:** alias matcher tiers (exact/alias/fuzzy/word-boundary; "Parva" vs "Parvati" no-hit), confidence formula fixtures, scoring known-answers (incl. N=0, all-refusals), excerpt-substring validator.
+- **Unit:** alias matcher tiers (exact/alias/fuzzy/word-boundary; "Lumina" vs "Luminate" no-hit), confidence formula fixtures, scoring known-answers (incl. N=0, all-refusals), excerpt-substring validator.
 - **Integration:** parse pipeline over recorded fixtures through the real queue; revision immutability trigger; review gate blocks scoring; exactly-one-is_self constraint.
 - **E2E:** run completes (mock provider) → queue shows low-confidence item → correct it → scores tab renders rates with N.
 - **Harness:** `npm run test:parser-accuracy` over `tests/fixtures/responses/labeled/`.

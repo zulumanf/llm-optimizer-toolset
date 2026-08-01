@@ -69,21 +69,21 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
     await sql.end();
   });
 
-  async function seedCompanies(): Promise<{ parvaId: string; acmeId: string }> {
-    const parva = await companySvc.upsertCompany(admin, {
-      name: "Parva",
-      aliases: ["parva.com"],
-      domain: "parva.com",
+  async function seedCompanies(): Promise<{ luminaId: string; acmeId: string }> {
+    const lumina = await companySvc.upsertCompany(admin, {
+      name: "Lumina",
+      aliases: ["lumina.com"],
+      domain: "lumina.com",
       isSelf: true,
     });
-    if (!parva.ok) throw new Error(parva.error.message);
+    if (!lumina.ok) throw new Error(lumina.error.message);
     const acme = await companySvc.upsertCompany(operator, {
       name: "Acme",
       aliases: [],
       domain: "acme.io",
     });
     if (!acme.ok) throw new Error(acme.error.message);
-    return { parvaId: parva.data.id, acmeId: acme.data.id };
+    return { luminaId: lumina.data.id, acmeId: acme.data.id };
   }
 
   async function runPipeline(texts: string[], reps = 1): Promise<string> {
@@ -145,7 +145,7 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
 
     const collision = await companySvc.upsertCompany(operator, {
       name: "Fresh Co",
-      aliases: ["parva.com"],
+      aliases: ["lumina.com"],
     });
     expect(collision.ok).toBe(false);
     if (!collision.ok) expect(collision.error.message).toMatch(/collides/i);
@@ -174,7 +174,7 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
     const runId = await runPipeline(["What are the best tools?"], 2);
     await drainJobs();
 
-    // Default mock text recommends Acme (pos 1 phrasing) and Parva
+    // Default mock text recommends Acme (pos 1 phrasing) and Lumina
     const scores = await sql`
       select c.name, s.metric, s.provider, s.value, s.sample_size
       from scores s join companies c on c.id = s.company_id
@@ -275,7 +275,7 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
   });
 
   it("review gate: low-confidence parse blocks scoring; confirming unblocks it", async () => {
-    const { parvaId } = await seedCompanies();
+    const { luminaId } = await seedCompanies();
     const runId = await runPipeline(["please MOCK_AMBIGUOUS answer"]);
     await drainJobs();
 
@@ -289,7 +289,7 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
     const [project] = await sql`select project_id from runs where id = ${runId}`;
     const queue = await mentionsDb.listReviewQueue(project?.projectId as string);
     expect(queue).toHaveLength(1);
-    expect(queue[0]?.companyId).toBe(parvaId);
+    expect(queue[0]?.companyId).toBe(luminaId);
     expect(Number(queue[0]?.confidence)).toBeLessThan(0.7);
 
     const reviewed = await reviewSvc.reviewMention(operator, {
@@ -402,12 +402,12 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
 
   it("sources are collected with domain attribution", async () => {
     await seedCompanies();
-    // Seed a run whose response cites a parva.com URL via ambiguous marker text
+    // Seed a run whose response cites a lumina.com URL via ambiguous marker text
     const runId = await runPipeline(["cite MOCK_AMBIGUOUS"]);
     await drainJobs();
     void runId;
     const sources = await sql`select url, domain, company_id from sources`;
-    // MOCK_AMBIGUOUS text contains "parva.com" as bare text, not a URL — so
+    // MOCK_AMBIGUOUS text contains "lumina.com" as bare text, not a URL — so
     // sources may be empty here; assert the table exists and is consistent
     for (const s of sources) expect(s.domain).toBeTruthy();
   });

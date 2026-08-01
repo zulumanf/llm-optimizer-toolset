@@ -2,7 +2,7 @@
 
 > Status: done (2026-07-29)
 >
-> **Live: a real weekly pulse for Parva was generated AND published through
+> **Live: a real weekly pulse for the client was generated AND published through
 > the evidence gate.** It leads with the three high-severity entity-confusion
 > findings (each cited `[accuracy:…]`), then the top gaps (`[finding:…]`),
 > then standing metrics — and the category-ownership table reads:

@@ -2,15 +2,15 @@
 
 > Status: done (2026-07-29)
 >
-> **Live result on the real Parva captures: 33 findings from 6 audited
+> **Live result on the real pilot-client captures: 33 findings from 6 audited
 > answers, 0 quotes rejected by the gate.** Five are high-severity
-> `entity_confusion` — ChatGPT answers "What is Parva?" by describing
-> Parva Consulting (management consulting), a cognitive-health wearable
-> (parvahealth.com), a healthcare-claims platform (getparva.com), and the
-> Sanskrit literary term. The rest are `unverifiable`: the model is
+> `entity_confusion` — ChatGPT answers a "What is [the client]?" prompt by
+> describing several unrelated same-name companies (a management
+> consultancy, a cognitive-health wearable, a healthcare-claims platform)
+> and an unrelated dictionary term. The rest are `unverifiable`: the model is
 > *inventing* product capabilities ("stronger branding", "better mobile-first
 > presentation", "you care about conversions more than just clicks",
-> "I'd lean Parva" for premium lead-gen) that no approved claim supports.
+> "I'd lean [the client]" for premium lead-gen) that no approved claim supports.
 >
 > Two honest observations from that run:
 > 1. `unverifiable` is high-volume by nature on comparison answers (one
@@ -19,7 +19,7 @@
 >    tuning lever is requiring a *specific* factual assertion (numbers,
 >    features, affiliations) rather than any unsupported characterisation.
 > 2. For a just-launched product these fabrications are strategically
->    interesting, not only risk: they show what the model *assumes* Parva
+>    interesting, not only risk: they show what the model *assumes* the client
 >    is, which is a menu of positioning the client can choose to make true
 >    and then evidence.
 > Depends on: specs/008 (claims) · specs/013 (classifier v2) ·
@@ -37,9 +37,9 @@ every discrepancy into an inspectable, evidence-backed finding.
 ## Why this and why now
 The platform already stores the two halves and has never joined them:
 immutable captured answers (spec 003) and an approved fact register
-(spec 008). The live Parva captures contain textbook cases — answers that
+(spec 008). The live pilot captures contain textbook cases — answers that
 describe an unrelated healthcare company, a consultancy, and a Sanskrit
-term as "Parva" — which is *reputation damage happening in the answer
+term as the client — which is *reputation damage happening in the answer
 layer*, invisible to visibility metrics because after spec 013 those
 responses correctly produce no mention at all.
 
@@ -98,8 +98,8 @@ Unique on (response_id, kind, md5(quote)) so re-analysis is idempotent.
    tracked and can be completed as a measured intervention.
 
 ## Acceptance criteria
-- [ ] Analysis of the real Parva runs produces `entity_confusion` findings
-      for the answers that describe other Parvas, each quoting the actual
+- [ ] Analysis of the real pilot runs produces `entity_confusion` findings
+      for the answers that describe the unrelated same-name entities, each quoting the actual
       sentence.
 - [ ] A fabricated quote (not present in the response) is dropped by the
       gate; the drop is logged and counted, not silently ignored.

@@ -276,7 +276,7 @@ describe("robots.txt", () => {
 
   it("lets a specific rule for us replace the wildcard group", () => {
     const rules = parseRobots(
-      "User-agent: *\nDisallow: /\n\nUser-agent: ParvaVisibilityAudit\nDisallow: /secret"
+      "User-agent: *\nDisallow: /\n\nUser-agent: AvosVisibilityAudit\nDisallow: /secret"
     );
     expect(isPathAllowed("/anything", rules)).toBe(true);
     expect(isPathAllowed("/secret/x", rules)).toBe(false);

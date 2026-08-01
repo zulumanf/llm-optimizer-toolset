@@ -93,7 +93,7 @@ export function CompanyFormDialog({ mode, isAdmin, company }: Props) {
               id="co-aliases"
               value={aliases}
               onChange={(e) => setAliases(e.target.value)}
-              placeholder="parva.com, Parva App"
+              placeholder="lumina.com, Lumina App"
             />
           </div>
           <div className="space-y-1.5">
@@ -102,7 +102,7 @@ export function CompanyFormDialog({ mode, isAdmin, company }: Props) {
               id="co-domain"
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
-              placeholder="parva.com"
+              placeholder="lumina.com"
             />
           </div>
           <div className="flex items-center gap-2">
@@ -115,7 +115,7 @@ export function CompanyFormDialog({ mode, isAdmin, company }: Props) {
               className="size-4"
             />
             <Label htmlFor="co-self">
-              This is Parva (is_self{isAdmin ? "" : " — admin only"})
+              This is Lumina (is_self{isAdmin ? "" : " — admin only"})
             </Label>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}

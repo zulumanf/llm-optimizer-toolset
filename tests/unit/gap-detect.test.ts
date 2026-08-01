@@ -22,7 +22,7 @@ function prompt(overrides: Partial<PromptOutcome>): PromptOutcome {
 // a company, so every response is organic evidence for every company.
 const subject: CompanyOutcome = {
   companyId: "s",
-  name: "Parva",
+  name: "Lumina",
   isSubject: true,
   mentionRate: 0.25,
   recommendationRate: 0,
@@ -41,10 +41,10 @@ const leader: CompanyOutcome = {
   organicResponses: 16,
 };
 
-describe("detectGaps (day-zero client shape — the real Parva case)", () => {
+describe("detectGaps (day-zero client shape — the real Lumina case)", () => {
   const findings = detectGaps({
-    subjectName: "Parva",
-    subjectDomain: "parva.io",
+    subjectName: "Lumina",
+    subjectDomain: "lumina.io",
     prompts: [
       prompt({ promptId: "p1", category: "recommendation" }),
       prompt({ promptId: "p2", category: "problem" }),
@@ -101,12 +101,12 @@ describe("detectGaps (healthy client shape)", () => {
       organicRecommendationRate: 0.4,
     };
     const domains: DomainCitation[] = [
-      { domain: "parva.io", citations: 2, ownedBySubject: true },
+      { domain: "lumina.io", citations: 2, ownedBySubject: true },
       { domain: "zapier.com", citations: 1, ownedBySubject: false },
     ];
     const findings = detectGaps({
-      subjectName: "Parva",
-      subjectDomain: "parva.io",
+      subjectName: "Lumina",
+      subjectDomain: "lumina.io",
       prompts: [
         prompt({ subjectMentioned: 3, subjectRecommended: 2 }),
         prompt({ promptId: "p2", category: "branded", subjectMentioned: 4 }),

@@ -258,7 +258,7 @@ describe.skipIf(!TEST_URL)("automation end-to-end demos", () => {
                 statement: "You appeared in 2 of 12 measured assistant responses.",
                 kind: "fact",
                 evidenceIds: [],
-                sourceUrl: "https://parva.example/evidence/run-1",
+                sourceUrl: "https://lumina.example/evidence/run-1",
               },
             ],
             confidence: 0.82,

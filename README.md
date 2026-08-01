@@ -1,6 +1,6 @@
 # LLM Optimizer Toolset
 
-Internal tool for measuring and growing Parva's visibility in AI assistants (ChatGPT, Claude, Gemini, Perplexity). Runs versioned prompt experiments against AI providers, captures raw responses immutably, scores mentions/recommendations/citations with transparent methodology, and produces evidence-backed reports and tasks.
+Internal tool for measuring and growing the client's visibility in AI assistants (ChatGPT, Claude, Gemini, Perplexity). Runs versioned prompt experiments against AI providers, captures raw responses immutably, scores mentions/recommendations/citations with transparent methodology, and produces evidence-backed reports and tasks.
 
 This README covers **only the repository** — setup, stack, structure, commands. Product decisions live in `docs/`, executable feature specs in `specs/`, working rules in `CLAUDE.md`, unbreakable rules in `PRINCIPLES.md`.
 
@@ -155,4 +155,4 @@ npm test -- automation-demos    # prospect outreach, content, reporting, failure
 
 ## Deployment
 
-Internal only. Runs on Vercel (app) + Supabase (database) + a single worker process (Railway/Fly/local cron). No public signup; access restricted to the Parva team (see `docs/10-security.md`).
+Internal only. Runs on Vercel (app) + Supabase (database) + a single worker process (Railway/Fly/local cron). No public signup; access restricted to the operating team (see `docs/10-security.md`).

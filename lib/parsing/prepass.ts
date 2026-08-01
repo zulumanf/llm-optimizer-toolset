@@ -25,9 +25,9 @@ function escapeRegex(s: string): string {
 
 function wordBoundaryMatch(text: string, term: string): number {
   if (term.trim().length === 0) return -1;
-  // Boundaries exclude word chars and domain continuation: "Parva" must not
-  // match inside "parva.com" (that's the alias's job) or "app.parva.io",
-  // while a sentence-ending "…recommend Parva." still matches.
+  // Boundaries exclude word chars and domain continuation: "Lumina" must not
+  // match inside "lumina.com" (that's the alias's job) or "app.lumina.io",
+  // while a sentence-ending "…recommend Lumina." still matches.
   const re = new RegExp(
     `(?<![\\w.])${escapeRegex(term)}(?!\\w)(?!\\.\\w)`,
     "i"

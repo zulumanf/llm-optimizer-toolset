@@ -65,9 +65,9 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
     frozenVersionId: string;
   }> {
     const company = await companySvc.upsertCompany(user, {
-      name: "Parva",
-      aliases: ["parva.io"],
-      domain: "parva.io",
+      name: "Lumina",
+      aliases: ["lumina.io"],
+      domain: "lumina.io",
     });
     if (!company.ok) throw new Error(company.error.message);
     const project = await projectSvc.createProject(user, { name: "Content Test" });
@@ -79,8 +79,8 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
     const claim = await claimsSvc.proposeClaim(user, {
       projectId: project.data.id,
       key: "category_positioning",
-      canonicalText: "Parva is a link-in-bio tool built for real estate agents.",
-      evidence: [{ url: "https://parva.io", note: "homepage" }],
+      canonicalText: "Lumina is a link-in-bio tool built for real estate agents.",
+      evidence: [{ url: "https://lumina.io", note: "homepage" }],
     });
     if (!claim.ok) throw new Error(claim.error.message);
     await claimsSvc.approveClaim(user, { claimId: claim.data.id });
@@ -143,7 +143,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
     audience: "US residential real estate agents active on Instagram",
     angle: "One hub link that turns social attention into leads",
     requiredClaimIds: [claimId],
-    outline: ["Why one link matters", "What Parva does", "Getting set up"],
+    outline: ["Why one link matters", "What Lumina does", "Getting set up"],
   });
 
   it("full lifecycle: brief → draft → verify → approve → publish (+intervention)", async () => {
@@ -158,7 +158,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
     if (!briefed.ok) return;
 
     const goodDraft = {
-      markdown: `## Why one link matters\nAgents get attention on social platforms.\n\n## What Parva does\nParva is a link-in-bio tool built for real estate agents [claim:${claimId}].\n\n## Getting set up\nCreate a page and add your links to listings and reviews so prospects can reach everything in one place. This gives visitors a single destination for your work and contact details.`,
+      markdown: `## Why one link matters\nAgents get attention on social platforms.\n\n## What Lumina does\nLumina is a link-in-bio tool built for real estate agents [claim:${claimId}].\n\n## Getting set up\nCreate a page and add your links to listings and reviews so prospects can reach everything in one place. This gives visitors a single destination for your work and contact details.`,
     };
     const drafted = await content.generateDraft(
       user,
@@ -177,7 +177,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
       user,
       { assetId: briefed.data.assetId },
       fakeCaller([
-        { verdicts: [{ excerpt: "Parva is a link-in-bio tool", verdict: "verified", reason: "matches claim" }] },
+        { verdicts: [{ excerpt: "Lumina is a link-in-bio tool", verdict: "verified", reason: "matches claim" }] },
         cleanAdversarial,
       ])
     );
@@ -189,7 +189,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
 
     const published = await content.markPublished(user, {
       assetId: briefed.data.assetId,
-      publishedUrl: "https://parva.io/for-real-estate-agents",
+      publishedUrl: "https://lumina.io/for-real-estate-agents",
       promptSetVersionId: frozenVersionId,
       publishedOn: new Date().toISOString().slice(0, 10),
     });
@@ -200,7 +200,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
       select title, urls from interventions where id = ${published.data.interventionId}
     `;
     expect(intervention?.title).toContain("Published:");
-    expect(intervention?.urls).toEqual(["https://parva.io/for-real-estate-agents"]);
+    expect(intervention?.urls).toEqual(["https://lumina.io/for-real-estate-agents"]);
     const [asset] = await sql`
       select status from content_assets where id = ${briefed.data.assetId}
     `;
@@ -218,7 +218,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
 
     const badDraft = {
       markdown:
-        "## Intro\nParva is the best tool for agents and boosts leads by 300%.\n\n" +
+        "## Intro\nLumina is the best tool for agents and boosts leads by 300%.\n\n" +
         "## More\nEveryone loves it. It is amazing for realtors everywhere today. This section fills space to satisfy schema length requirements for the draft output contract.",
     };
     const drafted = await content.generateDraft(
@@ -258,7 +258,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
       { assetId: briefed.data.assetId },
       fakeCaller([
         {
-          markdown: `Parva is a link-in-bio tool built for real estate agents [claim:${claimId}]. General guidance follows for agents building their online presence, with plenty of practical advice about links, bios, and profiles for social platforms and search.`,
+          markdown: `Lumina is a link-in-bio tool built for real estate agents [claim:${claimId}]. General guidance follows for agents building their online presence, with plenty of practical advice about links, bios, and profiles for social platforms and search.`,
         },
       ])
     );
@@ -293,7 +293,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
       { assetId: briefed.data.assetId },
       fakeCaller([
         {
-          markdown: `Parva is a link-in-bio tool built for real estate agents [claim:${claimId}]. Additional practical guidance for agents follows, covering profiles, links, and how a single hub page keeps listings and reviews reachable from every social bio.`,
+          markdown: `Lumina is a link-in-bio tool built for real estate agents [claim:${claimId}]. Additional practical guidance for agents follows, covering profiles, links, and how a single hub page keeps listings and reviews reachable from every social bio.`,
         },
       ])
     );
@@ -338,7 +338,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
         prompt = args.user;
         return {
           text: JSON.stringify({
-            markdown: `Parva is a link-in-bio tool built for real estate agents [claim:${claimId}]. Practical setup guidance follows for agents assembling their online presence with one hub for listings, reviews, and contact links across social platforms.`,
+            markdown: `Lumina is a link-in-bio tool built for real estate agents [claim:${claimId}]. Practical setup guidance follows for agents assembling their online presence with one hub for listings, reviews, and contact links across social platforms.`,
           }),
           tokensIn: 1,
           tokensOut: 1,
@@ -371,7 +371,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
       user,
       { assetId: briefed.data.assetId },
       fakeCaller([
-        { markdown: `Parva is a link-in-bio tool built for real estate agents [claim:${claimId}]. Plus enough additional general material about agent marketing to satisfy the minimum draft length requirement for this schema contract easily.` },
+        { markdown: `Lumina is a link-in-bio tool built for real estate agents [claim:${claimId}]. Plus enough additional general material about agent marketing to satisfy the minimum draft length requirement for this schema contract easily.` },
       ])
     );
     await expect(
@@ -401,7 +401,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
       { assetId: briefed.data.assetId },
       fakeCaller([
         {
-          markdown: `Parva is the #1 link-in-bio tool for real estate agents [claim:${claimId}]. General setup guidance follows for agents building a single hub for their listings, reviews, and contact links across social platforms.`,
+          markdown: `Lumina is the #1 link-in-bio tool for real estate agents [claim:${claimId}]. General setup guidance follows for agents building a single hub for their listings, reviews, and contact links across social platforms.`,
         },
       ])
     );

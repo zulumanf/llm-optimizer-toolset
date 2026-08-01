@@ -15,7 +15,7 @@
 > Scheduling uses the jobs queue's run_after — no separate scheduler.
 
 ## Goal
-Close the loop: record **interventions** (things Parva ships in the world — content, docs, PR), tie them to before/after measurement windows on frozen prompt sets, apply the change-detection rule, and manage **tasks** (suggested from findings, human-approved, evidence-linked) whose completion becomes the next intervention. After this spec, the system answers: *"did what we did move AI answers?"*
+Close the loop: record **interventions** (things the client ships in the world — content, docs, PR), tie them to before/after measurement windows on frozen prompt sets, apply the change-detection rule, and manage **tasks** (suggested from findings, human-approved, evidence-linked) whose completion becomes the next intervention. After this spec, the system answers: *"did what we did move AI answers?"*
 
 ## User stories
 - As an operator, I record an intervention (what shipped, when, URLs, which prompt set it targets).
@@ -27,8 +27,8 @@ Close the loop: record **interventions** (things Parva ships in the world — co
 
 Intervention detail (`/projects/[id]/interventions/[id]`):
 ```
-│ Comparison page: Parva vs Acme        shipped 2026-08-03     │
-│ Targets: set "Comparison" v2 · URLs: parva.com/vs/acme       │
+│ Comparison page: Lumina vs Acme       shipped 2026-08-03     │
+│ Targets: set "Comparison" v2 · URLs: lumina.com/vs/acme      │
 │ Baseline: runs W30, W31   Post: W33 ✓, W37 (scheduled), W43  │
 │ ┌Verdict───────────────────────────────────────────────────┐ │
 │ │ rec_rate  +0.12  N=120/120  2/2 providers ↑  → NOTABLE   │ │
@@ -90,4 +90,4 @@ Migration `007_attribution.sql`:
 - **E2E:** record intervention → see baseline + schedule → (simulate time via seeded run) → verdict renders; suggest→approve→complete task as intervention.
 
 ## Definition of done
-Per `specs/_TEMPLATE.md`, plus: one real intervention recorded for Parva with its baseline captured — the loop is live.
+Per `specs/_TEMPLATE.md`, plus: one real intervention recorded for the client with its baseline captured — the loop is live.

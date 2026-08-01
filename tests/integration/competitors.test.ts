@@ -82,11 +82,11 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
   }
 
   async function seedProjectWithRun(): Promise<{ projectId: string }> {
-    const parva = await companySvc.upsertCompany(user, {
-      name: "Parva",
+    const lumina = await companySvc.upsertCompany(user, {
+      name: "Lumina",
       isSelf: true,
     });
-    if (!parva.ok) throw new Error(parva.error.message);
+    if (!lumina.ok) throw new Error(lumina.error.message);
     const project = await projectSvc.createProject(user, { name: "Comp Test" });
     if (!project.ok) throw new Error(project.error.message);
     const set = await setSvc.createPromptSet(user, {
@@ -177,7 +177,7 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
     });
     await drainJobs();
 
-    const parvaMetrics = await sql`
+    const luminaMetrics = await sql`
       select metric, provider from scores s
       join companies c on c.id = s.company_id
       where c.is_self order by metric, provider
@@ -187,7 +187,7 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
       where company_id = ${acme.data.id} order by metric, provider
     `;
     // No metric exists for one and not the other (spec 005 acceptance)
-    expect(parvaMetrics.map((r) => `${r.metric}/${r.provider}`)).toEqual(
+    expect(luminaMetrics.map((r) => `${r.metric}/${r.provider}`)).toEqual(
       acmeMetrics.map((r) => `${r.metric}/${r.provider}`)
     );
   });
@@ -236,7 +236,7 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
     await drainJobs();
 
     const comparison = await competitorsDb.listComparisonCompanies(projectId);
-    expect(comparison.map((c) => c.companyName)).toEqual(["Parva", "Acme"]);
+    expect(comparison.map((c) => c.companyName)).toEqual(["Lumina", "Acme"]);
 
     // Promoting twice is rejected
     const again = await competitorSvc.trackBrandCandidate(user, {
@@ -269,7 +269,7 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
     });
     expect(archived.ok).toBe(true);
     const comparison = await competitorsDb.listComparisonCompanies(projectId);
-    expect(comparison.map((c) => c.companyName)).toEqual(["Parva"]);
+    expect(comparison.map((c) => c.companyName)).toEqual(["Lumina"]);
     const [after] = await sql`
       select count(*)::int as n from scores where company_id = ${acme.data.id}
     `;

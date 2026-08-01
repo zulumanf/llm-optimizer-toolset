@@ -185,8 +185,8 @@ describe("pack compliance rules in the content gate", () => {
 
   it("generic clients are unaffected when no rules are supplied", () => {
     const result = validateContent(
-      `Parva is a link-in-bio tool [claim:${claimId}].`,
-      ["Parva"],
+      `Lumina is a link-in-bio tool [claim:${claimId}].`,
+      ["Lumina"],
       approved
     );
     expect(result.complianceHits).toEqual([]);

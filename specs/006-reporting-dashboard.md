@@ -34,7 +34,7 @@ Dashboard (`/projects/[id]`):
 │ │ vs W30    │ │ N=120    │ │ 3 comps  │ │ 0 pending rev │    │
 │ └───────────┘ └──────────┘ └──────────┘ └───────────────┘    │
 │ [Trend line: authority over runs, per provider, v-annotated] │
-│ [Grouped bars: Parva vs competitors by provider]             │
+│ [Grouped bars: the client vs competitors by provider]             │
 │ Recent runs table · Recent notable excerpts                  │
 ```
 Stat tiles per `docs/04` (click → drill down). Every figure shows N + scoring version on hover.
@@ -86,4 +86,4 @@ Migration `006_reports.sql`: `reports`, `evidence` per `docs/03`; trigger lockin
 - **Snapshot:** published report render (`docs/09`).
 
 ## Definition of done
-Per `specs/_TEMPLATE.md`, plus one real weekly report produced for Parva and reviewed by the team.
+Per `specs/_TEMPLATE.md`, plus one real weekly report produced for the client and reviewed by the team.

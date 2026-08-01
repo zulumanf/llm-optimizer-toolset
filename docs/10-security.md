@@ -44,7 +44,7 @@ artifacts.
 
 ```bash
 npm run backup                       # dump + artifacts + hash manifest
-BACKUP_DIR=~/Library/Mobile\ Documents/com~apple~CloudDocs/parva-backups \
+BACKUP_DIR=~/Library/Mobile\ Documents/com~apple~CloudDocs/avos-backups \
   npm run backup                     # off-box via iCloud (recommended)
 npm run restore -- var/backups/<stamp>   # drill into llm_optimizer_restore
 ```

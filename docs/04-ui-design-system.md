@@ -56,7 +56,7 @@ discovered a year later.
 
 ## Components (shadcn/ui unless noted)
 
-- **Buttons:** `default` for primary action (one per view), `outline` secondary, `ghost` inline row actions, `destructive` for irreversible ops — destructive always behind a confirm dialog naming the object ("Archive project 'Parva Core'?").
+- **Buttons:** `default` for primary action (one per view), `outline` secondary, `ghost` inline row actions, `destructive` for irreversible ops — destructive always behind a confirm dialog naming the object ("Archive project 'Acme Core'?").
 - **Cards:** stat tiles (metric name, big value, delta badge vs. previous run), section panels. Stat tile click → drill into underlying data (traceability in the UI).
 - **Tables:** shadcn Table + TanStack. Sortable headers, sticky header, row click → detail drawer or page. Pagination beyond 50 rows. Every table has an empty state (see below).
 - **Forms:** react-hook-form + Zod (same schema as the server action). Inline field errors, disabled submit while pending, toast on success/failure.

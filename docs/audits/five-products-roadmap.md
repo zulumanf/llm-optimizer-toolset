@@ -15,7 +15,7 @@
 
 | Item | Product | Score | Rationale |
 |---|---|---|---|
-| LLM classifier v2 + fresh-context verifier | 1 | 5×5×5×4=**500** | Every metric, gap, verdict, and report inherits classification quality; name-collision false positives proven live. Feasible: agent runner + revision model exist; re-parse is a designed operation (`reparseRun`). Acceptance: collision fixture (Parva/Mahabharata) classified correctly; confidence-routed to review; parser_version bumped; historical revisions preserved. |
+| LLM classifier v2 + fresh-context verifier | 1 | 5×5×5×4=**500** | Every metric, gap, verdict, and report inherits classification quality; name-collision false positives proven live. Feasible: agent runner + revision model exist; re-parse is a designed operation (`reparseRun`). Acceptance: collision fixture (pilot brand vs. an unrelated same-name topic) classified correctly; confidence-routed to review; parser_version bumped; historical revisions preserved. |
 | Real authentication (Supabase) | shared | 5×5×5×3=**375** | Client data behind a hardcoded dev login is disqualifying; also unblocks client-viewer role (P1) and RLS (P2). Acceptance: login required; roles mapped; AUTH_MODE=dev still works for local dev. |
 | Backups + restore runbook (pg_dump + var/evidence sync) | shared | 4×5×5×5=**500** | Evidence-grade product with zero backups is self-contradicting. Acceptance: nightly dump + artifact sync, tested restore, documented in docs/10. |
 
@@ -25,7 +25,7 @@
 |---|---|---|---|
 | Self-reported AI-discovery lead log | 4 | 5×4×4×5=**400** | The only revenue signal available from day one; trivial build (one table + form + report section). Starts accruing before GA4 exists — waiting loses data forever. |
 | GA4 CSV import + AI-referrer rules (confirmed/probable labels) | 4 | 5×4×3×4=**240** | Turns the pilot's manual traffic section into system data without OAuth scope creep. |
-| ~~Schedule weekly baseline~~ **DONE** | 1/5 | 4×4×3×5=**240** | CRON_SECRET set, endpoint verified (401/200), Parva baseline configured (search-enabled, $2 cap), launchd template in `scripts/`. Caveat: fires only while the machine is awake and the app is serving — hosted scheduling is the durable answer. |
+| ~~Schedule weekly baseline~~ **DONE** | 1/5 | 4×4×3×5=**240** | CRON_SECRET set, endpoint verified (401/200), the pilot client's baseline configured (search-enabled, $2 cap), launchd template in `scripts/`. Caveat: fires only while the machine is awake and the app is serving — hosted scheduling is the durable answer. |
 | Second live provider (Anthropic or Gemini key + live verification) | 1 | 4×3×4×4=**192** | docs/06 verdicts need ≥2 providers for "notable"; also de-risks OpenAI dependency. |
 | ~~Client-validation UI page~~ **DONE** | 1 | 3×2×4×5=**120** | `/projects/[id]/validation` — seeded run creation, client instructions, immutable observation recording, directional comparison. Closes the audit's "tested but invisible" finding. |
 | Weekly/monthly cadence report templates + delivery (email/PDF or share link) | 5 | 4×3×3×3=**108** | Report engine exists; cadence formats + any delivery mechanism. |

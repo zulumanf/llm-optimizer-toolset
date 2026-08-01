@@ -61,7 +61,7 @@ export default async function InterventionsPage({
         <div>
           <h1 className="text-2xl font-semibold">Interventions</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            What Parva shipped, tied to before/after measurement on a frozen
+            What the client shipped, tied to before/after measurement on a frozen
             prompt set (docs/07). Post runs re-use the baseline instrument at
             +2/+6/+12 weeks.
           </p>
@@ -81,7 +81,7 @@ export default async function InterventionsPage({
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <FlaskConical className="size-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
-            No interventions yet. Record one when Parva ships something that
+            No interventions yet. Record one when the client ships something that
             should move AI answers.
           </p>
         </div>

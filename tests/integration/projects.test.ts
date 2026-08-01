@@ -60,14 +60,14 @@ describe.skipIf(!TEST_URL)("projects (integration)", () => {
 
   it("create → list → get round trip, with audit row", async () => {
     const created = await service.createProject(admin, {
-      name: "Parva Core",
+      name: "Lumina Core",
       description: "Weekly baseline",
     });
     expect(created.ok).toBe(true);
     if (!created.ok) return;
 
     const listed = await listProjects({ includeArchived: false });
-    expect(listed.map((p) => p.name)).toEqual(["Parva Core"]);
+    expect(listed.map((p) => p.name)).toEqual(["Lumina Core"]);
 
     const fetched = await getProject(created.data.id);
     expect(fetched?.description).toBe("Weekly baseline");
@@ -80,8 +80,8 @@ describe.skipIf(!TEST_URL)("projects (integration)", () => {
   });
 
   it("rejects duplicate active names case-insensitively", async () => {
-    await service.createProject(admin, { name: "Parva Core" });
-    const dup = await service.createProject(admin, { name: "  parva CORE " });
+    await service.createProject(admin, { name: "Lumina Core" });
+    const dup = await service.createProject(admin, { name: "  lumina CORE " });
     expect(dup.ok).toBe(false);
     if (!dup.ok) expect(dup.error.kind).toBe("conflict");
   });

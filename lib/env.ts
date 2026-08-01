@@ -8,7 +8,7 @@ const envSchema = z
   .object({
     DATABASE_URL: z.string().url().or(z.string().startsWith("postgres://")),
     AUTH_MODE: z.enum(["dev", "supabase"]).default("dev"),
-    DEV_USER_EMAIL: z.string().email().default("dev@parva.local"),
+    DEV_USER_EMAIL: z.string().email().default("dev@avos.local"),
     DEV_USER_NAME: z.string().min(1).default("Dev User"),
     DEV_USER_ROLE: z.enum(["admin", "operator"]).default("admin"),
     // Provider keys and cron secret are optional at boot; the features that

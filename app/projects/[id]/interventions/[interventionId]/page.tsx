@@ -166,7 +166,7 @@ export default async function InterventionPage({
         <h2 className="mb-2 text-lg font-medium">
           Verdicts{" "}
           <span className="text-sm font-normal text-muted-foreground">
-            (Parva, pooled baseline vs each post run — computed, never edited)
+            (subject, pooled baseline vs each post run — computed, never edited)
           </span>
         </h2>
         {view.verdicts.length === 0 ? (

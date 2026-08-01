@@ -95,7 +95,7 @@ export default async function CompetitorsPage({
                 <TableRow key={row.companyId}>
                   <TableCell className="font-medium">
                     {row.companyName}
-                    {row.isSelf && <Badge className="ml-2">Parva</Badge>}
+                    {row.isSelf && <Badge className="ml-2">own brand</Badge>}
                   </TableCell>
                   <TableCell>
                     <Badge variant={row.tier === "primary" ? "secondary" : "outline"}>

@@ -8,8 +8,8 @@ Append-only. Every non-obvious technical decision gets a dated entry: the decisi
 
 The operator adopted an agentic-workflow blueprint (drafted for a real-estate
 brokerage) as the product direction: one platform serving many client
-engagements across verticals (Parva first, then realtors, plastic surgeons,
-…). Superseded: the "not multi-tenant, Parva only" framing in docs/00 —
+engagements across verticals (the pilot client first, then realtors, plastic surgeons,
+…). Superseded: the "not multi-tenant, single-subject" framing in docs/00 —
 amended to "project = client engagement; still not self-serve SaaS."
 Rationale for evolving this codebase rather than starting the blueprint's
 repo from scratch: specs/001–007 already implement its Phase 1–2 measurement
@@ -76,8 +76,8 @@ for now. Promote to a settings UI when a second consumer appears.
 
 ### Heuristic-first parser (spec 004)
 Mention parser v1 (`mention-parser-v1+heuristic`) is fully deterministic:
-word-boundary alias scanning (domain-aware boundaries so "Parva" ≠
-"parva.com" ≠ "Parvati"), list-position detection, recommendation/sentiment
+word-boundary alias scanning (domain-aware boundaries so "Lumina" ≠
+"lumina.com" ≠ "Luminate"), list-position detection, recommendation/sentiment
 lexicons, verbatim-excerpt selection. No LLM call — provider keys don't exist
 yet, and an untestable LLM stage would be riskier than an honest heuristic
 whose uncertainty routes to human review via the docs/06 confidence formula
@@ -144,7 +144,7 @@ rather than trusting either silently. Holdout prompts (locked into
 frozen_prompts at freeze) are excluded from standard metric denominators
 WITHOUT a scoring-version bump: no historical run contains holdout prompts,
 so every historical value is bit-identical under the clarified eligible-set
-definition — a version bump would have severed Parva's baseline
+definition — a version bump would have severed the client's baseline
 comparability for zero measurement benefit. Deferred with named integration
 points rather than half-built: consumer-interface capture (browser runner) →
 EvidenceCaptureAdapter interface; per-client portal logins → Supabase auth
@@ -163,8 +163,8 @@ capture — and feed sources, mention citation attribution, the citation_rate
 metric, and the source_target gap detector. Caveat kept visible: OpenAI
 bills the search tool per call outside token usage, so +search pricing rows
 stay flagged unverified. First live search baseline promptly exposed that
-the "Parva" name is contested territory in retrieval (parvahealth.com,
-parvaconsulting.com, getparva.com) — the entity problem is about winning a
+the pilot client's name is contested territory in retrieval (several
+unrelated same-name companies rank for it) — the entity problem is about winning a
 collision, not filling a void.
 
 ### First LLM agents, behind deterministic gates (spec 010)

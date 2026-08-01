@@ -37,7 +37,7 @@ import { SOURCE_FETCH_TIMEOUT_MS } from "@/lib/knowledge/constants";
  * which would have told every webmaster their own site was crawling them.
  */
 const CRAWLER_USER_AGENT =
-  "ParvaVisibilityAudit/1.0 (internal AI-visibility audit; contact the operator who scheduled it)";
+  "AvosVisibilityAudit/1.0 (internal AI-visibility audit; contact the operator who scheduled it)";
 
 /**
  * Politeness gap between requests to the same host.

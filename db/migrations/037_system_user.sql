@@ -9,8 +9,8 @@
 insert into users (id, email, name, role, active)
 values (
   '00000000-0000-4000-a000-000000000001',
-  'system@parva.internal',
-  'Parva Platform',
+  'system@avos.internal',
+  'AI Visibility OS',
   'operator',
   true
 )
