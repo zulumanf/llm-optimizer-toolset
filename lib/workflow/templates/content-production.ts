@@ -262,7 +262,9 @@ registerHandlers({
     if (!asset) return MISSING_ASSET;
     const assetId = asset.assetId;
     const user = await systemUser();
-    const result = await verifyDraft(user, { assetId });
+    // The template runs adversarial review as its own node (content.adversarial)
+    // with its own exception path — opting out here keeps it from running twice.
+    const result = await verifyDraft(user, { assetId, skipAdversarial: true });
     if (!result.ok) {
       return { outcome: "failed_retryable", error: result.error.message };
     }

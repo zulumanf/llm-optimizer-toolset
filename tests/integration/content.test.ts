@@ -132,6 +132,10 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
     };
   }
 
+  // verifyDraft's shipped path now runs adversarial review after the fact
+  // verifier (D1) — the fake caller must answer both agents in order.
+  const cleanAdversarial = { issues: [], overallRisk: "low" };
+
   const briefOutput = (claimId: string) => ({
     assetType: "category_page",
     title: "Link in bio for real estate agents",
@@ -174,6 +178,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
       { assetId: briefed.data.assetId },
       fakeCaller([
         { verdicts: [{ excerpt: "Parva is a link-in-bio tool", verdict: "verified", reason: "matches claim" }] },
+        cleanAdversarial,
       ])
     );
     expect(verified.ok).toBe(true);
@@ -229,7 +234,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
     const verified = await content.verifyDraft(
       user,
       { assetId: briefed.data.assetId },
-      fakeCaller([{ verdicts: [] }])
+      fakeCaller([{ verdicts: [] }, cleanAdversarial])
     );
     expect(verified.ok).toBe(true);
     if (!verified.ok) return;
@@ -266,12 +271,82 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
             { excerpt: "stretchy claim", verdict: "unsupported", reason: "no claim covers this" },
           ],
         },
+        cleanAdversarial,
       ])
     );
     expect(verified.ok).toBe(true);
     if (!verified.ok) return;
     expect(verified.data.passed).toBe(false);
     expect(verified.data.unsupported).toBe(1);
+  });
+
+  it("a blocking adversarial issue keeps the asset un-verified (D1)", async () => {
+    const { findingId, claimId } = await seed();
+    const briefed = await content.createBriefFromFinding(
+      user,
+      { findingId },
+      fakeCaller([briefOutput(claimId)])
+    );
+    if (!briefed.ok) throw new Error(briefed.error.message);
+    await content.generateDraft(
+      user,
+      { assetId: briefed.data.assetId },
+      fakeCaller([
+        {
+          markdown: `Parva is a link-in-bio tool built for real estate agents [claim:${claimId}]. Additional practical guidance for agents follows, covering profiles, links, and how a single hub page keeps listings and reviews reachable from every social bio.`,
+        },
+      ])
+    );
+
+    // Gate passes, fact verifier passes — the adversarial reviewer is the
+    // only line of defence that fires. Before D1 it never ran on this path.
+    const verified = await content.verifyDraft(
+      user,
+      { assetId: briefed.data.assetId },
+      fakeCaller([
+        { verdicts: [] },
+        {
+          issues: [
+            {
+              question: "Could this harm the client if published?",
+              issue: "The framing implies an exclusive endorsement no claim supports.",
+              severity: "high",
+              suggestedFix: "Attribute the positioning to the cited claim only.",
+              quote: "built for real estate agents",
+            },
+          ],
+          overallRisk: "high",
+        },
+      ])
+    );
+    expect(verified.ok).toBe(true);
+    if (!verified.ok) return;
+    expect(verified.data.passed).toBe(false);
+    expect(verified.data.adversarialBlocking).toBe(1);
+    const [asset] = await sql`
+      select status from content_assets where id = ${briefed.data.assetId}
+    `;
+    expect(asset?.status).toBe("drafted");
+
+    // And the redraft prompt carries the adversarial finding forward — the
+    // next attempt is told exactly what to fix.
+    let prompt = "";
+    await content.generateDraft(
+      user,
+      { assetId: briefed.data.assetId },
+      async (args) => {
+        prompt = args.user;
+        return {
+          text: JSON.stringify({
+            markdown: `Parva is a link-in-bio tool built for real estate agents [claim:${claimId}]. Practical setup guidance follows for agents assembling their online presence with one hub for listings, reviews, and contact links across social platforms.`,
+          }),
+          tokensIn: 1,
+          tokensOut: 1,
+        };
+      }
+    );
+    expect(prompt).toContain("PREVIOUS draft failed verification");
+    expect(prompt).toContain("exclusive endorsement");
   });
 
   it("briefing requires approved claims; versions are immutable", async () => {
