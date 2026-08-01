@@ -148,7 +148,13 @@ export default async function ControlTowerPage() {
           value={String(capacity.humanMinutesTotal)}
           sub={`${capacity.approvalsTotal} approvals · ${capacity.exceptionsTotal} exceptions`}
         />
-        <Tile label="Failed runs (7d)" value={String(metrics.failedRuns7d)} alert={metrics.failedRuns7d > 0} />
+        {/* Counts benchmark `runs`, not workflow_runs — labelled as such so it
+            stops masquerading as a workflow metric among workflow tiles. */}
+        <Tile
+          label="Failed benchmark runs (7d)"
+          value={String(metrics.failedRuns7d)}
+          alert={metrics.failedRuns7d > 0}
+        />
       </div>
 
       <p className="mb-6 rounded-md border border-dashed p-3 text-xs text-muted-foreground">

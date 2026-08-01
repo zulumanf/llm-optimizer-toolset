@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AGENTS } from "@/lib/agents/registry";
+import { agentMetrics } from "@/lib/automation/metrics";
 import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
@@ -13,12 +14,13 @@ const DOMAIN_LABEL: Record<string, string> = {
   platform: "Platform",
 };
 
-export default function AgentRegistryPage() {
+export default async function AgentRegistryPage() {
   const byDomain = new Map<string, typeof AGENTS>();
   for (const agent of AGENTS) {
     byDomain.set(agent.domain, [...(byDomain.get(agent.domain) ?? []), agent]);
   }
   const implemented = AGENTS.filter((a) => a.status === "implemented").length;
+  const measured = await agentMetrics();
 
   return (
     <div className="mx-auto max-w-6xl p-6">
@@ -37,6 +39,62 @@ export default function AgentRegistryPage() {
         implementation, and are labelled <em>declared</em> rather than counted as
         working.
       </p>
+
+      {/* Measured behavior next to the declared contracts — agentMetrics()
+          was computed and rendered nowhere (C5). This page previously showed
+          only the hand-written registry constant. */}
+      <section className="mb-8">
+        <h2 className="mb-2 text-lg font-medium">Measured (workflow node runs)</h2>
+        {measured.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No agent has executed inside a workflow yet — this table populates
+            from real node runs, not from the registry&apos;s claims.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-xs">
+                <tr>
+                  <th className="p-2">Agent version</th>
+                  <th className="p-2 text-right">Invocations</th>
+                  <th className="p-2 text-right">Schema failures</th>
+                  <th className="p-2 text-right">Avg confidence</th>
+                  <th className="p-2 text-right">Below threshold</th>
+                  <th className="p-2 text-right">Human overrides</th>
+                  <th className="p-2 text-right">Avg cost</th>
+                  <th className="p-2 text-right">Avg latency</th>
+                </tr>
+              </thead>
+              <tbody>
+                {measured.map((m) => (
+                  <tr key={m.agentVersion} className="border-t">
+                    <td className="p-2 font-mono text-xs">{m.agentVersion}</td>
+                    <td className="p-2 text-right tabular-nums">{m.invocations}</td>
+                    <td className="p-2 text-right tabular-nums">
+                      {m.schemaFailures > 0 ? (
+                        <span className="text-destructive">{m.schemaFailures}</span>
+                      ) : (
+                        0
+                      )}
+                    </td>
+                    <td className="p-2 text-right tabular-nums">
+                      {m.avgConfidence === null ? "—" : m.avgConfidence.toFixed(2)}
+                    </td>
+                    <td className="p-2 text-right tabular-nums">{m.belowThreshold}</td>
+                    <td className="p-2 text-right tabular-nums">{m.humanOverrides}</td>
+                    <td className="p-2 text-right tabular-nums">
+                      ${(m.avgCostMicroUsd / 1_000_000).toFixed(4)}
+                    </td>
+                    <td className="p-2 text-right tabular-nums">
+                      {m.avgLatencySeconds === null ? "—" : `${m.avgLatencySeconds}s`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {[...byDomain.entries()].map(([domain, agents]) => (
         <section key={domain} className="mb-8">
