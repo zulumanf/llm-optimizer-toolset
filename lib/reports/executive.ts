@@ -62,7 +62,7 @@ export interface BriefData {
   workBlocked: { summary: string; kind: string }[];
   approvalsNeeded: { summary: string; requestedAt: string }[];
   newOpportunities: { finding: string; score: number }[];
-  newFactualProblems: { quote: string; severity: string }[];
+  newFactualProblems: { id: string; quote: string; severity: string }[];
   integrationIssues: string[];
   sampleSizes: Record<string, number>;
 }
@@ -93,17 +93,17 @@ export async function collectBriefData(input: BriefInput): Promise<BriefData> {
 
   if (currentRun) {
     const rows = await sql`
-      select s.metric, s.value, s.sample_size, s.scoring_version
+      select s.id, s.metric, s.value, s.sample_size, s.scoring_version
       from scores s
       join projects p on p.id = ${input.projectId}
       where s.run_id = ${currentRun.id}
         and s.company_id = p.subject_company_id
         and s.provider = 'all'
     `;
-    const previousByMetric = new Map<string, number>();
+    const previousByMetric = new Map<string, { value: number; id: string }>();
     if (previousRun) {
       const prevRows = await sql`
-        select s.metric, s.value
+        select s.id, s.metric, s.value
         from scores s
         join projects p on p.id = ${input.projectId}
         where s.run_id = ${previousRun.id}
@@ -111,13 +111,17 @@ export async function collectBriefData(input: BriefInput): Promise<BriefData> {
           and s.provider = 'all'
       `;
       for (const row of prevRows) {
-        previousByMetric.set(row.metric as string, Number(row.value));
+        previousByMetric.set(row.metric as string, {
+          value: Number(row.value),
+          id: row.id as string,
+        });
       }
     }
     for (const row of rows) {
       const metric = row.metric as string;
       const current = Number(row.value);
-      const previous = previousByMetric.has(metric) ? previousByMetric.get(metric)! : null;
+      const prev = previousByMetric.get(metric) ?? null;
+      const previous = prev?.value ?? null;
       const delta = previous === null ? null : current - previous;
       sampleSizes[metric] = Number(row.sampleSize);
       deltas.push({
@@ -128,7 +132,11 @@ export async function collectBriefData(input: BriefInput): Promise<BriefData> {
         sampleSize: Number(row.sampleSize),
         material: delta !== null && Math.abs(delta) >= MATERIALITY.rateDelta,
         scoringVersion: (row.scoringVersion as string) ?? SCORING_VERSION,
-        evidenceIds: [],
+        // The score rows the statement is derived from — the gate refuses a
+        // material statement with no evidence, and for a computed delta the
+        // two score rows ARE the evidence. Leaving this empty made every
+        // brief with material movement fail its own gate (C4).
+        evidenceIds: prev ? [row.id as string, prev.id] : [row.id as string],
       });
     }
   }
@@ -156,7 +164,7 @@ export async function collectBriefData(input: BriefInput): Promise<BriefData> {
     order by opportunity_score desc limit 10
   `;
   const problems = await sql`
-    select quote, severity from accuracy_findings
+    select id, quote, severity from accuracy_findings
     where project_id = ${input.projectId} and status = 'open'
       and created_at >= ${input.periodStart}::date
     order by severity, created_at desc limit 10
@@ -194,6 +202,7 @@ export async function collectBriefData(input: BriefInput): Promise<BriefData> {
       score: Number(r.opportunityScore),
     })),
     newFactualProblems: problems.map((r) => ({
+      id: r.id as string,
       quote: r.quote as string,
       severity: r.severity as string,
     })),
@@ -237,7 +246,9 @@ export function composeBrief(data: BriefData): {
     statements.push({
       text: `A ${problem.severity}-severity factual problem is live in AI answers: "${problem.quote.slice(0, 160)}".`,
       kind: "fact",
-      evidenceIds: [],
+      // The accuracy finding is the evidence: it carries the verbatim quote
+      // and its response linkage.
+      evidenceIds: [problem.id],
       material: true,
     });
   }

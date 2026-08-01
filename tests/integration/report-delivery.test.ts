@@ -205,6 +205,68 @@ describe.skipIf(!TEST_URL)("report delivery & executive briefs (integration)", (
     ).toBe(404);
   });
 
+  it("a week with MATERIAL movement produces a brief whose statements carry evidence (C4)", async () => {
+    // The exact defect: material statements shipped with empty evidenceIds,
+    // the gate refuses material statements without evidence, so a brief
+    // generated only in weeks where nothing happened. Build a real material
+    // delta: the harness's scored run, plus an earlier run whose scores sit
+    // far below it.
+    const projectId = await seedScoredProject("Material Client");
+    const [subject] = await sql`
+      select subject_company_id as id from projects where id = ${projectId}
+    `;
+    const [version] = await sql`
+      select v.id from prompt_set_versions v
+      join prompt_sets s on s.id = v.prompt_set_id
+      where s.project_id = ${projectId}
+    `;
+    const [prevRun] = await sql`
+      insert into runs (project_id, prompt_set_version_id, label, providers,
+        status, trigger, budget_usd, started_at)
+      values (${projectId}, ${version!.id}, 'prior week', '[]', 'completed',
+        'manual', 5, now() - interval '5 days')
+      returning id
+    `;
+    const current = await sql`
+      select s.metric, s.value, s.sample_size, s.scoring_version
+      from scores s
+      join runs r on r.id = s.run_id
+      where r.project_id = ${projectId} and s.company_id = ${subject!.id}
+        and s.provider = 'all' and r.id != ${prevRun!.id}
+    `;
+    expect(current.length).toBeGreaterThan(0);
+    for (const row of current) {
+      // 30pp below current — far past the 5pp materiality threshold.
+      const shifted = Math.max(0, Number(row.value) - 0.3);
+      await sql`
+        insert into scores (run_id, company_id, metric, provider, value,
+          sample_size, scoring_version)
+        values (${prevRun!.id}, ${subject!.id}, ${row.metric}, 'all',
+          ${shifted}, ${row.sampleSize}, ${row.scoringVersion})
+      `;
+    }
+
+    const result = await sql.begin((tx) =>
+      executive.generateWeeklyBrief(tx, {
+        projectId,
+        periodStart: isoDaysAgo(7),
+        periodEnd: isoDaysAgo(0),
+      })
+    );
+
+    expect(result.gate.outcome).toBe("pass");
+    expect(result.briefId).toBeTruthy();
+    const material = result.statements.filter((s) => s.material);
+    expect(material.length).toBeGreaterThan(0);
+    for (const statement of material) {
+      expect(statement.evidenceIds.length).toBeGreaterThan(0);
+    }
+    const [row] = await sql`
+      select evidence_ids from executive_briefs where id = ${result.briefId!}
+    `;
+    expect(((row?.evidenceIds as string[]) ?? []).length).toBeGreaterThan(0);
+  });
+
   it("monthly and quarterly briefs generate behind the gate, once per period", async () => {
     const projectId = await seedScoredProject("Brief Client");
     const period = { periodStart: isoDaysAgo(27), periodEnd: isoDaysAgo(0) };

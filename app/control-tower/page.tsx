@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { CheckCircle2, AlertTriangle } from "lucide-react";
-import { portfolioMetrics, latestHealthByClient } from "@/db/control-tower";
+import {
+  portfolioMetrics,
+  latestHealthByClient,
+  listExecutiveBriefs,
+} from "@/db/control-tower";
 import { listActiveProjects } from "@/db/projects";
 import { BriefGenerator } from "@/components/control-tower/brief-generator";
 import { actionRequiredQueue } from "@/lib/control-tower/queue";
@@ -64,7 +68,7 @@ function periodOfLastDays(days: number): { start: string; end: string } {
 
 export default async function ControlTowerPage() {
   const period = periodOfLastDays(28);
-  const [metrics, queue, health, capacity, automation, activeProjects] =
+  const [metrics, queue, health, capacity, automation, activeProjects, briefs] =
     await Promise.all([
       portfolioMetrics(),
       actionRequiredQueue({ limit: 40 }),
@@ -72,6 +76,7 @@ export default async function ControlTowerPage() {
       computeCapacity(period),
       automationByWorkflow(period),
       listActiveProjects(),
+      listExecutiveBriefs(8),
     ]);
 
   return (
@@ -213,6 +218,33 @@ export default async function ControlTowerPage() {
             refusal means the evidence is not there yet, not an error.
           </p>
         </div>
+        {briefs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No briefs generated yet — the weekly workflow writes one per
+            client per week once measurement is running.
+          </p>
+        ) : (
+          <ul className="divide-y rounded-lg border">
+            {briefs.map((brief) => (
+              <li key={brief.id} className="flex items-center gap-3 p-3 text-sm">
+                <Badge variant="outline" className="shrink-0">
+                  {brief.kind}
+                </Badge>
+                <Link
+                  href={`/control-tower/briefs/${brief.id}`}
+                  className="min-w-0 truncate font-medium hover:underline"
+                >
+                  {brief.sections.headline ??
+                    `${brief.projectName} — ${brief.kind} brief`}
+                </Link>
+                <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  {brief.periodStart.toISOString().slice(0, 10)} →{" "}
+                  {brief.periodEnd.toISOString().slice(0, 10)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <h2 className="mb-2 text-lg font-medium">
           Client health{" "}
