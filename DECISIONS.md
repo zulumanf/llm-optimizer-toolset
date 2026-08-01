@@ -759,3 +759,20 @@ the core loop: benchmark.started/completed/partially_failed now publish
 transactionally with the run writes, and visibility.materially_declined
 publishes after scoring with a (run, metric) dedupe key so a re-score
 cannot double-fire the automation layer.
+
+## 2026-07-31 — Pilot-first finish plan; attribution stays deferred
+
+Full-platform QA audit (295 items, nine-agent code trace, this date)
+scored the system at ~64% with the measurement/reporting core solid and
+the automation library non-functional live. Operator decision: drive to a
+sellable paid pilot first (~3 weeks solo), then grow toward five clients
+— rather than finishing the full checklist or gating launch on 5-client
+infrastructure. Revenue attribution remains deferred (re-confirmed);
+solo operation for the quarter moves RLS depth and multi-operator role
+separation to the post-pilot track and moves correctness P0s up: mock
+provider reachable in production, crash-mid-node runs reported
+`completed`, approval timeouts never firing, unpriced models disabling
+budget caps, scoring-version mixing in dashboards. Plan and sequencing:
+`docs/pilot-launch-plan.md` (supersedes the completed phases 0–3 of
+`docs/implementation-roadmap.md`; its Phase 4 items fold into the
+post-pilot track).
