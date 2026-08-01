@@ -1,5 +1,6 @@
 import { sql } from "@/db/client";
 import { getSubjectCompany } from "@/db/companies";
+import { SCORING_VERSION } from "@/lib/constants";
 
 export interface CompetitorRow {
   id: string;
@@ -37,7 +38,9 @@ export async function listComparisonCompanies(
   `;
 }
 
-/** Latest scored run's metric values per company (provider = 'all'). */
+/** Latest scored run's metric values per company (provider = 'all'),
+ * pinned to the current scoring version — a comparison matrix mixing
+ * versions across companies would be the forbidden cross-version read. */
 export async function latestScoresByCompany(
   projectId: string
 ): Promise<Map<string, Record<string, number>>> {
@@ -45,10 +48,12 @@ export async function latestScoresByCompany(
     select s.company_id, s.metric, s.value
     from scores s
     where s.provider = 'all'
+      and s.scoring_version = ${SCORING_VERSION}
       and s.run_id = (
         select r.id from runs r
         join scores s2 on s2.run_id = r.id
         where r.project_id = ${projectId}
+          and s2.scoring_version = ${SCORING_VERSION}
         order by r.started_at desc
         limit 1
       )

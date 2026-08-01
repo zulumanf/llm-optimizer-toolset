@@ -120,8 +120,8 @@ describe.skipIf(!TEST_URL)("worker dispatch substrate (integration)", () => {
     const second = await jobs.claimNextJob("worker-b");
     expect(second?.id).toBe(jobId);
 
-    const [{ count }] = await sql`select count(*)::int as count from jobs`;
-    expect(Number(count)).toBe(1);
+    const [countRow] = await sql`select count(*)::int as count from jobs`;
+    expect(Number(countRow!.count)).toBe(1);
   });
 
   // ------------------------------------------------ failure & dead-letter

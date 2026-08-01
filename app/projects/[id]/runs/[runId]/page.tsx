@@ -115,7 +115,11 @@ export default async function RunDetailPage({
                     <TableCell className="text-right tabular-nums">
                       {s.sampleSize < 10
                         ? "insufficient data"
-                        : `${(Number(s.value) * 100).toFixed(1)}%`}
+                        : s.metric === "authority_score"
+                          ? // Already 0–100 (docs/06) — ×100 rendered a 55.2
+                            // authority as "5520.0%".
+                            Number(s.value).toFixed(1)
+                          : `${(Number(s.value) * 100).toFixed(1)}%`}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-xs">
                       {s.sampleSize}

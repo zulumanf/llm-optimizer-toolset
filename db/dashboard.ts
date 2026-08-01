@@ -1,5 +1,6 @@
 import { sql } from "@/db/client";
 import { getSubjectCompany } from "@/db/companies";
+import { SCORING_VERSION } from "@/lib/constants";
 
 export interface TrendPoint {
   runId: string;
@@ -11,7 +12,12 @@ export interface TrendPoint {
   promptSetVersionId: string;
 }
 
-/** Authority-score history for the project's subject, per provider. */
+/**
+ * Authority-score history for the project's subject, per provider — current
+ * scoring version only. Mixing versions in one trend line is exactly the
+ * cross-version comparison lib/constants.ts forbids; a run scored only under
+ * an older version drops out of the line rather than being silently blended.
+ */
 export async function authorityTrend(projectId: string): Promise<TrendPoint[]> {
   const subject = await getSubjectCompany(projectId);
   if (!subject) return [];
@@ -22,6 +28,7 @@ export async function authorityTrend(projectId: string): Promise<TrendPoint[]> {
     join runs r on r.id = s.run_id
     where r.project_id = ${projectId} and s.company_id = ${subject.id}
       and s.metric = 'authority_score'
+      and s.scoring_version = ${SCORING_VERSION}
     order by r.started_at asc
   `;
 }
@@ -48,11 +55,14 @@ export async function latestScoredRunId(projectId: string): Promise<string | nul
 export async function selfTiles(projectId: string): Promise<SelfTile[]> {
   const subject = await getSubjectCompany(projectId);
   if (!subject) return [];
+  // Version-pinned throughout: the tile and its delta must compare a run to
+  // its predecessor under the SAME scoring version, never across versions.
   const rows = await sql`
     with scored_runs as (
       select distinct r.id, r.started_at
       from runs r join scores s on s.run_id = r.id
       where r.project_id = ${projectId}
+        and s.scoring_version = ${SCORING_VERSION}
       order by r.started_at desc limit 2
     ),
     ranked as (
@@ -63,6 +73,7 @@ export async function selfTiles(projectId: string): Promise<SelfTile[]> {
     from scores s
     join ranked on ranked.id = s.run_id
     where s.company_id = ${subject.id} and s.provider = 'all'
+      and s.scoring_version = ${SCORING_VERSION}
   `;
   const latest = rows.filter((r) => r.rn === "1" || Number(r.rn) === 1);
   const previous = new Map(
