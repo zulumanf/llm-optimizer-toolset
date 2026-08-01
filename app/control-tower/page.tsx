@@ -10,6 +10,7 @@ import { HEALTH_WEIGHTS_VERSION } from "@/lib/control-tower/health";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { PriorityBreakdownDetails } from "@/components/control-tower/priority-breakdown";
+import { ResolveException } from "@/components/control-tower/resolve-exception";
 import { HealthComponents } from "@/components/control-tower/health-components";
 
 export const dynamic = "force-dynamic";
@@ -187,6 +188,11 @@ export default async function ControlTowerPage() {
                         : ""}
                     </p>
                     <PriorityBreakdownDetails breakdown={item.priority} />
+                    {item.source === "workflow_exception" && (
+                      <div className="mt-1">
+                        <ResolveException exceptionId={item.id} />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

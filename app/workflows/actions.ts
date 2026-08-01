@@ -220,6 +220,7 @@ export async function resolveExceptionAction(
       return fail(new ClassifiedError("conflict", "That exception is no longer open."));
     }
     revalidatePath("/control-tower");
+    revalidatePath("/automation");
     return ok({ exceptionId: parsed.data.exceptionId });
   } catch (err) {
     return fail(err);

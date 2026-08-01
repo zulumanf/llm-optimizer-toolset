@@ -13,7 +13,6 @@ import { writeAudit } from "@/db/audit";
 import { assertProjectAccess, assertRole, getCurrentUser } from "@/lib/auth";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { ClassifiedError } from "@/lib/errors";
-import { resolveException } from "@/lib/workflow/exceptions";
 import * as triggerStore from "@/db/triggers";
 import { replayDelivery } from "@/db/events";
 import {
@@ -146,34 +145,6 @@ export async function cancelAutomationRun(input: {
     await cancelWorkflow(input.runId, input.reason, user.id);
     revalidatePath(`/automation/runs/${input.runId}`);
     return ok({ cancelled: true });
-  } catch (err) {
-    return fail(err);
-  }
-}
-
-export async function resolveAutomationException(input: {
-  exceptionId: string;
-  status: "resolved" | "dismissed";
-  resolution: string;
-}): Promise<ActionResult<{ resolved: boolean }>> {
-  try {
-    const user = await getCurrentUser();
-    if (input.resolution.trim().length < 3) {
-      throw new ClassifiedError(
-        "validation",
-        "Say what was done — a resolved exception with no resolution is not a record."
-      );
-    }
-    const resolved = await sql.begin((tx) =>
-      resolveException(tx, {
-        id: input.exceptionId,
-        status: input.status,
-        resolution: input.resolution,
-        userId: user.id,
-      })
-    );
-    revalidatePath("/automation");
-    return ok({ resolved });
   } catch (err) {
     return fail(err);
   }
