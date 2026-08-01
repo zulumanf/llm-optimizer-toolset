@@ -17,7 +17,7 @@ import { analyzeRun } from "@/lib/gaps/service";
 import { analyzeRunAccuracy } from "@/lib/accuracy/service";
 import { generateReportDraft } from "@/lib/reports/service";
 import { getSubjectCompany } from "@/db/companies";
-import { getCurrentUser } from "@/lib/auth";
+import { systemUser } from "@/lib/auth";
 import type { ProviderConfig } from "@/lib/runs/cells";
 import { log } from "@/lib/logger";
 
@@ -147,7 +147,7 @@ export async function advanceCycle(cycleId: string): Promise<CycleState> {
   if (["completed", "halted", "failed"].includes(state)) return state;
 
   const projectId = cycle.projectId as string;
-  const user = await getCurrentUser();
+  const user = await systemUser();
 
   // --- started → launch the benchmark ---------------------------------
   if (state === "started") {

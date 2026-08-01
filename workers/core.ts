@@ -15,7 +15,7 @@ import { syncNotifications } from "@/lib/notifications/service";
 import { analyzeRun } from "@/lib/gaps/service";
 import { analyzeRunAccuracy } from "@/lib/accuracy/service";
 import { generateEvidenceExport } from "@/lib/evidence/export";
-import { getCurrentUser } from "@/lib/auth";
+import { systemUser } from "@/lib/auth";
 import { advanceCycle } from "@/lib/cycles/service";
 import { compileAffected } from "@/lib/knowledge/build/planner";
 import { advanceWorkflow } from "@/lib/workflow/engine";
@@ -63,12 +63,12 @@ export const handlers: Record<
   // Long agent/IO operations run here rather than blocking a request:
   // each is idempotent, so a retry after a crash is safe (UX pass).
   analyze_gaps: async (payload) => {
-    const user = await getCurrentUser();
+    const user = await systemUser();
     const result = await analyzeRun(user, { runId: payload.runId as string });
     if (!result.ok) throw new Error(result.error.message);
   },
   analyze_accuracy: async (payload) => {
-    const user = await getCurrentUser();
+    const user = await systemUser();
     const result = await analyzeRunAccuracy(user, {
       runId: payload.runId as string,
     });
@@ -96,7 +96,7 @@ export const handlers: Record<
     await advanceWorkflow(payload.runId as string);
   },
   build_evidence_export: async (payload) => {
-    const user = await getCurrentUser();
+    const user = await systemUser();
     const result = await generateEvidenceExport(user, {
       runId: payload.runId as string,
     });

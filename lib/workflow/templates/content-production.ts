@@ -11,7 +11,7 @@
  * being rebuilt — one implementation, imported everywhere (CLAUDE.md).
  */
 import { sql } from "@/db/client";
-import { getCurrentUser } from "@/lib/auth";
+import { systemUser } from "@/lib/auth";
 import { generateDraft, verifyDraft } from "@/lib/content/service";
 import { buildEvidencePacket, recordPacket } from "@/lib/knowledge/packet";
 import { adversarialReview, blockingIssues } from "@/lib/agents/verification";
@@ -249,7 +249,7 @@ registerHandlers({
     const asset = loadedAsset(ctx);
     if (!asset) return MISSING_ASSET;
     const assetId = asset.assetId;
-    const user = await getCurrentUser();
+    const user = await systemUser();
     const result = await generateDraft(user, { assetId });
     if (!result.ok) {
       return { outcome: "failed_retryable", error: result.error.message };
@@ -261,7 +261,7 @@ registerHandlers({
     const asset = loadedAsset(ctx);
     if (!asset) return MISSING_ASSET;
     const assetId = asset.assetId;
-    const user = await getCurrentUser();
+    const user = await systemUser();
     const result = await verifyDraft(user, { assetId });
     if (!result.ok) {
       return { outcome: "failed_retryable", error: result.error.message };

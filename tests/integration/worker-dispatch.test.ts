@@ -173,6 +173,35 @@ describe.skipIf(!TEST_URL)("worker dispatch substrate (integration)", () => {
     expect(await core.dispatchOnce("test-worker")).toEqual({ status: "idle" });
   });
 
+  // ------------------------------------------------ system principal (B3)
+
+  it("provides an active system principal after migrations", async () => {
+    const auth = await import("@/lib/auth");
+    const user = await auth.systemUser();
+    expect(user.id).toBe(auth.SYSTEM_USER_ID);
+    expect(user.role).toBe("operator");
+    expect(user.email).toBe("system@parva.internal");
+  });
+
+  it("keeps session lookups out of worker-reachable code", async () => {
+    // getCurrentUser needs request context: in a worker it throws under
+    // AUTH_MODE=supabase and silently impersonates the dev admin under dev.
+    // Background code must act as systemUser() instead — enforced here the
+    // same way connector-security enforces its import boundary.
+    const { readFile } = await import("node:fs/promises");
+    for (const file of [
+      "workers/core.ts",
+      "workers/index.ts",
+      "lib/cycles/service.ts",
+      "lib/workflow/templates/content-production.ts",
+    ]) {
+      const source = await readFile(join(ROOT, file), "utf8");
+      expect(source.includes("getCurrentUser"), `${file} must not use getCurrentUser`).toBe(
+        false
+      );
+    }
+  });
+
   it("registers a handler for every job type the codebase enqueues", async () => {
     // The worker's handler map is load-bearing configuration: a job type
     // enqueued anywhere but missing here dead-letters after 3 attempts.

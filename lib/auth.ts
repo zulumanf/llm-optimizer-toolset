@@ -101,6 +101,37 @@ export async function getCurrentUser(): Promise<CurrentUser> {
   };
 }
 
+/**
+ * The platform's own principal for background work (migration 037).
+ *
+ * Worker handlers and engine node handlers act as this user rather than
+ * calling getCurrentUser(): a worker has no request context, so under
+ * AUTH_MODE=supabase that call throws on every job, and under dev it
+ * silently attributed platform-initiated work to the dev admin. "Acted by
+ * the platform" and "acted by a person" are different facts, and audit rows
+ * should record which one happened.
+ */
+export const SYSTEM_USER_ID = "00000000-0000-4000-a000-000000000001";
+
+export async function systemUser(): Promise<CurrentUser> {
+  const [row] = await sql`
+    select id, email, name, role from users
+    where id = ${SYSTEM_USER_ID} and active
+  `;
+  if (!row) {
+    throw new ClassifiedError(
+      "internal",
+      "The system user is missing — run database migrations (037_system_user)."
+    );
+  }
+  return {
+    id: row.id as string,
+    email: row.email as string,
+    name: row.name as string,
+    role: row.role as Role,
+  };
+}
+
 /** Null instead of throwing — for layouts deciding what to render. */
 export async function getCurrentUserOrNull(): Promise<CurrentUser | null> {
   try {
