@@ -7,6 +7,7 @@ import {
   Bell,
   Bot,
   Building2,
+  Crosshair,
   CheckSquare,
   Gauge,
   LayoutDashboard,
@@ -146,6 +147,11 @@ export function SidebarNav({
         <li>
           <NavLink href="/companies" active={pathname.startsWith("/companies")}>
             <Building2 className="size-4" /> Companies
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/prospects" active={pathname.startsWith("/prospects")}>
+            <Crosshair className="size-4" /> Prospects
           </NavLink>
         </li>
         <li>

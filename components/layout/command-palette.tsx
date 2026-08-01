@@ -29,6 +29,7 @@ const GLOBAL: Target[] = [
   { label: "Agents", sublabel: "Registry", href: "/agents", keywords: "agents registry missions models" },
   { label: "Clients", sublabel: "Operations", href: "/projects", keywords: "clients projects portfolio" },
   { label: "Companies", sublabel: "Registry", href: "/companies", keywords: "companies brands competitors registry" },
+  { label: "Prospects", sublabel: "Operations", href: "/prospects", keywords: "prospects acquisition launches outreach pipeline audits" },
   { label: "Exclusivity", sublabel: "Operations", href: "/exclusivity", keywords: "exclusivity conflicts markets agreements" },
   { label: "Onboard a client", sublabel: "Operations", href: "/onboarding", keywords: "onboard new client add vertical pack" },
 ];

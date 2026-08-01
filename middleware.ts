@@ -18,8 +18,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-/** Paths reachable without a session. */
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/webhooks"];
+/** Paths reachable without a session. `/audit` is the prospect audit page —
+ * its own security is the high-entropy token (spec 032). */
+const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/webhooks", "/audit"];
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   if (process.env.AUTH_MODE !== "supabase") return NextResponse.next();
