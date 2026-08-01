@@ -331,15 +331,25 @@ export async function assertSendAllowed(input: SendGateInput): Promise<SendGateV
       );
     }
     // 6. Message version: the approved artifact must be the one being sent.
+    // No recorded hash FAILS: an approval that cannot be bound to a specific
+    // message version authorises nothing. The old soft-pass here meant the
+    // check never actually ran in production, because the engine buried the
+    // hash under detail.output.artifact (fixed alongside this, A7).
     const approvedHash = (approval.detail as { bodyHash?: string } | null)?.bodyHash;
-    if (approvedHash && approvedHash !== input.bodyHash) {
+    if (!approvedHash) {
+      return fail(
+        "message_version",
+        "the approval records no artifact hash, so the approved version cannot be verified; re-approve the message"
+      );
+    }
+    if (approvedHash !== input.bodyHash) {
       return fail(
         "message_version",
         "the message changed after it was approved; a new approval is required"
       );
     }
     pass("approval", `approved by ${(approval.decidedBy as string | null) ?? "unknown"}`);
-    pass("message_version", approvedHash ? "hash matches the approved artifact" : "no hash recorded on the approval");
+    pass("message_version", "hash matches the approved artifact");
   } else {
     pass("approval", `autonomy level ${input.autonomyLevel} does not require per-send approval`);
     pass("message_version", "not gated at this autonomy level");

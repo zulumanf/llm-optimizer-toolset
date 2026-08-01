@@ -474,6 +474,41 @@ describe.skipIf(!TEST_URL)("workflow engine (integration)", () => {
     expect(approvalNode.humanTouch).toBe(true);
   });
 
+  it("binds an approval to the artifact hash from the real write path (A7)", async () => {
+    // An approval node whose handler surfaces the artifact under review —
+    // the shape the automation layer's approve_outreach node produces.
+    handlers.registerHandlers({
+      "test.artifact_gate": async () => ({
+        outcome: "awaiting_approval",
+        reason: "Send this message?",
+        output: { artifact: { subject: "Hi", bodyHash: "hash-of-approved-body" } },
+      }),
+    });
+    await engine.registerDefinition({
+      ...approvalGraph(),
+      key: "hash_bind_test",
+      nodes: approvalGraph().nodes.map((n) =>
+        n.key === "approval" ? { ...n, handler: "test.artifact_gate" } : n
+      ),
+    });
+    const projectId = await newProject("Hash binding");
+    const run = await engine.startWorkflow({
+      definitionKey: "hash_bind_test",
+      projectId,
+      idempotencyKey: "hash-bind-1",
+    });
+    await drain();
+
+    // The engine — not a hand-inserted fixture — must have hoisted the hash
+    // to detail.bodyHash, the key the send gate reads. Before A7 it was
+    // buried under detail.output.artifact and the version check soft-passed.
+    const [approval] = await sql`
+      select detail->>'bodyHash' as body_hash
+      from workflow_approvals where workflow_run_id = ${run.id}
+    `;
+    expect(approval?.bodyHash).toBe("hash-of-approved-body");
+  });
+
   it("times out an unanswered approval through the queue, not by luck (A4)", async () => {
     await engine.registerDefinition(approvalGraph());
     const projectId = await newProject("Approval timeout");

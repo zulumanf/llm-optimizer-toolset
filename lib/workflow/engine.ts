@@ -486,6 +486,21 @@ async function recordNodeResult(
         reason: result.reason ?? "approval required",
         workflowVersion,
       });
+      // An approval binds to the exact artifact version the approver saw.
+      // Hoist the artifact hash to the top of `detail` — the send gate reads
+      // `detail.bodyHash`, and burying it under output.artifact made the
+      // version check silently vacuous ("no hash recorded" soft-pass, A7).
+      const approvalOutput = (result.output ?? {}) as Record<string, unknown>;
+      const approvalArtifact = approvalOutput.artifact as
+        | Record<string, unknown>
+        | undefined;
+      const approvedBodyHash =
+        (typeof approvalOutput.bodyHash === "string"
+          ? approvalOutput.bodyHash
+          : undefined) ??
+        (approvalArtifact && typeof approvalArtifact.bodyHash === "string"
+          ? approvalArtifact.bodyHash
+          : undefined);
       await store.insertApproval(tx, {
         runId: run.id,
         nodeRunId: claimedId,
@@ -494,7 +509,11 @@ async function recordNodeResult(
         riskLevel: nodeDef.riskLevel ?? "low",
         requiredRole: nodeDef.approvalRole ?? "operator",
         summary: result.reason ?? `${nodeDef.name} needs approval`,
-        detail: { output: result.output ?? {}, autonomy: args.autonomyDetail },
+        detail: {
+          output: result.output ?? {},
+          autonomy: args.autonomyDetail,
+          ...(approvedBodyHash ? { bodyHash: approvedBodyHash } : {}),
+        },
         evidenceIds: result.evidenceIds ?? [],
         dueAt: new Date(Date.now() + APPROVAL_TIMEOUT_HOURS * 3600_000),
       });

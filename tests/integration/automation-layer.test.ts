@@ -1436,6 +1436,47 @@ describe.skipIf(!TEST_URL)("automation layer (integration)", () => {
       expect(verdict.failedCheck).toBe("message_version");
     });
 
+    it("refuses when the approval records no artifact hash at all (A7: fail closed)", async () => {
+      const [definition] = await sql`
+        insert into workflow_definitions (key, name, action_type) values ('nh_wf', 'NH', 'test') returning id
+      `;
+      const [version] = await sql`
+        insert into workflow_versions (definition_id, version, graph_hash, spec)
+        values (${definition!.id}, 1, 'nhh', '{}'::jsonb) returning id
+      `;
+      const [run] = await sql`
+        insert into workflow_runs (version_id, project_id, idempotency_key)
+        values (${version!.id}, ${projectA}, 'nohash-run') returning id
+      `;
+      const [node] = await sql`
+        insert into workflow_nodes (version_id, node_key, node_type, name)
+        values (${version!.id}, 'n', 'integration_task', 'N') returning id
+      `;
+      const [nodeRun] = await sql`
+        insert into node_runs (workflow_run_id, node_id, node_key, fan_key, state)
+        values (${run!.id}, ${node!.id}, 'n', '', 'awaiting_approval') returning id
+      `;
+      // The shape the engine used to write: hash buried under output, nothing
+      // at detail.bodyHash. This must now REFUSE — the old soft-pass meant
+      // the version check never actually ran.
+      const [approval] = await sql`
+        insert into workflow_approvals (workflow_run_id, node_run_id, project_id, action_type,
+          risk_level, required_role, summary, detail, decision, decided_by, decided_at)
+        values (${run!.id}, ${nodeRun!.id}, ${projectA}, 'outreach', 'high', 'operator',
+          'Send it?', ${sql.json({ output: { artifact: { bodyHash: "buried" } } })},
+          'approved', ${OPERATOR}, now())
+        returning id
+      `;
+      const verdict = await suppression.assertSendAllowed({
+        ...base,
+        autonomyLevel: 2,
+        approvalId: approval!.id as string,
+      });
+      expect(verdict.allowed).toBe(false);
+      expect(verdict.failedCheck).toBe("message_version");
+      expect(verdict.reason).toContain("no artifact hash");
+    });
+
     it("allows a send whose approved hash matches", async () => {
       const [definition] = await sql`
         insert into workflow_definitions (key, name, action_type) values ('i_wf', 'I', 'test') returning id
