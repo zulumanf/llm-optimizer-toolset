@@ -7,6 +7,7 @@ import { sql } from "@/db/client";
 import { Badge } from "@/components/ui/badge";
 import { SubjectSelector } from "@/components/knowledge/subject-selector";
 import { ClaimCard } from "@/components/knowledge/claim-card";
+import { ClaimDates } from "@/components/knowledge/claim-dates";
 import { ProposeClaimDialog } from "@/components/knowledge/propose-claim-dialog";
 import { KnowledgeLayerNav } from "@/components/knowledge/layer-nav";
 import { knowledgeSummary } from "@/db/knowledge";
@@ -124,19 +125,29 @@ export default async function KnowledgePage({
         ) : (
           <div className="space-y-3">
             {claims.map((claim) => (
-              <ClaimCard
-                key={claim.id}
-                claim={{
-                  id: claim.id,
-                  claimKey: claim.key,
-                  canonicalText: claim.canonicalText,
-                  asOf: claim.asOf,
-                  status: claim.status,
-                  evidence: claim.evidenceIds
-                    .map((eid) => evidenceById.get(eid))
-                    .filter((e): e is { url: string; note: string } => Boolean(e)),
-                }}
-              />
+              <div key={claim.id}>
+                <ClaimCard
+                  claim={{
+                    id: claim.id,
+                    claimKey: claim.key,
+                    canonicalText: claim.canonicalText,
+                    asOf: claim.asOf,
+                    status: claim.status,
+                    evidence: claim.evidenceIds
+                      .map((eid) => evidenceById.get(eid))
+                      .filter((e): e is { url: string; note: string } => Boolean(e)),
+                  }}
+                />
+                {["approved", "proposed"].includes(claim.status) && (
+                  <div className="mt-1 pl-3">
+                    <ClaimDates
+                      claimId={claim.id}
+                      effectiveDate={claim.effectiveDate}
+                      reviewDate={claim.reviewDate}
+                    />
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}

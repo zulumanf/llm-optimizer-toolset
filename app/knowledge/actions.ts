@@ -30,3 +30,9 @@ export async function rejectClaim(input: unknown) {
 export async function setSubjectCompany(input: unknown) {
   return run((u) => svc.setSubjectCompany(u, input));
 }
+export async function setClaimDates(input: unknown) {
+  return run((u) => svc.setClaimDates(u, input));
+}
+export async function resolveClaimContradiction(input: unknown) {
+  return run((u) => svc.resolveClaimContradiction(u, input));
+}

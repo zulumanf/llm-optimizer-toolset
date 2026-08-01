@@ -262,4 +262,78 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
       "claim.approve",
     ]);
   });
+
+  it("operator-set review dates enable expiry detection; contradictions are resolvable (D2)", async () => {
+    const { projectId } = await makeClientProject("Lifecycle Co", "Parva");
+    const proposed = await claims.proposeClaim(user, {
+      projectId,
+      key: "office_count",
+      canonicalText: "Parva operates three offices.",
+      evidence: [{ url: "https://parva.com/about", note: "About page" }],
+    });
+    if (!proposed.ok) throw new Error(proposed.error.message);
+    await claims.approveClaim(user, { claimId: proposed.data.id });
+
+    // Before D2 nothing wrote review_date, so this detector was blind by
+    // construction: review_date was null on every claim, everywhere.
+    const detectors = await import("@/lib/knowledge/maintenance/detectors");
+    const before = await detectors.detectExpiredClaims(projectId);
+    expect(before.findings).toHaveLength(0);
+
+    const dated = await claims.setClaimDates(user, {
+      claimId: proposed.data.id,
+      effectiveDate: "2026-01-01",
+      reviewDate: "2026-06-01", // already past — the promise to re-verify broke
+    });
+    expect(dated.ok).toBe(true);
+
+    const after = await detectors.detectExpiredClaims(projectId);
+    expect(after.findings).toHaveLength(1);
+    expect(after.findings[0]!.summary).toContain("office_count");
+
+    const listed = await claims.listClaims(projectId);
+    const claim = listed.find((c) => c.id === proposed.data.id)!;
+    expect(claim.effectiveDate).toBe("2026-01-01");
+    expect(claim.reviewDate).toBe("2026-06-01");
+
+    // Contradictions: raise one by hand, then settle it through the new
+    // write path — resolveContradiction previously had zero callers.
+    const [contradiction] = await sql`
+      insert into claim_contradictions (project_id, claim_id, severity,
+        description, detected_by)
+      values (${projectId}, ${proposed.data.id}, 'high',
+        'Office count disagrees with the site footer', 'value_divergence')
+      returning id
+    `;
+    const noNote = await claims.resolveClaimContradiction(user, {
+      contradictionId: contradiction!.id,
+      status: "resolved",
+      resolution: "",
+    });
+    expect(noNote.ok).toBe(false);
+
+    const settled = await claims.resolveClaimContradiction(user, {
+      contradictionId: contradiction!.id,
+      status: "resolved",
+      resolution: "Re-verified against the site footer; approved corrected claim.",
+    });
+    expect(settled.ok).toBe(true);
+
+    const [row] = await sql`
+      select status, resolution from claim_contradictions where id = ${contradiction!.id}
+    `;
+    expect(row!.status).toBe("resolved");
+    const [audit] = await sql`
+      select action from audit_log where entity = 'claim_contradiction'
+    `;
+    expect(audit!.action).toBe("claim.contradiction.resolved");
+
+    // Settling twice is refused — the record is already made.
+    const again = await claims.resolveClaimContradiction(user, {
+      contradictionId: contradiction!.id,
+      status: "dismissed",
+      resolution: "duplicate",
+    });
+    expect(again.ok).toBe(false);
+  });
 });

@@ -4,6 +4,7 @@ import { getProject } from "@/db/projects";
 import { listContradictions } from "@/db/knowledge";
 import { Badge } from "@/components/ui/badge";
 import { KnowledgeLayerNav } from "@/components/knowledge/layer-nav";
+import { ResolveContradiction } from "@/components/knowledge/resolve-contradiction";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +80,7 @@ export default async function ContradictionsPage({
                 includes either one carries this contradiction with it, and the
                 agent is told not to assert the disputed point.
               </p>
+              <ResolveContradiction contradictionId={item.id} />
             </div>
           ))}
         </div>

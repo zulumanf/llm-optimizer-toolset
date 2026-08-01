@@ -334,16 +334,25 @@ export async function runWeeklyMaintenance(options: RunOptions = {}): Promise<Ma
 
   // The contradiction scan is its own service (spec 020) and writes into
   // claim_contradictions, so it reports rather than raising exceptions here.
-  if (projectId) {
-    try {
-      const scan = await scanProjectContradictions(projectId);
-      checksRun += 1;
-      detail.contradiction_scan = scan;
-    } catch (err) {
-      checksFailed += 1;
-      failedChecks.push("contradiction_scan");
-      detail.contradiction_scan = { error: err instanceof Error ? err.message : "unknown" };
+  // The cron heartbeat calls this with NO projectId — the old `if (projectId)`
+  // guard meant the scheduled scan never ran anywhere (D2); a project-less
+  // run now sweeps every active project.
+  try {
+    const targets = projectId
+      ? [projectId]
+      : (await sql`select id from projects where status = 'active'`).map(
+          (row) => row.id as string
+        );
+    const scans: Record<string, unknown> = {};
+    for (const target of targets) {
+      scans[target] = await scanProjectContradictions(target);
     }
+    checksRun += 1;
+    detail.contradiction_scan = projectId ? scans[projectId] : { projects: targets.length, scans };
+  } catch (err) {
+    checksFailed += 1;
+    failedChecks.push("contradiction_scan");
+    detail.contradiction_scan = { error: err instanceof Error ? err.message : "unknown" };
   }
 
   try {
