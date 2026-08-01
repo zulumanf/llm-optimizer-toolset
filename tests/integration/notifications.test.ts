@@ -44,7 +44,7 @@ describe.skipIf(!TEST_URL)("notifications (integration)", () => {
 
   beforeEach(async () => {
     await sql.unsafe(
-      `truncate audit_log, jobs, notifications, accuracy_findings,
+      `truncate workflow_exceptions, audit_log, jobs, notifications, accuracy_findings,
        evidence_exports, client_validation_observations, client_validation_runs,
        audit_samples, evidence_artifacts, content_versions, content_assets,
        gap_findings, claims, tasks, evidence, intervention_runs, interventions,
@@ -188,6 +188,41 @@ describe.skipIf(!TEST_URL)("notifications (integration)", () => {
     expect(await notifications.unreadCount()).toBe(0);
     // Still open (read ≠ resolved), so the digest still lists them
     expect(await notifications.digestText()).toContain("Digest A");
+  });
+
+  it("an open workflow exception reaches the inbox (C6: no silent failures)", async () => {
+    // The feed previously queried none of the workflow_exceptions table —
+    // an operator watching /notifications never saw a failed workflow.
+    const project = await projectSvc.createProject(user, { name: "Exception Co" });
+    if (!project.ok) throw new Error(project.error.message);
+    await sql`
+      insert into workflow_exceptions (project_id, kind, severity, summary)
+      values (${project.data.id}, 'failed_workflow', 'high',
+        'Workflow content_production_v1 finished failed')
+    `;
+
+    const result = await notifications.syncNotifications();
+    expect(result.created).toBeGreaterThan(0);
+
+    const [row] = await sql`
+      select severity, href from notifications
+      where project_id = ${project.data.id} and kind = 'workflow_exception'
+        and status != 'resolved'
+    `;
+    expect(row).toBeDefined();
+    expect(row!.severity).toBe("urgent");
+    expect(row!.href).toBe("/control-tower");
+
+    // Resolving the exception self-resolves the notification on re-sync —
+    // the feed's existing contract, now covering automation failures too.
+    await sql`update workflow_exceptions set status = 'resolved'
+      where project_id = ${project.data.id}`;
+    await notifications.syncNotifications();
+    const [after] = await sql`
+      select status from notifications
+      where project_id = ${project.data.id} and kind = 'workflow_exception'
+    `;
+    expect(after!.status).toBe("resolved");
   });
 
   it("digest is honest when nothing is open", async () => {
