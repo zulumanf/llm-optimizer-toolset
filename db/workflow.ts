@@ -383,6 +383,62 @@ export async function claimNodeInstance(
   return claimed;
 }
 
+/**
+ * Reclaim node instances stranded in `running` by a dead worker.
+ *
+ * A live handler is bounded by the engine's withTimeout(timeout_seconds), so
+ * an instance still `running` past timeout + grace can only belong to a
+ * process that died mid-node. Under max_attempts it returns to
+ * `failed_retryable` and the normal retry machinery re-runs it; at the cap it
+ * settles `failed_terminal` so the run discloses the failure — the one thing
+ * this function must never allow is that stranded work reads as completed.
+ */
+export const STALE_NODE_GRACE_SECONDS = 60;
+
+export async function reclaimStaleNodeInstances(
+  runId: string,
+  workflowVersion: number
+): Promise<{ retried: string[]; terminal: string[] }> {
+  return sql.begin(async (tx) => {
+    const stale = await tx`
+      select nr.id, nr.node_key, nr.attempts, wn.max_attempts
+      from node_runs nr
+      join workflow_nodes wn on wn.id = nr.node_id
+      where nr.workflow_run_id = ${runId}
+        and nr.state = 'running'
+        and nr.started_at < now() -
+          make_interval(secs => wn.timeout_seconds + ${STALE_NODE_GRACE_SECONDS})
+      for update of nr skip locked
+    `;
+    const retried: string[] = [];
+    const terminal: string[] = [];
+    for (const row of stale) {
+      const exhausted = Number(row.attempts) >= Number(row.maxAttempts);
+      const to: NodeState = exhausted ? "failed_terminal" : "failed_retryable";
+      await tx`
+        update node_runs set
+          state = ${to},
+          error = ${`stale running instance reclaimed: the worker died mid-node on attempt ${row.attempts}`},
+          next_attempt_at = ${exhausted ? sql`next_attempt_at` : sql`now()`},
+          finished_at = ${exhausted ? sql`now()` : sql`finished_at`}
+        where id = ${row.id}
+      `;
+      await tx`
+        insert into workflow_transitions (
+          workflow_run_id, node_run_id, scope, from_state, to_state, actor,
+          reason, workflow_version, node_version
+        ) values (
+          ${runId}, ${row.id}, 'node', 'running', ${to}, 'engine',
+          'stale running instance reclaimed after worker death',
+          ${workflowVersion}, ${row.nodeKey}
+        )
+      `;
+      (exhausted ? terminal : retried).push(String(row.nodeKey));
+    }
+    return { retried, terminal };
+  });
+}
+
 export async function settleNodeInstance(
   tx: Tx,
   args: {

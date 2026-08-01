@@ -641,6 +641,108 @@ describe.skipIf(!TEST_URL)("workflow engine (integration)", () => {
     expect(exception!.kind).toBe("cost_anomaly");
   });
 
+  // ----------------------------------------------- crash recovery (A3)
+
+  /** Fabricate what a dead worker leaves behind: a node_run stuck in
+   * `running` with no process attached. `ageSeconds` back-dates started_at
+   * so tests can choose fresh (still in flight) vs stale (reclaimable). */
+  async function strandNode(args: {
+    runId: string;
+    versionId: string;
+    nodeKey: string;
+    attempts: number;
+    ageSeconds: number;
+  }): Promise<void> {
+    const [node] = await sql`
+      select id from workflow_nodes
+      where version_id = ${args.versionId} and node_key = ${args.nodeKey}
+    `;
+    await sql`
+      insert into node_runs (
+        workflow_run_id, node_id, node_key, fan_key, state, attempts, input,
+        ready_at, started_at
+      ) values (
+        ${args.runId}, ${node!.id}, ${args.nodeKey}, '', 'running',
+        ${args.attempts}, '{}',
+        now() - make_interval(secs => ${args.ageSeconds}),
+        now() - make_interval(secs => ${args.ageSeconds})
+      )
+    `;
+  }
+
+  it("reclaims a node stranded by a dead worker and finishes the run instead of lying", async () => {
+    const { versionId } = await engine.registerDefinition({ ...fanGraph(), key: "crash_test" });
+    const projectId = await newProject("Crash recovery");
+    const run = await engine.startWorkflow({
+      definitionKey: "crash_test",
+      projectId,
+      idempotencyKey: "crash-1",
+    });
+    // Worker died mid-`a` an hour ago: well past timeout (900s) + grace (60s).
+    await strandNode({ runId: run.id, versionId, nodeKey: "a", attempts: 1, ageSeconds: 3_600 });
+
+    await engine.advanceWorkflow(run.id);
+    await drain();
+
+    // The stranded attempt was reclaimed, re-executed, and the run truly finished.
+    expect(calls.some((c) => c.node === "a")).toBe(true);
+    const final = await store.getRun(run.id);
+    expect(final?.state).toBe("completed");
+
+    const reclaims = await sql`
+      select count(*)::int as count from workflow_transitions
+      where workflow_run_id = ${run.id} and scope = 'node'
+        and from_state = 'running' and to_state = 'failed_retryable'
+        and reason like '%reclaimed%'
+    `;
+    expect(Number(reclaims[0]!.count)).toBe(1);
+  });
+
+  it("never reports a run completed while a fresh node instance is still in flight", async () => {
+    const { versionId } = await engine.registerDefinition({ ...fanGraph(), key: "crash_fresh" });
+    const projectId = await newProject("Crash fresh");
+    const run = await engine.startWorkflow({
+      definitionKey: "crash_fresh",
+      projectId,
+      idempotencyKey: "crash-2",
+    });
+    // Crashed (or genuinely executing elsewhere) seconds ago — NOT yet stale.
+    await strandNode({ runId: run.id, versionId, nodeKey: "a", attempts: 1, ageSeconds: 5 });
+
+    const state = await engine.advanceWorkflow(run.id);
+
+    // The old engine settled this exact shape as `completed` ("no reachable
+    // work remains"). It must wait instead, with a delayed re-tick queued.
+    expect(state).toBe("waiting_for_dependency");
+    const delayed = await sql`
+      select count(*)::int as count from jobs
+      where type = 'advance_workflow' and payload->>'runId' = ${run.id}
+        and run_after > now()
+    `;
+    expect(Number(delayed[0]!.count)).toBeGreaterThan(0);
+  });
+
+  it("settles a stranded node at the attempt cap as failed_terminal, never completed", async () => {
+    const { versionId } = await engine.registerDefinition({ ...fanGraph(), key: "crash_capped" });
+    const projectId = await newProject("Crash capped");
+    const run = await engine.startWorkflow({
+      definitionKey: "crash_capped",
+      projectId,
+      idempotencyKey: "crash-3",
+    });
+    // Third (max) attempt died: no retry budget left.
+    await strandNode({ runId: run.id, versionId, nodeKey: "a", attempts: 3, ageSeconds: 3_600 });
+
+    await engine.advanceWorkflow(run.id);
+    await drain();
+
+    const nodeRuns = await store.listNodeRuns(run.id);
+    expect(nodeRuns.find((n) => n.nodeKey === "a")?.state).toBe("failed_terminal");
+    const final = await store.getRun(run.id);
+    expect(final?.state).not.toBe("completed");
+    expect(["failed", "partially_completed", "safely_stopped"]).toContain(final?.state);
+  });
+
   it("cancels a live run without rewriting what already succeeded", async () => {
     await engine.registerDefinition(approvalGraph());
     const projectId = await newProject("Cancel");

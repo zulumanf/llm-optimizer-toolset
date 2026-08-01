@@ -209,6 +209,20 @@ async function tick(runId: string): Promise<TickOutcome> {
     );
   }
 
+  // Heal crashed workers before planning: a node stranded in `running` by a
+  // dead process would otherwise be neither ready nor settled, and the run
+  // could settle around it. Stale instances go back to failed_retryable (or
+  // failed_terminal at the attempt cap) with next_attempt_at = now, so the
+  // ready-set below re-offers them in this very tick.
+  const stale = await store.reclaimStaleNodeInstances(run.id, workflowVersion);
+  if (stale.retried.length > 0 || stale.terminal.length > 0) {
+    log("warn", "workflow.stale_nodes_reclaimed", {
+      runId,
+      retried: stale.retried,
+      terminal: stale.terminal,
+    });
+  }
+
   const instances = await store.listNodeRuns(runId);
   const fanKeys = await store.fanKeysFromOutputs(runId);
   const fanKeysByNode = propagateFanKeys(def, fanKeys);
@@ -721,10 +735,42 @@ async function settleRun(
     to = reachedSuccess ? "completed" : "partially_completed";
     reason = "no further work is reachable";
   } else {
-    // Nothing ready, nothing parked, not everything settled: the graph's
-    // conditions have routed around the remaining nodes.
-    to = "completed";
-    reason = "no reachable work remains";
+    // Nothing ready, nothing parked, nothing retrying — and yet not every
+    // instance is settled. The old behavior here was `completed: "no
+    // reachable work remains"`, which turned a worker crash mid-node into a
+    // run reported as done: the exact undisclosed-partial failure this
+    // platform exists to prevent. In-flight instances get a durable wait
+    // (the stale reaper in tick() flips them once their timeout + grace
+    // elapses); anything else unsettled is a broken invariant and stops the
+    // run safely rather than completing it.
+    const inFlight = instances.filter((i) => i.state === "running").length;
+    if (inFlight > 0) {
+      if (run.state !== "waiting_for_dependency") {
+        await sql.begin((tx) =>
+          store.setRunState(tx, {
+            runId: run.id,
+            from: run.state,
+            to: "waiting_for_dependency",
+            actor: "engine",
+            reason: `${inFlight} node instance(s) still in flight or awaiting stale reclaim`,
+            workflowVersion,
+          })
+        );
+      }
+      await sql`
+        insert into jobs (type, payload, run_after)
+        values ('advance_workflow', ${sql.json({ runId: run.id } as never)},
+          now() + make_interval(secs => ${EXTERNAL_WAIT_SECONDS}))
+      `;
+      return { state: "waiting_for_dependency", executed: 0 };
+    }
+    await stopSafely(
+      run,
+      workflowVersion,
+      "unsettled node instances with no path to execution — refusing to report completion",
+      "safe_stop"
+    );
+    return { state: "safely_stopped", executed: 0 };
   }
 
   const output = summariseOutput(instances);
