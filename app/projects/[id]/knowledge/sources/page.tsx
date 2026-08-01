@@ -4,6 +4,8 @@ import { getProject } from "@/db/projects";
 import { listSources, knowledgeSummary } from "@/db/knowledge";
 import { Badge } from "@/components/ui/badge";
 import { KnowledgeLayerNav } from "@/components/knowledge/layer-nav";
+import { UploadSource } from "@/components/knowledge/upload-source";
+import { ExtractClaimsButton } from "@/components/knowledge/extract-claims-button";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +51,8 @@ export default async function SourcesPage({
       </p>
 
       <KnowledgeLayerNav projectId={id} />
+
+      <UploadSource projectId={id} />
 
       {summary.unreadableSources > 0 && (
         <p className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
@@ -134,6 +138,15 @@ export default async function SourcesPage({
                   a stated limit.
                 </p>
               )}
+              {!source.supersededAt &&
+                ["extracted", "normalized"].includes(source.extractionStatus) && (
+                  <div className="mt-2">
+                    <ExtractClaimsButton
+                      sourceArtifactId={source.id}
+                      projectId={id}
+                    />
+                  </div>
+                )}
             </div>
           ))}
         </div>

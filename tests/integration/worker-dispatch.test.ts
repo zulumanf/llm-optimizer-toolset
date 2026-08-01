@@ -214,6 +214,7 @@ describe.skipIf(!TEST_URL)("worker dispatch substrate (integration)", () => {
       "discover_client_site",
       "analyze_gaps",
       "analyze_accuracy",
+      "extract_claims",
       "advance_cycle",
       "knowledge_build",
       "advance_workflow",

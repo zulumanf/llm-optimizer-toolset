@@ -13,6 +13,7 @@ import { startScheduledRun } from "@/lib/attribution/service";
 import { discoverAndIngestSite } from "@/lib/knowledge/sources/onboard-site";
 import { syncNotifications } from "@/lib/notifications/service";
 import { analyzeRun } from "@/lib/gaps/service";
+import { extractClaimsFromSource } from "@/lib/knowledge/extraction/claims";
 import { analyzeRunAccuracy } from "@/lib/accuracy/service";
 import { generateEvidenceExport } from "@/lib/evidence/export";
 import { systemUser } from "@/lib/auth";
@@ -77,6 +78,17 @@ export const handlers: Record<
   // The weekly cycle drives itself one step per tick (spec 017)
   advance_cycle: async (payload) => {
     await advanceCycle(payload.cycleId as string);
+  },
+  // LLM claim extraction from an ingested source (D3). Runs as a job so an
+  // upload returns immediately; verbatim-quote guarding and proposed-only
+  // writes live in the extractor. Idempotent enough to retry: re-extracting
+  // proposes duplicates the operator rejects, it never auto-approves.
+  extract_claims: async (payload) => {
+    const user = await systemUser();
+    const result = await extractClaimsFromSource(user, {
+      sourceArtifactId: payload.sourceArtifactId as string,
+    });
+    if (!result.ok) throw new Error(result.error.message);
   },
   // Incremental knowledge compilation (spec 024). Idempotent by construction:
   // the planner builds only what is stale, and an unchanged page is a no-op, so

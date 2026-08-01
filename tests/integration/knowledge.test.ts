@@ -336,4 +336,74 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
     });
     expect(again.ok).toBe(false);
   });
+
+  it("instructions: create governs immediately, approval gates, revision versions (D3)", async () => {
+    const { projectId } = await makeClientProject("Rules Co", "Parva");
+    const instructions = await import("@/lib/knowledge/instructions/service");
+
+    // The layer was schema-complete with no writer: production tables were
+    // empty and every drafting packet ran with no brand-voice rules.
+    const created = await instructions.createInstruction(user, {
+      projectId,
+      instructionType: "brand_voice",
+      scope: "project",
+      title: "Plain voice",
+      body: "Write plainly; never use superlatives the claims do not support.",
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    let resolved = await instructions.resolveInstructions({ projectId });
+    expect(resolved.instructions.map((i) => i.title)).toContain("Plain voice");
+
+    // requiresApproval: a draft rule does not govern until a human approves.
+    const gated = await instructions.createInstruction(user, {
+      projectId,
+      instructionType: "prohibited_claim",
+      scope: "project",
+      title: "No exclusivity wording",
+      body: "Never imply the client is the only provider in a market.",
+      requiresApproval: true,
+    });
+    expect(gated.ok).toBe(true);
+    if (!gated.ok) return;
+
+    resolved = await instructions.resolveInstructions({ projectId });
+    expect(resolved.instructions.map((i) => i.title)).not.toContain(
+      "No exclusivity wording"
+    );
+    expect(resolved.excluded.some((e) => e.title === "No exclusivity wording")).toBe(true);
+
+    const pending = await instructions.pendingInstructionApprovals(projectId);
+    expect(pending.map((p) => p.title)).toContain("No exclusivity wording");
+
+    const approved = await instructions.approveInstructionVersion(user, {
+      versionId: gated.data.versionId,
+    });
+    expect(approved.ok).toBe(true);
+
+    resolved = await instructions.resolveInstructions({ projectId });
+    expect(resolved.instructions.map((i) => i.title)).toContain("No exclusivity wording");
+
+    // Revision mints an immutable new version; the old one stays readable.
+    const revised = await instructions.reviseInstruction(user, {
+      instructionId: created.data.instructionId,
+      body: "Write plainly. Cite a claim for every superlative, or cut it.",
+      changeReason: "Tightened after a draft slipped an uncited superlative through.",
+    });
+    expect(revised.ok).toBe(true);
+    if (!revised.ok) return;
+    expect(revised.data.version).toBe(2);
+
+    resolved = await instructions.resolveInstructions({ projectId });
+    const active = resolved.instructions.find((i) => i.title === "Plain voice")!;
+    expect(active.version).toBe(2);
+    expect(active.body).toContain("Cite a claim");
+
+    const versions = await sql`
+      select count(*)::int as n from knowledge_instruction_versions
+      where instruction_id = ${created.data.instructionId}
+    `;
+    expect(Number(versions[0]!.n)).toBe(2);
+  });
 });

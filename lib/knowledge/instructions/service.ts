@@ -445,3 +445,29 @@ function dateString(value: unknown): string | null {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return String(value).slice(0, 10);
 }
+
+export interface PendingInstructionVersion {
+  versionId: string;
+  instructionId: string;
+  version: number;
+  title: string;
+  instructionType: InstructionType;
+  body: string;
+}
+
+/** Active-version instructions gated on an approval nobody has given (D3) —
+ * the rows behind the "requires approval" entries in the excluded list, with
+ * the version id the approve button needs. */
+export async function pendingInstructionApprovals(
+  projectId: string | null
+): Promise<PendingInstructionVersion[]> {
+  return sql<PendingInstructionVersion[]>`
+    select v.id as version_id, i.id as instruction_id, v.version, i.title,
+      i.instruction_type, v.body
+    from knowledge_instructions i
+    join knowledge_instruction_versions v on v.id = i.active_version_id
+    where i.status = 'active' and v.requires_approval and v.approved_by is null
+      and (i.project_id = ${projectId} or i.project_id is null)
+    order by i.title asc
+  `;
+}
