@@ -776,3 +776,40 @@ budget caps, scoring-version mixing in dashboards. Plan and sequencing:
 `docs/pilot-launch-plan.md` (supersedes the completed phases 0–3 of
 `docs/implementation-roadmap.md`; its Phase 4 items fold into the
 post-pilot track).
+
+## 2026-08-01 — Prospect acquisition (spec 032): link, don't fork, the measurement core
+
+The acquisition slice models a prospect benchmark as a LINK to an existing
+scored run (`prospect_benchmarks(prospect_id, run_id, company_id)`), with
+every metric read from `scores`/`mentions` at render time. Rejected
+alternative: prospect-owned runs via a `projects.kind='prospect'` marker —
+correct long-term (roadmap Phase 2) but touches four load-bearing couplings
+(`runs.project_id`, the subject-company parse gate, the
+`listCompaniesForProject` share-of-voice denominator, global name uniques),
+and getting the denominator wrong would silently change existing clients'
+numbers. Linking costs nothing, can never drift from the scoring engine,
+and covers the common case where the prospect is already tracked as a
+market competitor.
+
+Related choices, same date and spec:
+- Finding candidates and outreach drafts are DETERMINISTIC (template +
+  threshold generators, versioned as `prospect-findings-v1+deterministic` /
+  `reply-first-email-v1`). An LLM generator is Phase 2, behind the same
+  evidence gate; the slice must not be able to fabricate a claim.
+- Prohibited-wording enforcement (`PROHIBITED_PHRASES`) blocks approval of
+  findings and drafts containing revenue-loss/causality/hype language —
+  validation at approval time, mirroring D4's "the gate enforces wording".
+- The prospect audit page is the platform's first anonymous surface:
+  256-bit `base64url` token minted at publish, snapshot-only rendering
+  (internal fields structurally absent, not filtered), published rows
+  DB-locked except revocation, wrong/revoked/expired tokens all 404.
+  `/audit` added to middleware PUBLIC_PREFIXES.
+- A blocked exclusivity verdict during a stage transition COMMITS the check
+  record and conflict status but skips the stage change (the tx returns an
+  outcome instead of throwing — a thrown error would roll back the
+  evidence that the check happened). Found by the integration test.
+- Prospect-facing views are tracked in a dedicated insert-only
+  `prospect_audit_views` table rather than widening
+  `artifact_access_log`'s CHECK constraint — that table's types are
+  report/evidence artifacts and its rows are project-scoped; audit views
+  are anonymous and prospect-scoped.

@@ -1,0 +1,654 @@
+/**
+ * Integration tests for spec 032 — the prospect acquisition vertical slice
+ * over a real scored run: launch → prospect → signals → benchmark link →
+ * findings → approval → audit page + token → outreach draft → recording plan
+ * → pipeline with exclusivity gating → history/activities/immutability.
+ */
+import { execSync } from "node:child_process";
+import { join } from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { CurrentUser } from "@/lib/auth";
+import { seedTestActors } from "../helpers/actors";
+
+const TEST_URL = process.env.TEST_DATABASE_URL;
+const ROOT = join(__dirname, "..", "..");
+
+const operator: CurrentUser = {
+  id: "00000000-0000-4000-8000-000000000401",
+  email: "op@test.local",
+  name: "Operator",
+  role: "operator",
+};
+const admin: CurrentUser = {
+  id: "00000000-0000-4000-8000-000000000001",
+  email: "admin@test.local",
+  name: "Admin",
+  role: "admin",
+};
+const clientViewer: CurrentUser = {
+  id: "00000000-0000-4000-8000-000000000002",
+  email: "client@test.local",
+  name: "Client",
+  role: "client_viewer",
+};
+
+describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
+  let sql: (typeof import("@/db/client"))["sql"];
+  let projectSvc: typeof import("@/lib/projects/service");
+  let setSvc: typeof import("@/lib/prompts/set-service");
+  let promptSvc: typeof import("@/lib/prompts/prompt-service");
+  let runSvc: typeof import("@/lib/runs/service");
+  let execute: typeof import("@/lib/runs/execute");
+  let jobs: typeof import("@/db/jobs");
+  let companySvc: typeof import("@/lib/companies/service");
+  let claims: typeof import("@/lib/claims/service");
+  let parsing: typeof import("@/lib/parsing/service");
+  let scoring: typeof import("@/lib/scoring/compute");
+  let exclusivity: typeof import("@/lib/exclusivity/service");
+  let svc: typeof import("@/lib/prospects/service");
+  let mock: typeof import("@/lib/ai/mock");
+
+  beforeAll(async () => {
+    ({ sql } = await import("@/db/client"));
+    projectSvc = await import("@/lib/projects/service");
+    setSvc = await import("@/lib/prompts/set-service");
+    promptSvc = await import("@/lib/prompts/prompt-service");
+    runSvc = await import("@/lib/runs/service");
+    execute = await import("@/lib/runs/execute");
+    jobs = await import("@/db/jobs");
+    companySvc = await import("@/lib/companies/service");
+    claims = await import("@/lib/claims/service");
+    parsing = await import("@/lib/parsing/service");
+    scoring = await import("@/lib/scoring/compute");
+    exclusivity = await import("@/lib/exclusivity/service");
+    svc = await import("@/lib/prospects/service");
+    mock = await import("@/lib/ai/mock");
+    await sql.unsafe("drop schema public cascade; create schema public;");
+    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
+      cwd: ROOT,
+      stdio: "pipe",
+    });
+    await seedTestActors(sql);
+    // seedTestActors gives every fixture admin; role gates in these tests
+    // come from the CurrentUser literals above, but the client role must be
+    // real in the DB for the auth tests to be honest.
+    await sql`update users set role = 'client_viewer' where id = ${clientViewer.id}`;
+  });
+
+  beforeEach(async () => {
+    await sql.unsafe(
+      `truncate audit_log, jobs,
+       prospect_activities, prospect_stage_history, screen_recording_plans,
+       outreach_drafts, prospect_audit_views, prospect_audits,
+       prospect_findings, prospect_benchmarks, prospect_authority_signals,
+       prospects, market_launches,
+       exclusivity_checks, exclusivity_scopes, exclusivity_agreements, markets,
+       claims, competitors, scores, sources, response_parses, mentions,
+       response_citations, brand_candidates, companies, responses, runs,
+       prompt_set_versions, prompts, prompt_sets, projects cascade`
+    );
+    mock.resetMockProvider();
+  });
+
+  afterAll(async () => {
+    await sql.end();
+  });
+
+  async function drainJobs(): Promise<void> {
+    for (let i = 0; i < 200; i += 1) {
+      const job = await jobs.claimNextJob("test-worker");
+      if (!job) return;
+      if (job.type === "execute_run") await execute.executeRun(job.payload.runId as string);
+      else if (job.type === "parse_response")
+        await parsing.parseResponse(job.payload.responseId as string);
+      else if (job.type === "compute_scores")
+        await scoring.computeScores(job.payload.runId as string);
+      await jobs.completeJob(job.id);
+    }
+  }
+
+  const unwrap = <T,>(r: { ok: true; data: T } | { ok: false; error: { message: string } }): T => {
+    if (!r.ok) throw new Error(r.error.message);
+    return r.data;
+  };
+
+  /**
+   * A scored run where "Acme Realty" dominates recommendations and the
+   * prospect company "Rivera Team" never appears (the mock's default answer
+   * recommends Acme and the subject Lumina only). 2 prompts × 3 reps = 6
+   * valid responses — above MIN_RESPONSES_FOR_FINDINGS.
+   */
+  async function seedScoredRun(): Promise<{ runId: string; prospectCompanyId: string }> {
+    const subject = unwrap(await companySvc.upsertCompany(operator, { name: "Lumina" }));
+    unwrap(await companySvc.upsertCompany(operator, { name: "Acme" }));
+    const rivera = unwrap(await companySvc.upsertCompany(operator, { name: "Rivera Team" }));
+    const project = unwrap(await projectSvc.createProject(operator, { name: "Client A" }));
+    unwrap(
+      await claims.setSubjectCompany(operator, {
+        projectId: project.id,
+        companyId: subject.id,
+      })
+    );
+    const set = unwrap(
+      await setSvc.createPromptSet(operator, { projectId: project.id, name: "Set" })
+    );
+    for (const p of [
+      { text: "best luxury team in manhattan?", category: "recommendation" as const },
+      { text: "which team should sell my tribeca loft?", category: "recommendation" as const },
+    ]) {
+      unwrap(await promptSvc.addPrompt(operator, { setId: set.id, ...p }));
+    }
+    unwrap(await setSvc.freezePromptSet(operator, { id: set.id }));
+    const [version] = await sql`
+      select id from prompt_set_versions where prompt_set_id = ${set.id}
+    `;
+    const run = unwrap(
+      await runSvc.startRun(operator, {
+        projectId: project.id,
+        promptSetVersionId: version?.id as string,
+        providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }],
+        budgetUsd: 5,
+        label: "prospect benchmark run",
+      })
+    );
+    await drainJobs();
+    return { runId: run.id, prospectCompanyId: rivera.id };
+  }
+
+  async function seedLaunchAndProspect(
+    prospectCompanyId: string | null
+  ): Promise<{ launchId: string; prospectId: string; marketId: string }> {
+    const market = unwrap(
+      await exclusivity.createMarket(admin, { name: "Manhattan", kind: "borough", aliases: [] })
+    );
+    const launch = unwrap(
+      await svc.createLaunch(operator, {
+        name: "Manhattan luxury residential",
+        marketId: market.marketId,
+        priceSegment: "luxury",
+        serviceCategory: "residential brokerage",
+      })
+    );
+    const prospect = unwrap(
+      await svc.createProspect(operator, {
+        launchId: launch.launchId,
+        businessName: "Rivera Team",
+        prospectType: "team",
+        companyId: prospectCompanyId,
+        teamLeader: "Ana Rivera",
+      })
+    );
+    return {
+      launchId: launch.launchId,
+      prospectId: prospect.prospectId,
+      marketId: market.marketId,
+    };
+  }
+
+  it("runs the full slice: benchmark → finding → audit → draft → recording plan", async () => {
+    const { runId, prospectCompanyId } = await seedScoredRun();
+    const { prospectId } = await seedLaunchAndProspect(prospectCompanyId);
+
+    // Authority signal (publicly sourced, with URL)
+    unwrap(
+      await svc.addAuthoritySignal(operator, {
+        prospectId,
+        kind: "ranking",
+        label: "Ranked #2 Manhattan team by 2025 closed volume (The Real Deal)",
+        sourceUrl: "https://example.com/ranking",
+        provenance: "publicly_sourced",
+      })
+    );
+
+    // Link benchmark; refuse a second identical link
+    const { benchmarkId } = unwrap(await svc.linkBenchmark(operator, { prospectId, runId }));
+    const dup = await svc.linkBenchmark(operator, { prospectId, runId });
+    expect(dup.ok).toBe(false);
+
+    // Metrics come straight from `scores`
+    const metrics = await svc.benchmarkMetrics(benchmarkId);
+    expect(metrics.prospect).not.toBeNull();
+    expect(metrics.prospect?.mentionRate).toBe(0);
+    expect(metrics.prospect?.sampleSize).toBeGreaterThanOrEqual(6);
+    const acme = metrics.others.find((o) => o.name === "Acme");
+    expect(acme?.recommendationRate).toBeGreaterThan(0.5);
+
+    // Findings: generated, evidence-linked, ranked
+    const generated = unwrap(await svc.generateFindings(operator, { benchmarkId }));
+    expect(generated.candidateCount).toBeGreaterThan(0);
+    const candidates = await sql`
+      select id, kind, response_ids, status from prospect_findings
+      where prospect_id = ${prospectId} and status = 'candidate'
+      order by rank_score desc
+    `;
+    expect(candidates.length).toBe(generated.candidateCount);
+    for (const c of candidates) {
+      expect((c.responseIds as string[]).length).toBeGreaterThan(0);
+    }
+    // Evidence ids point at real captured responses of that run
+    const evidenceIds = candidates.flatMap((c) => c.responseIds as string[]);
+    const [evidenced] = await sql`
+      select count(*)::int as n from responses
+      where id = any(${evidenceIds}::uuid[]) and run_id = ${runId}
+    `;
+    expect(evidenced?.n).toBe(new Set(evidenceIds).size);
+
+    // Approve the top candidate as primary
+    const primary = candidates[0]!;
+    unwrap(
+      await svc.reviewFinding(operator, {
+        findingId: primary.id as string,
+        decision: "approved",
+        makePrimary: true,
+      })
+    );
+
+    // Publish audit → token resolves → view recorded
+    const { auditId, accessToken } = unwrap(
+      await svc.publishAudit(operator, { prospectId })
+    );
+    expect(accessToken.length).toBeGreaterThanOrEqual(40); // 32 bytes base64url
+
+    const snapshot = await svc.getAuditByToken(accessToken, { userAgent: "vitest" });
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.prospectName).toBe("Rivera Team");
+    expect(snapshot?.benchmark.responseCount).toBeGreaterThanOrEqual(6);
+    // Snapshot carries no internal fields
+    expect(JSON.stringify(snapshot)).not.toContain("qualification");
+    const [viewCount] = await sql`
+      select count(*)::int as n from prospect_audit_views where audit_id = ${auditId}
+    `;
+    expect(viewCount?.n).toBe(1);
+
+    // Second published audit refused while one is live
+    const second = await svc.publishAudit(operator, { prospectId });
+    expect(second.ok).toBe(false);
+
+    // Wrong token → null
+    expect(await svc.getAuditByToken("nonsense-token-nonsense-token")).toBeNull();
+
+    // Revoked token stops working immediately
+    unwrap(await svc.revokeAudit(operator, { auditId, reason: "content superseded" }));
+    expect(await svc.getAuditByToken(accessToken)).toBeNull();
+
+    // Draft: generated from the approved finding, versioned, approved, sent
+    const draft = unwrap(await svc.createOutreachDraft(operator, { prospectId, channel: "email" }));
+    expect(draft.version).toBe(1);
+    const [draftRow] = await sql`
+      select body, generated_by from outreach_drafts where id = ${draft.draftId}
+    `;
+    expect(draftRow?.generatedBy).toBe("system");
+    expect(draftRow?.body as string).toContain("Rivera Team");
+    unwrap(await svc.approveOutreachDraft(operator, { draftId: draft.draftId }));
+    // Approved body is immutable at the DB level
+    await expect(
+      sql`update outreach_drafts set body = 'tampered' where id = ${draft.draftId}`
+    ).rejects.toThrow(/immutable/);
+    unwrap(await svc.recordDraftSent(operator, { draftId: draft.draftId }));
+    const again = await svc.recordDraftSent(operator, { draftId: draft.draftId });
+    expect(again.ok).toBe(false);
+
+    // Editing after approval = new version
+    const v2 = unwrap(
+      await svc.createOutreachDraft(operator, {
+        prospectId,
+        channel: "email",
+        body: "Hi Ana — shorter follow-up angle, same evidence.",
+        subject: "One Manhattan benchmark result",
+      })
+    );
+    expect(v2.version).toBe(2);
+
+    // Recording plan
+    const plan = unwrap(await svc.generateRecordingPlan(operator, { prospectId }));
+    const [planRow] = await sql`
+      select script, status from screen_recording_plans where id = ${plan.planId}
+    `;
+    expect(planRow?.script as string).toContain("0:00–0:20");
+    unwrap(await svc.setRecordingStatus(operator, { planId: plan.planId, status: "recorded" }));
+
+    // Timeline exists for every step
+    const activities = await sql`
+      select kind from prospect_activities where prospect_id = ${prospectId}
+    `;
+    const kinds = activities.map((a) => a.kind);
+    for (const expected of [
+      "created",
+      "signal_added",
+      "benchmark_linked",
+      "findings_generated",
+      "finding_approved",
+      "audit_published",
+      "audit_viewed",
+      "audit_revoked",
+      "draft_created",
+      "draft_approved",
+      "draft_sent_recorded",
+      "recording_plan_generated",
+    ]) {
+      expect(kinds).toContain(expected);
+    }
+  });
+
+  it("refuses benchmark links without a company or without scores", async () => {
+    const { runId } = await seedScoredRun();
+    const { launchId } = await seedLaunchAndProspect(null);
+    const [p] = await sql`
+      select id from prospects where launch_id = ${launchId}
+    `;
+    const noCompany = await svc.linkBenchmark(operator, {
+      prospectId: p?.id as string,
+      runId,
+    });
+    expect(noCompany.ok).toBe(false);
+    if (!noCompany.ok) expect(noCompany.error.message).toMatch(/canonical company/);
+
+    // A company that exists but was never scored in the run
+    const ghost = unwrap(await companySvc.upsertCompany(operator, { name: "Ghost Team" }));
+    const prospect2 = unwrap(
+      await svc.createProspect(operator, {
+        launchId,
+        businessName: "Ghost Team",
+        companyId: ghost.id,
+      })
+    );
+    // Ghost was created after the run's parse: no scores rows
+    const [scored] = await sql`
+      select count(*)::int as n from scores where company_id = ${ghost.id}
+    `;
+    if (scored?.n === 0) {
+      const unscored = await svc.linkBenchmark(operator, {
+        prospectId: prospect2.prospectId,
+        runId,
+      });
+      expect(unscored.ok).toBe(false);
+      if (!unscored.ok) expect(unscored.error.message).toMatch(/not scored/);
+    }
+  });
+
+  it("enforces evidence and wording on finding approval (service and DB)", async () => {
+    const { runId, prospectCompanyId } = await seedScoredRun();
+    const { prospectId } = await seedLaunchAndProspect(prospectCompanyId);
+    const { benchmarkId } = unwrap(await svc.linkBenchmark(operator, { prospectId, runId }));
+
+    // Hand-crafted candidate without evidence cannot be approved
+    const [bare] = await sql`
+      insert into prospect_findings
+        (prospect_id, benchmark_id, kind, title, explanation, generator_version)
+      values (${prospectId}, ${benchmarkId}, 'absence', 'No evidence here',
+        'An unsupported assertion.', 'test')
+      returning id
+    `;
+    const noEvidence = await svc.reviewFinding(operator, {
+      findingId: bare?.id as string,
+      decision: "approved",
+    });
+    expect(noEvidence.ok).toBe(false);
+    if (!noEvidence.ok) expect(noEvidence.error.message).toMatch(/evidence/);
+
+    // The DB CHECK backs the service up even against direct SQL
+    await expect(
+      sql`update prospect_findings set status = 'approved' where id = ${bare?.id}`
+    ).rejects.toThrow();
+
+    // Prohibited wording cannot be approved
+    const [rid] = await sql`select id from responses where run_id = ${runId} limit 1`;
+    const [loud] = await sql`
+      insert into prospect_findings
+        (prospect_id, benchmark_id, kind, title, explanation, response_ids,
+         generator_version)
+      values (${prospectId}, ${benchmarkId}, 'absence',
+        'This gap is costing you deals',
+        'Unverifiable revenue claim.', ${[rid?.id as string]}, 'test')
+      returning id
+    `;
+    const banned = await svc.reviewFinding(operator, {
+      findingId: loud?.id as string,
+      decision: "approved",
+    });
+    expect(banned.ok).toBe(false);
+    if (!banned.ok) expect(banned.error.message).toMatch(/prohibited wording/);
+
+    // Prohibited wording also blocks draft approval
+    unwrap(await svc.generateFindings(operator, { benchmarkId }));
+    const [candidate] = await sql`
+      select id from prospect_findings
+      where prospect_id = ${prospectId} and status = 'candidate'
+      order by rank_score desc limit 1
+    `;
+    unwrap(
+      await svc.reviewFinding(operator, {
+        findingId: candidate?.id as string,
+        decision: "approved",
+        makePrimary: true,
+      })
+    );
+    const loudDraft = unwrap(
+      await svc.createOutreachDraft(operator, {
+        prospectId,
+        channel: "email",
+        body: "Our revolutionary platform stops you losing deals.",
+      })
+    );
+    const draftBanned = await svc.approveOutreachDraft(operator, { draftId: loudDraft.draftId });
+    expect(draftBanned.ok).toBe(false);
+  });
+
+  it("keeps exactly one primary approved finding per prospect", async () => {
+    const { runId, prospectCompanyId } = await seedScoredRun();
+    const { prospectId } = await seedLaunchAndProspect(prospectCompanyId);
+    const { benchmarkId } = unwrap(await svc.linkBenchmark(operator, { prospectId, runId }));
+    unwrap(await svc.generateFindings(operator, { benchmarkId }));
+    const candidates = await sql`
+      select id from prospect_findings
+      where prospect_id = ${prospectId} and status = 'candidate' limit 2
+    `;
+    expect(candidates.length).toBeGreaterThanOrEqual(2);
+    unwrap(
+      await svc.reviewFinding(operator, {
+        findingId: candidates[0]?.id as string,
+        decision: "approved",
+        makePrimary: true,
+      })
+    );
+    unwrap(
+      await svc.reviewFinding(operator, {
+        findingId: candidates[1]?.id as string,
+        decision: "approved",
+        makePrimary: true,
+      })
+    );
+    const primaries = await sql`
+      select id from prospect_findings
+      where prospect_id = ${prospectId} and is_primary and status = 'approved'
+    `;
+    expect(primaries.length).toBe(1);
+    expect(primaries[0]?.id).toBe(candidates[1]?.id);
+  });
+
+  it("gates pipeline progression on exclusivity: block, admin override, history", async () => {
+    const { prospectId, marketId } = await seedLaunchAndProspect(null);
+
+    // A protected market: active agreement for a client scoped to Manhattan
+    const client = unwrap(await projectSvc.createProject(operator, { name: "Existing Client" }));
+    unwrap(
+      await exclusivity.createAgreement(admin, {
+        projectId: client.id,
+        startsOn: "2026-01-01",
+        gracePeriodDays: 0,
+        scopes: [{ marketId }],
+      })
+    );
+
+    // Ladder up to the gate
+    unwrap(await svc.transitionStage(operator, { prospectId, toStage: "qualified" }));
+
+    // Crossing the gate runs a check and blocks
+    const blocked = await svc.transitionStage(operator, { prospectId, toStage: "outreach_ready" });
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.error.message).toMatch(/conflict/i);
+    const [afterBlock] = await sql`
+      select stage, conflict_status, last_exclusivity_check_id from prospects
+      where id = ${prospectId}
+    `;
+    expect(afterBlock?.stage).toBe("qualified");
+    expect(["direct", "partial", "possible"]).toContain(afterBlock?.conflictStatus);
+    expect(afterBlock?.lastExclusivityCheckId).not.toBeNull();
+
+    // Operator cannot override
+    const opOverride = await svc.transitionStage(operator, {
+      prospectId,
+      toStage: "outreach_ready",
+      override: true,
+      overrideRationale: "client said it is fine",
+    });
+    expect(opOverride.ok).toBe(false);
+
+    // Admin override without rationale refused; with rationale allowed
+    const noRationale = await svc.transitionStage(admin, {
+      prospectId,
+      toStage: "outreach_ready",
+      override: true,
+    });
+    expect(noRationale.ok).toBe(false);
+    unwrap(
+      await svc.transitionStage(admin, {
+        prospectId,
+        toStage: "outreach_ready",
+        override: true,
+        overrideRationale: "Agreement ends next month; client approved in writing.",
+      })
+    );
+    const [afterOverride] = await sql`
+      select stage, conflict_status from prospects where id = ${prospectId}
+    `;
+    expect(afterOverride?.stage).toBe("outreach_ready");
+    expect(afterOverride?.conflictStatus).toBe("override");
+
+    // Both transitions produced history; the override one carries the check
+    const history = await sql`
+      select from_stage, to_stage, exclusivity_check_id from prospect_stage_history
+      where prospect_id = ${prospectId} order by changed_at asc
+    `;
+    expect(history.length).toBe(2);
+    expect(history[1]?.exclusivityCheckId).not.toBeNull();
+
+    // History is immutable
+    await expect(
+      sql`update prospect_stage_history set to_stage = 'contracted'
+        where prospect_id = ${prospectId}`
+    ).rejects.toThrow();
+  });
+
+  it("clears the gate when no agreement conflicts", async () => {
+    const { prospectId } = await seedLaunchAndProspect(null);
+    unwrap(await svc.transitionStage(operator, { prospectId, toStage: "qualified" }));
+    unwrap(await svc.transitionStage(operator, { prospectId, toStage: "outreach_ready" }));
+    const [row] = await sql`
+      select conflict_status from prospects where id = ${prospectId}
+    `;
+    expect(row?.conflictStatus).toBe("clear");
+  });
+
+  it("respects do-not-contact everywhere", async () => {
+    const { runId, prospectCompanyId } = await seedScoredRun();
+    const { prospectId } = await seedLaunchAndProspect(prospectCompanyId);
+    const { benchmarkId } = unwrap(await svc.linkBenchmark(operator, { prospectId, runId }));
+    unwrap(await svc.generateFindings(operator, { benchmarkId }));
+    const [candidate] = await sql`
+      select id from prospect_findings
+      where prospect_id = ${prospectId} and status = 'candidate' limit 1
+    `;
+    unwrap(
+      await svc.reviewFinding(operator, {
+        findingId: candidate?.id as string,
+        decision: "approved",
+        makePrimary: true,
+      })
+    );
+    const draft = unwrap(await svc.createOutreachDraft(operator, { prospectId, channel: "email" }));
+
+    unwrap(
+      await svc.updateProspect(operator, {
+        prospectId,
+        doNotContact: true,
+        doNotContactReason: "Asked us not to reach out",
+      })
+    );
+
+    const approve = await svc.approveOutreachDraft(operator, { draftId: draft.draftId });
+    expect(approve.ok).toBe(false);
+    unwrap(await svc.transitionStage(operator, { prospectId, toStage: "qualified" }));
+    unwrap(await svc.transitionStage(operator, { prospectId, toStage: "outreach_ready" }));
+    const contact = await svc.transitionStage(operator, { prospectId, toStage: "contacted" });
+    expect(contact.ok).toBe(false);
+    if (!contact.ok) expect(contact.error.message).toMatch(/do-not-contact/);
+  });
+
+  it("denies client roles on every write surface", async () => {
+    const { prospectId, launchId, marketId } = await seedLaunchAndProspect(null);
+    const attempts = [
+      svc.createLaunch(clientViewer, { name: "X", marketId }),
+      svc.createProspect(clientViewer, { launchId, businessName: "Y" }),
+      svc.updateProspect(clientViewer, { prospectId, notes: "peek" }),
+      svc.addAuthoritySignal(clientViewer, {
+        prospectId,
+        kind: "ranking",
+        label: "z",
+        provenance: "manual",
+      }),
+      svc.transitionStage(clientViewer, { prospectId, toStage: "qualified" }),
+      svc.publishAudit(clientViewer, { prospectId }),
+      svc.createOutreachDraft(clientViewer, { prospectId, channel: "email", body: "hi" }),
+      svc.generateRecordingPlan(clientViewer, { prospectId }),
+      svc.addActivityNote(clientViewer, { prospectId, note: "hello" }),
+    ];
+    for (const attempt of await Promise.all(attempts)) {
+      expect(attempt.ok).toBe(false);
+      if (!attempt.ok) expect(attempt.error.kind).toBe("forbidden");
+    }
+  });
+
+  it("expires audit tokens and keeps views/activities insert-only", async () => {
+    const { runId, prospectCompanyId } = await seedScoredRun();
+    const { prospectId } = await seedLaunchAndProspect(prospectCompanyId);
+    const { benchmarkId } = unwrap(await svc.linkBenchmark(operator, { prospectId, runId }));
+    unwrap(await svc.generateFindings(operator, { benchmarkId }));
+    const [candidate] = await sql`
+      select id from prospect_findings
+      where prospect_id = ${prospectId} and status = 'candidate' limit 1
+    `;
+    unwrap(
+      await svc.reviewFinding(operator, {
+        findingId: candidate?.id as string,
+        decision: "approved",
+        makePrimary: true,
+      })
+    );
+    const { auditId, accessToken } = unwrap(await svc.publishAudit(operator, { prospectId }));
+    expect(await svc.getAuditByToken(accessToken)).not.toBeNull();
+
+    // Expiry (expires_at is not a locked column; revocation fields aside,
+    // published content stays immutable)
+    await sql`update prospect_audits set expires_at = now() - interval '1 hour'
+      where id = ${auditId}`;
+    expect(await svc.getAuditByToken(accessToken)).toBeNull();
+
+    // Published snapshot cannot be tampered with
+    await expect(
+      sql`update prospect_audits set snapshot = '{}'::jsonb where id = ${auditId}`
+    ).rejects.toThrow(/immutable/);
+
+    // Views and activities refuse UPDATE/DELETE
+    const [view] = await sql`
+      select id from prospect_audit_views where audit_id = ${auditId} limit 1
+    `;
+    expect(view).toBeDefined();
+    await expect(
+      sql`update prospect_audit_views set is_internal = true where id = ${view?.id}`
+    ).rejects.toThrow();
+    await expect(
+      sql`delete from prospect_activities where prospect_id = ${prospectId}`
+    ).rejects.toThrow();
+  });
+});
