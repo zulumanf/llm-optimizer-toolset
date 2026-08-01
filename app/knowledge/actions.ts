@@ -42,6 +42,9 @@ export async function setClaimDates(input: unknown) {
 export async function resolveClaimContradiction(input: unknown) {
   return run((u) => svc.resolveClaimContradiction(u, input));
 }
+export async function setClaimWording(input: unknown) {
+  return run((u) => svc.setClaimWording(u, input));
+}
 
 // ---------------------------------------------------- sources (D3)
 

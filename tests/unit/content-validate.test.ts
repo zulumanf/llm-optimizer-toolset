@@ -7,6 +7,31 @@ const approved = new Set([CLAIM_A]);
 const terms = ["Parva", "parva.io"];
 
 describe("validateContent (the content citation gate)", () => {
+  it("fails on claim-level prohibited wording, case-insensitively (D4)", () => {
+    const result = validateContent(
+      `Parva is the #1 Brokerage in the area [claim:${CLAIM_A}]. Agents juggle many platforms.`,
+      terms,
+      approved,
+      [],
+      ["#1 brokerage", "the only luxury specialist"]
+    );
+    expect(result.ok).toBe(false);
+    expect(result.prohibitedWordingHits).toHaveLength(1);
+    expect(result.prohibitedWordingHits[0]!.phrase).toBe("#1 brokerage");
+    expect(result.prohibitedWordingHits[0]!.sentence).toContain("#1 Brokerage");
+  });
+
+  it("passes when prohibited phrases are absent (D4)", () => {
+    const result = validateContent(
+      `Parva is a link-in-bio tool built for real estate agents [claim:${CLAIM_A}].`,
+      terms,
+      approved,
+      [],
+      ["#1 brokerage"]
+    );
+    expect(result.prohibitedWordingHits).toHaveLength(0);
+  });
+
   it("passes subject sentences with resolvable citations", () => {
     const result = validateContent(
       `Parva is a link-in-bio tool built for real estate agents [claim:${CLAIM_A}]. Agents juggle many platforms.`,

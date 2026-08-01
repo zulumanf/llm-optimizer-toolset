@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { SubjectSelector } from "@/components/knowledge/subject-selector";
 import { ClaimCard } from "@/components/knowledge/claim-card";
 import { ClaimDates } from "@/components/knowledge/claim-dates";
+import { ClaimWording } from "@/components/knowledge/claim-wording";
 import { ProposeClaimDialog } from "@/components/knowledge/propose-claim-dialog";
 import { KnowledgeLayerNav } from "@/components/knowledge/layer-nav";
 import { knowledgeSummary } from "@/db/knowledge";
@@ -139,11 +140,16 @@ export default async function KnowledgePage({
                   }}
                 />
                 {["approved", "proposed"].includes(claim.status) && (
-                  <div className="mt-1 pl-3">
+                  <div className="mt-1 flex flex-wrap gap-4 pl-3">
                     <ClaimDates
                       claimId={claim.id}
                       effectiveDate={claim.effectiveDate}
                       reviewDate={claim.reviewDate}
+                    />
+                    <ClaimWording
+                      claimId={claim.id}
+                      allowedWording={claim.allowedWording}
+                      prohibitedWording={claim.prohibitedWording}
                     />
                   </div>
                 )}

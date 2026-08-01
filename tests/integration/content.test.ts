@@ -378,4 +378,42 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
       sql`update content_versions set body = 'tampered'`
     ).rejects.toThrow(/insert-only/);
   });
+
+  it("wording a human prohibited on a claim fails the gate deterministically (D4)", async () => {
+    const { findingId, claimId } = await seed();
+    const claims = await import("@/lib/claims/service");
+    const worded = await claims.setClaimWording(user, {
+      claimId,
+      prohibitedWording: ["#1 link-in-bio tool"],
+    });
+    expect(worded.ok).toBe(true);
+
+    const briefed = await content.createBriefFromFinding(
+      user,
+      { findingId },
+      fakeCaller([briefOutput(claimId)])
+    );
+    if (!briefed.ok) throw new Error(briefed.error.message);
+
+    // The model ignores the "never say" instruction — the gate must not.
+    const drafted = await content.generateDraft(
+      user,
+      { assetId: briefed.data.assetId },
+      fakeCaller([
+        {
+          markdown: `Parva is the #1 link-in-bio tool for real estate agents [claim:${claimId}]. General setup guidance follows for agents building a single hub for their listings, reviews, and contact links across social platforms.`,
+        },
+      ])
+    );
+    expect(drafted.ok).toBe(true);
+    if (!drafted.ok) return;
+    expect(drafted.data.gatePassed).toBe(false);
+
+    const [version] = await sql`
+      select verification from content_versions
+      where asset_id = ${briefed.data.assetId} order by version desc limit 1
+    `;
+    const gate = (version!.verification as { gate: { prohibitedWordingHits: { phrase: string }[] } }).gate;
+    expect(gate.prohibitedWordingHits[0]!.phrase).toBe("#1 link-in-bio tool");
+  });
 });

@@ -23,6 +23,8 @@ export interface Claim {
   asOf: string | null;
   effectiveDate: string | null;
   reviewDate: string | null;
+  allowedWording: string[];
+  prohibitedWording: string[];
   status: "proposed" | "approved" | "rejected" | "superseded";
   evidenceIds: string[];
   createdBy: string | null;
@@ -34,6 +36,7 @@ const COLUMNS = sql`id, project_id, key, canonical_text, value,
   to_char(as_of, 'YYYY-MM-DD') as as_of,
   to_char(effective_date, 'YYYY-MM-DD') as effective_date,
   to_char(review_date, 'YYYY-MM-DD') as review_date,
+  allowed_wording, prohibited_wording,
   status, evidence_ids, created_by, approved_by, created_at`;
 
 const proposeSchema = z.object({
@@ -373,6 +376,69 @@ export async function resolveClaimContradiction(
       });
     });
     return ok({ contradictionId: parsed.data.contradictionId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Set a claim's allowed / prohibited wording (D4, docs/pilot-launch-plan.md).
+ *
+ * The columns were read in four places — packets render "never say: …" into
+ * prompts — but only the demo seed ever wrote them, and nothing enforced
+ * them deterministically. With this writer plus the validateContent gate,
+ * prohibited wording becomes a rule the draft physically cannot pass with,
+ * not a request the model may ignore.
+ */
+export async function setClaimWording(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ claimId: string }>> {
+  assertCanWrite(user);
+  const parsed = z
+    .object({
+      claimId: z.string().uuid(),
+      allowedWording: z.array(z.string().trim().min(1).max(300)).max(20).optional(),
+      prohibitedWording: z.array(z.string().trim().min(1).max(300)).max(20).optional(),
+    })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const { claimId, allowedWording, prohibitedWording } = parsed.data;
+  if (allowedWording === undefined && prohibitedWording === undefined) {
+    return fail(new ClassifiedError("validation", "Nothing to change."));
+  }
+  try {
+    await sql.begin(async (tx) => {
+      const [claim] = await tx`
+        select id, key, project_id from claims where id = ${claimId} for update
+      `;
+      if (!claim) throw new ClassifiedError("not_found", "Claim not found.");
+      await tx`
+        update claims set
+          allowed_wording = ${
+            allowedWording === undefined ? sql`allowed_wording` : allowedWording
+          },
+          prohibited_wording = ${
+            prohibitedWording === undefined ? sql`prohibited_wording` : prohibitedWording
+          },
+          updated_at = now()
+        where id = ${claimId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "claim.wording",
+        entity: "claim",
+        entityId: claimId,
+        detail: {
+          key: claim.key,
+          allowedWording: allowedWording ?? "(unchanged)",
+          prohibitedWording: prohibitedWording ?? "(unchanged)",
+        },
+      });
+    });
+    return ok({ claimId });
   } catch (err) {
     return fail(err);
   }

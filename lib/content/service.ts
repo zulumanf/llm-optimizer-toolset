@@ -53,7 +53,12 @@ async function draftingContext(
   projectId: string,
   taskObjective: string,
   taskInput?: string
-): Promise<{ packetId: string; rendered: string; claimIds: Set<string> }> {
+): Promise<{
+  packetId: string;
+  rendered: string;
+  claimIds: Set<string>;
+  prohibitedWording: string[];
+}> {
   const { packet, packetId } = await buildValidatedPacket({
     projectId,
     templateKey: CONTENT_DRAFTING_TEMPLATE,
@@ -69,7 +74,20 @@ async function draftingContext(
       .filter((i) => i.included && i.itemType === "claim")
       .map((i) => i.itemRef)
   );
-  return { packetId, rendered: renderContextPacket(packet), claimIds };
+  // Wording a human prohibited on these specific claims (D4): read into the
+  // prompt via the packet AND enforced deterministically by the gate.
+  const wordingRows =
+    claimIds.size > 0
+      ? await sql`
+          select prohibited_wording from claims where id = any(${[...claimIds]})
+        `
+      : [];
+  const prohibitedWording = [
+    ...new Set(
+      wordingRows.flatMap((row) => (row.prohibitedWording as string[] | null) ?? [])
+    ),
+  ];
+  return { packetId, rendered: renderContextPacket(packet), claimIds, prohibitedWording };
 }
 
 async function approvedClaimCount(projectId: string): Promise<number> {
@@ -88,7 +106,13 @@ async function approvedClaimCount(projectId: string): Promise<number> {
 function redraftFeedback(verification: unknown): string {
   if (!verification || typeof verification !== "object") return "";
   const v = verification as {
-    gate?: { uncitedSubjectSentences?: string[]; unresolvedCitations?: string[]; uncitedNumericSentences?: string[]; uncitedSuperlatives?: string[] };
+    gate?: {
+      uncitedSubjectSentences?: string[];
+      unresolvedCitations?: string[];
+      uncitedNumericSentences?: string[];
+      uncitedSuperlatives?: string[];
+      prohibitedWordingHits?: { phrase: string; sentence: string }[];
+    };
     factVerification?: { verdicts?: { statement: string; verdict: string }[] };
     adversarial?: { issues?: { issue: string; severity: string; suggestedFix?: string }[] };
     passed?: boolean;
@@ -106,6 +130,9 @@ function redraftFeedback(verification: unknown): string {
   }
   for (const s of v.gate?.uncitedSuperlatives ?? []) {
     problems.push(`Superlative without a citation: "${s}"`);
+  }
+  for (const hit of v.gate?.prohibitedWordingHits ?? []) {
+    problems.push(`Used wording prohibited on a claim ("${hit.phrase}"): "${hit.sentence}"`);
   }
   for (const verdict of v.factVerification?.verdicts ?? []) {
     if (verdict.verdict === "unsupported") {
@@ -269,7 +296,8 @@ ${context.rendered}${feedback}`,
       run.output.markdown,
       [subject.name, ...subject.aliases],
       context.claimIds,
-      await complianceRulesFor(projectId)
+      await complianceRulesFor(projectId),
+      context.prohibitedWording
     );
 
     const version = await sql.begin(async (tx) => {
@@ -358,7 +386,8 @@ export async function verifyDraft(
       latest.body as string,
       subject ? [subject.name, ...subject.aliases] : [],
       context.claimIds,
-      await complianceRulesFor(asset.projectId as string)
+      await complianceRulesFor(asset.projectId as string),
+      context.prohibitedWording
     );
 
     // Fresh-context LLM verifier (separate agent; the creator never verifies
