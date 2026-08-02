@@ -48,11 +48,14 @@ import {
   type RecordLearningInput,
   type RunPromptSetInput,
   type SearchLearningsInput,
+  competitiveAnalysisSchema,
   importPromptsSchema,
   promptClustersSchema,
   type ImportPromptsInput,
 } from "@/lib/mcp/schemas";
 import { recordLearning, searchLearnings } from "@/lib/learnings/service";
+import { headToHeadForProject } from "@/lib/competitors/head-to-head";
+import { citationProfilesForProject } from "@/lib/competitors/citation-profiles";
 import { clusterPrompts, PROMPT_CLUSTER_VERSION } from "@/lib/prompts/cluster";
 import { importPrompts, type PromptImportResult } from "@/lib/prompts/import";
 import { parsePromptImport } from "@/lib/prompts/import-parse";
@@ -332,6 +335,28 @@ const observerTools: McpToolDef[] = [
     schema: interventionIdSchema,
     handler: async (_actor, input: { intervention_id: string }) =>
       interventionView(input.intervention_id),
+  },
+  {
+    name: "get_head_to_head",
+    description:
+      "Head-to-head win rates vs each competitor for a run (default: latest scored): contested responses, wins/losses/ties (an unranked co-mention is a tie), win rate (null when uncontested), and the exact prompts lost. Derived on read (head-to-head-v1), never stored.",
+    group: "observer",
+    schema: competitiveAnalysisSchema,
+    handler: async (_actor, input: { project_id: string; run_id?: string }) => {
+      await requireProject(input.project_id);
+      return headToHeadForProject(input.project_id, input.run_id);
+    },
+  },
+  {
+    name: "compare_citation_profiles",
+    description:
+      "Per-company citation profiles for a run (default: latest scored): domains cited in answers that recommend each company, with source labels, plus each competitor's source gap — domains never seen when the subject is recommended. Observed co-occurrence, not causal influence.",
+    group: "observer",
+    schema: competitiveAnalysisSchema,
+    handler: async (_actor, input: { project_id: string; run_id?: string }) => {
+      await requireProject(input.project_id);
+      return citationProfilesForProject(input.project_id, input.run_id);
+    },
   },
   {
     name: "get_prompt_clusters",

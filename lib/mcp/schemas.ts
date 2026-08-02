@@ -117,5 +117,9 @@ export const importPromptsSchema = z
 
 export type ImportPromptsInput = z.infer<typeof importPromptsSchema>;
 
+export const competitiveAnalysisSchema = z
+  .object({ project_id: uuid, run_id: uuid.optional() })
+  .strict();
+
 export type RunPromptSetInput = z.infer<typeof runPromptSetSchema>;
 export type CreateExperimentInput = z.infer<typeof createExperimentSchema>;

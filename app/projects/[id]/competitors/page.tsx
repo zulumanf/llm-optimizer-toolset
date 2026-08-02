@@ -18,6 +18,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { relationshipGroups } from "@/lib/competitors/groups";
+import { headToHeadForProject, HEAD_TO_HEAD_VERSION } from "@/lib/competitors/head-to-head";
+import { citationProfilesForProject } from "@/lib/competitors/citation-profiles";
 import { AddCompetitorDialog } from "@/components/competitors/add-competitor-dialog";
 import { CompetitorRowControls } from "@/components/competitors/competitor-row-controls";
 import { CandidatePanel } from "@/components/competitors/candidate-panel";
@@ -38,7 +40,7 @@ export default async function CompetitorsPage({
   const project = await getProject(id);
   if (!project) notFound();
 
-  const [comparison, scores, candidates, companies, topSources, groups] =
+  const [comparison, scores, candidates, companies, topSources, groups, headToHead, profiles] =
     await Promise.all([
       listComparisonCompanies(id),
       latestScoresByCompany(id),
@@ -46,6 +48,8 @@ export default async function CompetitorsPage({
       listActiveCompanies(),
       listTopSources(id),
       relationshipGroups(id),
+      headToHeadForProject(id),
+      citationProfilesForProject(id),
     ]);
   const untracked = companies.filter(
     (c) => !c.isSelf && !comparison.some((k) => k.companyId === c.id)
@@ -218,6 +222,97 @@ export default async function CompetitorsPage({
                 ))}
               </TableBody>
             </Table>
+          </div>
+        </section>
+      )}
+
+      {headToHead.rows.length > 0 && headToHead.runId !== null && (
+        <section className="mt-8">
+          <h2 className="text-lg font-medium">Head-to-head</h2>
+          <p className="mb-3 mt-1 text-sm text-muted-foreground">
+            Per-response contests on the latest scored run ({HEAD_TO_HEAD_VERSION},
+            derived on read). An unranked co-mention is a tie, not a loss;
+            &ldquo;n/a&rdquo; means nothing was contested.
+          </p>
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Competitor</TableHead>
+                  <TableHead className="text-right">Contested</TableHead>
+                  <TableHead className="text-right">Wins</TableHead>
+                  <TableHead className="text-right">Losses</TableHead>
+                  <TableHead className="text-right">Ties</TableHead>
+                  <TableHead className="text-right">Win rate</TableHead>
+                  <TableHead>Prompts lost</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {headToHead.rows.map((row) => (
+                  <TableRow key={row.companyId}>
+                    <TableCell className="font-medium">
+                      {row.companyName}
+                      {row.archived && (
+                        <Badge variant="outline" className="ml-2">archived</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">{row.contested}</TableCell>
+                    <TableCell className="text-right">{row.selfWins}</TableCell>
+                    <TableCell className="text-right">{row.competitorWins}</TableCell>
+                    <TableCell className="text-right">{row.ties}</TableCell>
+                    <TableCell className="text-right">{fmt(row.winRate ?? undefined)}</TableCell>
+                    <TableCell className="max-w-xs">
+                      {row.losingPrompts.length === 0 ? (
+                        <span className="text-xs text-muted-foreground">none</span>
+                      ) : (
+                        <span className="line-clamp-2 text-xs text-muted-foreground">
+                          {row.losingPrompts.join(" · ")}
+                        </span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+      )}
+
+      {profiles.profiles.some((p) => p.domains.length > 0) && (
+        <section className="mt-8">
+          <h2 className="text-lg font-medium">Citation profiles</h2>
+          <p className="mb-3 mt-1 text-sm text-muted-foreground">{profiles.note}</p>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {profiles.profiles
+              .filter((p) => p.domains.length > 0 || p.isSelf)
+              .map((profile) => (
+                <div key={profile.companyId} className="rounded-lg border p-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="text-sm font-medium">{profile.companyName}</span>
+                    {profile.isSelf && <Badge>you</Badge>}
+                    {profile.archived && <Badge variant="outline">archived</Badge>}
+                  </div>
+                  {profile.domains.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No citations attached to answers recommending this company.
+                    </p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {profile.domains.slice(0, 8).map((d) => (
+                        <li key={d.domain} className="flex items-center gap-2 text-xs">
+                          <span className="font-mono">{d.domain}</span>
+                          <span className="text-muted-foreground">×{d.citations}</span>
+                          {d.sourceType && <Badge variant="outline">{d.sourceType}</Badge>}
+                          {!profile.isSelf &&
+                            profile.sourceGap.some((g) => g.domain === d.domain) && (
+                              <Badge variant="destructive">gap</Badge>
+                            )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
           </div>
         </section>
       )}
