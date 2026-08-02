@@ -69,6 +69,9 @@ export const addPromptSchema = z.object({
   language: language.optional(),
   isHoldout: z.boolean().optional(),
   tier: tier.optional(),
+  // Provenance (spec 035): where this prompt came from. Bulk import writes
+  // its own rows and stamps 'import' itself.
+  source: z.enum(["manual", "vertical_pack", "expansion"]).optional(),
 });
 
 export const updatePromptSchema = z.object({

@@ -38,19 +38,19 @@ export async function addPrompt(
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
   }
-  const { setId, text, category, language, isHoldout, tier } = parsed.data;
+  const { setId, text, category, language, isHoldout, tier, source } = parsed.data;
   try {
     assertCanWrite(user);
     const prompt = await sql.begin(async (tx) => {
       await requireActiveSet(tx, setId);
       const [row] = await tx<Prompt[]>`
         insert into prompts (prompt_set_id, text, category, language, position,
-          is_holdout, tier)
+          is_holdout, tier, source)
         values (
           ${setId}, ${text}, ${category}, ${language ?? "en"},
           (select coalesce(max(position), 0) + 1 from prompts
             where prompt_set_id = ${setId} and archived_at is null),
-          ${isHoldout ?? false}, ${tier ?? null}
+          ${isHoldout ?? false}, ${tier ?? null}, ${source ?? "manual"}
         )
         returning ${PROMPT_COLUMNS}
       `;
