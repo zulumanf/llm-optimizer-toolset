@@ -78,6 +78,7 @@ describe.skipIf(!TEST_URL)("mcp tools (integration)", () => {
   beforeEach(async () => {
     await sql.unsafe(
       `truncate audit_log, mcp_invocations, jobs, tasks, evidence, gap_findings,
+       learnings, action_outcomes,
        intervention_runs, interventions, reports, brand_candidates, competitors,
        scores, sources, response_citations, response_parses, mentions, companies,
        responses, runs, prompt_set_versions, prompts, prompt_sets, projects cascade`
@@ -152,9 +153,9 @@ describe.skipIf(!TEST_URL)("mcp tools (integration)", () => {
   it("registers exactly the spec-033 tool set", () => {
     const names = tools.MCP_TOOLS.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length);
-    expect(names).toHaveLength(15);
+    expect(names).toHaveLength(17);
     expect(tools.MCP_TOOLS.filter((t) => t.group === "operator").map((t) => t.name)).toEqual(
-      ["run_prompt_set", "create_experiment"]
+      ["run_prompt_set", "create_experiment", "record_learning"]
     );
     for (const tool of tools.MCP_TOOLS) {
       expect(tool.description.length).toBeGreaterThan(20);
@@ -456,6 +457,83 @@ describe.skipIf(!TEST_URL)("mcp tools (integration)", () => {
       expect((replay.data as { idempotent_replay: boolean }).idempotent_replay).toBe(true);
       expect((replay.data as { entity_id: string }).entity_id).toBe(interventionId);
     }
+  });
+
+  it("learnings round-trip over MCP: record with ledger + replay, then search", async () => {
+    const seeded = await seedProject();
+
+    const dry = await tools.invokeTool(operator, "record_learning", {
+      project_id: seeded.projectId,
+      category: "content",
+      statement: "Comparison pages lift recommendation rate.",
+      confidence_label: "probable",
+      dry_run: true,
+    });
+    expect(dry.ok).toBe(true);
+    if (dry.ok) {
+      expect((dry.data as { validated_only: boolean }).validated_only).toBe(true);
+    }
+
+    const input = {
+      project_id: seeded.projectId,
+      category: "content",
+      statement: "Comparison pages lift recommendation rate.",
+      confidence_label: "probable",
+      idempotency_key: "learn-1",
+    };
+    const recorded = await tools.invokeTool(operator, "record_learning", input);
+    expect(recorded.ok).toBe(true);
+    if (!recorded.ok) return;
+    const learningId = (recorded.data as { learning_id: string }).learning_id;
+
+    const replay = await tools.invokeTool(operator, "record_learning", input);
+    expect(replay.ok).toBe(true);
+    if (replay.ok) {
+      expect((replay.data as { idempotent_replay: boolean }).idempotent_replay).toBe(true);
+      expect((replay.data as { entity_id: string }).entity_id).toBe(learningId);
+    }
+
+    // 'confirmed' without measured sources is refused through the same gate.
+    const confirmed = await tools.invokeTool(operator, "record_learning", {
+      project_id: seeded.projectId,
+      category: "content",
+      statement: "This is proven.",
+      confidence_label: "confirmed",
+    });
+    expect(confirmed.ok).toBe(false);
+    if (!confirmed.ok) expect(confirmed.error.kind).toBe("validation");
+
+    const found = await tools.invokeTool(operator, "search_learnings", {
+      query: "comparison",
+      project_id: seeded.projectId,
+    });
+    expect(found.ok).toBe(true);
+    if (found.ok) {
+      const rows = found.data as { id: string }[];
+      expect(rows.map((r) => r.id)).toContain(learningId);
+    }
+  });
+
+  it("create_experiment carries the hypothesis through to the intervention", async () => {
+    const seeded = await seedProject();
+    const started = await tools.invokeTool(operator, "run_prompt_set", runInput(seeded));
+    expect(started.ok).toBe(true);
+    await drainJobs();
+
+    const created = await tools.invokeTool(operator, "create_experiment", {
+      project_id: seeded.projectId,
+      title: "Comparison page",
+      hypothesis: "The comparison page should lift recommendation rate.",
+      shipped_at: new Date().toISOString().slice(0, 10),
+      prompt_set_version_id: seeded.versionId,
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const [row] = await sql`
+      select hypothesis from interventions
+      where id = ${(created.data as { intervention_id: string }).intervention_id}
+    `;
+    expect(row?.hypothesis).toBe("The comparison page should lift recommendation rate.");
   });
 
   it("the invocation ledger is append-only", async () => {
