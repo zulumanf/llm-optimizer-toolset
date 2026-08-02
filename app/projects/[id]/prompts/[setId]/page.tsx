@@ -15,6 +15,8 @@ import { PromptFormDialog } from "@/components/prompts/prompt-form-dialog";
 import { PromptRowControls } from "@/components/prompts/prompt-row-controls";
 import { FreezeButton } from "@/components/prompts/freeze-button";
 import { DuplicateSetDialog } from "@/components/prompts/duplicate-set-dialog";
+import { ImportPromptsDialog } from "@/components/prompts/import-prompts-dialog";
+import { clusterPrompts, PROMPT_CLUSTER_VERSION } from "@/lib/prompts/cluster";
 import { formatDate } from "@/lib/format";
 
 export default async function PromptSetDetailPage({
@@ -91,6 +93,7 @@ export default async function PromptSetDetailPage({
         {isEditable && (
           <div className="flex shrink-0 gap-2">
             <SetFormDialog mode="edit" set={set} />
+            <ImportPromptsDialog setId={set.id} />
             <DuplicateSetDialog sourceSetId={set.id} sourceName={set.name} />
             <FreezeButton
               setId={set.id}
@@ -145,6 +148,39 @@ export default async function PromptSetDetailPage({
             </div>
           )}
         </div>
+      )}
+
+      {prompts.length > 1 && (
+        <section className="mt-8">
+          <h2 className="mb-1 text-lg font-medium">Clusters</h2>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Deterministic grouping by category and shared terms ({PROMPT_CLUSTER_VERSION}) —
+            computed on read, for talking about coverage, not a stored fact.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {clusterPrompts(prompts).map((cluster) => (
+              <div key={cluster.key} className="rounded-lg border p-3">
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="text-sm font-medium">{cluster.label}</span>
+                  <Badge variant="secondary">{cluster.category}</Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {cluster.promptIds.length}
+                  </span>
+                </div>
+                <ul className="space-y-0.5">
+                  {cluster.promptIds.map((pid) => {
+                    const prompt = prompts.find((p) => p.id === pid);
+                    return prompt ? (
+                      <li key={pid} className="truncate font-mono text-xs text-muted-foreground">
+                        {prompt.text}
+                      </li>
+                    ) : null;
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       <section className="mt-8">

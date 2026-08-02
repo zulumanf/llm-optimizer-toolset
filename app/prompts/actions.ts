@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import * as setService from "@/lib/prompts/set-service";
 import * as promptService from "@/lib/prompts/prompt-service";
+import * as importService from "@/lib/prompts/import";
 
 /**
  * Thin wrappers: identity + revalidation around lib/prompts services
@@ -50,4 +51,7 @@ export async function archivePrompt(input: unknown) {
 }
 export async function reorderPrompts(input: unknown) {
   return run((u) => promptService.reorderPrompts(u, input));
+}
+export async function importPrompts(input: unknown) {
+  return run((u) => importService.importPrompts(u, input));
 }
