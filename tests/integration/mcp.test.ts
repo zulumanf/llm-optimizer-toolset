@@ -153,9 +153,9 @@ describe.skipIf(!TEST_URL)("mcp tools (integration)", () => {
   it("registers exactly the spec-033 tool set", () => {
     const names = tools.MCP_TOOLS.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length);
-    expect(names).toHaveLength(17);
+    expect(names).toHaveLength(19);
     expect(tools.MCP_TOOLS.filter((t) => t.group === "operator").map((t) => t.name)).toEqual(
-      ["run_prompt_set", "create_experiment", "record_learning"]
+      ["run_prompt_set", "create_experiment", "import_prompts", "record_learning"]
     );
     for (const tool of tools.MCP_TOOLS) {
       expect(tool.description.length).toBeGreaterThan(20);
@@ -456,6 +456,64 @@ describe.skipIf(!TEST_URL)("mcp tools (integration)", () => {
     if (replay.ok) {
       expect((replay.data as { idempotent_replay: boolean }).idempotent_replay).toBe(true);
       expect((replay.data as { entity_id: string }).entity_id).toBe(interventionId);
+    }
+  });
+
+  it("prompt intelligence over MCP: dry-run import, real import, clusters", async () => {
+    const seeded = await seedProject();
+    const content = [
+      "Best CRM for real estate agents",
+      "Which CRM should we pick for real estate agents?",
+      "Jersey City waterfront condos", // no rule → rejected
+    ].join("\n");
+
+    const dry = await tools.invokeTool(operator, "import_prompts", {
+      prompt_set_id: seeded.setId,
+      content,
+      dry_run: true,
+    });
+    expect(dry.ok).toBe(true);
+    if (dry.ok) {
+      const data = dry.data as { would_import: number; rejected: unknown[] };
+      expect(data.would_import).toBe(2);
+      expect(data.rejected).toHaveLength(1);
+    }
+    const beforeRows = await sql<{ count: number }[]>`
+      select count(*)::int as count from prompts where source = 'import'
+    `;
+    expect(beforeRows[0]?.count).toBe(0);
+
+    const real = await tools.invokeTool(operator, "import_prompts", {
+      prompt_set_id: seeded.setId,
+      content,
+      idempotency_key: "import-1",
+    });
+    expect(real.ok).toBe(true);
+    if (!real.ok) return;
+    expect((real.data as { added: number }).added).toBe(2);
+
+    const replay = await tools.invokeTool(operator, "import_prompts", {
+      prompt_set_id: seeded.setId,
+      content,
+      idempotency_key: "import-1",
+    });
+    expect(replay.ok).toBe(true);
+    if (replay.ok) {
+      expect((replay.data as { idempotent_replay: boolean }).idempotent_replay).toBe(true);
+    }
+
+    const clusters = await tools.invokeTool(operator, "get_prompt_clusters", {
+      prompt_set_id: seeded.setId,
+    });
+    expect(clusters.ok).toBe(true);
+    if (clusters.ok) {
+      const data = clusters.data as {
+        cluster_version: string;
+        clusters: { promptIds: string[] }[];
+      };
+      expect(data.cluster_version).toContain("prompt-cluster-v1");
+      // Seed prompt + two imported CRM prompts; the CRM pair clusters.
+      expect(data.clusters.some((c) => c.promptIds.length === 2)).toBe(true);
     }
   });
 
