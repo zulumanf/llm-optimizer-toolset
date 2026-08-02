@@ -60,6 +60,7 @@ export const createExperimentSchema = z
     project_id: uuid,
     title: z.string().min(1).max(120),
     description: z.string().max(2000).optional(),
+    hypothesis: z.string().max(500).optional(),
     shipped_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     urls: z.array(z.string().url()).max(10).default([]),
     prompt_set_version_id: uuid,
@@ -68,6 +69,38 @@ export const createExperimentSchema = z
     idempotency_key: idempotencyKey,
   })
   .strict();
+
+export const searchLearningsSchema = z
+  .object({
+    query: z.string().min(1).max(200).optional(),
+    project_id: uuid.optional(),
+    category: z
+      .enum(["content", "authority", "entity", "technical", "distribution", "process", "other"])
+      .optional(),
+    include_retired: z.boolean().default(false),
+  })
+  .strict();
+
+export const recordLearningSchema = z
+  .object({
+    project_id: uuid.nullish(),
+    category: z.enum([
+      "content", "authority", "entity", "technical", "distribution", "process", "other",
+    ]),
+    statement: z.string().min(1).max(500),
+    rationale: z.string().max(2000).default(""),
+    confidence_label: z.enum([
+      "confirmed", "strongly_supported", "correlated", "probable", "unknown",
+    ]),
+    source_action_outcome_ids: z.array(uuid).max(20).default([]),
+    evidence_note: z.string().max(1000).optional(),
+    dry_run: z.boolean().default(false),
+    idempotency_key: idempotencyKey,
+  })
+  .strict();
+
+export type SearchLearningsInput = z.infer<typeof searchLearningsSchema>;
+export type RecordLearningInput = z.infer<typeof recordLearningSchema>;
 
 export type RunPromptSetInput = z.infer<typeof runPromptSetSchema>;
 export type CreateExperimentInput = z.infer<typeof createExperimentSchema>;

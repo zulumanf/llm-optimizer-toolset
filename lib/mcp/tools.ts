@@ -35,11 +35,16 @@ import {
   includeArchivedSchema,
   interventionIdSchema,
   projectIdSchema,
+  recordLearningSchema,
   runIdSchema,
   runPromptSetSchema,
+  searchLearningsSchema,
   type CreateExperimentInput,
+  type RecordLearningInput,
   type RunPromptSetInput,
+  type SearchLearningsInput,
 } from "@/lib/mcp/schemas";
+import { recordLearning, searchLearnings } from "@/lib/learnings/service";
 
 /* ------------------------------------------------------------------ */
 /* Registry types                                                      */
@@ -318,6 +323,20 @@ const observerTools: McpToolDef[] = [
       interventionView(input.intervention_id),
   },
   {
+    name: "search_learnings",
+    description:
+      "Search durable, confidence-labeled learnings (spec 034) by text, project, or category. Project searches include cross-project learnings. Retired learnings are excluded unless include_retired.",
+    group: "observer",
+    schema: searchLearningsSchema,
+    handler: async (_actor, input: SearchLearningsInput) =>
+      searchLearnings({
+        query: input.query,
+        projectId: input.project_id,
+        category: input.category,
+        includeRetired: input.include_retired,
+      }),
+  },
+  {
     name: "list_pending_approvals",
     description:
       "Every undecided workflow approval across all runs, ordered by urgency. Deciding them happens in the /approvals UI, never through MCP.",
@@ -395,6 +414,7 @@ const operatorTools: McpToolDef[] = [
               urls: input.urls,
               promptSetVersionId: input.prompt_set_version_id,
               taskId: input.task_id,
+              hypothesis: input.hypothesis,
             })
           );
           return {
@@ -405,6 +425,44 @@ const operatorTools: McpToolDef[] = [
               baseline_run_ids: created.baselineRunIds,
               baseline_weak: created.baselineWeak,
               scheduled_offsets: created.scheduledOffsets,
+            },
+          };
+        },
+      });
+    },
+  },
+  {
+    name: "record_learning",
+    description:
+      "Record a durable learning with a confidence label. 'confirmed'/'strongly_supported' require measured source action outcomes — a learning that asserts evidence must point at it. dry_run validates only. Learnings are never auto-generated; calling this is an explicit operator act.",
+    group: "operator",
+    schema: recordLearningSchema,
+    handler: async (actor, input: RecordLearningInput) => {
+      if (input.dry_run) {
+        return { dry_run: true, validated_only: true };
+      }
+      return executeMutation({
+        tool: "record_learning",
+        actor,
+        input,
+        run: async () => {
+          const learning = unwrap(
+            await recordLearning(actor, {
+              projectId: input.project_id ?? null,
+              category: input.category,
+              statement: input.statement,
+              rationale: input.rationale,
+              confidenceLabel: input.confidence_label,
+              sourceActionOutcomeIds: input.source_action_outcome_ids,
+              evidenceNote: input.evidence_note,
+            })
+          );
+          return {
+            entityKind: "learning",
+            entityId: learning.id,
+            data: {
+              learning_id: learning.id,
+              confidence_label: learning.confidenceLabel,
             },
           };
         },
