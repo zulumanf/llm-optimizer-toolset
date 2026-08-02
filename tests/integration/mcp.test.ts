@@ -153,7 +153,7 @@ describe.skipIf(!TEST_URL)("mcp tools (integration)", () => {
   it("registers exactly the spec-033 tool set", () => {
     const names = tools.MCP_TOOLS.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length);
-    expect(names).toHaveLength(19);
+    expect(names).toHaveLength(21);
     expect(tools.MCP_TOOLS.filter((t) => t.group === "operator").map((t) => t.name)).toEqual(
       ["run_prompt_set", "create_experiment", "import_prompts", "record_learning"]
     );
@@ -456,6 +456,42 @@ describe.skipIf(!TEST_URL)("mcp tools (integration)", () => {
     if (replay.ok) {
       expect((replay.data as { idempotent_replay: boolean }).idempotent_replay).toBe(true);
       expect((replay.data as { entity_id: string }).entity_id).toBe(interventionId);
+    }
+  });
+
+  it("competitive depth over MCP: head-to-head and citation profiles", async () => {
+    const seeded = await seedProject();
+
+    // Before any run: honest empty states.
+    const empty = await tools.invokeTool(operator, "get_head_to_head", {
+      project_id: seeded.projectId,
+    });
+    expect(empty.ok).toBe(true);
+    if (empty.ok) {
+      expect((empty.data as { run_id?: string | null; runId: string | null }).runId).toBeNull();
+    }
+
+    const started = await tools.invokeTool(operator, "run_prompt_set", runInput(seeded));
+    expect(started.ok).toBe(true);
+    await drainJobs();
+
+    const h2h = await tools.invokeTool(operator, "get_head_to_head", {
+      project_id: seeded.projectId,
+    });
+    expect(h2h.ok).toBe(true);
+    if (h2h.ok) {
+      const data = h2h.data as { version: string; runId: string | null };
+      expect(data.version).toBe("head-to-head-v1");
+      expect(data.runId).not.toBeNull();
+    }
+
+    const profiles = await tools.invokeTool(operator, "compare_citation_profiles", {
+      project_id: seeded.projectId,
+    });
+    expect(profiles.ok).toBe(true);
+    if (profiles.ok) {
+      const data = profiles.data as { note: string; profiles: unknown[] };
+      expect(data.note).toContain("not proof");
     }
   });
 
