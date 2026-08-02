@@ -27,6 +27,7 @@
 | `get_gap_report` | `{ project_id, run_id? }` | gap findings, open first, by opportunity | `db/gaps.listGapFindings` |
 | `list_experiments` | `{ project_id }` | interventions with baseline/post counts | `db/interventions.listInterventions` |
 | `get_experiment` | `{ intervention_id }` | before/after verdicts + instrument/confound flags | `lib/attribution/service.interventionView` |
+| `get_prompt_clusters` | `{ prompt_set_id }` | deterministic clusters of active prompts + `cluster_version` (computed on read) | `lib/prompts/cluster.clusterPrompts` |
 | `search_learnings` | `{ query?, project_id?, category?, include_retired? }` | confidence-labeled learnings; project searches include cross-project rows | `lib/learnings/service.searchLearnings` |
 | `list_pending_approvals` | `{}` | every undecided approval, ordered by urgency | `db/workflow.pendingApprovalsAcrossRuns` |
 
@@ -55,6 +56,16 @@ Both write one row to the append-only `mcp_invocations` ledger per executed atte
 - **Side effects**: inserts `interventions` + `intervention_runs`, enqueues three future-dated `start_scheduled_run` jobs, MCP ledger row.
 - **Failure modes**: `validation` (ship date >7 days in future, version/project mismatch), `not_found`, `forbidden`.
 - **Idempotency / approval**: same semantics as `run_prompt_set`; no approval required. Optional `hypothesis` (≤500) is stored on the intervention (spec 034).
+
+### `import_prompts`
+
+- **Purpose**: bulk-import prompts into a set (spec 035) — plain lines or header-mapped CSV (`text,category,language,tier`).
+- **Input**: `{ prompt_set_id, content (≤500k chars, ≤200 rows), dry_run?, idempotency_key? }`
+- **Output**: `{ idempotent_replay, entity_kind: "prompt_set", entity_id, added, skipped_duplicates, rejected[] }`; dry run: full parse/dedupe report (`would_import`, `rejected`, `format`, `classifier_version`) with nothing written. Dry runs omit brand-name matching (they read no registry state); the real import uses the project's companies/aliases for the `branded` rule.
+- **Side effects**: inserts `prompts` rows with `source='import'`, one `audit_log` row with counts, MCP ledger row. Frozen versions are untouched — import edits live prompts only.
+- **Failure modes**: `validation` (zero importable rows — first reason named; unknown header column; row cap), `not_found`, `conflict` (archived set), `forbidden`.
+- **Classification**: rows without a category get the deterministic rule suggestion (`prompt-classifier-v1+deterministic`); unmatched rows are rejected with "category required", never guessed.
+- **Idempotency / approval**: standard operator-tool semantics; no approval required.
 
 ### `record_learning`
 

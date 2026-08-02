@@ -925,3 +925,29 @@ updated in place when the file was renumbered.
   as cited.
 - Confidence vocabulary is shared with outcome_relationships (spec 019) —
   one language for "how sure are we" across the graph and the store.
+
+## 2026-08-02 — Prompt intelligence is rules first, and refuses to guess (spec 035)
+
+- **The classifier returns null for an unmatched prompt** instead of a
+  default category — the same stance as source classification ("the honest
+  label for an unknown domain is `other`, not a guess"). Import surfaces
+  those rows as rejections the operator resolves; nothing enters the
+  library with a category no one chose. The hand-labeled fixture set in
+  tests/unit/prompt-classify.test.ts is the seed validation set an LLM v2
+  must beat before it ships (docs/12).
+- **Rule order is specificity, not preference**: brand > comparison >
+  how-to > recommendation > problem, so "best alternatives to X" lands in
+  comparison despite saying "best".
+- **Clusters are computed on read, not stored.** v1 (category + salient-term
+  Jaccard, greedy, order-stable) exists to make coverage discussable;
+  storing versioned cluster snapshots before the algorithm has been used in
+  anger would freeze a shape nobody has validated.
+- **Format detection is a rule, not a heuristic**: a first CSV cell of
+  "text" means header-mapped CSV; anything else is plain lines with commas
+  preserved — real questions contain commas, and a paste must never be
+  silently reinterpreted as columns.
+- **MCP dry-run imports skip brand matching** — a dry run reads no registry
+  state it doesn't disclose; the real import uses the project's
+  companies/aliases for the branded rule.
+- No demand/search-volume fields anywhere: no legitimate source exists, and
+  a fabricated number is worse than none (re-confirmed).

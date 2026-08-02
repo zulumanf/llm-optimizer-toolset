@@ -21,9 +21,12 @@ One stdio server, 13 read tools + 2 gated mutating tools, invocation ledger (mig
 3. ✅ `interventions.hypothesis` (migration 040) through service, form, detail page, and `create_experiment`. Control-arm convention: still open (holdout prompts exist).
 4. ✅ `learnings` table (migration 040) + `lib/learnings/service.ts` + MCP `search_learnings` / `record_learning` (17 tools). `confirmed`-class labels require measured source outcomes; learnings retire with a reason, never edit.
 
-## Phase 3 — Prompt intelligence (module B)
+## Phase 3 — Prompt intelligence (deterministic slice shipped 2026-08-02, spec 035)
 
-Import pipelines (CSV/manual sources first), clustering, intent classification of operator-written prompts — LLM-assisted only with a validation set per `docs/12-ai-guidelines.md`; no fabricated demand numbers (no search-volume claims without a legitimate source).
+1. ✅ Bulk import (paste lines / header-mapped CSV) with per-row rejects, batch + existing-row dedupe, provenance (`prompts.source`, migration 043), UI dialog, and MCP `import_prompts`.
+2. ✅ Deterministic intent classifier (`prompt-classifier-v1+deterministic`): rule-based category+tier suggestions, brand-aware via the project registry; unmatched prompts are rejected, never guessed. The hand-labeled fixture set doubles as the seed validation set for a future LLM v2.
+3. ✅ Deterministic clusterer (`prompt-cluster-v1+deterministic`): category + salient-term grouping, computed on read; set-page section and MCP `get_prompt_clusters` (19 tools).
+4. Still open (deliberately): LLM classifier v2 (needs the validation set grown in use), external prompt sources (Reddit/PAA/keyword tools), demand estimation (**no legitimate source — will not fabricate**).
 
 ## Phase 4 — Deeper competitive/citation analysis
 
