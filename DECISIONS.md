@@ -813,3 +813,35 @@ Related choices, same date and spec:
   `artifact_access_log`'s CHECK constraint — that table's types are
   report/evidence artifacts and its rows are project-scoped; audit views
   are anonymous and prospect-scoped.
+
+## 2026-08-01 — MCP is one thin server over existing services, not a new system (spec 033)
+
+An audit for the "AI Visibility Intelligence system" request
+(docs/ai-visibility-system-audit.md, four parallel deep reads) concluded the
+requested system already substantially exists in this repository; the only
+wholly absent layer was an MCP interface. Decisions taken:
+
+- **One MCP server with tool groups (observer/operator), not the three
+  services the request sketched.** This is one app with a ~15-tool surface;
+  separate services would manufacture infrastructure. Groups keep the split
+  seam visible.
+- **Handlers are transport-free delegations.** `lib/mcp/tools.ts` calls the
+  same services and `db/` readers the UI uses, zero business logic; the SDK
+  touches only `mcp/server.ts`. Contract tests never load the SDK.
+- **MCP adds no role model.** The server refuses non-staff identities
+  (startup + per-invocation), and writes pass through the services' own
+  `assertCanWrite` — which permits all staff, reviewers included, exactly as
+  the UI does. An earlier draft assumed reviewers were read-only; the
+  integration test caught the discrepancy and the spec was corrected to
+  match the platform rather than forking authorization semantics.
+- **Mutations are ledgered append-only** (`mcp_invocations`, migration 039)
+  with optional idempotency keys. Because the ledger is insert-only there is
+  no pre-execution claim: truly concurrent duplicate keys can both execute,
+  and the unique index turns the second record into an explicit conflict
+  naming both entities — honesty over pretend-replay.
+- **No external-action tools.** Publishing/sending/connectors are not
+  exposed; the approval boundary stays upstream and UI-only. `run_prompt_set`
+  and `create_experiment` are the only mutations (internal, budget-capped,
+  same gates as the forms).
+- **The actor is never the system principal.** MCP work is operator-
+  initiated; attributing it to the platform would erase who acted.
