@@ -97,6 +97,27 @@ export async function listTopSources(
   `;
 }
 
+export interface CompetitorForAnalysis {
+  companyId: string;
+  companyName: string;
+  archived: boolean;
+}
+
+/** Competitors including archived ones (spec 036): a run is history, and an
+ * analysis of that run reports everyone who was in it — flagged, not hidden. */
+export async function listCompetitorsIncludingArchived(
+  projectId: string
+): Promise<CompetitorForAnalysis[]> {
+  return sql<CompetitorForAnalysis[]>`
+    select c.id as company_id, c.name as company_name,
+      (k.archived_at is not null or c.archived_at is not null) as archived
+    from competitors k
+    join companies c on c.id = k.company_id
+    where k.project_id = ${projectId}
+    order by archived asc, c.name asc
+  `;
+}
+
 export async function listBrandCandidates(
   projectId: string,
   minHits: number
