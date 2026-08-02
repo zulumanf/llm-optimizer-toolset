@@ -18,6 +18,10 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage, duplicateNameConflict } from "@/lib/service-helpers";
 import { detectConflicts, type AgreementInput, type MarketNode } from "@/lib/exclusivity/detect";
 import { listAgreements } from "@/lib/exclusivity/service";
+import { createProject } from "@/lib/projects/service";
+import { upsertCompany } from "@/lib/companies/service";
+import { addCompetitor } from "@/lib/competitors/service";
+import { setSubjectCompany } from "@/lib/claims/service";
 import {
   ALL_PROSPECT_STAGES,
   AUDIT_TOKEN_BYTES,
@@ -556,6 +560,123 @@ export async function linkBenchmark(
   } catch (err) {
     return fail(
       duplicateNameConflict(err, "That run is already linked to this prospect.")
+    );
+  }
+}
+
+/**
+ * Phase 2.1: a dedicated benchmark project for a prospect with no existing
+ * run coverage. Composes the same services as onboardClient but tolerates an
+ * already-registered company (a market team is often tracked as some
+ * client's competitor before it becomes a prospect). The project is marked
+ * kind='prospect', which keeps it out of every client-facing and portfolio
+ * surface while the whole measurement pipeline works on it unchanged.
+ *
+ * Deliberately NOT created here: a prompt set. The instrument gets built and
+ * reviewed by a human in the project workspace before anything runs
+ * (docs/07 — same rule onboardClient follows by leaving sets unfrozen).
+ */
+export async function createBenchmarkProject(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ projectId: string; companyId: string; competitorsTracked: number }>> {
+  const parsed = z.object({ prospectId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid prospect id."));
+  }
+  try {
+    assertCanWrite(user);
+    const [prospect] = await sql`
+      select p.id, p.launch_id, p.business_name, p.company_id,
+        p.benchmark_project_id, p.archived_at, m.name as market_name
+      from prospects p
+      join market_launches l on l.id = p.launch_id
+      join markets m on m.id = l.market_id
+      where p.id = ${parsed.data.prospectId}
+    `;
+    if (!prospect || prospect.archivedAt) {
+      return fail(new ClassifiedError("not_found", "Prospect not found."));
+    }
+    if (prospect.benchmarkProjectId) {
+      return fail(
+        new ClassifiedError("conflict", "This prospect already has a benchmark project.")
+      );
+    }
+
+    // Resolve the canonical company: linked > existing by name > created.
+    let companyId = prospect.companyId as string | null;
+    if (!companyId) {
+      const [existing] = await sql`
+        select id from companies
+        where lower(name) = lower(${prospect.businessName}) and archived_at is null
+      `;
+      if (existing) {
+        companyId = existing.id as string;
+      } else {
+        const created = await upsertCompany(user, { name: prospect.businessName, aliases: [] });
+        if (!created.ok) return created;
+        companyId = created.data.id;
+      }
+    }
+
+    const project = await createProject(user, {
+      name: `Prospect benchmark: ${prospect.businessName} — ${prospect.marketName}`,
+      description: `Spec 032 benchmark project for prospect ${prospect.id}. Not a client.`,
+    });
+    if (!project.ok) return project;
+    const projectId = project.data.id;
+    await sql`update projects set kind = 'prospect' where id = ${projectId}`;
+
+    const subject = await setSubjectCompany(user, { projectId, companyId });
+    if (!subject.ok) return subject;
+
+    // The comparison set: the launch's other prospects are, by construction,
+    // the market's leading teams. Best-effort — a failure to track one
+    // competitor must not lose the project that already exists.
+    const rivals = await sql`
+      select company_id from prospects
+      where launch_id = ${prospect.launchId} and id != ${prospect.id}
+        and company_id is not null and archived_at is null
+    `;
+    let competitorsTracked = 0;
+    for (const rival of rivals) {
+      const tracked = await addCompetitor(user, {
+        projectId,
+        companyId: rival.companyId as string,
+        tier: "secondary",
+      });
+      if (tracked.ok) competitorsTracked += 1;
+    }
+
+    await sql.begin(async (tx) => {
+      await tx`
+        update prospects
+        set benchmark_project_id = ${projectId}, company_id = ${companyId},
+          updated_at = now()
+        where id = ${prospect.id}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.benchmark_project_create",
+        entity: "prospect",
+        entityId: prospect.id as string,
+        detail: { projectId, companyId, competitorsTracked },
+      });
+      await logActivity(
+        tx,
+        prospect.id as string,
+        "benchmark_project_created",
+        { projectId, competitorsTracked },
+        user.id
+      );
+    });
+    return ok({ projectId, companyId, competitorsTracked });
+  } catch (err) {
+    return fail(
+      duplicateNameConflict(
+        err,
+        "A project with this benchmark name already exists — link that one instead."
+      )
     );
   }
 }

@@ -94,7 +94,7 @@ export async function startWeeklyCycles(): Promise<StartCyclesResult> {
   const week = weekStart();
   const projects = await sql`
     select id, name, baseline_prompt_set_id, baseline_config
-    from projects where status = 'active'
+    from projects where status = 'active' and kind = 'client'
   `;
   const started: string[] = [];
   const skipped: { projectId: string; reason: string }[] = [];

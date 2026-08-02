@@ -139,7 +139,8 @@ export interface BusinessMetrics {
 export async function businessMetrics(): Promise<BusinessMetrics> {
   const [row] = await sql`
     select
-      (select count(*)::int from projects where status = 'active') as clients,
+      (select count(*)::int from projects
+        where status = 'active' and kind = 'client') as clients,
       (select count(*)::int from workflow_exceptions
         where status in ('open','acknowledged')) as open_exceptions,
       (select count(*)::int from workflow_exceptions

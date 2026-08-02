@@ -77,8 +77,9 @@ export interface PortfolioMetrics {
 export async function portfolioMetrics(): Promise<PortfolioMetrics> {
   const [row] = await sql`
     select
-      (select count(*) from projects where status = 'active') as active_clients,
-      (select count(*) from projects p where p.status = 'active'
+      (select count(*) from projects
+         where status = 'active' and kind = 'client') as active_clients,
+      (select count(*) from projects p where p.status = 'active' and p.kind = 'client'
          and not exists (select 1 from runs r where r.project_id = p.id)) as onboarding_clients,
       (select count(distinct project_id) from workflow_exceptions
          where status in ('open','acknowledged') and severity in ('high','critical')

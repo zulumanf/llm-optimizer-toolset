@@ -36,6 +36,9 @@ export async function addAuthoritySignal(input: unknown) {
 export async function linkBenchmark(input: unknown) {
   return run((u) => svc.linkBenchmark(u, input));
 }
+export async function createBenchmarkProject(input: unknown) {
+  return run((u) => svc.createBenchmarkProject(u, input));
+}
 export async function generateFindings(input: unknown) {
   return run((u) => svc.generateFindings(u, input));
 }

@@ -173,7 +173,7 @@ async function signals(): Promise<SignalRow[]> {
         where r.project_id = p.id and r.started_at > now() - interval '7 days')
         as runs7d
     from projects p
-    where p.status = 'active'
+    where p.status = 'active' and p.kind = 'client'
     order by p.name asc
   `;
 }

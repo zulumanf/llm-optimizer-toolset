@@ -17,8 +17,10 @@ import {
   StatGrid,
 } from "@/components/layout/page";
 import { SignalDialog } from "@/components/prospects/signal-dialog";
+import Link from "next/link";
 import {
   BenchmarkLink,
+  CreateBenchmarkProjectButton,
   GenerateFindingsButton,
 } from "@/components/prospects/benchmark-link";
 import { FindingActions } from "@/components/prospects/finding-actions";
@@ -165,15 +167,32 @@ export default async function ProspectDetailPage({
       <Section
         title="AI visibility benchmark"
         description="Read directly from the scoring engine — nothing recomputed, sample sizes always shown."
-        actions={<BenchmarkLink prospectId={id} runs={runs} />}
+        actions={
+          <>
+            {prospect.benchmarkProjectId ? (
+              <Link
+                href={`/projects/${prospect.benchmarkProjectId}`}
+                className="text-sm text-muted-foreground underline hover:text-foreground"
+              >
+                Benchmark project →
+              </Link>
+            ) : (
+              <CreateBenchmarkProjectButton prospectId={id} />
+            )}
+            <BenchmarkLink prospectId={id} runs={runs} />
+          </>
+        }
       >
-        {!prospect.companyId ? (
-          <EmptyState message="Link this prospect to its canonical company (Companies registry) to attach benchmark data." />
+        {!prospect.companyId && !prospect.benchmarkProjectId ? (
+          <EmptyState
+            message="No canonical company yet. Create a benchmark project (it registers the company and pre-tracks the launch's other prospects as competitors), or link an existing company on the record."
+            action={<CreateBenchmarkProjectButton prospectId={id} />}
+          />
         ) : !metrics ? (
           <EmptyState
             message={
               runs.length === 0
-                ? "No completed runs have scored this company yet. Track it as a competitor in a market run first, or wait for the next scheduled scan."
+                ? "No completed runs have scored this company yet. Open the benchmark project to build the prompt set and start a run, or wait for a market run that tracks it."
                 : "No benchmark linked yet. Pick a scored run above."
             }
           />

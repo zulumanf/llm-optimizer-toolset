@@ -340,7 +340,7 @@ export async function runWeeklyMaintenance(options: RunOptions = {}): Promise<Ma
   try {
     const targets = projectId
       ? [projectId]
-      : (await sql`select id from projects where status = 'active'`).map(
+      : (await sql`select id from projects where status = 'active' and kind = 'client'`).map(
           (row) => row.id as string
         );
     const scans: Record<string, unknown> = {};

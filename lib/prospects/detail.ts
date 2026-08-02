@@ -36,6 +36,7 @@ export interface ProspectDetail {
   doNotContactReason: string | null;
   conflictStatus: string;
   notes: string | null;
+  benchmarkProjectId: string | null;
 }
 
 export async function getProspectDetail(id: string): Promise<ProspectDetail | null> {
@@ -46,7 +47,8 @@ export async function getProspectDetail(id: string): Promise<ProspectDetail | nu
       p.price_segment, p.est_transaction_volume_usd, p.est_team_size, p.source,
       p.field_provenance, u.name as owner_name, p.qualification_score,
       p.relationship_strength, p.stage, p.next_action, p.next_action_on::text,
-      p.do_not_contact, p.do_not_contact_reason, p.conflict_status, p.notes
+      p.do_not_contact, p.do_not_contact_reason, p.conflict_status, p.notes,
+      p.benchmark_project_id
     from prospects p
     join market_launches l on l.id = p.launch_id
     join markets m on m.id = l.market_id

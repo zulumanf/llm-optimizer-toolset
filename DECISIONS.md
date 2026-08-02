@@ -877,3 +877,28 @@ Non-obvious choices:
   transient; a second timing layer would fight the first. Instrument
   settings (temperature etc.) remain unrecorded because no adapter sets
   them — there is nothing true to record.
+
+## 2026-08-02 — Prospect benchmark projects (spec 032 Phase 2.1): kind, not status
+
+Prospect-owned benchmark runs are `projects` rows with a new `kind` column
+('client' | 'prospect', migration 041) rather than a new status value or a
+parallel entity. `startRun` needed no change — kind is orthogonal to the
+active/archived lifecycle. The one semantic change is in
+`listCompaniesForProject`: the no-cross-talk exclusion now applies only to
+CLIENT subjects, because spec 008's promise is between clients — a prospect
+subject was an ordinary measured company the day before the prospect
+existed, and excluding it would silently shrink every client's
+share-of-voice denominator. Regression-tested: client scores are
+byte-identical across runs before/after a prospect project claims the
+company. Prospect projects are filtered out of client-facing and portfolio
+surfaces (sidebar, /projects, control-tower counts, Today feed, weekly
+cycles, knowledge maintenance sweep) but the measurement pipeline runs on
+them unchanged. `createBenchmarkProject` composes existing services and
+reuses an already-registered company by name instead of failing on the
+collision (why `onboardClient` couldn't be reused directly); the launch's
+other prospects are pre-tracked as competitors; the prompt set is
+deliberately left to a human in the project workspace (docs/07).
+
+Note: the migration file is 041 (not 039/040) because specs 033/034 landed
+migrations concurrently; the schema_migrations ledger on dev and test was
+updated in place when the file was renumbered.

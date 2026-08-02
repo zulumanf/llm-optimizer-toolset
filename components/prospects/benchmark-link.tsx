@@ -10,7 +10,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { generateFindings, linkBenchmark } from "@/app/prospects/actions";
+import {
+  createBenchmarkProject,
+  generateFindings,
+  linkBenchmark,
+} from "@/app/prospects/actions";
 
 interface RunOption {
   id: string;
@@ -57,6 +61,27 @@ export function BenchmarkLink({
         {pending ? "Linking…" : "Link run"}
       </Button>
     </div>
+  );
+}
+
+/** Phase 2.1: mint a dedicated kind='prospect' project so a fresh benchmark
+ * can be configured and run when no existing run covers this company. */
+export function CreateBenchmarkProjectButton({ prospectId }: { prospectId: string }) {
+  const [pending, startTransition] = useTransition();
+  const create = () => {
+    startTransition(async () => {
+      const result = await createBenchmarkProject({ prospectId });
+      if (result.ok) {
+        toast.success(
+          `Benchmark project created (${result.data.competitorsTracked} competitor(s) pre-tracked). Build the prompt set, then run.`
+        );
+      } else toast.error(result.error.message);
+    });
+  };
+  return (
+    <Button size="sm" variant="outline" onClick={create} disabled={pending}>
+      {pending ? "Creating…" : "Create benchmark project"}
+    </Button>
   );
 }
 
