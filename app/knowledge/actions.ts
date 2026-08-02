@@ -10,6 +10,7 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import * as svc from "@/lib/claims/service";
 import * as instructionsSvc from "@/lib/knowledge/instructions/service";
 import { ingestSource } from "@/lib/knowledge/sources/ingest";
+import { requestExternalDiscovery as requestDiscoverySvc } from "@/lib/knowledge/discovery/request";
 
 async function run<T>(
   fn: (user: Awaited<ReturnType<typeof getCurrentUser>>) => Promise<ActionResult<T>>
@@ -138,4 +139,7 @@ export async function reviseInstruction(input: unknown) {
 }
 export async function approveInstructionVersion(input: unknown) {
   return run((u) => instructionsSvc.approveInstructionVersion(u, input));
+}
+export async function requestExternalDiscovery(input: unknown) {
+  return run((u) => requestDiscoverySvc(u, input));
 }

@@ -14,6 +14,7 @@ import { discoverAndIngestSite } from "@/lib/knowledge/sources/onboard-site";
 import { syncNotifications } from "@/lib/notifications/service";
 import { analyzeRun } from "@/lib/gaps/service";
 import { extractClaimsFromSource } from "@/lib/knowledge/extraction/claims";
+import { runExternalDiscovery } from "@/lib/knowledge/discovery/service";
 import { analyzeRunAccuracy } from "@/lib/accuracy/service";
 import { generateEvidenceExport } from "@/lib/evidence/export";
 import { systemUser } from "@/lib/auth";
@@ -87,6 +88,17 @@ export const handlers: Record<
     const user = await systemUser();
     const result = await extractClaimsFromSource(user, {
       sourceArtifactId: payload.sourceArtifactId as string,
+    });
+    if (!result.ok) throw new Error(result.error.message);
+  },
+  // External discovery (spec 027, wired per spec 036 follow-through). The
+  // service records its own discovery_runs row incl. failures; a thrown
+  // error here marks the JOB failed for retry, while a run that completed
+  // with a stop_reason is a success whose summary says why it stopped.
+  external_discovery: async (payload) => {
+    const user = await systemUser();
+    const result = await runExternalDiscovery(user, {
+      projectId: payload.projectId as string,
     });
     if (!result.ok) throw new Error(result.error.message);
   },

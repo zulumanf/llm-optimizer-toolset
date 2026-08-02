@@ -5,6 +5,8 @@ import { listSources, knowledgeSummary } from "@/db/knowledge";
 import { Badge } from "@/components/ui/badge";
 import { KnowledgeLayerNav } from "@/components/knowledge/layer-nav";
 import { UploadSource } from "@/components/knowledge/upload-source";
+import { DiscoverExternalButton } from "@/components/knowledge/discover-external-button";
+import { listDiscoveryRuns } from "@/db/discovery";
 import { ExtractClaimsButton } from "@/components/knowledge/extract-claims-button";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +35,11 @@ export default async function SourcesPage({
   const project = await getProject(id);
   if (!project) notFound();
 
-  const [sources, summary] = await Promise.all([listSources(id), knowledgeSummary(id)]);
+  const [sources, summary, discoveryRuns] = await Promise.all([
+    listSources(id),
+    knowledgeSummary(id),
+    listDiscoveryRuns(id),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl p-6">
@@ -53,6 +59,56 @@ export default async function SourcesPage({
       <KnowledgeLayerNav projectId={id} />
 
       <UploadSource projectId={id} />
+
+      <section className="mb-6 rounded-lg border p-4">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-medium">External discovery</h2>
+            <p className="text-xs text-muted-foreground">
+              Templated web searches for third-party pages about this client;
+              survivors are fetched politely, stored immutably, and their
+              claims proposed for review. One run at a time, cost-capped.
+            </p>
+          </div>
+          <DiscoverExternalButton projectId={id} />
+        </div>
+        {discoveryRuns.length > 0 && (
+          <ul className="mt-2 divide-y text-sm">
+            {discoveryRuns.map((run) => (
+              <li key={run.id} className="flex flex-wrap items-center gap-2 py-1.5">
+                <Badge
+                  variant={
+                    run.status === "completed"
+                      ? "default"
+                      : run.status === "failed"
+                        ? "destructive"
+                        : "secondary"
+                  }
+                >
+                  {run.status}
+                </Badge>
+                <span className="text-muted-foreground">
+                  {run.startedAt.toISOString().slice(0, 16).replace("T", " ")}
+                </span>
+                <span>
+                  {run.candidatesIngested}/{run.candidatesFound} ingested ·{" "}
+                  {run.claimsProposed} claims proposed
+                  {run.contradictionsRaised > 0 &&
+                    ` · ${run.contradictionsRaised} contradictions`}
+                </span>
+                <span className="text-muted-foreground">
+                  ${(Number(run.costMicroUsd) / 1_000_000).toFixed(2)}
+                </span>
+                {run.stopReason && (
+                  <span className="text-xs text-muted-foreground">
+                    stopped: {run.stopReason}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {summary.unreadableSources > 0 && (
         <p className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
