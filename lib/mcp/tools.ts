@@ -16,7 +16,12 @@ import {
   latestScoresByCompany,
   listTopSources,
 } from "@/db/competitors";
-import { listPromptSets, listVersionSummaries } from "@/db/prompt-sets";
+import {
+  getPromptSet,
+  listActivePrompts,
+  listPromptSets,
+  listVersionSummaries,
+} from "@/db/prompt-sets";
 import { getRun, listRuns, listRunCells } from "@/db/runs";
 import { currentMentionsForRun, pendingReviewCount } from "@/db/mentions";
 import { authorityTrend, latestScoredRunId, selfTiles } from "@/db/dashboard";
@@ -43,8 +48,14 @@ import {
   type RecordLearningInput,
   type RunPromptSetInput,
   type SearchLearningsInput,
+  importPromptsSchema,
+  promptClustersSchema,
+  type ImportPromptsInput,
 } from "@/lib/mcp/schemas";
 import { recordLearning, searchLearnings } from "@/lib/learnings/service";
+import { clusterPrompts, PROMPT_CLUSTER_VERSION } from "@/lib/prompts/cluster";
+import { importPrompts, type PromptImportResult } from "@/lib/prompts/import";
+import { parsePromptImport } from "@/lib/prompts/import-parse";
 
 /* ------------------------------------------------------------------ */
 /* Registry types                                                      */
@@ -323,6 +334,22 @@ const observerTools: McpToolDef[] = [
       interventionView(input.intervention_id),
   },
   {
+    name: "get_prompt_clusters",
+    description:
+      "Deterministic clusters of a prompt set's active prompts (spec 035): grouped by category and shared salient terms, computed on read — for discussing coverage, not a stored fact.",
+    group: "observer",
+    schema: promptClustersSchema,
+    handler: async (_actor, input: { prompt_set_id: string }) => {
+      const set = await getPromptSet(input.prompt_set_id);
+      if (!set) throw new ClassifiedError("not_found", "Prompt set not found.");
+      const prompts = await listActivePrompts(input.prompt_set_id);
+      return {
+        cluster_version: PROMPT_CLUSTER_VERSION,
+        clusters: clusterPrompts(prompts),
+      };
+    },
+  },
+  {
     name: "search_learnings",
     description:
       "Search durable, confidence-labeled learnings (spec 034) by text, project, or category. Project searches include cross-project learnings. Retired learnings are excluded unless include_retired.",
@@ -425,6 +452,50 @@ const operatorTools: McpToolDef[] = [
               baseline_run_ids: created.baselineRunIds,
               baseline_weak: created.baselineWeak,
               scheduled_offsets: created.scheduledOffsets,
+            },
+          };
+        },
+      });
+    },
+  },
+  {
+    name: "import_prompts",
+    description:
+      "Bulk-import prompts into a set: plain lines or header-mapped CSV (text,category,language,tier). Duplicates are skipped; rows without a category get a rule-based suggestion or are rejected — never guessed. dry_run returns the full parse/dedupe report and writes nothing.",
+    group: "operator",
+    schema: importPromptsSchema,
+    handler: async (actor, input: ImportPromptsInput) => {
+      if (input.dry_run) {
+        // Parse-only report; brand names omitted deliberately — a dry run
+        // must not vary with registry state it does not disclose reading.
+        const parse = parsePromptImport(input.content);
+        return {
+          dry_run: true,
+          would_import: parse.rows.length,
+          rejected: parse.rejected,
+          format: parse.format,
+          classifier_version: parse.classifierVersion,
+        };
+      }
+      return executeMutation({
+        tool: "import_prompts",
+        actor,
+        input,
+        run: async () => {
+          const result = unwrap<PromptImportResult>(
+            await importPrompts(actor, {
+              setId: input.prompt_set_id,
+              content: input.content,
+            })
+          );
+          return {
+            entityKind: "prompt_set",
+            entityId: input.prompt_set_id,
+            data: {
+              added: result.added,
+              skipped_duplicates: result.skippedDuplicates,
+              rejected: result.rejected,
+              format: result.format,
             },
           };
         },

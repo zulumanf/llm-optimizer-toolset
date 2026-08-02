@@ -102,5 +102,20 @@ export const recordLearningSchema = z
 export type SearchLearningsInput = z.infer<typeof searchLearningsSchema>;
 export type RecordLearningInput = z.infer<typeof recordLearningSchema>;
 
+export const promptClustersSchema = z
+  .object({ prompt_set_id: uuid })
+  .strict();
+
+export const importPromptsSchema = z
+  .object({
+    prompt_set_id: uuid,
+    content: z.string().min(1).max(500_000),
+    dry_run: z.boolean().default(false),
+    idempotency_key: idempotencyKey,
+  })
+  .strict();
+
+export type ImportPromptsInput = z.infer<typeof importPromptsSchema>;
+
 export type RunPromptSetInput = z.infer<typeof runPromptSetSchema>;
 export type CreateExperimentInput = z.infer<typeof createExperimentSchema>;
