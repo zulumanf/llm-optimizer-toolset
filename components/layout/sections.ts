@@ -57,3 +57,50 @@ export const PROJECT_SECTIONS: ProjectSection[] = [
   { path: "/tasks", label: "Tasks", icon: ListTodo },
   { path: "/settings", label: "Settings", icon: Settings },
 ];
+
+/**
+ * Same-question routes merged into one sidebar entry (spec 037). The first
+ * member is the entry's target; every member stays a real URL with the tab
+ * bar rendered on each page. Paths must exist in PROJECT_SECTIONS — the
+ * nav-structure test enforces it.
+ */
+export interface TabSet {
+  key: string;
+  /** Sidebar label for the merged entry (null = keep the lead section's). */
+  label: string | null;
+  paths: string[];
+}
+
+export const TAB_SETS: TabSet[] = [
+  { key: "measure", label: null, paths: ["/runs", "/review"] },
+  { key: "findings", label: "Findings", paths: ["/gaps", "/accuracy"] },
+  { key: "work", label: "Work", paths: ["/tasks", "/campaigns", "/interventions"] },
+  { key: "reports", label: null, paths: ["/reports", "/validation"] },
+];
+
+/**
+ * The sidebar's visible structure (spec 037): the reading order that used
+ * to live only in the comment above, made visible. Entries name either a
+ * bare section path or a tab-set lead path; the sidebar highlights a
+ * tab-set entry for any of its members.
+ */
+export interface NavGroup {
+  label: string | null;
+  paths: string[];
+}
+
+export const PROJECT_NAV_GROUPS: NavGroup[] = [
+  { label: "Overview", paths: ["", "/plan", "/knowledge"] },
+  { label: "Measure", paths: ["/prompts", "/runs"] },
+  { label: "Findings", paths: ["/gaps", "/competitors"] },
+  { label: "Act", paths: ["/content", "/tasks", "/reports"] },
+  { label: null, paths: ["/settings"] },
+];
+
+export function tabSetFor(path: string): TabSet | undefined {
+  return TAB_SETS.find((set) => set.paths.includes(path));
+}
+
+export function sectionFor(path: string): ProjectSection | undefined {
+  return PROJECT_SECTIONS.find((section) => section.path === path);
+}
