@@ -7,6 +7,7 @@
 import OpenAI from "openai";
 import type { AIProvider, PromptRequest, ProviderResult } from "@/lib/ai/types";
 import { parseChatCompletion } from "@/lib/ai/payloads";
+import { PROVIDER_TIMEOUT_MS } from "@/lib/ai/limits";
 
 let client: OpenAI | undefined;
 
@@ -21,6 +22,7 @@ function getClient(): OpenAI {
       apiKey: process.env.PERPLEXITY_API_KEY,
       baseURL: "https://api.perplexity.ai",
       maxRetries: 0,
+      timeout: PROVIDER_TIMEOUT_MS,
     });
   }
   return client;

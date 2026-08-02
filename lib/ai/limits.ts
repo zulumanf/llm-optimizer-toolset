@@ -26,6 +26,14 @@ export interface ProviderLimits {
   note: string;
 }
 
+/**
+ * Per-request ceiling for benchmark provider calls. Without one, a hung
+ * call holds a worker slot forever (audit 2026-08-01 §G.1). 180s leaves
+ * room for search-grounded generations at MAX_TOKENS; the retry layer
+ * treats a timeout as transient (lib/ai/retry.ts fallthrough).
+ */
+export const PROVIDER_TIMEOUT_MS = 180_000;
+
 const DEFAULT_LIMITS: ProviderLimits = {
   concurrency: 4,
   minIntervalMs: 0,
