@@ -44,6 +44,7 @@ PERPLEXITY_API_KEY=
 npm run dev            # Next.js dev server
 npm run build          # production build
 npm run worker         # start background worker (experiment runner)
+npm run mcp            # stdio MCP server exposing read/analysis tools to AI agents (spec 033)
 npm run db:migrate     # apply pending migrations
 npm run db:rollback    # revert last migration
 npm run seed:graph     # demo portfolio: 3 clients, workflow runs, exceptions, an approval

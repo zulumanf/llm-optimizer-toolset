@@ -2,6 +2,8 @@
 
 One Next.js monolith + one worker process + Supabase. No microservices (see `DECISIONS.md`).
 
+A third process entry point exists alongside the app and the worker: `mcp/server.ts` (`npm run mcp`), a stdio MCP server exposing the domain services in `lib/` and readers in `db/` as thin, validated tools for AI agents — read/analysis tools plus two ledgered mutations, no external actions (spec 033, `docs/ai-visibility-mcp-tools.md`).
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      Next.js App (Vercel)                   │
