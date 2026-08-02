@@ -33,7 +33,7 @@ One stdio server, 13 read tools + 2 gated mutating tools, invocation ledger (mig
 1. ✅ Head-to-head win rates (`head-to-head-v1`): per-response contests vs each competitor, derived on read (never a `scores` row), with losing-prompt lists; unranked co-mention is a tie; null win rate when uncontested. UI section + MCP `get_head_to_head`.
 2. ✅ Citation-profile comparison (`citation-profile-v1`): domains cited in answers recommending each company, labeled from the sources registry, with per-competitor source gaps. UI section + MCP `compare_citation_profiles` (21 tools).
 3. ✅ (Already closed earlier, spec-030 note was stale — reconciled): overtake detection covers both `MOVEMENT_METRICS`, not just mention_rate.
-4. Still open: wiring spec-027 external discovery to a product entry point (service is complete and SSRF-hardened; needs a job type + button, and its search instrument uses the live-verified OpenAI `+search` model).
+4. ✅ Spec-027 external discovery wired (2026-08-02): `external_discovery` worker job, audited one-in-flight-per-project request path (subject company required at click time), button + run-history panel on the sources page. Still true: no live provider run has ever executed — first real crawl happens when an operator clicks with an OpenAI key configured.
 
 ## Phase 5 — Controlled external execution (only after operator decisions)
 

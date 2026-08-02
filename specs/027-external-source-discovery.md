@@ -180,10 +180,9 @@ No test performs a live search — the provider caller is injected, matching how
 
 ## Not built (2026-07-30)
 
-- **No UI.** Deliberate, and the same order spec 026 took: run it, look at what
-  it surfaces, then decide whether a review surface earns its keep. Claims it
-  proposes are already approvable in `/projects/[id]/knowledge`, so nothing is
-  stranded.
+- ~~**No UI.**~~ Closed 2026-08-02: trigger button + per-run summary history on
+  `/projects/[id]/knowledge/sources`. Proposed claims remain reviewable where
+  they always were.
 - **`attributionPrefix` is written and tested but not yet applied at write
   time.** The extractor composes its own wording, and threading attribution
   into it means changing `claim_extraction`'s prompt and its evaluation
@@ -194,8 +193,12 @@ No test performs a live search — the provider caller is injected, matching how
 - **No live provider run.** Every test injects the search caller. The feature
   has never executed a real search, and stays unverified against live payload
   shapes until it does.
-- **Not wired to a workflow.** Runs as a service call, per the open question
-  below.
+- ~~**Not wired to a workflow.**~~ Wired 2026-08-02 (spec 036 follow-through):
+  `external_discovery` worker job + audited request path
+  (`lib/knowledge/discovery/request.ts` — one in-flight run per project,
+  subject company required at click time) + a button and run-history panel on
+  the sources page. Still not a spec-018 workflow template — the service-first
+  stance below stands.
 
 ## Open questions
 

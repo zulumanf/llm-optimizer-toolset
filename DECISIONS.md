@@ -971,3 +971,25 @@ updated in place when the file was renumbered.
   a number that travels without its caveat becomes a causal claim.
 - Archived competitors stay in run-scoped analyses, flagged: a run is
   history, and history includes everyone who was in it.
+
+## 2026-08-02 — Discovery's entry point is a job an identified human requests
+
+Spec-027 wiring (the last "not wired" gap in the visibility roadmap's
+Phase 4). Choices:
+
+- **The crawl runs as the system principal; the request is audited to the
+  human.** B3's rule holds — background work is the platform's act — but
+  the `discovery.requested` audit row and the job payload's `requestedBy`
+  keep "who asked" answerable without impersonating anyone in a worker.
+- **One in-flight discovery per project**, enforced against the jobs table
+  ('queued'/'running'), not a new table — a second click while one runs is
+  a conflict, because two concurrent crawls of the same identity would
+  double-spend and double-ingest.
+- **No subject company → refused at click time**, not discovered as a
+  failed job later. The queries are built from the subject's identity;
+  requesting a search for nobody is an operator error worth an immediate,
+  named message.
+- The integration test drives the real worker handler keylessly: searches
+  fail per-query by design and the run settles with zero candidates —
+  proving the plumbing without touching the network, and matching the
+  spec's standing honesty that no live provider run has ever executed.
