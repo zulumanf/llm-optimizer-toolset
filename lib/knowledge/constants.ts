@@ -20,6 +20,9 @@ export const CONTEXT_BUILDER_VERSION = "context-builder-v1";
  * hold in memory to hash and parse. */
 export const SOURCE_MAX_BYTES = 50 * 1024 * 1024;
 export const SOURCE_FETCH_TIMEOUT_MS = 30_000;
+/** Ceiling for crawled HTML pages — pages, not documents, so far smaller
+ * than SOURCE_MAX_BYTES. Stream-capped in lib/security/safe-fetch.ts. */
+export const CRAWL_FETCH_MAX_BYTES = 3_000_000;
 export const EXTRACTION_TIMEOUT_MS = 120_000;
 /** Characters of extracted text kept per document. Beyond this the source stays
  * whole on disk and the excerpt spans point into it. */

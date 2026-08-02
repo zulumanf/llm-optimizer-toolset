@@ -29,7 +29,11 @@ import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { log } from "@/lib/logger";
 import { normalizeUrl } from "@/lib/knowledge/normalize";
-import { SOURCE_FETCH_TIMEOUT_MS } from "@/lib/knowledge/constants";
+import {
+  CRAWL_FETCH_MAX_BYTES,
+  SOURCE_FETCH_TIMEOUT_MS,
+} from "@/lib/knowledge/constants";
+import { safeFetch } from "@/lib/security/safe-fetch";
 
 /**
  * How we identify ourselves. Named after the platform, not after whichever
@@ -149,33 +153,29 @@ export function shouldSkipUrl(url: string): boolean {
 async function fetchText(
   url: string
 ): Promise<{ html: string; status: number; retryAfterMs: number | null }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SOURCE_FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        // Identify honestly and consistently. A webmaster seeing this in their
-        // logs should be able to tell who fetched their pages and why — and it
-        // must name US, not the site being fetched.
-        "user-agent": CRAWLER_USER_AGENT,
-        accept: "text/html,application/xhtml+xml",
-      },
-    });
-    const html = response.ok ? await response.text() : "";
-    // Honour the server's own instruction when it gives one; a Retry-After is
-    // the host telling us exactly how to behave, and ignoring it is a choice.
-    const header = response.headers.get("retry-after");
-    const retryAfterMs = header
-      ? Number.isFinite(Number(header))
-        ? Number(header) * 1000
-        : Math.max(0, new Date(header).getTime() - Date.now())
-      : null;
-    return { html, status: response.status, retryAfterMs };
-  } finally {
-    clearTimeout(timer);
-  }
+  // Central outbound policy (lib/security/safe-fetch.ts): private hosts and
+  // private redirect targets refused, page size capped while streaming.
+  const response = await safeFetch(url, {
+    timeoutMs: SOURCE_FETCH_TIMEOUT_MS,
+    maxBytes: CRAWL_FETCH_MAX_BYTES,
+    headers: {
+      // Identify honestly and consistently. A webmaster seeing this in their
+      // logs should be able to tell who fetched their pages and why — and it
+      // must name US, not the site being fetched.
+      "user-agent": CRAWLER_USER_AGENT,
+      accept: "text/html,application/xhtml+xml",
+    },
+  });
+  const html = response.ok ? response.bytes.toString("utf8") : "";
+  // Honour the server's own instruction when it gives one; a Retry-After is
+  // the host telling us exactly how to behave, and ignoring it is a choice.
+  const header = response.headers.get("retry-after");
+  const retryAfterMs = header
+    ? Number.isFinite(Number(header))
+      ? Number(header) * 1000
+      : Math.max(0, new Date(header).getTime() - Date.now())
+    : null;
+  return { html, status: response.status, retryAfterMs };
 }
 
 /**

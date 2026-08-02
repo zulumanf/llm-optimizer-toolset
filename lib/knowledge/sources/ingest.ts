@@ -36,6 +36,7 @@ import {
   runExtractor,
   getExtractor,
 } from "@/lib/knowledge/sources/extractors";
+import { safeFetch } from "@/lib/security/safe-fetch";
 import { sniffMimeType, sourceTypeForMime } from "@/lib/knowledge/sources/mime";
 import { readSourceBytes, storeSourceBytes } from "@/lib/knowledge/sources/storage";
 import { normalizeSourceValues } from "@/lib/knowledge/sources/normalize-source";
@@ -471,70 +472,31 @@ async function resolveBytes(input: z.output<typeof ingestSchema>): Promise<Resol
 }
 
 /**
- * Fetch a URL for ingestion. Refuses anything but http(s) and refuses hosts
- * that resolve to the local machine or a private range — a fetch endpoint that
- * an operator can point at `169.254.169.254` is an SSRF, not a feature.
+ * Fetch a URL for ingestion through the central outbound-fetch policy
+ * (lib/security/safe-fetch.ts): http(s) only, private hosts refused, every
+ * redirect hop re-validated, response size capped while streaming.
  */
 async function fetchUrl(url: string): Promise<ResolvedBytes> {
-  const parsed = new URL(url);
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new ClassifiedError("validation", "Only http and https sources can be fetched.");
-  }
-  if (isPrivateHost(parsed.hostname)) {
+  const response = await safeFetch(url, {
+    timeoutMs: SOURCE_FETCH_TIMEOUT_MS,
+    maxBytes: SOURCE_MAX_BYTES,
+  });
+  if (!response.ok) {
     throw new ClassifiedError(
-      "forbidden",
-      "That host is on a private or link-local network and will not be fetched."
+      "internal",
+      `Fetching ${url} returned ${response.status} ${response.statusText}.`
     );
   }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SOURCE_FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, { signal: controller.signal, redirect: "follow" });
-    if (!response.ok) {
-      throw new ClassifiedError(
-        "internal",
-        `Fetching ${url} returned ${response.status} ${response.statusText}.`
-      );
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    return {
-      bytes: buffer,
-      declaredMimeType: response.headers.get("content-type"),
-      filename: parsed.pathname.split("/").filter(Boolean).pop() ?? null,
-      url,
-    };
-  } catch (err) {
-    if (err instanceof ClassifiedError) throw err;
-    if ((err as Error).name === "AbortError") {
-      throw new ClassifiedError("timeout", `Fetching ${url} exceeded ${SOURCE_FETCH_TIMEOUT_MS}ms.`);
-    }
-    throw new ClassifiedError("internal", `Could not fetch ${url}: ${(err as Error).message}`);
-  } finally {
-    clearTimeout(timer);
-  }
+  return {
+    bytes: response.bytes,
+    declaredMimeType: response.headers.get("content-type"),
+    filename:
+      new URL(response.finalUrl).pathname.split("/").filter(Boolean).pop() ?? null,
+    url,
+  };
 }
 
-export function isPrivateHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal")) {
-    return true;
-  }
-  if (host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80")) {
-    return true;
-  }
-  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-  if (!ipv4) return false;
-  const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168)
-  );
-}
+export { isPrivateHost } from "@/lib/security/safe-fetch";
 
 /** Read the current parse of a source, newest extractor version first. */
 export async function latestExtraction(
