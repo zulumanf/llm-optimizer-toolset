@@ -39,6 +39,7 @@ export function CreateInterventionDialog({ projectId, versions }: Props) {
   const [title, setTitle] = useState("");
   const [shippedAt, setShippedAt] = useState(new Date().toISOString().slice(0, 10));
   const [urls, setUrls] = useState("");
+  const [hypothesis, setHypothesis] = useState("");
   const [versionId, setVersionId] = useState(versions[0]?.id ?? "");
   const [offsets, setOffsets] = useState<string[]>([...OFFSETS]);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +57,7 @@ export function CreateInterventionDialog({ projectId, versions }: Props) {
           .filter((u) => u.length > 0),
         promptSetVersionId: versionId,
         postOffsets: offsets,
+        hypothesis: hypothesis.trim() || undefined,
       });
       if (result.ok) {
         toast.success(
@@ -95,6 +97,15 @@ export function CreateInterventionDialog({ projectId, versions }: Props) {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Comparison page: Lumina vs Acme"
               autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="int-hypothesis">Hypothesis (optional)</Label>
+            <Input
+              id="int-hypothesis"
+              value={hypothesis}
+              onChange={(e) => setHypothesis(e.target.value)}
+              placeholder="The comparison page should lift recommendation rate for comparison prompts"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">

@@ -85,6 +85,11 @@ export default async function InterventionPage({
             {(intervention.urls as string[]).length > 0 &&
               ` · ${(intervention.urls as string[]).join(", ")}`}
           </p>
+          {intervention.hypothesis != null && (
+            <p className="mt-1 text-sm italic text-muted-foreground">
+              Hypothesis: {intervention.hypothesis as string}
+            </p>
+          )}
           <div className="mt-2 flex flex-wrap gap-2">
             {intervention.baselineWeak && (
               <Badge variant="outline" className="text-warning">

@@ -10,6 +10,10 @@ import {
   StatGrid,
 } from "@/components/layout/page";
 import { getActivePlan } from "@/lib/plans/service";
+import {
+  ApprovePlanButton,
+  ComposePlanButton,
+} from "@/components/plans/plan-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +62,9 @@ export default async function PlanPage({
         <EmptyState
           message="No plan composed yet. A plan is built from open gap findings — run and analyse a measurement first, then compose. An empty plan is ceremony, so none is shown."
         />
+        <div className="mt-4 flex justify-center">
+          <ComposePlanButton projectId={id} supersedes={false} />
+        </div>
       </PageShell>
     );
   }
@@ -84,9 +91,13 @@ export default async function PlanPage({
         description={`Composed from ${baseline.findingCount ?? 0} open findings on ${baseline.composedAt ?? "—"} · ${planned.length} plays · ${totalHours.toFixed(0)}h · composer ${plan.compositionHash.slice(0, 8)}`}
         actions={
           plan.status === "draft" ? (
-            <span className="text-xs text-muted-foreground">Approve to enable client export</span>
+            <>
+              <ComposePlanButton projectId={id} supersedes />
+              <ApprovePlanButton planId={plan.id} />
+            </>
           ) : (
             <>
+              <ComposePlanButton projectId={id} supersedes />
               <a
                 href={`/api/plans/${plan.id}/export?format=html`}
                 target="_blank"
