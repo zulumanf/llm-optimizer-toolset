@@ -993,3 +993,31 @@ Phase 4). Choices:
   fail per-query by design and the run settles with zero candidates —
   proving the plumbing without touching the network, and matching the
   spec's standing honesty that no live provider run has ever executed.
+
+## 2026-08-02 — Nav consolidation: tabs over route moves (spec 037)
+
+The sidebar had grown 3× past docs/04's design (16 flat project sections,
+11 global links) by accretion — every spec added a link, none merged one.
+Choices:
+
+- **Merged pages keep their URLs; the merge is a link-tab bar.** Moving
+  routes (e.g. /gaps → /findings/gaps) would have meant redirects, link
+  rewrites, and test churn across five pages for zero user-visible gain
+  over tabs. `PageTabs` renders on each sibling; the sidebar shows one
+  entry, active for any member. Bookmarks, cross-links, and the entire
+  integration suite survive untouched.
+- **The reading order became visible.** The operator-question grouping
+  (Overview / Measure / Findings / Act) lived in a sections.ts comment;
+  now it is the rendered structure, enforced by a covering test: every
+  section reachable exactly once, no orphans, no duplicates.
+- **Machinery is demoted, not hidden**: Control tower, Workflows,
+  Automation, Agents, Companies, Exclusivity live in a collapsed System
+  group (persisted per browser, auto-opens when one of its pages is
+  active — the current page must never be invisible).
+- **Attention is badges on fewer doors**: unread on Today (the Inbox
+  entry was a duplicate — Today already renders the attention feed),
+  pending count on Approvals, review-queue count on the Runs tab.
+- **The ⌘K palette keeps every destination** including demoted ones — the
+  escape hatch must not shrink with the sidebar.
+- New rule recorded in docs/04: a feature earns a tab or a group slot by
+  default; a new sidebar entry requires a spec that says why no group fits.

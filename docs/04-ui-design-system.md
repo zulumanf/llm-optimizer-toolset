@@ -30,7 +30,15 @@ Status colors (badges, trends): `success` (green) = improvement/completed, `warn
 
 ## Navigation
 
-Sidebar sections: **Dashboard · Prompts · Runs · Review · Competitors · Reports · Tasks · Settings**. Active item highlighted with `primary`. Project switcher at the top of the sidebar. Breadcrumbs on detail pages (`Runs / Weekly baseline 2026-W31`).
+Two sidebar states (spec 037), one source of truth (`components/layout/sections.ts` — the nav-structure test enforces coverage):
+
+- **Global:** Today (unread badge) · Approvals (pending badge) · Clients · Prospects, then the Active clients list, then a collapsible **System** group (default collapsed, persisted; auto-opens on its own pages): Control tower · Workflows · Automation · Agents · Companies · Exclusivity.
+- **Project**, grouped in the operator's reading order: **Overview** (Dashboard · Plan · Knowledge) · **Measure** (Prompts · Runs) · **Findings** (Findings · Competitors) · **Act** (Content · Work · Reports) · Settings.
+- **Same-question routes share one entry and a link-tab bar** (`PageTabs`), never separate sidebar links: Runs ⇄ Review (pending count on the tab), Gaps ⇄ Accuracy, Tasks ⇄ Campaigns ⇄ Interventions, Reports ⇄ Validation. Every merged page keeps its URL.
+- The ⌘K palette lists **every** destination including demoted ones — it is the escape hatch and must not shrink.
+- Active item highlighted with `primary`; a merged entry is active on any of its tab siblings. Breadcrumbs on detail pages (`Runs / Weekly baseline 2026-W31`).
+
+Rule going forward: a new feature earns a **tab on an existing entry or a place in an existing group** by default; a brand-new sidebar entry requires a spec that says why no group fits.
 
 ## Page primitives (`components/layout/page.tsx`) — use these, don't hand-roll
 
