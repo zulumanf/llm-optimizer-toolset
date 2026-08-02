@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { GenerateReportDialog } from "@/components/reports/generate-report-dialog";
 import { formatDate } from "@/lib/format";
+import { ProjectTabs } from "@/components/layout/project-tabs";
 
 export default async function ReportsPage({
   params,
@@ -36,6 +37,7 @@ export default async function ReportsPage({
 
   return (
     <div className="mx-auto max-w-7xl p-6">
+      <ProjectTabs projectId={id} setKey="reports" />
       <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/projects" className="hover:text-foreground">Projects</Link>
         {" / "}

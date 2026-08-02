@@ -5,6 +5,7 @@ import { sql } from "@/db/client";
 import { listActiveStaffUsers } from "@/db/users";
 import { listProjectTasks } from "@/lib/tasks/service";
 import { TaskCard } from "@/components/tasks/task-card";
+import { ProjectTabs } from "@/components/layout/project-tabs";
 
 const COLUMNS = [
   { status: "suggested", title: "Suggested" },
@@ -41,6 +42,7 @@ export default async function TasksPage({
 
   return (
     <div className="mx-auto max-w-7xl p-6">
+      <ProjectTabs projectId={id} setKey="work" />
       <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/projects" className="hover:text-foreground">Projects</Link>
         {" / "}

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { AnalyzeAccuracyButton } from "@/components/accuracy/analyze-button";
 import { AccuracyFindingCard } from "@/components/accuracy/finding-card";
 import { formatDate } from "@/lib/format";
+import { ProjectTabs } from "@/components/layout/project-tabs";
 
 export default async function AccuracyPage({
   params,
@@ -52,6 +53,7 @@ export default async function AccuracyPage({
 
   return (
     <div className="mx-auto max-w-4xl p-6">
+      <ProjectTabs projectId={id} setKey="findings" />
       <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/projects" className="hover:text-foreground">Clients</Link>
         {" / "}

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { CampaignFormDialog } from "@/components/campaigns/campaign-form-dialog";
 import { formatDate } from "@/lib/format";
+import { ProjectTabs } from "@/components/layout/project-tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function CampaignsPage({
 
   return (
     <div className="mx-auto max-w-7xl p-6">
+      <ProjectTabs projectId={id} setKey="work" />
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Campaigns</h1>

@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CreateInterventionDialog } from "@/components/attribution/create-intervention-dialog";
+import { ProjectTabs } from "@/components/layout/project-tabs";
 
 export default async function InterventionsPage({
   params,
@@ -48,6 +49,7 @@ export default async function InterventionsPage({
 
   return (
     <div className="mx-auto max-w-7xl p-6">
+      <ProjectTabs projectId={id} setKey="work" />
       <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/projects" className="hover:text-foreground">Projects</Link>
         {" / "}

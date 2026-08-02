@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/table";
 import { formatDate } from "@/lib/format";
 import { runStatusVariant } from "@/components/runs/status";
+import { ProjectTabs } from "@/components/layout/project-tabs";
+import { listReviewQueue } from "@/db/mentions";
 
 export default async function RunsPage({
   params,
@@ -26,8 +28,11 @@ export default async function RunsPage({
   if (!project) notFound();
   const runs = await listRuns(id);
 
+  const reviewQueue = await listReviewQueue(id);
+
   return (
     <div className="mx-auto max-w-7xl p-6">
+      <ProjectTabs projectId={id} setKey="measure" counts={{ "/review": reviewQueue.length }} />
       <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/projects" className="hover:text-foreground">Projects</Link>
         {" / "}

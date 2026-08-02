@@ -9,6 +9,7 @@ import { validationComparison } from "@/lib/evidence/service";
 import { NewValidationRunButton } from "@/components/validation/new-validation-run";
 import { RecordObservationDialog } from "@/components/validation/record-observation";
 import { formatDate } from "@/lib/format";
+import { ProjectTabs } from "@/components/layout/project-tabs";
 
 export default async function ValidationPage({
   params,
@@ -56,6 +57,7 @@ export default async function ValidationPage({
 
   return (
     <div className="mx-auto max-w-4xl p-6">
+      <ProjectTabs projectId={id} setKey="reports" />
       <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/projects" className="hover:text-foreground">Clients</Link>
         {" / "}
