@@ -1,6 +1,6 @@
 # Spec 028 — Market Exclusivity & Conflict Engine
 
-> Status: done (2026-07-31) — dev-DB apply blocked by an orphan migration; see DECISIONS.md
+> Status: done (2026-07-31) — migration 032 applied to dev DB (orphan-migration conflict resolved same day; see DECISIONS.md 2026-07-31)
 > Depends on: specs/014 (auth & roles), docs/17 (agency operations), docs/target-gap-analysis.md row 3
 > Branch: `feat/028-market-exclusivity`
 
