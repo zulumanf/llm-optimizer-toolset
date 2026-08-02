@@ -28,9 +28,12 @@ One stdio server, 13 read tools + 2 gated mutating tools, invocation ledger (mig
 3. ✅ Deterministic clusterer (`prompt-cluster-v1+deterministic`): category + salient-term grouping, computed on read; set-page section and MCP `get_prompt_clusters` (19 tools).
 4. Still open (deliberately): LLM classifier v2 (needs the validation set grown in use), external prompt sources (Reddit/PAA/keyword tools), demand estimation (**no legitimate source — will not fabricate**).
 
-## Phase 4 — Deeper competitive/citation analysis
+## Phase 4 — Deeper competitive/citation analysis (shipped 2026-08-02, spec 036)
 
-Win-rate / head-to-head metrics; overtake detection beyond `mention_rate`; citation-profile comparison per competitor (`compare_citation_profiles`); wiring spec 027 external discovery to a real entry point (after the Phase 1 SSRF fix).
+1. ✅ Head-to-head win rates (`head-to-head-v1`): per-response contests vs each competitor, derived on read (never a `scores` row), with losing-prompt lists; unranked co-mention is a tie; null win rate when uncontested. UI section + MCP `get_head_to_head`.
+2. ✅ Citation-profile comparison (`citation-profile-v1`): domains cited in answers recommending each company, labeled from the sources registry, with per-competitor source gaps. UI section + MCP `compare_citation_profiles` (21 tools).
+3. ✅ (Already closed earlier, spec-030 note was stale — reconciled): overtake detection covers both `MOVEMENT_METRICS`, not just mention_rate.
+4. Still open: wiring spec-027 external discovery to a product entry point (service is complete and SSRF-hardened; needs a job type + button, and its search instrument uses the live-verified OpenAI `+search` model).
 
 ## Phase 5 — Controlled external execution (only after operator decisions)
 

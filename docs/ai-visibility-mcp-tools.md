@@ -27,6 +27,8 @@
 | `get_gap_report` | `{ project_id, run_id? }` | gap findings, open first, by opportunity | `db/gaps.listGapFindings` |
 | `list_experiments` | `{ project_id }` | interventions with baseline/post counts | `db/interventions.listInterventions` |
 | `get_experiment` | `{ intervention_id }` | before/after verdicts + instrument/confound flags | `lib/attribution/service.interventionView` |
+| `get_head_to_head` | `{ project_id, run_id? }` | win/loss/tie per competitor with losing prompts (`head-to-head-v1`, derived on read; unranked co-mention = tie; win rate null when uncontested) | `lib/competitors/head-to-head` |
+| `compare_citation_profiles` | `{ project_id, run_id? }` | per-company cited domains when recommended + each competitor's source gap (`citation-profile-v1`; co-occurrence, not causation) | `lib/competitors/citation-profiles` |
 | `get_prompt_clusters` | `{ prompt_set_id }` | deterministic clusters of active prompts + `cluster_version` (computed on read) | `lib/prompts/cluster.clusterPrompts` |
 | `search_learnings` | `{ query?, project_id?, category?, include_retired? }` | confidence-labeled learnings; project searches include cross-project rows | `lib/learnings/service.searchLearnings` |
 | `list_pending_approvals` | `{}` | every undecided approval, ordered by urgency | `db/workflow.pendingApprovalsAcrossRuns` |

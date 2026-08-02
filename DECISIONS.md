@@ -951,3 +951,23 @@ updated in place when the file was renumbered.
   companies/aliases for the branded rule.
 - No demand/search-volume fields anywhere: no legitimate source exists, and
   a fabricated number is worse than none (re-confirmed).
+
+## 2026-08-02 — Win rates are analyses, not scores (spec 036)
+
+- **Head-to-head and citation profiles are derived on read, never stored.**
+  Storing a win rate would demand a scoring-version bump and forward-only
+  re-scoring ceremony (docs/06) for a number that is cheap to re-derive
+  and whose definition is still settling. Movement (spec 030) set this
+  precedent; competitive depth follows it. If win rate ever enters
+  reports, THAT is the moment it becomes a versioned scored metric.
+- **An unranked co-mention is a tie, not a loss.** Being mentioned without
+  a list position is a different observation from being ranked below
+  someone; calling it a loss would fabricate an ordering the answer never
+  expressed.
+- **Win rate is null when nothing is contested** — the null-is-not-zero
+  rule from scoring applies to analyses too.
+- **Citation profiles say "co-occurrence" in the payload itself.** The
+  note rides the API response and the UI copy, not just documentation —
+  a number that travels without its caveat becomes a causal claim.
+- Archived competitors stay in run-scoped analyses, flagged: a run is
+  history, and history includes everyone who was in it.

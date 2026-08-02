@@ -64,8 +64,9 @@ params. Control-tower deep filtering is a recorded follow-up.
   accumulated intervention verdicts; the data does not exist yet. Revisit
   when it does.
 - Control-tower filter panel (portfolio filters land first).
-- Overtake on metrics beyond mention_rate (recommendation-rate overtakes
-  ride the visibility_drop path for now).
+- ~~Overtake on metrics beyond mention_rate~~ — closed by a later batch:
+  `MOVEMENT_METRICS` runs both mention_rate and recommendation_rate through
+  the full overtake + drop paths (reconciled 2026-08-02, spec 036).
 - LLM long-tail source classification (waits for a validation set,
   docs/12); relationship-creation UI (relationships arrive via extraction
   + approval today).
