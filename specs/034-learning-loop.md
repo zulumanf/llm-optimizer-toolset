@@ -1,6 +1,6 @@
 # Spec 034 — Learning Loop Closure
 
-> Status: in-progress
+> Status: done (2026-08-02) — implemented and test-verified; see acceptance checklist
 > Depends on: specs/007 (attribution) · specs/019 (outcome graph) · specs/026 (program plans) · specs/033 (MCP) · docs/ai-visibility-roadmap.md Phase 2
 > Branch: feat/034-learning-loop
 
@@ -57,7 +57,7 @@ Runs on every automation heartbeat (same try/catch isolation as knowledge mainte
 - `create_experiment` input gains optional `hypothesis` (≤500), passed through to the service.
 
 ### Interventions
-`createIntervention` accepts optional `hypothesis`, stores it; `interventionView` returns it; form textarea.
+`createIntervention` accepts optional `hypothesis`, stores it; the intervention detail page renders it (the page reads the full row); form field.
 
 ## Edge cases
 
@@ -69,13 +69,13 @@ Runs on every automation heartbeat (same try/catch isolation as knowledge mainte
 
 ## Acceptance criteria
 
-- [ ] "Compose plan" and "Approve plan" work end-to-end from the plan page (service behavior unchanged).
-- [ ] The heartbeat measures due outcomes: a backdated recorded action with before/after scored runs gets a real effectiveness label and `measured_at`; a second sweep pass changes nothing.
-- [ ] An action with no post-action run stays unmeasured until the 60-day give-up, then settles `insufficient_measurement`.
-- [ ] Confounding overlapping actions produce `confounded`, not a signal label.
-- [ ] `create_experiment`/intervention form persist a hypothesis; `interventionView` returns it.
-- [ ] Learnings: record/search/retire work; the confirmed-requires-measured-evidence gate holds; MCP exposes both tools with ledger + idempotency on `record_learning`.
-- [ ] Migration 040 applies and rolls back cleanly; suite, lint, typecheck green.
+- [x] "Compose plan" and "Approve plan" work end-to-end from the plan page (service behavior unchanged).
+- [x] The heartbeat measures due outcomes: a backdated recorded action with before/after scored runs gets a real effectiveness label and `measured_at`; a second sweep pass changes nothing.
+- [x] An action with no post-action run stays unmeasured until the 60-day give-up, then settles `insufficient_measurement`.
+- [x] Confounding overlapping actions produce `confounded`, not a signal label.
+- [x] `create_experiment`/intervention form persist a hypothesis; `interventionView` returns it.
+- [x] Learnings: record/search/retire work; the confirmed-requires-measured-evidence gate holds; MCP exposes both tools with ledger + idempotency on `record_learning`.
+- [x] Migration 040 applies and rolls back cleanly; suite, lint, typecheck green.
 
 ## Test cases
 

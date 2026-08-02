@@ -14,12 +14,12 @@ One stdio server, 13 read tools + 2 gated mutating tools, invocation ledger (mig
 4. ✅ `PROVIDER_TIMEOUT_MS` (180s) on all four benchmark provider clients; timeouts classify as retryable. (Instrument-settings capture: nothing to record — no adapter sets temperature/top_p/seed; revisit if one ever does.)
 5. ✅ Drill-down re-derivation for `first_position_rate` / `top_three_rate` — every v1.1 metric is now independently re-derivable.
 
-## Phase 2 — Close the learning loop (partials that already have tables)
+## Phase 2 — Close the learning loop (shipped 2026-08-02, spec 034, `feat/034-learning-loop` line)
 
-1. Wire `composePlan`/`approvePlan` (spec 026) to an entry point — the recommendation surface exists and is tested but unreachable.
-2. Schedule `measureAction` (spec 019) so `action_outcomes` stop parking at `insufficient_measurement`; then the "which actions work" question becomes answerable.
-3. Add `hypothesis` to `interventions`; consider a lightweight control-arm convention (holdout prompts already exist).
-4. Cross-project learnings store (module L of the target design): a `learnings` table with confidence labels, fed from labeled `action_outcomes`; MCP read tools `search_learnings` / `record_learning` (record approval-gated).
+1. ✅ `composePlan`/`approvePlan` reachable from the plan page (compose / re-compose-supersede / approve buttons; service untouched).
+2. ✅ Outcome measurement sweep rides the automation heartbeat (`lib/outcomes/sweep.ts`): due actions measured against nearest same-scoring-version runs (mention_rate + owned-citation count), overlap → `confounded`, no comparable data → waits, then settles `insufficient_measurement` after 60 days' grace. Traffic/leads/pipeline stay null — no data source exists.
+3. ✅ `interventions.hypothesis` (migration 040) through service, form, detail page, and `create_experiment`. Control-arm convention: still open (holdout prompts exist).
+4. ✅ `learnings` table (migration 040) + `lib/learnings/service.ts` + MCP `search_learnings` / `record_learning` (17 tools). `confirmed`-class labels require measured source outcomes; learnings retire with a reason, never edit.
 
 ## Phase 3 — Prompt intelligence (module B)
 

@@ -27,6 +27,7 @@
 | `get_gap_report` | `{ project_id, run_id? }` | gap findings, open first, by opportunity | `db/gaps.listGapFindings` |
 | `list_experiments` | `{ project_id }` | interventions with baseline/post counts | `db/interventions.listInterventions` |
 | `get_experiment` | `{ intervention_id }` | before/after verdicts + instrument/confound flags | `lib/attribution/service.interventionView` |
+| `search_learnings` | `{ query?, project_id?, category?, include_retired? }` | confidence-labeled learnings; project searches include cross-project rows | `lib/learnings/service.searchLearnings` |
 | `list_pending_approvals` | `{}` | every undecided approval, ordered by urgency | `db/workflow.pendingApprovalsAcrossRuns` |
 
 Failure modes: `not_found` on bad ids; empty arrays / `latest_scored_run_id: null` are honest empty states, not errors. `get_prompt_results` on an unparsed run returns `run_status` plus an empty `mentions` list so "not parsed" is distinguishable from "not mentioned".
@@ -53,6 +54,15 @@ Both write one row to the append-only `mcp_invocations` ledger per executed atte
 - **Output**: `{ idempotent_replay, entity_kind: "intervention", entity_id, intervention_id, baseline_run_ids, baseline_weak, scheduled_offsets }`; dry run: `{ dry_run: true, validated_only: true }` (shape check only — no baseline inspection).
 - **Side effects**: inserts `interventions` + `intervention_runs`, enqueues three future-dated `start_scheduled_run` jobs, MCP ledger row.
 - **Failure modes**: `validation` (ship date >7 days in future, version/project mismatch), `not_found`, `forbidden`.
+- **Idempotency / approval**: same semantics as `run_prompt_set`; no approval required. Optional `hypothesis` (≤500) is stored on the intervention (spec 034).
+
+### `record_learning`
+
+- **Purpose**: record a durable, confidence-labeled learning (spec 034) — always an explicit operator act, never auto-generated.
+- **Input**: `{ project_id? (null = cross-project), category, statement (≤500), rationale?, confidence_label, source_action_outcome_ids? (≤20), evidence_note?, dry_run?, idempotency_key? }`
+- **Output**: `{ idempotent_replay, entity_kind: "learning", entity_id, learning_id, confidence_label }`; dry run: `{ dry_run: true, validated_only: true }`.
+- **Side effects**: inserts `learnings` row, `audit_log` row, MCP ledger row.
+- **Failure modes**: `validation` — `confirmed`/`strongly_supported` without measured source outcomes (the gate names the unmeasured id); `not_found` on bad project/outcome ids; `forbidden` (non-staff).
 - **Idempotency / approval**: same semantics as `run_prompt_set`; no approval required.
 
 ## Adding a tool

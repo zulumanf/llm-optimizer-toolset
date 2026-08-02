@@ -902,3 +902,26 @@ deliberately left to a human in the project workspace (docs/07).
 Note: the migration file is 041 (not 039/040) because specs 033/034 landed
 migrations concurrently; the schema_migrations ledger on dev and test was
 updated in place when the file was renumbered.
+
+## 2026-08-02 — Learning loop closed (spec 034): measured, not assumed
+
+- **Outcome measurement sources are the platform's own numbers**: visibility
+  = subject mention_rate (provider 'all', current scoring version), citations
+  = owned-citation count in the compared run. Traffic/leads/pipeline stay
+  null until a real data source exists — null is not zero, and the label
+  logic already treats it so.
+- **The sweep needs no window claim.** measureAction is write-once behind
+  FOR UPDATE, so any number of heartbeats measure each due outcome exactly
+  once; idempotency is structural, like the trigger layer's fire keys.
+- **A stuck outcome settles honestly.** No comparable post-action run after
+  60 days past due → measured with nulls → 'insufficient_measurement',
+  ending the retry loop with a recorded "we waited, nothing became
+  comparable" rather than pending forever.
+- **Learnings are never auto-generated.** A measured outcome suggests one; a
+  person (or an operator explicitly acting through MCP) records it.
+  'confirmed'/'strongly_supported' require measured source outcomes — a
+  label that asserts evidence must point at it. Learnings retire with a
+  reason instead of being edited: what a past decision cited stays readable
+  as cited.
+- Confidence vocabulary is shared with outcome_relationships (spec 019) —
+  one language for "how sure are we" across the graph and the store.
