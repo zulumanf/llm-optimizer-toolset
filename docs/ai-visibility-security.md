@@ -20,10 +20,10 @@ Out of scope by design (documented limitations): the stdio server trusts its loc
 
 ## Audit findings and remediation track (pre-existing platform issues)
 
-Ranked in `docs/ai-visibility-system-audit.md` §H. None are introduced or worsened by the MCP slice; none are fixed by it either — they belong to the pilot-launch P0 track (`docs/pilot-launch-plan.md`):
+Ranked in `docs/ai-visibility-system-audit.md` §H. Items 1–2 were fixed 2026-08-01 on `fix/visibility-audit-phase-1`; the rest remain on the pilot-launch track (`docs/pilot-launch-plan.md`):
 
-1. **SSRF redirect bypass** in `lib/knowledge/sources/ingest.ts` / `discover.ts` (`redirect: "follow"` after host validation; no DNS re-resolution; no size cap on ingestion fetches). Fix: `redirect: "manual"` with re-validation per hop, plus a byte cap. **P0 before any workflow fetches URLs from untrusted input**; today the paths are operator-initiated only.
-2. **Prompt-injection fencing** on crawled content (`lib/knowledge/extraction/claims.ts`): add the "data, not instructions" framing and delimiter escaping used elsewhere. Mitigated today by the tool-free internal agent.
+1. **SSRF redirect bypass** — **fixed**: `lib/security/safe-fetch.ts` is now the single outbound-fetch policy (manual per-hop revalidation, DNS resolution check, streaming size caps); used by ingestion, crawling, and robots fetches. Residual: resolve-then-connect TOCTOU race, documented in-module.
+2. **Prompt-injection fencing** on crawled content — **fixed**: `buildExtractionPrompt` carries the "data, not instructions" framing and neutralizes embedded fence markers.
 3. **Mock provider reachable in production** (known P0 A1) — fabricated answers can reach real scores when no keys are configured.
 4. No security headers/CSP in `next.config.ts`; hand-rolled `escapeHtml` in export paths.
 5. `audit_log` covers ~7 of 22 write domains; MCP's ledger closes this only for MCP-originated mutations.

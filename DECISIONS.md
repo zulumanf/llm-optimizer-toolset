@@ -845,3 +845,35 @@ wholly absent layer was an MCP interface. Decisions taken:
   same gates as the forms).
 - **The actor is never the system principal.** MCP work is operator-
   initiated; attributing it to the platform would erase who acted.
+
+## 2026-08-01 — Audit phase 1: five named defects, one outbound-fetch policy
+
+Fix pass for the correctness/security findings of
+docs/ai-visibility-system-audit.md (§H/§I), branch fix/visibility-audit-phase-1.
+Non-obvious choices:
+
+- **One `safeFetch`, not per-caller patches.** The SSRF redirect bypass
+  existed because three call sites each owned their own fetch. The policy
+  (scheme check, private-host refusal, per-hop manual redirects, DNS
+  resolution check, streaming byte caps) now lives once in
+  `lib/security/safe-fetch.ts`; ingestion, crawling, and robots.txt all go
+  through it. `isPrivateHost` moved there; ingest re-exports it.
+- **The ambient DNS check is disabled under vitest.** Integration suites
+  stub the global fetch with fictional hostnames; resolving them for real
+  would couple tests to a resolver. The DNS path is not untested — unit
+  tests inject a resolver and prove a public name resolving privately is
+  refused, per hop. The resolve-then-connect TOCTOU race is documented in
+  the module rather than half-solved.
+- **Evidence manifests now report `parserVersions` (plural), read from the
+  run's own classification rows.** The deprecated `PARSER_VERSION` constant
+  stamped v1+heuristic into every manifest regardless of what ran; it is
+  deleted, not just unused. Plural because the export ships every revision,
+  and a re-parsed run legitimately carries two versions.
+- **Position-rate drill-downs share mention_rate's denominator** (all valid
+  cells, docs/06 v1.1) — the per-response current-mention join already
+  counts distinct responses, so the numerator definition is one predicate.
+- **Provider timeout is one constant (180s) on the SDK clients**, not a
+  wrapper: retries already live in lib/ai/retry.ts and classify timeouts as
+  transient; a second timing layer would fight the first. Instrument
+  settings (temperature etc.) remain unrecorded because no adapter sets
+  them — there is nothing true to record.

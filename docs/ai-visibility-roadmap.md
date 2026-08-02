@@ -6,13 +6,13 @@
 
 One stdio server, 13 read tools + 2 gated mutating tools, invocation ledger (migration 039). No external actions.
 
-## Phase 1 — Correctness and security debt named by the audit (small, high value)
+## Phase 1 — Correctness and security debt named by the audit (shipped 2026-08-01, `fix/visibility-audit-phase-1`)
 
-1. Fix evidence exports stamping deprecated `PARSER_VERSION` instead of the per-run parser version (`lib/evidence/export.ts`) — client-facing provenance bug.
-2. SSRF hardening in `lib/knowledge/sources/ingest.ts`/`discover.ts`: manual redirect handling with per-hop host validation, response-size cap.
-3. Delimiter-hardened, "data not instructions" fencing in `lib/knowledge/extraction/claims.ts`.
-4. Per-request timeouts on benchmark provider calls (`lib/ai/*` via `AbortSignal`); record temperature/top_p/seed on `responses` when adapters set them.
-5. Drill-down re-derivation for `first_position_rate` / `top_three_rate`.
+1. ✅ Evidence exports now stamp the parser version(s) read from the run's own classification rows (`manifest.parserVersions`); the deprecated `PARSER_VERSION` constant is deleted.
+2. ✅ SSRF: all operator/discovery URL fetching goes through `lib/security/safe-fetch.ts` — manual redirects with per-hop host validation, DNS resolution check (disabled under vitest, unit-tested via injected resolver), streaming size caps. Robots.txt fetches follow redirects manually too. Residual: resolve-then-connect TOCTOU race, documented in the module.
+3. ✅ Claim-extraction prompts carry the "data, not instructions" framing and neutralize embedded fence markers.
+4. ✅ `PROVIDER_TIMEOUT_MS` (180s) on all four benchmark provider clients; timeouts classify as retryable. (Instrument-settings capture: nothing to record — no adapter sets temperature/top_p/seed; revisit if one ever does.)
+5. ✅ Drill-down re-derivation for `first_position_rate` / `top_three_rate` — every v1.1 metric is now independently re-derivable.
 
 ## Phase 2 — Close the learning loop (partials that already have tables)
 
