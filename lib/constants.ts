@@ -20,8 +20,6 @@ export const SET_DESCRIPTION_MAX = 500;
  * is recorded per row — resolve with lib/parsing/version.ts. */
 export const PARSER_VERSION_HEURISTIC = "mention-parser-v1+heuristic";
 export const PARSER_VERSION_LLM = "mention-parser-v2+llm";
-/** @deprecated use activeParserVersion() — kept for historical references */
-export const PARSER_VERSION = PARSER_VERSION_HEURISTIC;
 /** Classification is a narrow judgment on every observation — the mini
  * snapshot keeps per-run cost sane (spec 013). */
 export const CLASSIFIER_MODEL = "gpt-5.4-mini-2026-03-17";

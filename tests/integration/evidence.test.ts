@@ -230,6 +230,26 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
       expect(result!.denominator - result!.numerator).toBeGreaterThan(0);
       expect(result!.rows.every((r) => r.responseHash)).toBe(true);
     }
+
+    // v1.1 position rates: same denominator as mention_rate, positive rows
+    // are exactly the rows whose current mention holds the placement.
+    for (const metric of ["first_position_rate", "top_three_rate"] as const) {
+      const result = await observations.drilldown({
+        runId,
+        metric,
+        scoringVersion: constants.SCORING_VERSION,
+      });
+      expect(result).not.toBeNull();
+      expect(result!.matchesStored).toBe(true);
+      expect(result!.rows).toHaveLength(result!.denominator);
+      const expectPositive = (r: (typeof result & object)["rows"][number]) =>
+        metric === "first_position_rate"
+          ? r.listPosition === 1
+          : r.listPosition !== null && r.listPosition <= 3;
+      expect(result!.rows.filter((r) => r.positive)).toEqual(
+        result!.rows.filter(expectPositive)
+      );
+    }
   });
 
   it("citation drill-down finds the stored score and uses its denominator", async () => {
@@ -440,7 +460,14 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
       files: { path: string; sha256: string }[];
       metrics: { metric: string; numerator: number; denominator: number; matchesStoredScore: boolean }[];
       observationCount: number;
+      parserVersions: string[];
     };
+
+    // Provenance: the manifest must name the parser version(s) that actually
+    // classified this run's rows — not a constant. Keys stripped in tests pin
+    // the pipeline to the heuristic parser, so that is what must appear.
+    const { PARSER_VERSION_HEURISTIC } = await import("@/lib/constants");
+    expect(manifest.parserVersions).toEqual([PARSER_VERSION_HEURISTIC]);
     expect(manifest.files.length).toBeGreaterThan(5);
     for (const file of manifest.files) {
       const bytes = await readFile(join(dest, "evidence-package", file.path));
