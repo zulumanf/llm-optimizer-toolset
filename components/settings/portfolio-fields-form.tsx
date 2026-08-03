@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -22,6 +23,7 @@ interface Props {
   owners: { id: string; name: string; email: string }[];
   currentOwnerId: string | null;
   currentTier: string | null;
+  currentContractValue: number | null;
 }
 
 export function PortfolioFieldsForm({
@@ -29,18 +31,28 @@ export function PortfolioFieldsForm({
   owners,
   currentOwnerId,
   currentTier,
+  currentContractValue,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [ownerId, setOwnerId] = useState(currentOwnerId ?? NONE);
   const [tier, setTier] = useState(currentTier ?? NONE);
+  const [contractValue, setContractValue] = useState(
+    currentContractValue === null ? "" : String(currentContractValue)
+  );
 
   const submit = () => {
+    const parsedValue = contractValue.trim() === "" ? null : Number(contractValue);
+    if (parsedValue !== null && (!Number.isFinite(parsedValue) || parsedValue < 0)) {
+      toast.error("Contract value must be a non-negative number, or empty to unset.");
+      return;
+    }
     startTransition(async () => {
       const result = await updatePortfolioFields({
         projectId,
         accountOwnerId: ownerId === NONE ? null : ownerId,
         serviceTier: tier === NONE ? null : tier,
+        contractValueUsd: parsedValue,
       });
       if (result.ok) {
         toast.success("Portfolio fields saved.");
@@ -86,6 +98,20 @@ export function PortfolioFieldsForm({
             </SelectContent>
           </Select>
         </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Annual contract value (USD)</Label>
+        <Input
+          value={contractValue}
+          onChange={(e) => setContractValue(e.target.value)}
+          inputMode="decimal"
+          placeholder="Empty = weight this client by provider spend instead"
+          className="max-w-xs tabular-nums"
+        />
+        <p className="text-xs text-muted-foreground">
+          Used by the control tower&apos;s priority formula. Until set, this
+          client&apos;s commercial weight falls back to 30-day provider spend.
+        </p>
       </div>
       <Button size="sm" onClick={submit} disabled={pending}>
         {pending ? "Saving…" : "Save portfolio fields"}

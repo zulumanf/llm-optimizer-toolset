@@ -115,6 +115,15 @@ async function transition(
           updated_at = now()
         where id = ${taskId}
       `;
+      // The 90-day plan tracks itself (plan 5.4): a linked plan item follows
+      // its task into done — the columns migration 026 shipped finally get
+      // a writer.
+      if (action === "complete") {
+        await tx`
+          update plan_items set status = 'done'
+          where task_id = ${taskId} and status in ('planned', 'in_progress')
+        `;
+      }
       await writeAudit(tx, {
         userId: user.id,
         action: `task.${action}`,
@@ -333,6 +342,54 @@ export async function listProjectTasks(projectId: string): Promise<TaskListItem[
     overdue: row.overdue as boolean,
     evidence: row.evidence as TaskListItem["evidence"],
     comments: row.comments as TaskListItem["comments"],
+  }));
+}
+
+export interface PortfolioTaskRow {
+  id: string;
+  projectId: string;
+  projectName: string;
+  title: string;
+  status: string;
+  priority: string;
+  ownerName: string | null;
+  dueDate: string | null;
+  overdue: boolean;
+}
+
+/**
+ * The cross-client work board's read (plan 5.1): every open task in the
+ * portfolio in one list. Answers "what do we owe which client this week"
+ * — previously ten kanban pages and memory. Staff-only surface; the page
+ * gate enforces it.
+ */
+export async function listOpenTasksAcrossProjects(): Promise<PortfolioTaskRow[]> {
+  const rows = await sql`
+    select t.id, t.project_id, p.name as project_name, t.title, t.status,
+      t.priority, u.name as owner_name,
+      to_char(t.due_date, 'YYYY-MM-DD') as due_date,
+      (t.due_date is not null and t.due_date < current_date) as overdue
+    from tasks t
+    join projects p on p.id = t.project_id
+    left join users u on u.id = t.owner_id
+    where t.status in ('suggested', 'approved', 'in_progress')
+      and p.status = 'active'
+    order by
+      (t.due_date is not null and t.due_date < current_date) desc,
+      t.priority asc,
+      t.due_date asc nulls last,
+      p.name asc
+  `;
+  return rows.map((row) => ({
+    id: row.id as string,
+    projectId: row.projectId as string,
+    projectName: row.projectName as string,
+    title: row.title as string,
+    status: row.status as string,
+    priority: row.priority as string,
+    ownerName: row.ownerName as string | null,
+    dueDate: row.dueDate as string | null,
+    overdue: Boolean(row.overdue),
   }));
 }
 

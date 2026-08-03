@@ -17,6 +17,7 @@ import {
   CheckSquare,
   ChevronRight,
   Crosshair,
+  ListTodo,
   Gauge,
   LayoutDashboard,
   Shield,
@@ -180,6 +181,11 @@ export function SidebarNav({
           <NavLink href="/approvals" active={pathname.startsWith("/approvals")}>
             <CheckSquare className="size-4" /> Approvals
             <Badge count={approvalsCount} />
+          </NavLink>
+        </li>
+        <li>
+          <NavLink href="/work" active={pathname.startsWith("/work")}>
+            <ListTodo className="size-4" /> Work
           </NavLink>
         </li>
         <li>

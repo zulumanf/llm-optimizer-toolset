@@ -24,7 +24,8 @@ export type QueueSource =
   | "workflow_approval"
   | "gap_finding"
   | "accuracy_finding"
-  | "content_approval";
+  | "content_approval"
+  | "task_overdue";
 
 export interface QueueItem {
   id: string;
@@ -53,6 +54,7 @@ const EFFORT_MINUTES: Record<QueueSource, number> = {
   gap_finding: 60,
   accuracy_finding: 45,
   content_approval: 30,
+  task_overdue: 30,
 };
 
 /** Risk exposure by exception kind — legal/privacy/publication weight. */
@@ -293,26 +295,76 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
     });
   }
 
+  // 6. Overdue tasks — committed work slipping (plan 5.3). The queue that
+  // answers "what first?" could not see the work items until now.
+  const overdueTasks = await sql`
+    select t.id, t.project_id, t.title, t.priority as task_priority,
+      t.due_date, t.created_at, p.name as project_name
+    from tasks t
+    join projects p on p.id = t.project_id
+    where t.status in ('approved', 'in_progress')
+      and t.due_date is not null and t.due_date < current_date
+      ${projectFilter ? sql`and t.project_id = ${projectFilter}` : sql``}
+    order by t.due_date asc
+    limit ${limit}
+  `;
+  for (const row of overdueTasks) {
+    const projectId = row.projectId as string;
+    const severity: RiskLevel = row.taskPriority === "p1" ? "high" : "medium";
+    const dueAt = new Date(`${row.dueDate as string}T00:00:00Z`);
+    items.push({
+      id: row.id as string,
+      source: "task_overdue",
+      kind: `${row.taskPriority} task`,
+      projectId,
+      projectName: row.projectName as string,
+      summary: `Overdue: "${row.title}"`,
+      recommendedAction: "Finish it, move the due date with the client, or drop it explicitly.",
+      severity,
+      dueAt,
+      createdAt: row.createdAt as Date,
+      href: `/projects/${projectId}/tasks`,
+      priority: computePriority({
+        severity,
+        hoursUntilDue: hoursUntil(dueAt),
+        commercialValue: clientValue.get(projectId) ?? 0.3,
+        dependencyImpact: 0.3,
+        risk: 0.2,
+        effortMinutes: EFFORT_MINUTES.task_overdue,
+      }),
+    });
+  }
+
   return items.sort((a, b) => b.priority.total - a.priority.total).slice(0, limit);
 }
 
 /**
- * Normalised 0..1 client value, from 30-day provider spend. Spend is the only
- * commercial signal the platform actually holds today — there is no contract
- * value in the schema — so it is used honestly and labelled as what it is.
+ * Normalised 0..1 client value. Contract value (migration 056) is the real
+ * commercial signal and wins when the operator recorded one; projects
+ * without it fall back to 30-day provider spend, the only signal the
+ * platform holds on its own. The two scales are normalised separately —
+ * approximate, and better than pretending spend is revenue.
  */
 export async function clientValueIndex(): Promise<Map<string, number>> {
-  const rows = await sql`
+  const contracts = await sql`
+    select id as project_id, contract_value_usd from projects
+    where contract_value_usd is not null and status = 'active'
+  `;
+  const spendRows = await sql`
     select project_id, coalesce(sum(cost_usd), 0) as spend
     from runs
     where started_at >= now() - interval '30 days'
     group by project_id
   `;
-  const values = rows.map((r) => Number(r.spend ?? 0));
-  const max = Math.max(1, ...values);
   const map = new Map<string, number>();
-  for (const row of rows) {
-    map.set(row.projectId as string, Number(row.spend ?? 0) / max);
+  const maxContract = Math.max(1, ...contracts.map((r) => Number(r.contractValueUsd)));
+  for (const row of contracts) {
+    map.set(row.projectId as string, Number(row.contractValueUsd) / maxContract);
+  }
+  const maxSpend = Math.max(1, ...spendRows.map((r) => Number(r.spend ?? 0)));
+  for (const row of spendRows) {
+    const id = row.projectId as string;
+    if (!map.has(id)) map.set(id, Number(row.spend ?? 0) / maxSpend);
   }
   return map;
 }
