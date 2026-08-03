@@ -19,7 +19,15 @@ import {
   normalizeCandidate,
 } from "@/lib/parsing/candidates";
 import { extractCitations } from "@/lib/ai/citations";
-import { activeParserVersion, llmClassificationAvailable } from "@/lib/parsing/version";
+import {
+  activeParserVersion,
+  llmClassificationAvailable,
+  KNOWN_PARSER_VERSIONS,
+} from "@/lib/parsing/version";
+import {
+  PARSER_VERSION_HEURISTIC,
+  PARSER_VERSION_LLM,
+} from "@/lib/constants";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
@@ -67,7 +75,11 @@ export async function parseResponse(responseId: string): Promise<void> {
 
   // v2: LLM entity resolution (spec 013) with approved claims as identity
   // ground truth; degrades to heuristic v1 without a key (docs/12).
+  // parserUsed records what ACTUALLY classified this response — a fallback
+  // parse must stamp v1, not the version we hoped for (provenance is the
+  // whole point of the stamp).
   let drafts;
+  let parserUsed: string = PARSER_VERSION_HEURISTIC;
   if (llmClassificationAvailable() && text.trim().length > 0) {
     const claimRows = await sql`
       select canonical_text from claims
@@ -84,6 +96,7 @@ export async function parseResponse(responseId: string): Promise<void> {
         companies: companyInputs,
         identityContext,
       });
+      parserUsed = PARSER_VERSION_LLM;
     } catch (err) {
       // Never fail a parse on classifier trouble — fall back and record it
       log("warn", "parse.llm_classifier_failed", {
@@ -131,7 +144,7 @@ export async function parseResponse(responseId: string): Promise<void> {
           (${responseId}, ${prev.companyId},
            (select max(revision) from mentions
             where response_id = ${responseId} and company_id = ${prev.companyId}) + 1,
-           false, ${activeParserVersion()}, 0.85, false)
+           false, ${parserUsed}, 0.85, false)
       `;
     }
 
@@ -148,7 +161,7 @@ export async function parseResponse(responseId: string): Promise<void> {
              where response_id = ${responseId} and company_id = ${draft.companyId}), 0) + 1,
            ${draft.mentioned}, ${draft.recommended}, ${draft.listPosition},
            ${draft.sentiment}, ${draft.excerpt}, ${draft.citedUrls},
-           ${activeParserVersion()}, ${draft.confidence}, ${draft.needsReview})
+           ${parserUsed}, ${draft.confidence}, ${draft.needsReview})
       `;
     }
 
@@ -222,7 +235,7 @@ export async function parseResponse(responseId: string): Promise<void> {
 
     await tx`
       insert into response_parses (response_id, run_id, parser_version)
-      values (${responseId}, ${response.runId}, ${activeParserVersion()})
+      values (${responseId}, ${response.runId}, ${parserUsed})
       on conflict do nothing
     `;
   });
@@ -236,12 +249,16 @@ export async function maybeEnqueueScoring(runId: string): Promise<void> {
   if (!run || !["completed", "partial", "failed"].includes(run.status as string)) {
     return;
   }
+  // Any known version counts as parsed: a truthfully-stamped degraded parse
+  // must not stall scoring, and a key change must not silently reclassify
+  // history as unparsed (production-readiness plan 2.1/2.2).
   const [unparsed] = await sql`
     select count(*)::int as n from responses r
     where r.run_id = ${runId}
       and not exists (
         select 1 from response_parses p
-        where p.response_id = r.id and p.parser_version = ${activeParserVersion()}
+        where p.response_id = r.id
+          and p.parser_version = any(${KNOWN_PARSER_VERSIONS})
       )
   `;
   if ((unparsed?.n as number) > 0) return;

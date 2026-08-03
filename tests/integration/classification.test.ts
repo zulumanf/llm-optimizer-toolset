@@ -4,9 +4,18 @@
  */
 import { execSync } from "node:child_process";
 import { join } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+
+// Simulates an LLM classifier outage for the provenance test below. Harmless
+// to every other test in this file: they run keyless, so the LLM path is
+// never entered and the mock is never called.
+vi.mock("@/lib/parsing/classify-llm", () => ({
+  classifyResponseLlm: async () => {
+    throw new Error("simulated classifier outage");
+  },
+}));
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -132,6 +141,37 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
       await jobs.completeJob(job.id);
     }
   }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("stamps the parser that actually ran when the LLM classifier fails (plan 2.1)", async () => {
+    await seedCompanies();
+    // A key is present, so the pipeline TARGETS v2+llm — but the classifier
+    // throws (mocked above) and the parse degrades to the heuristic. The
+    // stamp must say so, and scoring must still proceed.
+    vi.stubEnv("OPENAI_API_KEY", "test-key-provenance");
+    const runId = await runPipeline(["What are the best tools?"]);
+    await drainJobs();
+
+    const parses = await sql`
+      select distinct parser_version from response_parses where run_id = ${runId}
+    `;
+    expect(parses.map((p) => p.parserVersion)).toEqual([
+      "mention-parser-v1+heuristic",
+    ]);
+    const mentionVersions = await sql`
+      select distinct m.parser_version from mentions m
+      join responses r on r.id = m.response_id where r.run_id = ${runId}
+    `;
+    expect(mentionVersions.map((m) => m.parserVersion)).toEqual([
+      "mention-parser-v1+heuristic",
+    ]);
+    // The degraded-but-honest parse must not stall the run: scores computed.
+    const scoreRows = await sql`select 1 from scores where run_id = ${runId}`;
+    expect(scoreRows.length).toBeGreaterThan(0);
+  });
 
   it("company registry: alias collisions blocked; multiple is_self allowed since spec 008", async () => {
     await seedCompanies();
