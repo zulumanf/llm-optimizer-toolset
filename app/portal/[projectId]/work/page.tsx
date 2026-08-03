@@ -1,4 +1,5 @@
 import { portalWork } from "@/lib/portal/service";
+import { getCurrentUser } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/format";
 
@@ -18,7 +19,7 @@ export default async function PortalWorkPage({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const items = await portalWork(projectId);
+  const items = await portalWork(await getCurrentUser(), projectId);
 
   return (
     <div>

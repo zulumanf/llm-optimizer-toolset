@@ -14,6 +14,10 @@ import {
   ApprovePlanButton,
   ComposePlanButton,
 } from "@/components/plans/plan-actions";
+import {
+  ActivatePlanItemButton,
+  DropPlanItemButton,
+} from "@/components/plans/plan-item-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -168,6 +172,17 @@ export default async function PlanPage({
                     <span className="text-sm font-medium">{item.title}</span>
                     <Badge variant={OWNER_TONE[item.owner] ?? "outline"}>{item.owner}</Badge>
                     <span className="text-xs text-muted-foreground">{item.effortHours}h</span>
+                    {item.status !== "planned" && (
+                      <Badge variant={item.status === "done" ? "default" : "secondary"}>
+                        {item.status.replaceAll("_", " ")}
+                      </Badge>
+                    )}
+                    {plan.status === "approved" && item.id && item.status === "planned" && (
+                      <span className="ml-auto flex items-center gap-1">
+                        <ActivatePlanItemButton planItemId={item.id} />
+                        <DropPlanItemButton planItemId={item.id} />
+                      </span>
+                    )}
                   </div>
 
                   <p className="mt-2 text-sm">{item.rationale}</p>

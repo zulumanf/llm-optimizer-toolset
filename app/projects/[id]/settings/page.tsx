@@ -23,7 +23,7 @@ export default async function ProjectSettingsPage({
 
   const [config] = await sql`
     select baseline_prompt_set_id, baseline_config, account_owner_id,
-      service_tier
+      service_tier, contract_value_usd
     from projects where id = ${id}
   `;
   const owners = await listActiveStaffUsers();
@@ -65,6 +65,9 @@ export default async function ProjectSettingsPage({
           owners={owners}
           currentOwnerId={(config?.accountOwnerId as string | null) ?? null}
           currentTier={(config?.serviceTier as string | null) ?? null}
+          currentContractValue={
+            config?.contractValueUsd == null ? null : Number(config.contractValueUsd)
+          }
         />
       </div>
 

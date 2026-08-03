@@ -8,6 +8,7 @@
 import { sql } from "@/db/client";
 import { getSubjectCompany } from "@/db/companies";
 import { authorityTrend, type TrendPoint } from "@/db/dashboard";
+import { assertProjectAccess, type CurrentUser } from "@/lib/auth";
 
 export interface PortalHeadline {
   metric: string;
@@ -29,7 +30,13 @@ const HEADLINE_METRICS = [
   "first_position_rate",
 ];
 
-export async function portalOverview(projectId: string): Promise<PortalOverview> {
+export async function portalOverview(
+  user: CurrentUser,
+  projectId: string
+): Promise<PortalOverview> {
+  // The layout gates too, but Next.js layouts are not an authorization
+  // boundary (plan 4.2) — every portal read re-asserts for itself.
+  await assertProjectAccess(user, projectId);
   const subject = await getSubjectCompany(projectId);
   if (!subject) {
     return { subjectName: null, headlines: [], trend: [], lastMeasuredAt: null };
@@ -70,9 +77,13 @@ export interface PortalWorkItem {
   detail: string | null;
 }
 
-/** Proof of work: ONLY client_visible completed tasks, published content,
- * and interventions. Owner identities and internal notes never leave. */
-export async function portalWork(projectId: string): Promise<PortalWorkItem[]> {
+/** Proof of work: ONLY client_visible completed tasks and interventions,
+ * plus published content. Owner identities and internal notes never leave. */
+export async function portalWork(
+  user: CurrentUser,
+  projectId: string
+): Promise<PortalWorkItem[]> {
+  await assertProjectAccess(user, projectId);
   const tasks = await sql`
     select title, updated_at as at from tasks
     where project_id = ${projectId} and status = 'done' and client_visible
@@ -87,7 +98,7 @@ export async function portalWork(projectId: string): Promise<PortalWorkItem[]> {
   `;
   const interventions = await sql`
     select title, shipped_at as at from interventions
-    where project_id = ${projectId} and archived_at is null
+    where project_id = ${projectId} and archived_at is null and client_visible
     order by shipped_at desc limit 50
   `;
   const items: PortalWorkItem[] = [
@@ -124,7 +135,11 @@ export interface PortalReport {
   publishedAt: Date;
 }
 
-export async function portalReports(projectId: string): Promise<PortalReport[]> {
+export async function portalReports(
+  user: CurrentUser,
+  projectId: string
+): Promise<PortalReport[]> {
+  await assertProjectAccess(user, projectId);
   return sql<PortalReport[]>`
     select id, title, kind, period_start::text, period_end::text, published_at
     from reports

@@ -180,6 +180,30 @@ describe.skipIf(!TEST_URL)("task management (integration)", () => {
     expect(list[0]?.overdue).toBe(false);
   });
 
+  it("overdue tasks reach the control tower's queue and the work board (plan 5.1/5.3)", async () => {
+    const { actionRequiredQueue } = await import("@/lib/control-tower/queue");
+    const { projectId, taskId } = await seedTask();
+    await tasks.approveTask(user, { taskId });
+    await tasks.updateTaskDetails(user, { taskId, dueDate: isoDaysFromNow(-3) });
+
+    const queue = await actionRequiredQueue({ projectId });
+    const item = queue.find((q) => q.source === "task_overdue" && q.id === taskId);
+    expect(item).toBeDefined();
+    expect(item?.summary).toMatch(/Overdue/);
+
+    const board = await tasks.listOpenTasksAcrossProjects();
+    const row = board.find((t) => t.id === taskId);
+    expect(row?.overdue).toBe(true);
+    // Overdue work sorts to the top of the board.
+    expect(board[0]?.overdue).toBe(true);
+
+    // Completing it clears both surfaces.
+    await tasks.startTask(user, { taskId });
+    await tasks.completeTask(user, { taskId });
+    const after = await actionRequiredQueue({ projectId });
+    expect(after.find((q) => q.id === taskId)).toBeUndefined();
+  });
+
   it("comments append in order and refuse mutation", async () => {
     const { projectId, taskId } = await seedTask();
 

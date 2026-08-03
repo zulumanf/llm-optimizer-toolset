@@ -213,3 +213,34 @@ export async function digestText(): Promise<string> {
     .filter(Boolean)
     .join("\n\n");
 }
+
+/**
+ * Deliver the digest to DIGEST_WEBHOOK_URL (plan 5.6) — a Slack-compatible
+ * incoming webhook ({"text": ...}), the first channel that needs no OAuth.
+ * The URL is operator-set deploy config, not user input, so plain fetch is
+ * appropriate; unset means not-configured, which is a skip, not a failure.
+ */
+export async function deliverDigest(): Promise<
+  { delivered: false; reason: string } | { delivered: true }
+> {
+  const url = process.env.DIGEST_WEBHOOK_URL;
+  if (!url) return { delivered: false, reason: "DIGEST_WEBHOOK_URL not set" };
+  const text = await digestText();
+  if (text === "Nothing open across all clients.") {
+    return { delivered: false, reason: "nothing open — no digest sent" };
+  }
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    throw new ClassifiedError(
+      "internal",
+      `Digest webhook responded ${response.status}.`
+    );
+  }
+  log("info", "notifications.digest_delivered", { bytes: text.length });
+  return { delivered: true };
+}

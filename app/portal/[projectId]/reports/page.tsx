@@ -1,4 +1,5 @@
 import { portalReports } from "@/lib/portal/service";
+import { getCurrentUser } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/format";
 
@@ -12,7 +13,7 @@ export default async function PortalReportsPage({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const reports = await portalReports(projectId);
+  const reports = await portalReports(await getCurrentUser(), projectId);
 
   return (
     <div>

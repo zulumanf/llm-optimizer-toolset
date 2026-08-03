@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { clientCostRollup } from "@/db/operations";
 import { combinedAttentionFeed } from "@/lib/notifications/feed";
+import { actionRequiredQueue } from "@/lib/control-tower/queue";
 import { requireStaffPage } from "@/lib/security/page-gates";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,9 +43,10 @@ function Tile({ label, value, sub }: { label: string; value: string; sub?: strin
 
 export default async function OperationsPage() {
   await requireStaffPage(); // Today is the whole-portfolio view (spec 031)
-  const [{ items, metrics }, costs] = await Promise.all([
+  const [{ items, metrics }, costs, queue] = await Promise.all([
     combinedAttentionFeed(),
     clientCostRollup(),
+    actionRequiredQueue({ limit: 5 }),
   ]);
 
   const urgent = items.filter((i) => i.severity === "urgent");
@@ -91,6 +93,49 @@ export default async function OperationsPage() {
           sub={metrics.failedJobs > 0 ? "worker needs a look" : "queue healthy"}
         />
       </div>
+
+      {/* One entry point (plan 5.5): the control tower's ranked "what
+          first?" answer, embedded — Today and the tower stop disagreeing. */}
+      {queue.length > 0 && (
+        <section className="mb-6">
+          <div className="mb-2 flex items-baseline justify-between">
+            <h2 className="text-lg font-medium">What first</h2>
+            <Link
+              href="/control-tower"
+              className="text-sm text-muted-foreground underline hover:text-foreground"
+            >
+              Full queue with the formula
+            </Link>
+          </div>
+          <ol className="space-y-1">
+            {queue.map((q, index) => (
+              <li key={`${q.source}-${q.id}`}>
+                <Link
+                  href={q.href}
+                  className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted/40"
+                >
+                  <span className="tabular-nums text-xs text-muted-foreground">
+                    {index + 1}.
+                  </span>
+                  <Badge
+                    variant={
+                      q.severity === "critical" || q.severity === "high"
+                        ? "destructive"
+                        : "secondary"
+                    }
+                  >
+                    {q.source.replaceAll("_", " ")}
+                  </Badge>
+                  <span className="line-clamp-1">{q.summary}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {q.projectName}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       {items.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">

@@ -55,6 +55,9 @@ const portfolioFieldsSchema = z.object({
   // null clears; absent leaves untouched
   accountOwnerId: z.string().uuid().nullable().optional(),
   serviceTier: z.enum(["standard", "premium", "exclusive"]).nullable().optional(),
+  /** Annual contract value (plan 5.7): the control tower's commercial
+   * weighting uses this instead of the provider-spend proxy when set. */
+  contractValueUsd: z.number().nonnegative().nullable().optional(),
 });
 
 /** Portfolio operations fields (spec 030): who runs this account, at what
@@ -73,7 +76,7 @@ export async function updatePortfolioFields(
     assertCanWrite(user);
     await sql.begin(async (tx) => {
       const [project] = await tx`
-        select account_owner_id, service_tier from projects
+        select account_owner_id, service_tier, contract_value_usd from projects
         where id = ${input.projectId} for update
       `;
       if (!project) throw new ClassifiedError("not_found", "Project not found.");
@@ -96,6 +99,11 @@ export async function updatePortfolioFields(
             input.serviceTier !== undefined
               ? input.serviceTier
               : (project.serviceTier as string | null)
+          },
+          contract_value_usd = ${
+            input.contractValueUsd !== undefined
+              ? input.contractValueUsd
+              : (project.contractValueUsd as number | null)
           }
         where id = ${input.projectId}
       `;
@@ -107,6 +115,7 @@ export async function updatePortfolioFields(
         detail: {
           accountOwnerId: input.accountOwnerId,
           serviceTier: input.serviceTier,
+          contractValueUsd: input.contractValueUsd,
         },
       });
     });

@@ -1373,3 +1373,40 @@ Phase 3 (prospecting last mile), the choices that weren't in the plan text:
 - **Discover hides when no real source adapter is configured** — a button
   that errors on submit is worse than absence; CSV/manual are the universe
   sources until an adapter ships.
+
+## 2026-08-03 — Phase 4/5: the portal stops leaking by default, the portfolio gets a work layer
+
+Phase 4 (client-access hardening): interventions gained `client_visible`
+(054), deny-by-default like tasks, with an explicit toggle; portal services
+take the user and re-assert project access per read — Next.js layouts are
+not an authorization boundary; export routes were audited and found clean
+(the evidence package selects cost/tokens but never serializes them; CSV/
+HTML export published-report content only), and Next's production error
+redaction covers server-component messages, so 4.3/4.5 closed as
+verification results, not code.
+
+Phase 5 (agency layer) — the non-obvious choices:
+- **audit_log.project_id resolves itself in the database** (055): a
+  before-insert trigger maps entity → owning project centrally instead of
+  touching ~150 writeAudit call sites; an explicit projectId from a writer
+  wins, unknown entities stay null. Backfill by the same joins. The
+  /projects/[id]/activity page is the log's first reader.
+- **The work board is a read, not a new object**: /work lists open tasks
+  across active clients (overdue first) straight off the columns that
+  already existed.
+- **Overdue tasks enter the control-tower queue** as source `task_overdue`
+  — the formula itself is unchanged, so no version bump; a new input, not
+  new math.
+- **Plan items activate into real tasks** born 'approved' (activating an
+  item of an approved plan IS the human decision), carrying the item's
+  evidence; task completion flips the item to done via the transition
+  hook; dropping requires a recorded reason. Migration 026's dead columns
+  now have writers.
+- **Contract value (056) beats the spend proxy when present**; the two
+  scales normalise separately and unpriced clients keep the honest spend
+  fallback. Set per client in Settings → Portfolio.
+- **Digest delivery is a Slack-compatible webhook** (DIGEST_WEBHOOK_URL),
+  the first channel needing no OAuth; cadence belongs to the scheduler
+  (?digest=1 on the notifications cron), not the code.
+- **Today embeds the control tower's top five** so the two attention
+  surfaces agree on "what first" instead of ranking independently.

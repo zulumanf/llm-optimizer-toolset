@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CreateInterventionDialog } from "@/components/attribution/create-intervention-dialog";
+import { InterventionVisibilityToggle } from "@/components/attribution/intervention-visibility";
 import { ProjectTabs } from "@/components/layout/project-tabs";
 
 export default async function InterventionsPage({
@@ -27,7 +28,7 @@ export default async function InterventionsPage({
   const [interventions, versions] = await Promise.all([
     sql`
       select i.id, i.title, to_char(i.shipped_at, 'YYYY-MM-DD') as shipped,
-        i.baseline_weak, s.name as set_name, v.version,
+        i.baseline_weak, i.client_visible, s.name as set_name, v.version,
         (select count(*)::int from intervention_runs ir
           where ir.intervention_id = i.id and ir.role = 'baseline') as baselines,
         (select count(*)::int from intervention_runs ir
@@ -97,6 +98,7 @@ export default async function InterventionsPage({
                 <TableHead>Target</TableHead>
                 <TableHead className="text-right">Baselines</TableHead>
                 <TableHead className="text-right">Post runs</TableHead>
+                <TableHead>Portal</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -126,6 +128,12 @@ export default async function InterventionsPage({
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {i.posts as number}
+                  </TableCell>
+                  <TableCell>
+                    <InterventionVisibilityToggle
+                      interventionId={i.id as string}
+                      clientVisible={Boolean(i.clientVisible)}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

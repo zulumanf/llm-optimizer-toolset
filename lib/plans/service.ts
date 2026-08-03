@@ -38,8 +38,12 @@ export interface PlanItem {
   effortHours: number;
   owner: string;
   measurement: string;
-  status: "planned" | "excluded";
+  status: "planned" | "excluded" | "in_progress" | "done" | "dropped";
   exclusionReason: string | null;
+  /** Set once the plan is persisted; composePlan previews carry null. */
+  id: string | null;
+  /** The task this item spawned (plan 5.4); null until activated. */
+  taskId: string | null;
 }
 
 export interface ComposedPlan {
@@ -217,6 +221,8 @@ export async function composePlan(
         measurement: play.measurement,
         status: blocked ? "excluded" : "planned",
         exclusionReason: blocked,
+        id: null,
+        taskId: null,
       });
     }
 
@@ -366,6 +372,111 @@ export async function approvePlan(
   }
 }
 
+/**
+ * The plan becomes a live work list (plan 5.4): activating an item creates
+ * a real task carrying the item's evidence, and the item tracks it —
+ * in_progress now, done when the task completes (the transition hook in
+ * lib/tasks/service.ts writes it). The task is born approved: an operator
+ * activating an item of an approved plan IS the human decision.
+ */
+export async function activatePlanItem(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ planItemId: string; taskId: string }>> {
+  const parsed = z.object({ planItemId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) return fail(new ClassifiedError("validation", "Invalid plan item id."));
+  try {
+    assertCanWrite(user);
+    const result = await sql.begin(async (tx) => {
+      const [item] = await tx`
+        select i.id, i.title, i.rationale, i.measurement, i.status, i.task_id,
+          i.evidence_ids, i.phase, p.project_id, p.status as plan_status
+        from plan_items i
+        join program_plans p on p.id = i.plan_id
+        where i.id = ${parsed.data.planItemId}
+        for update of i
+      `;
+      if (!item) throw new ClassifiedError("not_found", "Plan item not found.");
+      if (item.planStatus !== "approved") {
+        throw new ClassifiedError("conflict", "Approve the plan before activating its items.");
+      }
+      if (item.status !== "planned") {
+        throw new ClassifiedError(
+          "conflict",
+          `Only a planned item can be activated (this one is ${item.status}).`
+        );
+      }
+      const description = [
+        item.rationale as string,
+        item.measurement ? `Re-measure afterwards: ${item.measurement}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      const [task] = await tx`
+        insert into tasks (project_id, title, description, priority,
+          evidence_ids, status, approved_by)
+        values (${item.projectId}, ${item.title}, ${description},
+          ${item.phase === 1 ? "p1" : "p2"}, ${item.evidenceIds},
+          'approved', ${user.id})
+        returning id
+      `;
+      await tx`
+        update plan_items set status = 'in_progress', task_id = ${task?.id}
+        where id = ${item.id}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "plan.item_activate",
+        entity: "program_plan",
+        entityId: item.id as string,
+        projectId: item.projectId as string,
+        detail: { taskId: task?.id as string, title: item.title as string },
+      });
+      return { planItemId: item.id as string, taskId: task?.id as string };
+    });
+    return ok(result);
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Dropping is explicit and reasoned — a plan item never just fades. */
+export async function dropPlanItem(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ planItemId: string }>> {
+  const parsed = z
+    .object({ planItemId: z.string().uuid(), reason: z.string().trim().min(1).max(1000) })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Dropping a plan item needs a reason."));
+  }
+  try {
+    assertCanWrite(user);
+    await sql.begin(async (tx) => {
+      const [row] = await tx`
+        update plan_items set status = 'dropped'
+        where id = ${parsed.data.planItemId} and status in ('planned', 'in_progress')
+        returning id, (select project_id from program_plans where id = plan_id) as project_id
+      `;
+      if (!row) {
+        throw new ClassifiedError("conflict", "Item not found or already settled.");
+      }
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "plan.item_drop",
+        entity: "program_plan",
+        entityId: row.id as string,
+        projectId: row.projectId as string,
+        detail: { reason: parsed.data.reason },
+      });
+    });
+    return ok({ planItemId: parsed.data.planItemId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 export interface PlanSummary extends ComposedPlan {
   horizonDays: number;
   createdAt: Date;
@@ -408,6 +519,8 @@ export async function getActivePlan(projectId: string): Promise<PlanSummary | nu
       measurement: r.measurement as string,
       status: r.status as PlanItem["status"],
       exclusionReason: (r.exclusionReason as string | null) ?? null,
+      id: r.id as string,
+      taskId: (r.taskId as string | null) ?? null,
     })),
   };
 }

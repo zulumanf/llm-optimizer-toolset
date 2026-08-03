@@ -209,6 +209,67 @@ describe.skipIf(!TEST_URL)("program plans (integration)", () => {
     expect(second.ok).toBe(false);
   });
 
+  it("plan items become tasks and track them to done (plan 5.4)", async () => {
+    const tasks = await import("@/lib/tasks/service");
+    await seedFindings();
+    const composed = await plans.composePlan(user, { projectId });
+    if (!composed.ok) throw new Error("compose failed");
+
+    const [item] = await sql`
+      select id from plan_items
+      where plan_id = ${composed.data.id} and status = 'planned'
+      order by phase, position limit 1
+    `;
+
+    // Activation requires an approved plan.
+    const early = await plans.activatePlanItem(user, { planItemId: item?.id as string });
+    expect(early.ok).toBe(false);
+
+    await plans.approvePlan(user, { planId: composed.data.id });
+    const activated = await plans.activatePlanItem(user, { planItemId: item?.id as string });
+    expect(activated.ok).toBe(true);
+    if (!activated.ok) return;
+
+    // The task is born approved; the item now tracks it.
+    const [task] = await sql`
+      select status, approved_by from tasks where id = ${activated.data.taskId}
+    `;
+    expect(task?.status).toBe("approved");
+    const [tracking] = await sql`select status, task_id from plan_items where id = ${item?.id}`;
+    expect(tracking?.status).toBe("in_progress");
+    expect(tracking?.taskId).toBe(activated.data.taskId);
+
+    // Re-activating a non-planned item is refused.
+    expect((await plans.activatePlanItem(user, { planItemId: item?.id as string })).ok).toBe(false);
+
+    // Completing the task flips the item to done.
+    const completed = await tasks.completeTask(user, { taskId: activated.data.taskId });
+    expect(completed.ok).toBe(true);
+    const [after] = await sql`select status from plan_items where id = ${item?.id}`;
+    expect(after?.status).toBe("done");
+
+    // Dropping requires a reason; a settled item cannot be dropped.
+    expect((await plans.dropPlanItem(user, { planItemId: item?.id as string, reason: "x" })).ok).toBe(false);
+    const [other] = await sql`
+      select id from plan_items
+      where plan_id = ${composed.data.id} and status = 'planned' limit 1
+    `;
+    if (other) {
+      const dropped = await plans.dropPlanItem(user, {
+        planItemId: other.id as string,
+        reason: "Client is doing this in-house.",
+      });
+      expect(dropped.ok).toBe(true);
+    }
+
+    // The audit rows carry the client (plan 4.4) — trigger or explicit.
+    const [stamped] = await sql`
+      select count(*)::int as n from audit_log
+      where project_id = ${projectId} and action in ('plan.item_activate', 'task.complete')
+    `;
+    expect(stamped?.n).toBeGreaterThanOrEqual(2);
+  });
+
   it("keeps at most one live plan per client", async () => {
     await seedFindings();
     await plans.composePlan(user, { projectId });
