@@ -19,6 +19,7 @@ import {
   FileText,
   Flag,
   FlaskConical,
+  History,
   LayoutDashboard,
   ListTodo,
   Map as MapIcon,
@@ -55,6 +56,9 @@ export const PROJECT_SECTIONS: ProjectSection[] = [
   { path: "/validation", label: "Validation", icon: ClipboardCheck },
   { path: "/interventions", label: "Interventions", icon: FlaskConical },
   { path: "/tasks", label: "Tasks", icon: ListTodo },
+  // The answer to "show me everything we did for this client" — the audit
+  // log finally has a reader (plan 5.2).
+  { path: "/activity", label: "Activity", icon: History },
   { path: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -93,7 +97,7 @@ export const PROJECT_NAV_GROUPS: NavGroup[] = [
   { label: "Overview", paths: ["", "/plan", "/knowledge"] },
   { label: "Measure", paths: ["/prompts", "/runs"] },
   { label: "Findings", paths: ["/gaps", "/competitors"] },
-  { label: "Act", paths: ["/content", "/tasks", "/reports"] },
+  { label: "Act", paths: ["/content", "/tasks", "/reports", "/activity"] },
   { label: null, paths: ["/settings"] },
 ];
 
