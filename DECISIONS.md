@@ -1021,3 +1021,266 @@ Choices:
   escape hatch must not shrink with the sidebar.
 - New rule recorded in docs/04: a feature earns a tab or a group slot by
   default; a new sidebar entry requires a spec that says why no group fits.
+
+## 2026-08-02 — Contacts get their own do-not-contact, and drafts meet the suppression list (spec 032, 2.2/2.3)
+
+Outreach goes to a person, not a business, so refusal must exist at both
+levels: `prospects.do_not_contact` (the account) and
+`prospect_contacts.do_not_contact` (the human). Choices:
+
+- **The recipient gate runs at approval AND record-sent, in fixed order:**
+  account DNC → contact DNC → global `suppression_entries` match on the
+  recipient's normalised email/phone (reusing `checkSuppression` from
+  `lib/outreach/suppression.ts` — the prospect path previously bypassed
+  the platform's suppression list entirely, a gap the audit flagged).
+  Fail-closed; no second matcher was written, so `x+tag@y.com` cannot
+  slip past a suppression on `x@y.com` here either.
+- **Suppression checks run with `projectId: null`** — prospect outreach is
+  not client-scoped, so only global entries apply. A client-scoped
+  suppression suppresses that client's sends, not agency prospecting.
+- **A draft with no email or phone on file skips the list check** (there
+  is nothing to match) but never skips the DNC gates. The real send gate
+  (`assertSendAllowed`) still stands between any future automated send and
+  the world; these gates protect the human-sends-it path we have today.
+- **`outreach_drafts.contact_id` same-prospect rule lives in the service**
+  (the only insert path); a plain FK cannot express "the contact belongs
+  to this draft's prospect" without a composite-key rework migration 042
+  deliberately avoided.
+- **CSV import persists through `createProspect`/`addContact`**, not its
+  own insert path — dedup (unique per launch), validation, audit rows, and
+  provenance labels cannot fork between manual and imported prospects. One
+  provenance label is applied per file (the file is one source); per-fact
+  URLs remain the job of authority signals.
+- Migration 042 was numbered behind the already-committed 043; the runner
+  keys on filename so it applies cleanly, recorded in docs/qa.
+
+## 2026-08-02 — Authority and valuable visibility are derived on read, not scored rows (spec 038)
+
+Phase B of the implementation plan needed a 0–100 local-authority score, an
+intent-weighted visibility score, and their gap. Choices:
+
+- **Derived on read, never stored** — the spec-036 precedent (win rates) and
+  the spec-032 rule (benchmark deltas computed at render). The alternative,
+  new metric rows under a bumped `scoring_version`, would have orphaned every
+  already-linked benchmark run (reads pin the current version) or required a
+  historical re-scoring pass the roadmap explicitly defers. Each computation
+  carries a code version shown with the number (`authority-v1`,
+  `valuable-visibility-v1`); changing a formula means bumping the constant.
+- **One commercial-intent model.** `CATEGORY_VALUE` moved verbatim from
+  `lib/gaps/detect.ts` into `lib/scoring/intent.ts`; tiers (persisted since
+  migration 030, consumed by nothing until now) take precedence when present.
+  A regression test pins the table so gap scores stayed byte-identical.
+- **Global evidence is excluded, not discounted.** "Global sales volume must
+  not automatically count as local authority" — a discounted contribution
+  still counts, so `scope='global'` signals earn zero points and a stated
+  reason. Same for `kind='other'`: unclassifiable evidence earns display,
+  not points.
+- **`verification_status` was NOT added** to signals despite the original
+  plan sketch: the provenance label already carries the verification axis
+  (verified requires a source URL, service-enforced). A second column would
+  be the duplicate-concept pattern the audit criticized.
+- **Max per kind, not sum**: five press mentions score once — the best one.
+  Signal stuffing cannot inflate authority; all signals still render as
+  evidence.
+- **The gap needs both sides.** No signals → authority null; no organic
+  cells → visibility null; either null → no gap, and the audit snapshot
+  omits the section entirely rather than rendering a one-sided number.
+- Weights remain named module constants (the `AUTHORITY_WEIGHTS` pattern);
+  Phase C's configurable weights table is where they migrate — a fifth
+  hardcoded table was avoided by making intent.ts shared now.
+
+## 2026-08-02 — Fixability and the final score: one weights mechanism, stored with its explanation (spec 039)
+
+Phase C needed the 0–100 fixability rubric and the configurable final
+prospect score. Choices:
+
+- **`scoring_weight_sets` is THE weights mechanism** — versioned rows, one
+  active per name, refusing to score when weights don't sum to 1
+  (`lib/scoring/weights.ts`). New scoring uses it; the legacy hardcoded
+  tables (AUTHORITY_WEIGHTS, gap factors) migrate on their next
+  scoring-version bump rather than being silently changed.
+- **The final score is STORED, unlike the derived-on-read spec-038 scores** —
+  deliberately: the list filters/sorts on it, and a stored score is a
+  snapshot computed at a known time whose breakdown records every component,
+  weight, weight-set version, fixability category, and flag that produced
+  it. Recompute is an explicit audited action.
+- **Underivable fixability inputs are operator-recorded facts**
+  (`prospect_assessments`, upsert per item, identity kept), never guesses.
+  "unknown" is a recorded answer distinct from never-asked; unanswered
+  items make a category "not measured". Raw fixability is a rate over
+  MEASURED categories only — unknown is never scored as bad or good — and
+  missing coverage lowers data confidence instead (adjusted = raw ×
+  confidence; the three shown separately).
+- **Hard flags downgrade and explain, never delete**; reputation_concern
+  additionally sets needsReview. A flagged prospect keeps its score.
+- **Override never erases the computed score** — separate columns, required
+  reason, audited both ways; lists filter on the effective value
+  (override wins).
+- **JSONB keys must be camelCase in this codebase**: db/client.ts uses
+  `transform: postgres.camel`, which rewrites snake_case JSONB keys ON READ
+  — a snake_case weights seed came back as different strings than were
+  stored and silently dropped five of six components. Weight-set and
+  breakdown keys are camelCase; recorded here so the next JSONB vocabulary
+  doesn't rediscover it.
+- Buying signals (Phase F) are a declared component whose weight
+  redistributes until the data exists — the breakdown says "not measured"
+  rather than pretending a zero.
+
+## 2026-08-02 — Market packs are data, installed into the one markets tree (spec 040)
+
+Phase D needed per-city geography, vocabulary, and prompt templates for five
+launch markets. Choices:
+
+- **Packs are code-versioned data (`lib/markets/packs.ts`), not DB config
+  and not per-city code** — the vertical-pack philosophy applied to place.
+  Adding a city is adding a registry entry; a structural test validates
+  every pack (placeholders known, exclusions exist in the hierarchy, tiers
+  legal). No core logic changes per city.
+- **One hierarchy.** Packs install into the exclusivity `markets` tree
+  (kinds widened to country/state/metro/county/zip) instead of creating a
+  parallel geo model — the audit counted three market representations
+  already. The installer matches by name-or-alias under the same parent, so
+  re-installs duplicate nothing and cross-pack ancestors ("United States")
+  converge on one row. Installs are recorded with the exact definition
+  snapshot (`market_pack_installs`).
+- **ZIP rows are not materialized** — hundreds of rows nobody prompts
+  against; ZIPs ride the pack as data, `kind='zip'` exists when a real need
+  appears.
+- **A cycle guard trigger now protects `markets.parent_id`** (audit §10:
+  conflict detection recurses over this tree; a cycle would hang it).
+- **Generation is deterministic, capped with a report, and idempotent** —
+  no LLM, same input → same prompts; texts already in the set are skipped;
+  cap overflow is counted, never silent. Ambiguous place names (Chinatown,
+  The Heights, Downtown Miami) stay in the hierarchy but are excluded from
+  expansion with stated reasons: an unattributable prompt measures nothing.
+- **Lineage on prompts** (`audience`, `price_tier`, `template_ref`,
+  `source='expansion'`). Extending FrozenPrompt with audience/price-tier is
+  deferred until a consumer exists — tier already flows into snapshots and
+  is what valuable visibility reads.
+
+## 2026-08-02 — Discovery lands as candidates; a brokerage is not the team (spec 041)
+
+Phase E added provider-based prospect discovery and entity resolution.
+Choices:
+
+- **Adapter output is never a prospect.** `ProspectSourceAdapter` results
+  land as candidates with the full SourceRecord envelope (provider, source
+  URL, retrieval date, confidence, provenance label) and their raw payload;
+  only human approval creates a prospect — through `createProspect`, the
+  one persistence path. A same-name conflict is a recorded `duplicate`
+  outcome, not an error. The mock adapter (obviously fictional fixture
+  teams) is refused outside tests via the same `mockProviderAllowed` guard
+  as the mock AI provider.
+- **One name matcher.** The resolver reuses `scoreNameMatch`/`bestMatch`
+  semantics from `lib/knowledge/normalize.ts` (exact 0.9 / probable 0.65 /
+  ambiguous 0.45) plus the two signals prospects uniquely have: website
+  domain (0.95, decisive — companies.domain existed unused) and brokerage
+  affiliation.
+- **The brokerage rule is an exclusion, not a penalty**: a company whose
+  match is explained by the affiliation at least as well as by the business
+  name — with no domain tie — is excluded from candidacy and reported as a
+  collision with the reason. "Rivera Team at Compass" can never resolve to
+  the company "Compass". A domain tie overrides: identity beats affiliation.
+- **Ambiguity stays ambiguous**: equal top scores → `possible`, never a
+  coin toss; `possible` never auto-links — it renders as a detail-page
+  suggestion whose confirmation goes through the audited `updateProspect`.
+- **Deviations recorded:** CSV/manual ingestion keeps its existing
+  provenance shape (refactoring shipped code onto SourceRecord would be
+  churn for symmetry); discovery runs execute inline while the only adapter
+  is the instant mock — a network adapter moves execution onto the jobs
+  queue.
+- Cross-launch dedup is a read surface (same normalized name / domain /
+  company), and "merging" is linking both rows to one canonical company —
+  prospects stay launch-scoped by design (spec 032).
+
+## 2026-08-02 — Diagnoses are typed and honest; intent evidence expires (spec 042)
+
+Phase F added the diagnosis layer, buying signals, and freshness. Choices:
+
+- **Diagnoses are derived on read** with a version constant, from data the
+  platform already trusts. Eleven computable keys, each with a triggering
+  and non-triggering test. **Absence-of-research diagnoses ("no review
+  footprint recorded") are about OUR evidence base**, carry 0.4 confidence,
+  and say "gap in our research" — never presented as measured facts about
+  the prospect. Suggested actions are a static reviewable map, no LLM.
+- **Buying signals have a hard floor**: source URL and observed date are
+  NOT NULL at the table, not just service-validated — the target rule
+  ("every buying signal requires a source and date") made structural.
+- **Intent evidence goes cold**: score contribution = 25 × provenance ×
+  recency, where recency is 1.0 within the 180-day window, 0.5 to 2×, then
+  0. Zero recorded signals = null (not measured, weight redistributes);
+  recorded-but-expired = 0 (intent measured and gone cold). The distinction
+  matters and is tested.
+- **Freshness windows are named constants** (benchmark 90d, authority
+  signals 365d, buying signals 180d, contacts 180d, assessments 365d) with
+  a pure injectable-clock `staleness` helper. A stale benchmark **fails
+  publishAudit closed** with the run's age in the message; publishing
+  anyway requires `acknowledgeStale: true`, and the acknowledgment lands in
+  the audit log with the age. The UI offers the acknowledgment through an
+  explicit confirm, never silently.
+
+## 2026-08-02 — Spec-011 reconciliation: the red level is "human-decided, machine-enforced", not "no code path" (roadmap 3.1)
+
+docs/15's red level said sending outreach must have **no code path**; migration
+020 later shipped `assertSendAllowed`, a seven-check fail-closed send gate —
+a code path. The written reconciliation, unblocking Phase 3:
+
+**The gated send stands; the red level's wording is superseded by its
+intent.** The intent was that no automation contacts the outside world
+without a human decision. "No code path" turned out to be the weaker
+implementation of that intent: it pushes real sends into untracked personal
+mailboxes, where the suppression list, the artifact-hash approval binding,
+and the compliance checks protect no one. A send path that *refuses* to
+work without a recorded human decision enforces the red level better than
+the absence of one.
+
+Standing rules going forward:
+1. Every platform send passes `assertSendAllowed` — suppression on
+   normalised identifiers, tenant match, recipient authorization or stated
+   business purpose, approval bound to the exact artifact hash, opt-out
+   path. Fail-closed, no warn-and-continue.
+2. **First-touch prospect outreach is additionally human-dispatched**: a
+   human clicks send (or records a send) per message. Autonomous first
+   contact remains forbidden.
+3. Autonomous *sequence* steps (roadmap 3.3) stay per-step human-approved
+   until a separate recorded decision lifts that — this entry does not.
+4. docs/15's red-level table reads as "human-only decision, machine-enforced
+   execution"; "no code path exists" applies only to fully autonomous sends.
+
+## 2026-08-02 — The send bridge: every dispatch and every refusal is ledgered (spec 043)
+
+Phase G implemented the credential-free half of outreach activation on top
+of the spec-011 reconciliation above. Choices:
+
+- **`sendProspectDraft` is the bridge between the two outreach stacks** the
+  audit flagged as disconnected: prospect drafts now pass the full
+  fail-closed chain (approval state → account DNC → contact DNC →
+  suppression on normalised identifiers → prohibited phrases → stated
+  business purpose → opt-out present) before ANY channel is reached.
+- **Refusals are evidence.** `prospect_outreach_sends` is an insert-only
+  ledger (forbid_mutation trigger) recording the full gate verdict, the
+  sha256 of the exact outgoing text, and the stated business purpose — for
+  refusals as well as sends. The refusal path RETURNS from the transaction
+  instead of throwing, precisely so the ledger row commits.
+- **Channels are dispatch mechanisms behind a human click.** 'manual'
+  records a send the human made from their own mailbox — the record-sent
+  UI now routes through it, so even mailbox sends get suppression/DNC
+  checks and a ledger. 'mock' is CI-only behind the standard mock guard. A
+  real Gmail/ESP channel is an append to channels.ts after live
+  verification — interface first, credentials later.
+- **Cold email carries a reply-based opt-out**: transmitting channels
+  append a footer with sender identity and an unsubscribe instruction, and
+  the gate asserts an opt-out mention exists. Opt-out replies belong on the
+  suppression list, which the gate then enforces forever.
+- **The funnel counts ever-reached, not snapshots** — a contracted prospect
+  fills every earlier stage; conversion is null (never 0) on an empty base;
+  exits are counted beside the ladder, not inside it.
+- **The feedback loop recommends, humans reweight**: cohort comparison
+  (reached `replied`+ vs not) refuses below 5-per-cohort, reports means
+  with sample sizes, and every report ends with the fixed epilogue that
+  weights change only through scoring_weight_sets. Nothing is written
+  automatically — target req. 21's rule, made structural.
+- **Deferrals recorded:** live Gmail/ESP verification, OAuth flow, reply
+  ingest + classification (roadmap 3.2's live half, 3.4) are blocked on
+  funded credentials, not architecture; deal economics (3.5) and
+  prospect→client conversion (3.6) remain open roadmap items.
