@@ -117,9 +117,29 @@ export default async function ProspectDetailPage({
   const benchmarkStaleness = latestBenchmark
     ? staleness(latestBenchmark.runStartedAt, FRESHNESS_WINDOWS_DAYS.benchmark)
     : null;
+
   const runs = prospect.companyId ? await linkableRuns(prospect.companyId) : [];
   const publishedAudit = audits.find((a) => a.status === "published");
   const primaryFinding = findings.find((f) => f.isPrimary && f.status === "approved");
+
+  // The page tells the operator what to do next — one step at a time.
+  const nextStep = !prospect.companyId
+    ? "Create the benchmark project (button in the “What AI says today” section) — it registers this team for measurement."
+    : signals.length === 0
+      ? "Add proof of market strength — a ranking or sales volume with a source link."
+      : !metrics
+        ? "Run or link a benchmark so we can measure how often AI recommends them."
+        : contacts.length === 0
+          ? "Add the decision-maker as a contact — outreach goes to a person."
+          : !primaryFinding
+            ? "Generate findings in “The story for outreach” and approve the strongest one."
+            : prospect.qualificationScore === null
+              ? "Fill in the assessment checklist and compute the score."
+              : !publishedAudit
+                ? "Publish the shareable audit page."
+                : drafts.some((d) => d.status === "approved" && !d.sentRecordedAt)
+                  ? "The email is approved — send it from your mailbox, then record it here."
+                  : "Draft and approve the email, then send it yourself and record it.";
 
   return (
     <PageShell>
@@ -146,6 +166,10 @@ export default async function ProspectDetailPage({
         }
         actions={<StageControl prospectId={id} currentStage={prospect.stage} />}
       />
+
+      <div className="rounded-md border border-primary/50 bg-primary/5 px-4 py-2.5 text-sm">
+        <span className="font-medium">Next step:</span> {nextStep}
+      </div>
 
       <Section title="Overview">
         <StatGrid columns={4}>
@@ -199,12 +223,12 @@ export default async function ProspectDetailPage({
       </Section>
 
       <Section
-        title="Authority signals"
-        description="Verified real-world position — every signal keeps its source and provenance label."
+        title="Proof they're good"
+        description="Real-world evidence — rankings, sales volume, reviews — each with a link to where it came from. This is what makes the pitch credible."
         actions={<SignalDialog prospectId={id} />}
       >
         {signals.length === 0 ? (
-          <EmptyState message="No authority signals yet. Record what makes this team a market leader — rankings, volume, press — with sources." />
+          <EmptyState message="No proof recorded yet. Add what makes this team a market leader — a ranking, sales volume, press — each with a link to the source." />
         ) : (
           <ul className="space-y-2">
             {signals.map((s) => (
@@ -239,8 +263,8 @@ export default async function ProspectDetailPage({
       </Section>
 
       <Section
-        title="Prospect score"
-        description="Configurable-weight composite (spec 039); every number below traces to a component, a weight, and a version. Recompute after new signals, benchmarks, contacts, or assessments."
+        title="Score"
+        description="One 0–100 number for how good a prospect this is — market strength, the AI visibility gap, how fixable it is, and whether we can reach them. Anything not researched yet is skipped, never guessed. Recompute after adding research."
         actions={
           <div className="flex items-center gap-2">
             <AssessmentChecklist
@@ -280,7 +304,7 @@ export default async function ProspectDetailPage({
           } | null;
           if (!breakdown) {
             return (
-              <EmptyState message="No score computed yet. Add signals, link a benchmark, record contacts and assessments, then compute." />
+              <EmptyState message="No score yet. Add proof, run a benchmark, add a contact, answer the assessment — then hit Compute score." />
             );
           }
           return (
@@ -300,31 +324,31 @@ export default async function ProspectDetailPage({
                   }
                 />
                 <Stat
-                  label="Fixability (raw)"
+                  label="How fixable"
                   value={
                     breakdown.fixability?.raw != null
                       ? `${Math.round(breakdown.fixability.raw)} / 100`
-                      : "not measured"
+                      : "not researched"
                   }
-                  hint="over measured categories only"
+                  hint="based only on what we've checked"
                 />
                 <Stat
-                  label="Data confidence"
+                  label="Research depth"
                   value={
                     breakdown.dataConfidence != null
                       ? `${Math.round(breakdown.dataConfidence * 100)}%`
                       : "—"
                   }
-                  hint="multiplies the composite"
+                  hint="how much evidence backs this score"
                 />
                 <Stat
-                  label="Fixability (adjusted)"
+                  label="Fixable, discounted"
                   value={
                     breakdown.fixability?.adjusted != null
                       ? `${Math.round(breakdown.fixability.adjusted)} / 100`
-                      : "not measured"
+                      : "not researched"
                   }
-                  hint="raw × confidence"
+                  hint="fixability × research depth"
                 />
               </StatGrid>
               {breakdown.components && breakdown.weightSet && (
@@ -342,11 +366,11 @@ export default async function ProspectDetailPage({
                           </span>
                         </div>
                         <p className="mt-1 tabular-nums">
-                          {value != null ? Math.round(value) : "not measured"}
+                          {value != null ? Math.round(value) : "not researched"}
                           {value == null && (
                             <span className="text-xs text-muted-foreground">
                               {" "}
-                              — weight redistributed
+                              — skipped, not counted against them
                             </span>
                           )}
                         </p>
@@ -394,21 +418,21 @@ export default async function ProspectDetailPage({
       </Section>
 
       <Section
-        title="Authority vs AI visibility"
-        description={`Local authority from counted signals (${gapView.authority.version}) against intent-weighted visibility from the linked benchmark (${gapView.visibility?.version ?? "no benchmark linked"}). Derived on read — nothing stored.`}
+        title="The gap: strong in the market, missing from AI"
+        description="Left: how strong this team is in the real market, from the proof above. Right: how often AI actually recommends them. A big gap is the whole sales pitch."
       >
         <StatGrid columns={4}>
           <Stat
-            label="Local authority"
+            label="Market strength"
             value={gapView.authority.score !== null ? `${Math.round(gapView.authority.score)} / 100` : "not measured"}
             hint={
               gapView.authority.confidence !== null
-                ? `data confidence ${Math.round(gapView.authority.confidence * 100)}%`
-                : "add authority signals to measure"
+                ? `evidence quality ${Math.round(gapView.authority.confidence * 100)}%`
+                : "add proof below to measure"
             }
           />
           <Stat
-            label="Valuable AI visibility"
+            label="AI visibility"
             value={
               gapView.visibility?.score != null
                 ? `${Math.round(gapView.visibility.score)} / 100`
@@ -416,23 +440,23 @@ export default async function ProspectDetailPage({
             }
             hint={
               gapView.visibility
-                ? `${gapView.visibility.organicResponses} organic responses · ${gapView.visibility.brandedExcluded} branded excluded`
-                : "link a scored benchmark to measure"
+                ? `from ${gapView.visibility.organicResponses} AI answers to questions that didn't name them`
+                : "run a benchmark to measure"
             }
           />
           <Stat
-            label="Visibility gap"
+            label="The gap"
             value={gapView.gap !== null ? `${Math.round(gapView.gap)}` : "—"}
-            hint="authority − visibility; needs both sides"
+            hint="market strength minus AI visibility — bigger = stronger pitch"
           />
           <Stat
-            label="High-intent mention rate"
+            label="On the money questions"
             value={
               gapView.visibility?.highIntentMentionRate != null
                 ? `${Math.round(gapView.visibility.highIntentMentionRate * 100)}%`
                 : "not measured"
             }
-            hint="plain rate over tier-1/2 organic prompts"
+            hint="how often they appear on the highest-intent questions (best listing agent, sell my home)"
           />
         </StatGrid>
         {gapView.authority.score !== null && (
@@ -470,11 +494,11 @@ export default async function ProspectDetailPage({
       </Section>
 
       <Section
-        title="Diagnosis"
-        description={`Why this prospect is underrepresented (${diagnosis.version}) — derived from the linked benchmark, classified citations, and recorded evidence.`}
+        title="Why AI isn't recommending them"
+        description="Reasons based on what the AI answers cited and what we've researched — each with a suggested fix. This becomes the service pitch."
       >
         {diagnosis.diagnoses.length === 0 ? (
-          <EmptyState message="No diagnoses yet — link a scored benchmark and record research to see what's holding visibility back." />
+          <EmptyState message="Nothing to explain yet — run a benchmark first, and the reasons they're missing from AI answers will appear here." />
         ) : (
           <ul className="space-y-2">
             {diagnosis.diagnoses.map((d) => (
@@ -513,12 +537,12 @@ export default async function ProspectDetailPage({
       </Section>
 
       <Section
-        title="Buying signals"
-        description="Purchase-intent evidence — every signal carries a source and a date, and its score contribution decays with age."
+        title="Signs they're ready to buy"
+        description="Recent moves — hiring for marketing, switching brokerages, a site redesign — that suggest they'd pay for help. Every one needs a link and a date; old news counts less."
         actions={<BuyingSignalDialog prospectId={id} />}
       >
         {buyingSignals.length === 0 ? (
-          <EmptyState message="No buying signals recorded — the final score treats this as not measured, never as zero intent." />
+          <EmptyState message="None recorded yet. No signals doesn't count against them — it just isn't part of the score until we know." />
         ) : (
           <ul className="space-y-2">
             {buyingSignals.map((s) => {
@@ -549,8 +573,8 @@ export default async function ProspectDetailPage({
       </Section>
 
       <Section
-        title="Contacts"
-        description="Outreach goes to a person, not a business — each contact carries its own do-not-contact flag."
+        title="Who to talk to"
+        description="The actual people — outreach goes to a person, not a business. Each person has their own do-not-contact switch."
         actions={<ContactDialog prospectId={id} />}
       >
         {contacts.length === 0 ? (
@@ -594,8 +618,8 @@ export default async function ProspectDetailPage({
       </Section>
 
       <Section
-        title="AI visibility benchmark"
-        description="Read directly from the scoring engine — nothing recomputed, sample sizes always shown."
+        title="What AI says today"
+        description="Measured from real AI answers to buyer/seller questions — how often this team comes up, next to the competitors that do."
         actions={
           <>
             {prospect.benchmarkProjectId ? (
@@ -614,7 +638,7 @@ export default async function ProspectDetailPage({
       >
         {!prospect.companyId && !prospect.benchmarkProjectId ? (
           <EmptyState
-            message="No canonical company yet. Create a benchmark project (it registers the company and pre-tracks the launch's other prospects as competitors), or link an existing company on the record."
+            message="Not set up for measurement yet. Hit “Create benchmark project” — it registers this team for tracking and adds the launch's other teams as competitors automatically."
             action={<CreateBenchmarkProjectButton prospectId={id} />}
           />
         ) : !metrics ? (
@@ -654,7 +678,7 @@ export default async function ProspectDetailPage({
                 />
               </StatGrid>
             ) : (
-              <EmptyState message="The linked run has no scores for this company under the current scoring version." />
+              <EmptyState message="The linked benchmark hasn't scored this team yet — it may still be processing." />
             )}
             {metrics.others.length > 0 && (
               <Table className="mt-4">
@@ -687,12 +711,12 @@ export default async function ProspectDetailPage({
       </Section>
 
       <Section
-        title="Reality-to-AI findings"
-        description="Deterministic candidates from authority signals vs measured visibility. A human approves exactly one primary finding before anything goes external."
+        title="The story for outreach"
+        description="Auto-drafted angles like “ranked #9 in the market, yet AI never mentions them” — every claim backed by captured answers. Approve exactly one; everything external is built on it."
         actions={latestBenchmark ? <GenerateFindingsButton benchmarkId={latestBenchmark.id} /> : undefined}
       >
         {findings.length === 0 ? (
-          <EmptyState message="No findings yet. Link a benchmark, add authority signals, then generate candidates." />
+          <EmptyState message="No story yet. Run a benchmark and add proof above, then hit Generate — the angles write themselves from the evidence." />
         ) : (
           <ul className="space-y-3">
             {findings.map((f) => (
@@ -736,14 +760,14 @@ export default async function ProspectDetailPage({
       </Section>
 
       <Section
-        title="Prospect audit page"
-        description="A private, snapshot-only page behind a revocable high-entropy link. Internal notes are structurally absent."
+        title="Shareable audit page"
+        description="A private web page of their results you can send them. The link can be revoked anytime; your internal notes are never on it."
         actions={
           !publishedAudit && primaryFinding ? <PublishAuditButton prospectId={id} /> : undefined
         }
       >
         {audits.length === 0 ? (
-          <EmptyState message="No audit page yet. Approve a primary finding, then publish — a secure share link is minted at publish time." />
+          <EmptyState message="No audit page yet. Approve a story above, then Publish — you'll get a private link to send them." />
         ) : (
           <ul className="space-y-2">
             {audits.map((a) => (
@@ -782,12 +806,12 @@ export default async function ProspectDetailPage({
       </Section>
 
       <Section
-        title="Outreach"
-        description="Reply-first drafts generated from the approved finding. Nothing sends from here — a human sends, then records it."
+        title="The email"
+        description="Drafted from the approved story. Nothing sends itself — you send it from your own mailbox, and the do-not-contact and suppression checks run before anything is recorded."
         actions={primaryFinding ? <GenerateDraftButton prospectId={id} /> : undefined}
       >
         {drafts.length === 0 ? (
-          <EmptyState message="No drafts yet. Approve a primary finding first — drafts are built from approved evidence only." />
+          <EmptyState message="No email yet. Approve a story first — the draft is written from it, nothing else." />
         ) : (
           <ul className="space-y-3">
             {drafts.map((d) => (
@@ -832,12 +856,12 @@ export default async function ProspectDetailPage({
       </Section>
 
       <Section
-        title="Screen-recording plan"
-        description="A prospect-first storyboard for a 2–3 minute walkthrough — claims to verify are listed so nothing is improvised."
+        title="Video walkthrough script"
+        description="A 2–3 minute storyboard if you'd rather send a Loom with (or instead of) the email — with the claims to double-check before recording."
         actions={primaryFinding ? <GenerateRecordingButton prospectId={id} /> : undefined}
       >
         {plans.length === 0 ? (
-          <EmptyState message="No recording plan yet — generate one from the approved finding." />
+          <EmptyState message="No script yet — generate one from the approved story." />
         ) : (
           <ul className="space-y-3">
             {plans.map((p) => (
@@ -858,7 +882,7 @@ export default async function ProspectDetailPage({
         )}
       </Section>
 
-      <Section title="Pipeline history">
+      <Section title="Stage history">
         {history.length === 0 ? (
           <EmptyState message="No stage changes yet." />
         ) : (
