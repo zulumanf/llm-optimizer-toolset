@@ -26,8 +26,43 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const rate = (v: number | null): string =>
-  v === null ? "not measured" : `${Math.round(v * 100)}%`;
+/** In-table micro-bar: absolute 0–100 scale, neutral ink, empty track for
+ * zero (never a fake minimum width — the empty track IS the finding).
+ * Values live in the adjacent text label, per dataviz rules. SVG rects so
+ * the width is a presentation attribute, not an inline style (house rule,
+ * test-enforced). */
+function RateBar({ value, isSubject }: { value: number | null; isSubject: boolean }) {
+  if (value === null) {
+    return <span className="text-xs text-muted-foreground">not measured</span>;
+  }
+  const pct = Math.round(value * 100);
+  return (
+    <span className="inline-flex items-center justify-end gap-2">
+      <svg
+        className="h-1.5 w-20"
+        viewBox="0 0 100 6"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`${pct} percent`}
+      >
+        <rect width="100" height="6" rx="3" className="fill-foreground/10" />
+        {pct > 0 && (
+          <rect
+            width={pct}
+            height="6"
+            rx="3"
+            className={isSubject ? "fill-destructive" : "fill-foreground/45"}
+          />
+        )}
+      </svg>
+      <span
+        className={`w-9 text-right tabular-nums ${isSubject ? "text-destructive" : ""}`}
+      >
+        {pct}%
+      </span>
+    </span>
+  );
+}
 
 /** Styled disclosure — hover, focus ring, rotating chevron (house rules #4). */
 function Drawer({
@@ -104,10 +139,9 @@ export default async function ProspectAuditPage({
         {snapshot.headline}
       </h1>
       <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
-        Your next seller may never ask a friend for a name — a growing share ask
-        ChatGPT first. We captured what it tells them: {snapshot.benchmark.promptCount}{" "}
-        real buyer and seller questions, asked repeatedly,{" "}
-        {snapshot.benchmark.responseCount} answers recorded verbatim.
+        Buyers and sellers increasingly ask ChatGPT who to hire. We asked it{" "}
+        {snapshot.benchmark.promptCount} real {snapshot.marketName} questions —{" "}
+        {snapshot.benchmark.responseCount} answers, captured verbatim.
       </p>
 
       {stakes ? (
@@ -152,15 +186,6 @@ export default async function ProspectAuditPage({
         )
       )}
 
-      {stakes && (
-        <p className="mt-6 max-w-[65ch] text-sm">
-          Think of AI as the market&apos;s newest referral source — one that made{" "}
-          {stakes.recommendationMomentsTotal} referrals in our sample and never once
-          referred you. Each one is a conversation that starts with another team
-          before you know the client exists.
-        </p>
-      )}
-
       {sellerMoment && (
         <p className="mt-4 max-w-[65ch] border-l-2 border-primary/60 pl-4 text-sm">
           One that should sting: we asked{" "}
@@ -175,12 +200,12 @@ export default async function ProspectAuditPage({
 
       {stakes?.avgDealUsd != null && (
         <p className="mt-4 max-w-[65ch] text-sm text-muted-foreground">
-          At your average sale of roughly{" "}
+          Your average sale:{" "}
           <span className="font-semibold text-foreground tabular-nums">
-            ${Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K
+            ~${Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K
           </span>{" "}
-          ({stakes.avgDealBasis}), even one of those introductions is worth more than
-          the 15 minutes this takes to fix a plan for.
+          ({stakes.avgDealBasis}). One introduction going elsewhere outweighs the 15
+          minutes this takes to plan.
         </p>
       )}
 
@@ -236,19 +261,14 @@ export default async function ProspectAuditPage({
                             {row.marketRank != null ? `#${row.marketRank}` : "—"}
                           </td>
                         )}
-                        <td
-                          className={`py-2 pr-4 text-right tabular-nums ${
-                            row.isProspect ? "text-destructive" : ""
-                          }`}
-                        >
-                          {rate(row.mentionRate)}
+                        <td className="py-2 pr-4 text-right">
+                          <RateBar value={row.mentionRate} isSubject={row.isProspect} />
                         </td>
-                        <td
-                          className={`py-2 pr-4 text-right tabular-nums ${
-                            row.isProspect ? "text-destructive" : ""
-                          }`}
-                        >
-                          {rate(row.recommendationRate)}
+                        <td className="py-2 pr-4 text-right">
+                          <RateBar
+                            value={row.recommendationRate}
+                            isSubject={row.isProspect}
+                          />
                         </td>
                         <td className="py-2 text-right tabular-nums">{row.sampleSize}</td>
                       </tr>
@@ -262,35 +282,39 @@ export default async function ProspectAuditPage({
                   </p>
                 )}
                 {snapshot.brandMentions && snapshot.brandMentions.length > 0 && (
-                  <p className="mt-3 max-w-[65ch] text-sm">
-                    The rest of the answers went to brand-level names, not teams:{" "}
-                    <span className="text-muted-foreground">
-                      {snapshot.brandMentions
-                        .map(
-                          (b) =>
-                            `${b.name} (brought up ${rate(b.mentionRate)}, recommended ${rate(
-                              b.recommendationRate
-                            )})`
-                        )
-                        .join(" · ")}
-                    </span>
-                    . No individual team owns the answers yet — that space is still
-                    open.
-                  </p>
+                  <div className="mt-4">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      The rest went to brand-level names, not teams — brought up:
+                    </p>
+                    <ul className="mt-2 space-y-1.5">
+                      {snapshot.brandMentions.map((b) => (
+                        <li key={b.name} className="flex items-center gap-2 text-sm">
+                          <span className="w-44 truncate text-muted-foreground">
+                            {b.name}
+                          </span>
+                          <RateBar value={b.mentionRate} isSubject={false} />
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 max-w-[65ch] text-sm">
+                      No individual team owns the answers yet — that space is still
+                      open.
+                    </p>
+                  </div>
                 )}
               </div>
             );
           })()}
           {snapshot.transcripts && snapshot.transcripts.length > 0 && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Don&apos;t take the table&apos;s word for it —{" "}
+            <p className="mt-3 text-xs text-muted-foreground">
+              Don&apos;t take the table&apos;s word —{" "}
               <Link
                 href={`/audit/${token}/answers`}
                 className="underline underline-offset-2 transition-colors hover:text-foreground"
               >
-                read all {snapshot.transcripts.length} answers, complete and verbatim
-              </Link>
-              , and search them for any name, including your own.
+                read all {snapshot.transcripts.length} answers verbatim
+              </Link>{" "}
+              and search any name, including your own.
             </p>
           )}
         </section>
