@@ -287,6 +287,22 @@ describe.skipIf(!TEST_URL)("prospect authority & visibility gap (integration)", 
     ]);
     // The snapshot carries no internal signal ids.
     expect(JSON.stringify(snapshot?.authorityGap)).not.toContain("signalId");
+    // The comparison shows visible rivals from the run — and NEVER the
+    // client whose run this is (Lumina is the client project's subject).
+    const compared = snapshot!.comparison.map((c) => c.name);
+    expect(compared).toContain("Acme");
+    expect(compared).not.toContain("Lumina");
+    // Stakes are measured recommendation moments, never estimates: the mock
+    // recommends rivals in every answer while the prospect never appears.
+    expect(snapshot?.stakes).toBeDefined();
+    expect(snapshot?.stakes?.yourRecommendations).toBe(0);
+    expect(snapshot?.stakes?.recommendationMomentsTotal).toBeGreaterThan(0);
+    expect(snapshot?.stakes?.competitorsNamed).toContain("Acme");
+    // No volume+sides signals in this seed → no fabricated average deal.
+    expect(snapshot?.stakes?.avgDealUsd).toBeNull();
+    // Prospect-facing diagnoses shipped; internal research-gap keys did not.
+    expect(snapshot?.whyItHappens?.length).toBeGreaterThan(0);
+    expect(JSON.stringify(snapshot?.whyItHappens)).not.toContain("gap in our research");
   });
 
   it("publishes without the gap section when authority has no signals — never a one-sided gap", async () => {

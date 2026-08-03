@@ -72,9 +72,23 @@ import {
   computeProspectScoreView,
   PROSPECT_SCORE_VERSION,
 } from "@/lib/prospects/final-score";
+import { diagnoseProspect } from "@/lib/prospects/diagnose";
 
-/** Competitors surfaced in findings/audits — enough contrast, no dossier. */
+/** Diagnoses a prospect may read about themselves — retitled for them.
+ * Research-gap keys (about OUR evidence base) and internal-QA keys never
+ * ship on an audit page. */
+const PROSPECT_FACING_DIAGNOSES: Record<string, string> = {
+  no_organic_visibility: "AI doesn't surface you yet",
+  missing_from_high_intent_prompts: "Missing exactly where buyers decide",
+  mentioned_never_recommended: "Known, but not recommended",
+  missing_from_cited_sources: "You're not in the sources AI reads",
+  competitors_dominate_sources: "Competitors control the sources AI reads",
+};
+
+/** Competitors surfaced in findings — enough contrast, no dossier. */
 const MAX_COMPARED_COMPETITORS = 5;
+/** Rivals on the prospect-facing audit comparison — the visible market. */
+const AUDIT_COMPARISON_RIVALS = 7;
 const PROMPT_EVIDENCE_LIMIT = 4;
 const DEFAULT_PAGE_SIZE = 50;
 
@@ -1512,6 +1526,26 @@ export interface AuditSnapshot {
   promptEvidence: PromptEvidence[];
   methodology: string;
   cta: string;
+  /** What invisibility means in the prospect's own numbers — measured
+   * recommendation moments plus arithmetic on THEIR cited volume/sides.
+   * Never a fabricated loss claim (PROHIBITED_PHRASES discipline). */
+  stakes?: {
+    /** Specific-team recommendations assistants made across the answers. */
+    recommendationMomentsTotal: number;
+    /** How many of those were the prospect. */
+    yourRecommendations: number;
+    /** Who got named instead, most-recommended first. */
+    competitorsNamed: string[];
+    /** volume ÷ sides from their own sourced signals; null when unknown. */
+    avgDealUsd: number | null;
+    /** The cited numbers the average is computed from. */
+    avgDealBasis: string | null;
+  };
+  /** Prospect-facing "why this is happening" (spec 042 diagnoses, whitelist
+   * only — internal research-gap diagnoses never ship to a prospect). */
+  whyItHappens?: { title: string; explanation: string; suggestedAction: string }[];
+  /** The domains the AI answers actually cited — where visibility is won. */
+  topSources?: { domain: string; citations: number }[];
   /** Spec 038 — present only when both sides were measurable at publish
    * time. Additive: audits published before the field render unchanged. */
   authorityGap?: {
@@ -1589,9 +1623,30 @@ export async function publishAudit(
       }
       const entities = await scoredEntities(benchmark.runId as string);
       const prospectMetrics = entities.find((e) => e.companyId === benchmark.companyId);
+      // The comparison shows who actually shows up in the run — top rivals
+      // by visibility, not just the ones the approved finding referenced.
+      // When the linked run belongs to a CLIENT project, the client's own
+      // brand is excluded: it must never appear on a prospect-facing page.
+      const [runProject] = await tx`
+        select p.kind, p.subject_company_id from projects p
+        join runs r on r.project_id = p.id
+        where r.id = ${benchmark.runId}
+      `;
+      const excludedCompanyId =
+        runProject?.kind === "client" &&
+        runProject?.subjectCompanyId !== benchmark.companyId
+          ? (runProject?.subjectCompanyId as string | null)
+          : null;
       const rivals = entities
-        .filter((e) => finding.competitorCompanyIds.includes(e.companyId))
-        .slice(0, MAX_COMPARED_COMPETITORS);
+        .filter((e) => e.companyId !== benchmark.companyId)
+        .filter((e) => e.companyId !== excludedCompanyId)
+        .filter((e) => (e.mentionRate ?? 0) > 0 || (e.recommendationRate ?? 0) > 0)
+        .sort(
+          (a, b) =>
+            (b.recommendationRate ?? 0) - (a.recommendationRate ?? 0) ||
+            (b.mentionRate ?? 0) - (a.mentionRate ?? 0)
+        )
+        .slice(0, AUDIT_COMPARISON_RIVALS);
       const evidence = await promptEvidenceForResponses(
         finding.responseIds,
         PROMPT_EVIDENCE_LIMIT
@@ -1636,12 +1691,98 @@ export async function publishAudit(
             }
           : undefined;
 
+      // Prospect-facing "why" — whitelist only; internal research-gap and
+      // QA diagnoses never ship to a prospect.
+      const diagnosisReport = await diagnoseProspect(input.prospectId);
+      const whyItHappens = diagnosisReport.diagnoses
+        .filter((d) => d.key in PROSPECT_FACING_DIAGNOSES)
+        .slice(0, 3)
+        .map((d) => ({
+          title: PROSPECT_FACING_DIAGNOSES[d.key]!,
+          explanation: d.explanation,
+          suggestedAction: d.suggestedAction,
+        }));
+      // Stakes: every "recommended" mention is a real moment an assistant
+      // pointed a buyer at a specific team — counted, not estimated. Echo is
+      // excluded per company (the organic rule): a recommendation on a
+      // question that NAMED that team measures our question, not the market.
+      const recRows = await sql`
+        select m.company_id, c.name, count(*)::int as recs
+        from mentions m
+        join companies c on c.id = m.company_id
+        join responses r on r.id = m.response_id
+        where r.run_id = ${benchmark.runId} and r.error is null and m.recommended
+          and not exists (
+            select 1 from mentions newer
+            where newer.response_id = m.response_id
+              and newer.company_id = m.company_id and newer.revision > m.revision
+          )
+          and not exists (
+            select 1 from unnest(c.aliases || array[c.name]) as t
+            where trim(t) != '' and r.prompt_text ilike '%' || trim(t) || '%'
+          )
+        group by m.company_id, c.name
+        order by recs desc
+      `;
+      const recommendationMomentsTotal = recRows.reduce((a, r) => a + Number(r.recs), 0);
+      const yourRecommendations = Number(
+        recRows.find((r) => r.companyId === benchmark.companyId)?.recs ?? 0
+      );
+      const competitorsNamed = recRows
+        .filter((r) => r.companyId !== benchmark.companyId)
+        .slice(0, 5)
+        .map((r) => r.name as string);
+      // Average sale = arithmetic on THEIR cited numbers, never an estimate.
+      const [dealBasis] = await sql`
+        select
+          (select value_number from prospect_authority_signals
+            where prospect_id = ${input.prospectId} and kind = 'transaction_volume'
+              and value_number is not null order by created_at desc limit 1) as volume,
+          (select value_number from prospect_authority_signals
+            where prospect_id = ${input.prospectId} and kind = 'transaction_count'
+              and value_number is not null order by created_at desc limit 1) as sides
+      `;
+      const volume = dealBasis?.volume === null ? null : Number(dealBasis?.volume);
+      const sides = dealBasis?.sides === null ? null : Number(dealBasis?.sides);
+      const avgDealUsd =
+        volume !== null && sides !== null && sides > 0 ? Math.round(volume / sides) : null;
+      const stakes = {
+        recommendationMomentsTotal,
+        yourRecommendations,
+        competitorsNamed,
+        avgDealUsd,
+        avgDealBasis:
+          avgDealUsd !== null
+            ? `$${(volume! / 1_000_000).toFixed(2)}M across ${sides} sides, per the sourced record above`
+            : null,
+      };
+
+      const sourceRows = await sql`
+        select c.domain, count(*)::int as citations
+        from response_citations c
+        join responses r on r.id = c.response_id
+        where r.run_id = ${benchmark.runId}
+        group by c.domain
+        order by citations desc
+        limit 5
+      `;
+      const topSources = sourceRows.map((s) => ({
+        domain: s.domain as string,
+        citations: Number(s.citations),
+      }));
+
+      const marketName = (launchRow?.marketName as string) ?? "the monitored market";
+      const headline =
+        authorityGap && authorityGap.gap >= 20
+          ? `${prospect.businessName} is one of ${marketName}'s strongest teams — and AI assistants almost never say so.`
+          : `Your real-world market position appears stronger than your AI market position.`;
+
       // The snapshot IS the page. Internal fields (notes, scores, owners,
       // rationales) are structurally absent, not filtered at render time.
       const snapshot: AuditSnapshot = {
-        headline: `Your real-world market position appears stronger than your AI market position.`,
+        headline,
         prospectName: prospect.businessName,
-        marketName: (launchRow?.marketName as string) ?? "the monitored market",
+        marketName,
         benchmark: {
           dateRange: {
             from: run.startedAt.toISOString(),
@@ -1681,6 +1822,9 @@ export async function publishAudit(
         methodology: METHODOLOGY_TEXT,
         cta: "Review the full benchmark with us.",
         ...(authorityGap ? { authorityGap } : {}),
+        ...(recommendationMomentsTotal > 0 ? { stakes } : {}),
+        ...(whyItHappens.length > 0 ? { whyItHappens } : {}),
+        ...(topSources.length > 0 ? { topSources } : {}),
       };
 
       const accessToken = randomBytes(AUDIT_TOKEN_BYTES).toString("base64url");
