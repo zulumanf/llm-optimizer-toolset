@@ -14,7 +14,7 @@
  *
  * Role checks belong in services, never only in UI (docs/10).
  */
-import { getEnv } from "@/lib/env";
+import { getEnv, devAuthRefusalReason } from "@/lib/env";
 import { ClassifiedError } from "@/lib/errors";
 import { sql } from "@/db/client";
 
@@ -55,6 +55,10 @@ export class NotAuthenticatedError extends ClassifiedError {
 export async function getCurrentUser(): Promise<CurrentUser> {
   const env = getEnv();
   if (env.AUTH_MODE !== "supabase") {
+    // Middleware already refuses these requests, but middleware is a
+    // convenience gate — this is the boundary (docs/10).
+    const refusal = devAuthRefusalReason();
+    if (refusal) throw new ClassifiedError("forbidden", refusal);
     return {
       id: DEV_USER_ID,
       email: env.DEV_USER_EMAIL,

@@ -80,6 +80,15 @@ npm run restore -- var/backups/<stamp>   # drill into llm_optimizer_restore
 in — 893 tests must not depend on an inbox. `AUTH_MODE=supabase` reads a real
 session.
 
+**Dev auth fails closed in production (2026-08-03).** AUTH_MODE defaults to
+`dev`, so a deploy that forgets the variable would otherwise serve every
+visitor a passwordless admin session. A production process now refuses to
+serve under dev auth — 503 in middleware, `forbidden` at `getCurrentUser()` —
+unless `ALLOW_DEV_AUTH_IN_PROD=1` is set explicitly (the `ALLOW_MOCK_PROVIDER`
+pattern: forgetting is silent, overriding is a visible act). The `next build`
+prerender phase is exempt. See `lib/env.ts` `devAuthRefusalReason` and
+`tests/unit/auth-fail-closed.test.ts`.
+
 **The role comes from the `users` table, never from the JWT.** A token is a
 claim about identity; letting it also assert privilege means a stale or
 compromised token carries whatever role it was minted with. One extra query per

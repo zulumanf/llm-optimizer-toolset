@@ -45,6 +45,36 @@ const envSchema = z
 
 export type Env = z.infer<typeof envSchema>;
 
+/**
+ * Why a production process may not serve with dev auth: AUTH_MODE defaults to
+ * "dev", and dev mode hands every request a passwordless admin session. A
+ * deploy that forgets one env var must therefore fail closed, not open — the
+ * same reasoning as ALLOW_MOCK_PROVIDER in lib/ai/registry.ts: forgetting is
+ * silent, overriding must be a visible act.
+ *
+ * Returns the refusal message, or null when serving is allowed. `next build`
+ * prerenders under NODE_ENV=production with no real traffic, so the build
+ * phase is exempt; the check re-fires on every request once serving.
+ */
+type DevAuthEnv = Partial<
+  Record<"NODE_ENV" | "AUTH_MODE" | "NEXT_PHASE" | "ALLOW_DEV_AUTH_IN_PROD", string>
+>;
+
+export function devAuthRefusalReason(
+  env: DevAuthEnv = process.env
+): string | null {
+  if (env.AUTH_MODE === "supabase") return null;
+  if (env.NODE_ENV !== "production") return null;
+  if (env.NEXT_PHASE === "phase-production-build") return null;
+  if (env.ALLOW_DEV_AUTH_IN_PROD === "1") return null;
+  return (
+    "Refusing to serve: AUTH_MODE is not 'supabase' in a production process, " +
+    "which would give every visitor a passwordless admin session. Set " +
+    "AUTH_MODE=supabase with the SUPABASE_* variables, or set " +
+    "ALLOW_DEV_AUTH_IN_PROD=1 only if this instance is deliberately private."
+  );
+}
+
 let cached: Env | undefined;
 
 export function getEnv(): Env {

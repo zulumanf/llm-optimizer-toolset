@@ -1320,3 +1320,17 @@ lib/reports/snapshot.ts (both bounds + previous-run lookup) and the
 cycle's run-reuse window. Verified inside the failure window itself.
 Grep found no other `::date` comparisons against timestamptz on hot
 paths; any new period math must anchor its timezone explicitly.
+
+## 2026-08-03 — Dev auth fails closed in a production process (phase 0.1, production-readiness plan)
+
+`AUTH_MODE` defaults to `dev`, and dev mode returns a hardcoded admin for
+every request. That default was correct for the test suite and wrong for the
+internet: the single most likely deploy mistake (one forgotten env var) would
+have published the whole workspace as a passwordless admin session. Decision:
+a production process refuses to serve under dev auth — 503 in middleware,
+`forbidden` at `getCurrentUser()` — with `ALLOW_DEV_AUTH_IN_PROD=1` as the
+explicit override, mirroring `ALLOW_MOCK_PROVIDER`. The `next build`
+prerender phase is exempt (`NEXT_PHASE=phase-production-build`) so CI can
+keep building with dev auth; the check re-fires on every served request.
+One predicate owns the rule (`devAuthRefusalReason` in `lib/env.ts`) so the
+middleware and the auth boundary cannot drift.
