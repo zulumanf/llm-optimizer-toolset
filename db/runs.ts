@@ -110,6 +110,15 @@ export async function successfulCellKeys(runId: string): Promise<Set<string>> {
   );
 }
 
+/** Recorded provider spend across ALL runs in the last 24 hours (plan 2.7). */
+export async function spendLast24hUsd(): Promise<number> {
+  const rows = await sql`
+    select coalesce(sum(cost_usd), 0) as total from responses
+    where requested_at > now() - interval '24 hours'
+  `;
+  return Number(rows[0]?.total ?? 0);
+}
+
 export async function runCostMicroUsd(runId: string): Promise<number> {
   const rows = await sql`
     select coalesce(sum(cost_usd), 0) as total from responses where run_id = ${runId}

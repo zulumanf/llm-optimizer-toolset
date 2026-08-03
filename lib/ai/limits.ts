@@ -102,6 +102,15 @@ export function createRateGate(): (provider: string) => Promise<void> {
   };
 }
 
+/**
+ * The process-wide gate every run shares. createRateGate used to be called
+ * inside executeRun, so two concurrent runs each got a private clock and
+ * doubled the provider rate — the docblock's own claim made true (plan 2.7).
+ * Separate worker PROCESSES still have separate gates; the per-account
+ * guarantee holds under the standard single-worker deployment.
+ */
+export const sharedRateGate = createRateGate();
+
 /** Effective concurrency for a run, given the providers it uses. */
 export function concurrencyFor(providers: string[], ceiling: number): number {
   if (providers.length === 0) return ceiling;

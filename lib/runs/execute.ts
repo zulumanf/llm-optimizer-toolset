@@ -6,7 +6,13 @@
  * else touches them; failed calls are captured with their classified error.
  */
 import { sql } from "@/db/client";
-import { getRun, successfulCellKeys, runCostMicroUsd } from "@/db/runs";
+import {
+  getRun,
+  successfulCellKeys,
+  runCostMicroUsd,
+  spendLast24hUsd,
+} from "@/db/runs";
+import { DAILY_SPEND_CEILING_USD } from "@/lib/constants";
 import type { FrozenPrompt } from "@/lib/prompts/types";
 import { getProvider } from "@/lib/ai/registry";
 import { withRetry } from "@/lib/ai/retry";
@@ -14,7 +20,7 @@ import { costMicroUsd, microToUsd, usdToMicro } from "@/lib/ai/pricing";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 import { expandCells, type Cell } from "@/lib/runs/cells";
-import { concurrencyFor, createRateGate } from "@/lib/ai/limits";
+import { concurrencyFor, sharedRateGate } from "@/lib/ai/limits";
 
 /** Ceiling. The effective figure is the lowest limit among the run's providers. */
 const CONCURRENCY = 4;
@@ -30,6 +36,13 @@ interface ExecState {
    * this way before the distinction existed.
    */
   quotaExhausted: string | null;
+  /**
+   * Set when a successful call could not be priced (pricing row vanished
+   * mid-run — validation makes this unreachable at run creation). The
+   * payload is captured with cost_usd NULL, then the run stops: continuing
+   * would spend money the budget cap cannot see.
+   */
+  unpricedModel: string | null;
   spentMicro: number;
   failed: number;
   launched: number;
@@ -52,6 +65,21 @@ export async function executeRun(runId: string): Promise<void> {
     throw new ClassifiedError("internal", `Run ${runId}: frozen version missing.`);
   }
 
+  // Portfolio ceiling backstop (plan 2.7) — scheduled runs reach here
+  // without passing startRun's check. A ceiling hit is a terminal state
+  // with a reason, not a retry loop.
+  const spent = await spendLast24hUsd();
+  if (spent >= DAILY_SPEND_CEILING_USD) {
+    await sql`
+      update runs set status = 'failed',
+        status_detail = ${`portfolio spend ceiling reached ($${spent.toFixed(2)} of $${DAILY_SPEND_CEILING_USD} in 24h) — retry the run once the window clears`},
+        completed_at = now()
+      where id = ${runId}
+    `;
+    log("error", "run.spend_ceiling_hit", { runId, spent });
+    return;
+  }
+
   await sql`update runs set status = 'running' where id = ${runId}`;
 
   const allCells = expandCells(
@@ -67,6 +95,7 @@ export async function executeRun(runId: string): Promise<void> {
     cancelled: false,
     budgetExhausted: false,
     quotaExhausted: null,
+    unpricedModel: null,
     spentMicro: await runCostMicroUsd(runId),
     failed: 0,
     launched: 0,
@@ -84,7 +113,7 @@ export async function executeRun(runId: string): Promise<void> {
   // run — the Gemini free tier burned 40 of 40 in six seconds before this.
   const providersInRun = [...new Set(pending.map((cell) => cell.provider))];
   const effectiveConcurrency = concurrencyFor(providersInRun, CONCURRENCY);
-  const waitForSlot = createRateGate();
+  const waitForSlot = sharedRateGate;
 
   let cursor = 0;
   const workers = Array.from(
@@ -106,6 +135,7 @@ export async function executeRun(runId: string): Promise<void> {
         }
         if (state.cancelled) return;
         if (state.quotaExhausted !== null) return;
+        if (state.unpricedModel !== null) return;
         if (state.spentMicro >= budgetMicro) {
           state.budgetExhausted = true;
           return;
@@ -132,8 +162,23 @@ async function executeCell(
     const result = await withRetry(() =>
       provider.runPrompt({ model: cell.model, promptText: cell.promptText })
     );
-    const micro = costMicroUsd(cell.model, result.tokensIn, result.tokensOut);
-    state.spentMicro += micro;
+    // Priced AFTER the call but never at the expense of the capture: a
+    // pricing gap must not discard a successful payload (docblock contract).
+    // cost NULL = "unpriced, run halted", never $0 (plan 2.6).
+    let micro: number | null;
+    try {
+      micro = costMicroUsd(cell.model, result.tokensIn, result.tokensOut);
+      state.spentMicro += micro;
+    } catch (pricingErr) {
+      micro = null;
+      state.unpricedModel = cell.model;
+      log("error", "run.cell_unpriced", {
+        runId,
+        model: cell.model,
+        message:
+          pricingErr instanceof Error ? pricingErr.message.slice(0, 200) : "unknown",
+      });
+    }
 
     // An unrecognised payload shape is a parser failure wearing the costume of
     // an empty answer (docs/09). The raw payload is still captured below, so
@@ -159,12 +204,14 @@ async function executeCell(
            ${cell.model}, ${cell.repetition},
            ${sql.json(result.rawPayload as never)}, ${result.responseText},
            ${result.refusal}, ${Date.now() - startedAt}, ${result.tokensIn},
-           ${result.tokensOut}, ${microToUsd(micro)})
+           ${result.tokensOut}, ${micro === null ? null : microToUsd(micro)})
       `;
-      await sql`
-        update runs set cost_usd = cost_usd + ${microToUsd(micro)}
-        where id = ${runId}
-      `;
+      if (micro !== null) {
+        await sql`
+          update runs set cost_usd = cost_usd + ${microToUsd(micro)}
+          where id = ${runId}
+        `;
+      }
     } catch (err) {
       // 23505: another attempt already captured this cell — keep the original
       if (!(typeof err === "object" && err !== null && "code" in err &&
@@ -231,6 +278,9 @@ async function finalizeRun(
     // enable billing.
     status = successes === 0 ? "failed" : "partial";
     detail = `provider quota exhausted (${state.quotaExhausted}) — ${successes} of ${totalCells} cells captured before stopping`;
+  } else if (state.unpricedModel) {
+    status = successes === totalCells ? "completed" : "partial";
+    detail = `model "${state.unpricedModel}" lost its pricing entry mid-run — captures kept (cost recorded as unknown), remaining cells skipped`;
   } else if (state.budgetExhausted) {
     status = "partial";
     detail = "budget cap reached";
