@@ -7,6 +7,7 @@ import * as svc from "@/lib/prospects/service";
 import * as discovery from "@/lib/prospects/discovery";
 import * as buying from "@/lib/prospects/buying-signals";
 import * as quickstart from "@/lib/prospects/quickstart";
+import * as exhibits from "@/lib/prospects/exhibits";
 
 async function run<T>(
   fn: (user: Awaited<ReturnType<typeof getCurrentUser>>) => Promise<ActionResult<T>>
@@ -74,6 +75,12 @@ export async function archiveBuyingSignal(input: unknown) {
 }
 export async function quickStartLaunch(input: unknown) {
   return run((u) => quickstart.quickStartLaunch(u, input));
+}
+export async function addExhibit(input: unknown) {
+  return run((u) => exhibits.addExhibit(u, input));
+}
+export async function archiveExhibit(input: unknown) {
+  return run((u) => exhibits.archiveExhibit(u, input));
 }
 export async function linkBenchmark(input: unknown) {
   return run((u) => svc.linkBenchmark(u, input));

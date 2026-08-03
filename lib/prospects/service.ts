@@ -1526,6 +1526,35 @@ export interface AuditSnapshot {
   promptEvidence: PromptEvidence[];
   methodology: string;
   cta: string;
+  /** THE PROOF (spec 045): every captured answer, complete and verbatim, so
+   * the reader can search for their own name and find nothing — an absence
+   * can only be proven by publishing everything. Rendered on the appendix
+   * page (/audit/[token]/answers). */
+  transcripts?: {
+    prompt: string;
+    provider: string;
+    model: string;
+    capturedAt: string;
+    answer: string;
+  }[];
+  /** Short verbatim moments where an assistant recommended a rival —
+   * the machine in its own words, stamped. */
+  evidenceExcerpts?: {
+    quote: string;
+    teamName: string;
+    model: string;
+    capturedAt: string;
+  }[];
+  /** Who stands behind the report. */
+  preparedBy?: { name: string; date: string; reportId: string };
+  /** Live consumer-app share links (spec 045): operator-created exhibits on
+   * the assistant vendor's own domain. Demos, never measurements. */
+  exampleChats?: {
+    url: string;
+    assistant: string;
+    question: string;
+    capturedOn: string;
+  }[];
   /** What invisibility means in the prospect's own numbers — measured
    * recommendation moments plus arithmetic on THEIR cited volume/sides.
    * Never a fabricated loss claim (PROHIBITED_PHRASES discipline). */
@@ -1757,6 +1786,76 @@ export async function publishAudit(
             : null,
       };
 
+      // THE PROOF: every valid answer, complete and verbatim. An absence can
+      // only be proven by publishing everything — a reader can search these
+      // for their own name. Capped defensively; the cap is stated on the page.
+      const TRANSCRIPT_CAP = 60;
+      const transcriptRows = await tx`
+        select prompt_text, provider, model, requested_at, response_text
+        from responses
+        where run_id = ${benchmark.runId} and error is null
+          and response_text is not null
+        order by prompt_text, provider, repetition
+        limit ${TRANSCRIPT_CAP}
+      `;
+      const transcripts = transcriptRows.map((r) => ({
+        prompt: r.promptText as string,
+        provider: r.provider as string,
+        model: r.model as string,
+        capturedAt: (r.requestedAt as Date).toISOString(),
+        answer: r.responseText as string,
+      }));
+
+      // Short verbatim moments: an assistant recommending a rival, in its
+      // own words. Organic only (echo exclusion), one per rival, top 3.
+      const excerptRows = await tx`
+        select distinct on (m.company_id)
+          m.excerpt, c.name, r.model, r.requested_at
+        from mentions m
+        join companies c on c.id = m.company_id
+        join responses r on r.id = m.response_id
+        where r.run_id = ${benchmark.runId} and r.error is null
+          and m.recommended and m.excerpt is not null
+          and m.company_id != ${benchmark.companyId}
+          and not exists (
+            select 1 from mentions newer
+            where newer.response_id = m.response_id
+              and newer.company_id = m.company_id and newer.revision > m.revision
+          )
+          and not exists (
+            select 1 from unnest(c.aliases || array[c.name]) as t
+            where trim(t) != '' and r.prompt_text ilike '%' || trim(t) || '%'
+          )
+        order by m.company_id, r.requested_at asc
+      `;
+      const evidenceExcerpts = excerptRows.slice(0, 3).map((r) => ({
+        quote: r.excerpt as string,
+        teamName: r.name as string,
+        model: r.model as string,
+        capturedAt: (r.requestedAt as Date).toISOString(),
+      }));
+
+      const preparedBy = {
+        name: user.name,
+        date: new Date().toISOString().slice(0, 10),
+        reportId: randomBytes(4).toString("hex"),
+      };
+
+      // Live exhibits: allowlisted consumer-app share links (spec 045).
+      const exhibitRows = await tx`
+        select url, assistant, question, captured_on::text as captured_on
+        from prospect_exhibits
+        where prospect_id = ${input.prospectId} and archived_at is null
+        order by captured_on desc, created_at desc
+        limit 5
+      `;
+      const exampleChats = exhibitRows.map((r) => ({
+        url: r.url as string,
+        assistant: r.assistant as string,
+        question: r.question as string,
+        capturedOn: r.capturedOn as string,
+      }));
+
       const sourceRows = await sql`
         select c.domain, count(*)::int as citations
         from response_citations c
@@ -1825,6 +1924,10 @@ export async function publishAudit(
         ...(recommendationMomentsTotal > 0 ? { stakes } : {}),
         ...(whyItHappens.length > 0 ? { whyItHappens } : {}),
         ...(topSources.length > 0 ? { topSources } : {}),
+        ...(transcripts.length > 0 ? { transcripts } : {}),
+        ...(evidenceExcerpts.length > 0 ? { evidenceExcerpts } : {}),
+        ...(exampleChats.length > 0 ? { exampleChats } : {}),
+        preparedBy,
       };
 
       const accessToken = randomBytes(AUDIT_TOKEN_BYTES).toString("base64url");

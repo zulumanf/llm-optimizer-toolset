@@ -303,6 +303,10 @@ describe.skipIf(!TEST_URL)("prospect authority & visibility gap (integration)", 
     // Prospect-facing diagnoses shipped; internal research-gap keys did not.
     expect(snapshot?.whyItHappens?.length).toBeGreaterThan(0);
     expect(JSON.stringify(snapshot?.whyItHappens)).not.toContain("gap in our research");
+    // The proof shipped: every valid answer, verbatim, plus the signature.
+    expect(snapshot?.transcripts?.length).toBe(9);
+    expect(snapshot?.transcripts?.[0]?.answer.length).toBeGreaterThan(0);
+    expect(snapshot?.preparedBy?.name).toBe("Operator");
   });
 
   it("publishes without the gap section when authority has no signals — never a one-sided gap", async () => {

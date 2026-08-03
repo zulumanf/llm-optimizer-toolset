@@ -67,6 +67,11 @@ import {
   ArchiveBuyingSignalButton,
   BuyingSignalDialog,
 } from "@/components/prospects/buying-signal-dialog";
+import {
+  ArchiveExhibitButton,
+  ExhibitDialog,
+} from "@/components/prospects/exhibit-dialog";
+import { listExhibits } from "@/lib/prospects/exhibits";
 import { FRESHNESS_WINDOWS_DAYS, staleness } from "@/lib/prospects/constants";
 
 const rate = (v: number | null): string =>
@@ -110,9 +115,10 @@ export default async function ProspectDetailPage({
   const gapView = await authorityGapForProspect(id);
   const signalLabel = new Map(gapView.signals.map((s) => [s.id, s.label]));
   const suggestion = prospect.companyId ? null : await suggestCompanyForProspect(id);
-  const [diagnosis, buyingSignals] = await Promise.all([
+  const [diagnosis, buyingSignals, exhibits] = await Promise.all([
     diagnoseProspect(id),
     listBuyingSignals(id),
+    listExhibits(id),
   ]);
   const benchmarkStaleness = latestBenchmark
     ? staleness(latestBenchmark.runStartedAt, FRESHNESS_WINDOWS_DAYS.benchmark)
@@ -761,11 +767,38 @@ export default async function ProspectDetailPage({
 
       <Section
         title="Shareable audit page"
-        description="A private web page of their results you can send them. The link can be revoked anytime; your internal notes are never on it."
+        description="A private web page of their results you can send them. The link can be revoked anytime; your internal notes are never on it. Attach live chats below and republish to include them."
         actions={
-          !publishedAudit && primaryFinding ? <PublishAuditButton prospectId={id} /> : undefined
+          <>
+            <ExhibitDialog prospectId={id} />
+            {!publishedAudit && primaryFinding && <PublishAuditButton prospectId={id} />}
+          </>
         }
       >
+        {exhibits.length > 0 && (
+          <ul className="mb-3 space-y-1.5 text-sm">
+            {exhibits.map((e) => (
+              <li key={e.id} className="flex items-center gap-2 rounded-md border px-3 py-1.5">
+                <span className="text-xs uppercase text-muted-foreground">
+                  {e.assistant}
+                </span>
+                <span className="truncate">“{e.question}”</span>
+                <a
+                  href={e.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs underline"
+                >
+                  open
+                </a>
+                <span className="text-xs text-muted-foreground">{e.capturedOn}</span>
+                <div className="ml-auto">
+                  <ArchiveExhibitButton exhibitId={e.id} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
         {audits.length === 0 ? (
           <EmptyState message="No audit page yet. Approve a story above, then Publish — you'll get a private link to send them." />
         ) : (
