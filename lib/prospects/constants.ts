@@ -115,6 +115,79 @@ export const CONFLICT_STATUSES_ALLOWING_PROGRESS: readonly ConflictStatus[] = [
 
 export const RELATIONSHIP_STRENGTHS = ["none", "weak", "warm", "strong"] as const;
 
+/**
+ * Operator-recorded fixability facts (spec 039) — things the platform cannot
+ * derive and must never guess. "unknown" is a recorded answer, distinct from
+ * never-asked; unanswered items make the category read "not measured".
+ */
+export const ASSESSMENT_ITEMS = [
+  // Website readiness (6)
+  "website_indexable",
+  "has_dedicated_website",
+  "services_markets_clear",
+  "credentials_visible",
+  "neighborhood_content",
+  "structured_data_consistent",
+  // Ability to implement (4)
+  "website_control",
+  "content_publishing_access",
+  "marketing_resources",
+  "can_obtain_reviews",
+  // Hard-flag input
+  "reputation_concern",
+] as const;
+export type AssessmentItem = (typeof ASSESSMENT_ITEMS)[number];
+
+export const ASSESSMENT_VALUES = ["yes", "no", "unknown"] as const;
+export type AssessmentValue = (typeof ASSESSMENT_VALUES)[number];
+
+/** Purchase intent/timing evidence (spec 042) — distinct from authority
+ * signals (market standing). Every buying signal requires a source URL and
+ * an observed date; the table enforces both NOT NULL. */
+export const BUYING_SIGNAL_KINDS = [
+  "brokerage_move",
+  "team_expansion",
+  "hiring_marketing",
+  "website_redesign",
+  "new_market_launch",
+  "new_development_listings",
+  "media_activity",
+  "new_leadership",
+  "paid_marketing_active",
+  "seo_pr_investment",
+  "other",
+] as const;
+export type BuyingSignalKind = (typeof BUYING_SIGNAL_KINDS)[number];
+
+/**
+ * Freshness windows per evidence type (spec 042). Within the window =
+ * fresh; past it = stale (badged, and for benchmarks: publish requires an
+ * explicit acknowledgment). Buying-signal scoring decays on these bands.
+ */
+export const FRESHNESS_WINDOWS_DAYS = {
+  benchmark: 90,
+  authoritySignal: 365,
+  buyingSignal: 180,
+  contact: 180,
+  assessment: 365,
+} as const;
+
+export interface Staleness {
+  ageDays: number;
+  stale: boolean;
+}
+
+/** Pure staleness check; `now` injectable for tests. */
+export function staleness(
+  observedAt: Date | string,
+  windowDays: number,
+  now: Date = new Date()
+): Staleness {
+  const observed = typeof observedAt === "string" ? new Date(observedAt) : observedAt;
+  const ageDays = Math.floor((now.getTime() - observed.getTime()) / 86_400_000);
+  return { ageDays, stale: ageDays > windowDays };
+}
+
 export const FINDING_KINDS = [
   "authority_visibility_gap",
   "competitor_contrast",
@@ -133,6 +206,20 @@ export const OUTREACH_CHANNELS = [
   "warm_intro",
 ] as const;
 export type OutreachChannel = (typeof OUTREACH_CHANNELS)[number];
+
+/**
+ * A contact's preferred way to be reached. Distinct from OUTREACH_CHANNELS
+ * (draft channels): "phone" is a preference someone can state, but the
+ * platform drafts no phone scripts, and "followup_email" is a draft kind,
+ * not a preference. Mirrors the check constraint in migration 042.
+ */
+export const CONTACT_CHANNELS = [
+  "email",
+  "linkedin_message",
+  "phone",
+  "warm_intro",
+] as const;
+export type ContactChannel = (typeof CONTACT_CHANNELS)[number];
 
 export const RECORDING_STATUSES = [
   "not_started",

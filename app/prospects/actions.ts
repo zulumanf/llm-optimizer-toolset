@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import * as svc from "@/lib/prospects/service";
+import * as discovery from "@/lib/prospects/discovery";
+import * as buying from "@/lib/prospects/buying-signals";
 
 async function run<T>(
   fn: (user: Awaited<ReturnType<typeof getCurrentUser>>) => Promise<ActionResult<T>>
@@ -33,6 +35,42 @@ export async function updateProspect(input: unknown) {
 export async function addAuthoritySignal(input: unknown) {
   return run((u) => svc.addAuthoritySignal(u, input));
 }
+export async function addContact(input: unknown) {
+  return run((u) => svc.addContact(u, input));
+}
+export async function updateContact(input: unknown) {
+  return run((u) => svc.updateContact(u, input));
+}
+export async function archiveContact(input: unknown) {
+  return run((u) => svc.archiveContact(u, input));
+}
+export async function importProspects(input: unknown) {
+  return run((u) => svc.importProspects(u, input));
+}
+export async function recordAssessment(input: unknown) {
+  return run((u) => svc.recordAssessment(u, input));
+}
+export async function computeProspectScore(input: unknown) {
+  return run((u) => svc.computeProspectScore(u, input));
+}
+export async function overrideProspectScore(input: unknown) {
+  return run((u) => svc.overrideProspectScore(u, input));
+}
+export async function runProspectDiscovery(input: unknown) {
+  return run((u) => discovery.runProspectDiscovery(u, input));
+}
+export async function reviewDiscoveryCandidate(input: unknown) {
+  return run((u) => discovery.reviewDiscoveryCandidate(u, input));
+}
+export async function confirmCompanyLink(input: unknown) {
+  return run((u) => discovery.confirmCompanyLink(u, input));
+}
+export async function addBuyingSignal(input: unknown) {
+  return run((u) => buying.addBuyingSignal(u, input));
+}
+export async function archiveBuyingSignal(input: unknown) {
+  return run((u) => buying.archiveBuyingSignal(u, input));
+}
 export async function linkBenchmark(input: unknown) {
   return run((u) => svc.linkBenchmark(u, input));
 }
@@ -59,6 +97,9 @@ export async function approveOutreachDraft(input: unknown) {
 }
 export async function recordDraftSent(input: unknown) {
   return run((u) => svc.recordDraftSent(u, input));
+}
+export async function sendProspectDraft(input: unknown) {
+  return run((u) => svc.sendProspectDraft(u, input));
 }
 export async function generateRecordingPlan(input: unknown) {
   return run((u) => svc.generateRecordingPlan(u, input));

@@ -81,6 +81,61 @@ export default async function ProspectAuditPage({
         </p>
       </section>
 
+      {snapshot.authorityGap && (
+        <section className="mt-8 rounded-lg border p-5">
+          <h2 className="text-lg font-medium">Real-world authority vs AI visibility</h2>
+          <dl className="mt-3 grid grid-cols-3 gap-3 text-sm">
+            <div className="rounded-md border p-3">
+              <dt className="text-xs text-muted-foreground">Local market authority</dt>
+              <dd className="mt-1 text-2xl font-semibold tabular-nums">
+                {Math.round(snapshot.authorityGap.authorityScore)}
+                <span className="text-xs font-normal text-muted-foreground"> / 100</span>
+              </dd>
+            </div>
+            <div className="rounded-md border p-3">
+              <dt className="text-xs text-muted-foreground">AI visibility (intent-weighted)</dt>
+              <dd className="mt-1 text-2xl font-semibold tabular-nums">
+                {Math.round(snapshot.authorityGap.visibilityScore)}
+                <span className="text-xs font-normal text-muted-foreground"> / 100</span>
+              </dd>
+            </div>
+            <div className="rounded-md border p-3">
+              <dt className="text-xs text-muted-foreground">Visibility gap</dt>
+              <dd className="mt-1 text-2xl font-semibold tabular-nums">
+                {Math.round(snapshot.authorityGap.gap)}
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Authority is computed from the evidence below ({snapshot.authorityGap.authorityVersion}
+            ); visibility from {snapshot.authorityGap.organicResponses} captured responses to
+            questions that did not name you, weighted by commercial intent (
+            {snapshot.authorityGap.visibilityVersion}).
+          </p>
+          {snapshot.authorityGap.signals.length > 0 && (
+            <ul className="mt-3 space-y-1.5 text-sm">
+              {snapshot.authorityGap.signals.map((s, i) => (
+                <li key={i}>
+                  {s.label}{" "}
+                  <span className="text-xs text-muted-foreground">
+                    ({s.provenance.replaceAll("_", " ")}
+                    {s.sourceUrl ? (
+                      <>
+                        {" · "}
+                        <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="underline">
+                          source
+                        </a>
+                      </>
+                    ) : null}
+                    )
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {snapshot.comparison.length > 0 && (
         <section className="mt-8">
           <h2 className="text-lg font-medium">How the market compares</h2>

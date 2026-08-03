@@ -28,6 +28,9 @@ export interface ProspectDetail {
   fieldProvenance: Record<string, string>;
   ownerName: string | null;
   qualificationScore: number | null;
+  qualificationBreakdown: Record<string, unknown> | null;
+  qualificationOverride: number | null;
+  qualificationOverrideReason: string | null;
   relationshipStrength: string;
   stage: string;
   nextAction: string | null;
@@ -46,6 +49,8 @@ export async function getProspectDetail(id: string): Promise<ProspectDetail | nu
       p.brokerage_affiliation, p.team_leader, p.website, p.email, p.phone,
       p.price_segment, p.est_transaction_volume_usd, p.est_team_size, p.source,
       p.field_provenance, u.name as owner_name, p.qualification_score,
+      p.qualification_breakdown, p.qualification_override,
+      p.qualification_override_reason,
       p.relationship_strength, p.stage, p.next_action, p.next_action_on::text,
       p.do_not_contact, p.do_not_contact_reason, p.conflict_status, p.notes,
       p.benchmark_project_id
@@ -67,14 +72,59 @@ export interface SignalRow {
   sourceUrl: string | null;
   provenance: string;
   confidence: number | null;
+  scope: string;
+  /** retrieved_at when recorded, else created_at — the freshness base. */
+  observedAt: Date;
 }
 
 export async function listSignals(prospectId: string): Promise<SignalRow[]> {
   return sql<SignalRow[]>`
-    select id, kind, label, value_text, source_url, provenance, confidence
+    select id, kind, label, value_text, source_url, provenance, confidence,
+      scope, coalesce(retrieved_at, created_at) as observed_at
     from prospect_authority_signals
     where prospect_id = ${prospectId}
     order by created_at asc
+  `;
+}
+
+export interface AssessmentRow {
+  item: string;
+  value: string;
+  note: string | null;
+  recordedAt: Date;
+}
+
+export async function listAssessments(prospectId: string): Promise<AssessmentRow[]> {
+  return sql<AssessmentRow[]>`
+    select item, value, note, recorded_at
+    from prospect_assessments
+    where prospect_id = ${prospectId}
+    order by item asc
+  `;
+}
+
+export interface ContactRow {
+  id: string;
+  name: string;
+  role: string | null;
+  email: string | null;
+  phone: string | null;
+  linkedin: string | null;
+  preferredChannel: string | null;
+  isPrimary: boolean;
+  doNotContact: boolean;
+  doNotContactReason: string | null;
+  provenance: string;
+  notes: string | null;
+}
+
+export async function listContacts(prospectId: string): Promise<ContactRow[]> {
+  return sql<ContactRow[]>`
+    select id, name, role, email, phone, linkedin, preferred_channel,
+      is_primary, do_not_contact, do_not_contact_reason, provenance, notes
+    from prospect_contacts
+    where prospect_id = ${prospectId} and archived_at is null
+    order by is_primary desc, created_at asc
   `;
 }
 
@@ -83,12 +133,14 @@ export interface BenchmarkListRow {
   runId: string;
   runLabel: string;
   runStatus: string;
+  runStartedAt: Date;
   createdAt: Date;
 }
 
 export async function listBenchmarks(prospectId: string): Promise<BenchmarkListRow[]> {
   return sql<BenchmarkListRow[]>`
-    select b.id, b.run_id, r.label as run_label, r.status as run_status, b.created_at
+    select b.id, b.run_id, r.label as run_label, r.status as run_status,
+      r.started_at as run_started_at, b.created_at
     from prospect_benchmarks b join runs r on r.id = b.run_id
     where b.prospect_id = ${prospectId}
     order by b.created_at desc
@@ -162,15 +214,19 @@ export interface DraftRow {
   status: string;
   approvedAt: Date | null;
   sentRecordedAt: Date | null;
+  contactId: string | null;
+  contactName: string | null;
 }
 
 export async function listDrafts(prospectId: string): Promise<DraftRow[]> {
   return sql<DraftRow[]>`
-    select id, channel, version, subject, body, cta, generated_by, status,
-      approved_at, sent_recorded_at
-    from outreach_drafts
-    where prospect_id = ${prospectId}
-    order by channel asc, version desc
+    select d.id, d.channel, d.version, d.subject, d.body, d.cta, d.generated_by,
+      d.status, d.approved_at, d.sent_recorded_at, d.contact_id,
+      c.name as contact_name
+    from outreach_drafts d
+    left join prospect_contacts c on c.id = d.contact_id
+    where d.prospect_id = ${prospectId}
+    order by d.channel asc, d.version desc
   `;
 }
 

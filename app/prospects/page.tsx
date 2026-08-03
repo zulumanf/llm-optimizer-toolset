@@ -9,17 +9,34 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState, PageHeader, PageShell, Section } from "@/components/layout/page";
+import { ImportDialog } from "@/components/prospects/import-dialog";
 import { LaunchDialog } from "@/components/prospects/launch-dialog";
 import { ProspectDialog } from "@/components/prospects/prospect-dialog";
+import { DiscoverDialog } from "@/components/prospects/discover-dialog";
+import { CandidateActions } from "@/components/prospects/candidate-actions";
 import { listLaunches, listProspects } from "@/lib/prospects/service";
+import {
+  listDiscoveryCandidates,
+  listProspectDuplicates,
+} from "@/lib/prospects/discovery";
+import { acquisitionFunnel } from "@/lib/prospects/funnel";
+import { acquisitionScoreFeedback } from "@/lib/prospects/score-feedback";
+import { PROSPECT_SOURCE_IDS } from "@/lib/prospects/providers/registry";
+import { mockProviderAllowed } from "@/lib/ai/registry";
 import { listMarkets } from "@/lib/exclusivity/service";
 
 export default async function ProspectsPage() {
-  const [launches, prospects, markets] = await Promise.all([
-    listLaunches(),
-    listProspects({ limit: 100 }),
-    listMarkets(),
-  ]);
+  const [launches, prospects, markets, candidates, duplicates, funnel, feedback] =
+    await Promise.all([
+      listLaunches(),
+      listProspects({ limit: 100 }),
+      listMarkets(),
+      listDiscoveryCandidates({ status: "pending" }),
+      listProspectDuplicates(),
+      acquisitionFunnel(),
+      acquisitionScoreFeedback(),
+    ]);
+  const providers = PROSPECT_SOURCE_IDS.filter((id) => id !== "mock" || mockProviderAllowed());
 
   return (
     <PageShell>
@@ -29,6 +46,11 @@ export default async function ProspectsPage() {
         actions={
           <>
             <LaunchDialog markets={markets.map((m) => ({ id: m.id, name: m.name, parentName: m.parentName }))} />
+            <DiscoverDialog
+              launches={launches.map((l) => ({ id: l.id, name: l.name }))}
+              providers={providers}
+            />
+            <ImportDialog launches={launches.map((l) => ({ id: l.id, name: l.name }))} />
             <ProspectDialog launches={launches.map((l) => ({ id: l.id, name: l.name }))} />
           </>
         }
@@ -71,6 +93,112 @@ export default async function ProspectsPage() {
         )}
       </Section>
 
+      {funnel.totalProspects > 0 && (
+        <Section
+          title="Acquisition funnel"
+          description={`Stage-to-stage movement across ${funnel.totalProspects} prospect(s) — ever-reached counts, not snapshots (${funnel.version}).`}
+        >
+          <div className="overflow-x-auto">
+            <div className="flex items-end gap-1 text-xs">
+              {funnel.stages
+                .filter((s, i) => s.reached > 0 || i < 6)
+                .map((s) => (
+                  <div key={s.stage} className="min-w-20 rounded-md border p-2 text-center">
+                    <p className="font-medium tabular-nums">{s.reached}</p>
+                    <p className="mt-0.5 text-muted-foreground">
+                      {s.stage.replaceAll("_", " ")}
+                    </p>
+                    {s.conversionFromPrevious !== null && (
+                      <p className="mt-0.5 tabular-nums text-muted-foreground">
+                        {Math.round(s.conversionFromPrevious * 100)}%
+                      </p>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </div>
+          {funnel.exits.length > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Exits:{" "}
+              {funnel.exits
+                .map((e) => `${e.stage.replaceAll("_", " ")} (${e.count})`)
+                .join(" · ")}
+            </p>
+          )}
+          <div className="mt-3 rounded-md border p-3 text-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Score feedback ({feedback.version})
+            </p>
+            <ul className="mt-1.5 space-y-1">
+              {feedback.recommendations.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+            <p className="mt-1.5 text-xs text-muted-foreground">{feedback.epilogue}</p>
+          </div>
+        </Section>
+      )}
+
+      {candidates.length > 0 && (
+        <Section
+          title="Discovery candidates"
+          description="Adapter results awaiting review — nothing becomes a prospect without approval. Every candidate keeps its source, retrieval date, and confidence."
+        >
+          <ul className="space-y-2">
+            {candidates.map((c) => (
+              <li key={c.id} className="rounded-md border p-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{c.businessName}</span>
+                  {c.payload.brokerageAffiliation && (
+                    <span className="text-muted-foreground">
+                      at {c.payload.brokerageAffiliation}
+                    </span>
+                  )}
+                  <Badge variant="secondary">{c.provenance.replaceAll("_", " ")}</Badge>
+                  <Badge variant="outline">
+                    {c.provider} · {Math.round(c.confidence * 100)}%
+                  </Badge>
+                  <div className="ml-auto">
+                    <CandidateActions candidateId={c.id} />
+                  </div>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {c.launchName}
+                  {c.payload.teamLeader ? ` · ${c.payload.teamLeader}` : ""}
+                  {c.payload.website ? ` · ${c.payload.website}` : ""}
+                  {c.sourceUrl ? ` · source: ${c.sourceUrl}` : ""}
+                  {` · retrieved ${new Date(c.retrievedAt).toLocaleDateString()}`}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {duplicates.length > 0 && (
+        <Section
+          title="Possible duplicates across launches"
+          description="Same team appearing in two launches — link both to one canonical company to keep measurement honest."
+        >
+          <ul className="space-y-1 text-sm">
+            {duplicates.map((d, i) => (
+              <li key={i} className="rounded-md border p-2">
+                <Link href={`/prospects/${d.a.id}`} className="font-medium hover:underline">
+                  {d.a.businessName}
+                </Link>{" "}
+                <span className="text-muted-foreground">({d.a.launchName})</span> ↔{" "}
+                <Link href={`/prospects/${d.b.id}`} className="font-medium hover:underline">
+                  {d.b.businessName}
+                </Link>{" "}
+                <span className="text-muted-foreground">
+                  ({d.b.launchName}) — {d.detail}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
       <Section
         title="Prospects"
         description="Selectively targeted teams — every stage change is checked against exclusivity."
@@ -85,6 +213,7 @@ export default async function ProspectsPage() {
                 <TableHead>Launch</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Stage</TableHead>
+                <TableHead className="text-right">Score</TableHead>
                 <TableHead>Conflict</TableHead>
                 <TableHead>Next action</TableHead>
               </TableRow>
@@ -106,6 +235,12 @@ export default async function ProspectsPage() {
                   <TableCell>{p.prospectType.replaceAll("_", " ")}</TableCell>
                   <TableCell>
                     <Badge variant="secondary">{p.stage.replaceAll("_", " ")}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {p.qualificationOverride ?? p.qualificationScore ?? "—"}
+                    {p.qualificationOverride !== null && (
+                      <span className="ml-1 text-xs text-muted-foreground">(override)</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge

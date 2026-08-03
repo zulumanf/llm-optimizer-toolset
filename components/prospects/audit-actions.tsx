@@ -12,8 +12,24 @@ export function PublishAuditButton({ prospectId }: { prospectId: string }) {
   const publish = () => {
     startTransition(async () => {
       const result = await publishAudit({ prospectId });
-      if (result.ok) toast.success("Audit published — share link is ready below.");
-      else toast.error(result.error.message);
+      if (result.ok) {
+        toast.success("Audit published — share link is ready below.");
+        return;
+      }
+      // Stale-benchmark gate (spec 042): surface the age and let the
+      // operator explicitly acknowledge before publishing anyway.
+      if (result.error.message.includes("freshness window")) {
+        const proceed = window.confirm(
+          `${result.error.message}\n\nPublish anyway? The acknowledgment is recorded.`
+        );
+        if (proceed) {
+          const retried = await publishAudit({ prospectId, acknowledgeStale: true });
+          if (retried.ok) toast.success("Audit published with a stale-benchmark acknowledgment.");
+          else toast.error(retried.error.message);
+        }
+        return;
+      }
+      toast.error(result.error.message);
     });
   };
   return (

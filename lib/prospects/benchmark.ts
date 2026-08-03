@@ -8,6 +8,10 @@
 import { sql } from "@/db/client";
 import { SCORING_VERSION } from "@/lib/constants";
 import type { BenchmarkEntityMetrics, AbsenceEvidence } from "@/lib/prospects/findings";
+import {
+  valuableVisibilityFromCells,
+  type ValuableVisibility,
+} from "@/lib/scoring/valuable";
 
 /** Cap evidence lists — enough to prove a pattern, small enough to render. */
 const EVIDENCE_RESPONSE_LIMIT = 100;
@@ -90,6 +94,62 @@ export async function scoredEntities(runId: string): Promise<BenchmarkEntityMetr
     else if (row.metric === "citation_score") entity.citationScore = value;
   }
   return [...byCompany.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Valuable visibility for one company over a run (spec 038): every valid,
+ * non-holdout response is a cell carrying its frozen prompt's intent
+ * (tier precedence, category fallback), whether the prompt named the company
+ * (echo — excluded, the gap detector's organic rule), and the current-revision
+ * mention. The math lives in lib/scoring/valuable.ts; this only assembles.
+ */
+export async function valuableVisibility(
+  runId: string,
+  companyId: string
+): Promise<ValuableVisibility> {
+  const rows = await sql`
+    with fp as (
+      select p."promptId" as prompt_id, p.category, p.tier,
+        coalesce(p."isHoldout", false) as is_holdout
+      from runs r2
+      join prompt_set_versions v on v.id = r2.prompt_set_version_id,
+      -- frozen_prompts keys are camelCase (lib/prompts/types.ts)
+      jsonb_to_recordset(v.frozen_prompts)
+        as p("promptId" uuid, category text, tier int, "isHoldout" boolean)
+      where r2.id = ${runId}
+    ),
+    tokens as (
+      select trim(t) as token
+      from companies c, unnest(c.aliases || array[c.name]) as t
+      where c.id = ${companyId}
+    )
+    select fp.category, fp.tier,
+      exists (
+        select 1 from tokens t
+        where t.token != '' and r.prompt_text ilike '%' || t.token || '%'
+      ) as prompt_named_company,
+      coalesce(m.mentioned, false) as mentioned,
+      coalesce(m.recommended, false) as recommended,
+      m.list_position
+    from responses r
+    join fp on fp.prompt_id = r.prompt_id
+    left join mentions m on m.response_id = r.id and m.company_id = ${companyId}
+      and ${CURRENT}
+    where r.run_id = ${runId} and r.error is null and not fp.is_holdout
+  `;
+  return valuableVisibilityFromCells(
+    rows.map((r) => ({
+      tier: r.tier === null || r.tier === undefined ? null : Number(r.tier),
+      category: (r.category as string | null) ?? null,
+      promptNamedCompany: r.promptNamedCompany as boolean,
+      mentioned: r.mentioned as boolean,
+      recommended: r.recommended as boolean,
+      listPosition:
+        r.listPosition === null || r.listPosition === undefined
+          ? null
+          : Number(r.listPosition),
+    }))
+  );
 }
 
 /** Responses where a given rival was recommended and the prospect never mentioned. */

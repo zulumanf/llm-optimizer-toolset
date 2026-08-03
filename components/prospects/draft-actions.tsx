@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   approveOutreachDraft,
   createOutreachDraft,
-  recordDraftSent,
+  sendProspectDraft,
 } from "@/app/prospects/actions";
 
 export function GenerateDraftButton({ prospectId }: { prospectId: string }) {
@@ -45,9 +45,24 @@ export function ApproveDraftButton({ draftId }: { draftId: string }) {
 export function RecordSentButton({ draftId }: { draftId: string }) {
   const [pending, startTransition] = useTransition();
   const record = () => {
+    // The gated path (spec 043): a human sent it from their own mailbox;
+    // recording it through sendProspectDraft leaves the full gate ledger
+    // (suppression, DNC, prohibited phrases) instead of a bare timestamp.
+    const businessPurpose = window.prompt(
+      "Business purpose for contacting this recipient (recorded on the send ledger):",
+      "AI-visibility benchmark findings relevant to their team's market position"
+    );
+    if (!businessPurpose || businessPurpose.trim().length < 10) {
+      toast.error("A business purpose of at least 10 characters is required.");
+      return;
+    }
     startTransition(async () => {
-      const result = await recordDraftSent({ draftId });
-      if (result.ok) toast.success("Recorded as sent by a human.");
+      const result = await sendProspectDraft({
+        draftId,
+        channel: "manual",
+        businessPurpose,
+      });
+      if (result.ok) toast.success("Recorded as sent — gate ledger written.");
       else toast.error(result.error.message);
     });
   };

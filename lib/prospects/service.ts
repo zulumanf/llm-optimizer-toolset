@@ -7,7 +7,7 @@
  *
  * Nothing in this module sends anything or calls an AI provider.
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { sql } from "@/db/client";
 import type { TransactionSql } from "@/db/client";
@@ -24,8 +24,13 @@ import { addCompetitor } from "@/lib/competitors/service";
 import { setSubjectCompany } from "@/lib/claims/service";
 import {
   ALL_PROSPECT_STAGES,
+  ASSESSMENT_ITEMS,
+  ASSESSMENT_VALUES,
   AUDIT_TOKEN_BYTES,
   AUTHORITY_SIGNAL_KINDS,
+  CONTACT_CHANNELS,
+  FRESHNESS_WINDOWS_DAYS,
+  staleness,
   FINDING_GENERATOR_VERSION,
   LAUNCH_STATUSES,
   OUTREACH_CHANNELS,
@@ -37,6 +42,7 @@ import {
   findProhibitedPhrase,
   type ConflictStatus,
   type ProspectStage,
+  type ProspectType,
 } from "@/lib/prospects/constants";
 import { validateTransition } from "@/lib/prospects/stages";
 import {
@@ -54,6 +60,18 @@ import {
 } from "@/lib/prospects/benchmark";
 import { generateReplyFirstEmail } from "@/lib/prospects/outreach";
 import { generateRecordingPlan as buildRecordingPlan } from "@/lib/prospects/recording";
+import { parseProspectImport, type ImportRow } from "@/lib/prospects/import";
+import { checkSuppression } from "@/lib/outreach/suppression";
+import { authorityGapForRun } from "@/lib/prospects/gap";
+import {
+  getEmailChannel,
+  hasOptOutMention,
+  optOutFooter,
+} from "@/lib/prospects/channels";
+import {
+  computeProspectScoreView,
+  PROSPECT_SCORE_VERSION,
+} from "@/lib/prospects/final-score";
 
 /** Competitors surfaced in findings/audits — enough contrast, no dossier. */
 const MAX_COMPARED_COMPETITORS = 5;
@@ -122,6 +140,10 @@ const signalSchema = z.object({
   valueText: z.string().trim().max(500).optional(),
   sourceUrl: z.string().trim().url().max(1000).optional(),
   provenance: z.enum(PROVENANCE_LABELS),
+  /** Global evidence (nationwide volume, brand rankings) is shown for
+   * context but excluded from the local-authority score (spec 038). */
+  scope: z.enum(["local", "global"]).default("local"),
+  retrievedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   confidence: z.number().min(0).max(1).optional(),
   notes: z.string().trim().max(2000).optional(),
 });
@@ -151,13 +173,15 @@ interface ProspectRow {
   stage: ProspectStage;
   conflictStatus: ConflictStatus;
   doNotContact: boolean;
+  email: string | null;
+  phone: string | null;
   archivedAt: Date | null;
 }
 
 async function lockProspect(tx: TransactionSql, prospectId: string): Promise<ProspectRow> {
   const rows = await tx`
     select id, launch_id, business_name, company_id, team_leader, stage,
-      conflict_status, do_not_contact, archived_at
+      conflict_status, do_not_contact, email, phone, archived_at
     from prospects where id = ${prospectId} for update
   `;
   const row = rows[0] as ProspectRow | undefined;
@@ -414,23 +438,36 @@ export interface ProspectListRow {
   ownerName: string | null;
   nextAction: string | null;
   nextActionOn: string | null;
+  qualificationScore: number | null;
+  qualificationOverride: number | null;
 }
 
 export async function listProspects(
-  options: { launchId?: string; limit?: number; offset?: number } = {}
+  options: {
+    launchId?: string;
+    /** Effective score (override when set, else computed) at or above this. */
+    minScore?: number;
+    limit?: number;
+    offset?: number;
+  } = {}
 ): Promise<ProspectListRow[]> {
   const limit = Math.min(options.limit ?? DEFAULT_PAGE_SIZE, 200);
   const offset = options.offset ?? 0;
   return sql<ProspectListRow[]>`
     select p.id, p.business_name, p.launch_id, l.name as launch_name,
       p.prospect_type, p.stage, p.conflict_status, p.do_not_contact,
-      u.name as owner_name, p.next_action, p.next_action_on::text
+      u.name as owner_name, p.next_action, p.next_action_on::text,
+      p.qualification_score, p.qualification_override
     from prospects p
     join market_launches l on l.id = p.launch_id
     left join users u on u.id = p.owner_id
     where p.archived_at is null
       and (${options.launchId ?? null}::uuid is null or p.launch_id = ${options.launchId ?? null})
-    order by p.created_at desc
+      and (${options.minScore ?? null}::int is null
+        or coalesce(p.qualification_override, p.qualification_score)
+          >= ${options.minScore ?? null})
+    order by coalesce(p.qualification_override, p.qualification_score) desc nulls last,
+      p.created_at desc
     limit ${limit} offset ${offset}
   `;
 }
@@ -462,10 +499,11 @@ export async function addAuthoritySignal(
       const [row] = await tx`
         insert into prospect_authority_signals
           (prospect_id, kind, label, value_number, value_text, source_url,
-           provenance, confidence, notes, created_by)
+           provenance, scope, retrieved_at, confidence, notes, created_by)
         values (${input.prospectId}, ${input.kind}, ${input.label},
           ${input.valueNumber ?? null}, ${input.valueText ?? null},
-          ${input.sourceUrl ?? null}, ${input.provenance},
+          ${input.sourceUrl ?? null}, ${input.provenance}, ${input.scope},
+          ${input.retrievedAt ?? null},
           ${input.confidence ?? null}, ${input.notes ?? null}, ${user.id})
         returning id
       `;
@@ -486,6 +524,524 @@ export async function addAuthoritySignal(
       return row?.id as string;
     });
     return ok({ signalId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Contacts (spec 032 Phase 2.3). Outreach goes to a person, not a business —
+// contacts carry their own do-not-contact flag, and the draft gates below
+// check it alongside the account-level flag and the global suppression list.
+
+const contactSchema = z.object({
+  prospectId: z.string().uuid(),
+  name: z.string().trim().min(1).max(200),
+  role: z.string().trim().max(120).optional(),
+  email: z.string().trim().email().max(320).optional(),
+  phone: z.string().trim().max(50).optional(),
+  linkedin: z.string().trim().url().max(500).optional(),
+  preferredChannel: z.enum(CONTACT_CHANNELS).optional(),
+  isPrimary: z.boolean().default(false),
+  provenance: z.enum(PROVENANCE_LABELS).default("manual"),
+  notes: z.string().trim().max(2000).optional(),
+});
+
+const contactUpdateSchema = contactSchema
+  .partial()
+  .omit({ prospectId: true })
+  .extend({
+    contactId: z.string().uuid(),
+    doNotContact: z.boolean().optional(),
+    doNotContactReason: z.string().trim().max(500).optional(),
+  });
+
+const CONTACT_EMAIL_CONFLICT =
+  "A contact with this email already exists on this prospect.";
+
+async function demotePrimaryContact(
+  tx: TransactionSql,
+  prospectId: string,
+  exceptId?: string
+): Promise<void> {
+  await tx`
+    update prospect_contacts set is_primary = false, updated_at = now()
+    where prospect_id = ${prospectId} and is_primary and archived_at is null
+      and (${exceptId ?? null}::uuid is null or id != ${exceptId ?? null})
+  `;
+}
+
+export async function addContact(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ contactId: string }>> {
+  const parsed = contactSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    const contactId = await sql.begin(async (tx) => {
+      await lockProspect(tx, input.prospectId);
+      if (input.isPrimary) await demotePrimaryContact(tx, input.prospectId);
+      const [row] = await tx`
+        insert into prospect_contacts
+          (prospect_id, name, role, email, phone, linkedin, preferred_channel,
+           is_primary, provenance, notes, created_by)
+        values (${input.prospectId}, ${input.name}, ${input.role ?? null},
+          ${input.email ?? null}, ${input.phone ?? null}, ${input.linkedin ?? null},
+          ${input.preferredChannel ?? null}, ${input.isPrimary},
+          ${input.provenance}, ${input.notes ?? null}, ${user.id})
+        returning id
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.contact_add",
+        entity: "prospect_contact",
+        entityId: row?.id as string,
+        detail: { prospectId: input.prospectId, name: input.name, provenance: input.provenance },
+      });
+      await logActivity(
+        tx,
+        input.prospectId,
+        "contact_added",
+        { name: input.name, role: input.role ?? null, isPrimary: input.isPrimary },
+        user.id
+      );
+      return row?.id as string;
+    });
+    return ok({ contactId });
+  } catch (err) {
+    return fail(duplicateNameConflict(err, CONTACT_EMAIL_CONFLICT));
+  }
+}
+
+export async function updateContact(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ contactId: string }>> {
+  const parsed = contactUpdateSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    await sql.begin(async (tx) => {
+      const [contact] = await tx`
+        select id, prospect_id, do_not_contact, archived_at
+        from prospect_contacts where id = ${input.contactId} for update
+      `;
+      if (!contact || contact.archivedAt) {
+        throw new ClassifiedError("not_found", "Contact not found.");
+      }
+      const prospectId = contact.prospectId as string;
+      await lockProspect(tx, prospectId);
+      if (input.isPrimary === true) {
+        await demotePrimaryContact(tx, prospectId, input.contactId);
+      }
+      await tx`
+        update prospect_contacts set
+          name = coalesce(${input.name ?? null}, name),
+          role = coalesce(${input.role ?? null}, role),
+          email = coalesce(${input.email ?? null}, email),
+          phone = coalesce(${input.phone ?? null}, phone),
+          linkedin = coalesce(${input.linkedin ?? null}, linkedin),
+          preferred_channel = coalesce(${input.preferredChannel ?? null}, preferred_channel),
+          is_primary = coalesce(${input.isPrimary ?? null}, is_primary),
+          provenance = coalesce(${input.provenance ?? null}, provenance),
+          notes = coalesce(${input.notes ?? null}, notes),
+          do_not_contact = coalesce(${input.doNotContact ?? null}, do_not_contact),
+          do_not_contact_reason = coalesce(${input.doNotContactReason ?? null}, do_not_contact_reason),
+          updated_at = now()
+        where id = ${input.contactId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.contact_update",
+        entity: "prospect_contact",
+        entityId: input.contactId,
+        detail: {
+          prospectId,
+          fields: Object.keys(input).filter((k) => k !== "contactId"),
+        },
+      });
+      if (input.doNotContact === true && !contact.doNotContact) {
+        await logActivity(
+          tx,
+          prospectId,
+          "contact_do_not_contact_set",
+          { contactId: input.contactId, reason: input.doNotContactReason ?? null },
+          user.id
+        );
+      }
+    });
+    return ok({ contactId: input.contactId });
+  } catch (err) {
+    return fail(duplicateNameConflict(err, CONTACT_EMAIL_CONFLICT));
+  }
+}
+
+export async function archiveContact(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ contactId: string }>> {
+  const parsed = z.object({ contactId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid contact id."));
+  }
+  try {
+    assertCanWrite(user);
+    await sql.begin(async (tx) => {
+      const [contact] = await tx`
+        select id, prospect_id, name, archived_at
+        from prospect_contacts where id = ${parsed.data.contactId} for update
+      `;
+      if (!contact || contact.archivedAt) {
+        throw new ClassifiedError("not_found", "Contact not found.");
+      }
+      await tx`
+        update prospect_contacts
+        set archived_at = now(), is_primary = false, updated_at = now()
+        where id = ${contact.id}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.contact_archive",
+        entity: "prospect_contact",
+        entityId: contact.id as string,
+        detail: { prospectId: contact.prospectId },
+      });
+      await logActivity(
+        tx,
+        contact.prospectId as string,
+        "contact_archived",
+        { contactId: contact.id, name: contact.name },
+        user.id
+      );
+    });
+    return ok({ contactId: parsed.data.contactId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CSV import (spec 032 Phase 2.2). Parsing lives in import.ts; this persists
+// through the same createProspect/addContact paths as manual entry so dedup,
+// validation, audit, and provenance rules cannot fork. Row failures never
+// abort the batch — the report says exactly what happened to every line.
+
+const importSchema = z.object({
+  launchId: z.string().uuid(),
+  csv: z.string().min(1).max(500_000),
+  /** Applied to every fact the file populates; the file is one source. */
+  provenance: z.enum(PROVENANCE_LABELS).default("publicly_sourced"),
+  /** Where the list came from, recorded on the import audit entry. */
+  sourceUrl: z.string().trim().url().max(1000).optional(),
+});
+
+export interface ImportReport {
+  created: number;
+  duplicates: number;
+  errors: { line: number; message: string }[];
+  ignoredHeaders: string[];
+}
+
+const IMPORT_TYPE_ALIASES: Record<string, ProspectType> = {
+  brokerage: "brokerage",
+  team: "team",
+  individual_agent: "individual_agent",
+  agent: "individual_agent",
+  individual: "individual_agent",
+  developer: "developer",
+  new_dev_marketing: "new_dev_marketing",
+};
+
+/** CSV websites usually lack a scheme; the prospect schema requires one. */
+function normalizeWebsite(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
+function importRowToProspectInput(
+  row: ImportRow,
+  launchId: string,
+  provenance: (typeof PROVENANCE_LABELS)[number]
+): { input: Record<string, unknown> } | { error: string } {
+  let prospectType: ProspectType = "team";
+  if (row.prospectType) {
+    const mapped = IMPORT_TYPE_ALIASES[row.prospectType.trim().toLowerCase().replace(/[\s-]/g, "_")];
+    if (!mapped) return { error: `Unknown prospect type "${row.prospectType}".` };
+    prospectType = mapped;
+  }
+  const facts: Record<string, string | undefined> = {
+    businessName: row.businessName,
+    brokerageAffiliation: row.brokerageAffiliation,
+    teamLeader: row.teamLeader,
+    website: normalizeWebsite(row.website),
+    email: row.email,
+    phone: row.phone,
+    priceSegment: row.priceSegment,
+  };
+  const fieldProvenance: Record<string, string> = {};
+  for (const [key, value] of Object.entries(facts)) {
+    if (value) fieldProvenance[key] = provenance;
+  }
+  return {
+    input: {
+      launchId,
+      prospectType,
+      source: "csv",
+      fieldProvenance,
+      ...Object.fromEntries(Object.entries(facts).filter(([, v]) => v !== undefined)),
+    },
+  };
+}
+
+export async function importProspects(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<ImportReport>> {
+  const parsed = importSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    const [launch] = await sql`
+      select id from market_launches where id = ${input.launchId} and archived_at is null
+    `;
+    if (!launch) return fail(new ClassifiedError("not_found", "Launch not found."));
+
+    const file = parseProspectImport(input.csv);
+    const errors = [...file.errors];
+    let created = 0;
+    let duplicates = 0;
+
+    for (const row of file.rows) {
+      const mapped = importRowToProspectInput(row, input.launchId, input.provenance);
+      if ("error" in mapped) {
+        errors.push({ line: row.line, message: mapped.error });
+        continue;
+      }
+      const result = await createProspect(user, mapped.input);
+      if (!result.ok) {
+        if (result.error.kind === "conflict") duplicates += 1;
+        else errors.push({ line: row.line, message: result.error.message });
+        continue;
+      }
+      created += 1;
+      if (row.contactName || row.contactEmail) {
+        const contact = await addContact(user, {
+          prospectId: result.data.prospectId,
+          name: row.contactName ?? row.contactEmail,
+          role: row.contactRole,
+          email: row.contactEmail,
+          isPrimary: true,
+          provenance: input.provenance,
+        });
+        if (!contact.ok) {
+          errors.push({
+            line: row.line,
+            message: `Prospect created, but its contact was rejected: ${contact.error.message}`,
+          });
+        }
+      }
+    }
+
+    await sql.begin(async (tx) => {
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.import",
+        entity: "market_launch",
+        entityId: input.launchId,
+        detail: {
+          created,
+          duplicates,
+          errorCount: errors.length,
+          provenance: input.provenance,
+          sourceUrl: input.sourceUrl ?? null,
+        },
+      });
+    });
+    return ok({ created, duplicates, errors, ignoredHeaders: file.ignoredHeaders });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Assessments and the final prospect score (spec 039)
+
+const assessmentSchema = z.object({
+  prospectId: z.string().uuid(),
+  item: z.enum(ASSESSMENT_ITEMS),
+  value: z.enum(ASSESSMENT_VALUES),
+  note: z.string().trim().max(1000).optional(),
+});
+
+/** Upsert one operator-recorded fact; the latest answer wins, with identity. */
+export async function recordAssessment(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ prospectId: string }>> {
+  const parsed = assessmentSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    await sql.begin(async (tx) => {
+      await lockProspect(tx, input.prospectId);
+      await tx`
+        insert into prospect_assessments (prospect_id, item, value, note, recorded_by)
+        values (${input.prospectId}, ${input.item}, ${input.value},
+          ${input.note ?? null}, ${user.id})
+        on conflict (prospect_id, item) do update set
+          value = excluded.value, note = excluded.note,
+          recorded_by = excluded.recorded_by, recorded_at = now()
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.assessment_record",
+        entity: "prospect",
+        entityId: input.prospectId,
+        detail: { item: input.item, value: input.value },
+      });
+    });
+    return ok({ prospectId: input.prospectId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Compute and store the final score with its full breakdown. Storing (unlike
+ * the derived-on-read spec-038 scores) is deliberate: the list filters and
+ * sorts on it, and the breakdown records every component, weight, and
+ * version that produced the number at a known time.
+ */
+export async function computeProspectScore(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ prospectId: string; score: number | null }>> {
+  const parsed = z.object({ prospectId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid prospect id."));
+  }
+  try {
+    assertCanWrite(user);
+    const view = await computeProspectScoreView(parsed.data.prospectId);
+    const score = view.score !== null ? Math.round(view.score) : null;
+    const breakdown = {
+      version: view.version,
+      weightSet: view.weightSet,
+      components: view.components,
+      missing: view.missing,
+      dataConfidence: view.dataConfidence,
+      preConfidence: view.preConfidence,
+      fixability: {
+        version: view.fixability.version,
+        raw: view.fixability.raw,
+        confidence: view.fixability.confidence,
+        adjusted: view.fixability.adjusted,
+        categories: view.fixability.categories,
+        flags: view.fixability.flags,
+        needsReview: view.fixability.needsReview,
+      },
+      contactabilityFlags: view.contactabilityFlags,
+      computedAt: new Date().toISOString(),
+      computedBy: user.id,
+    };
+    await sql.begin(async (tx) => {
+      await lockProspect(tx, parsed.data.prospectId);
+      await tx`
+        update prospects set
+          qualification_score = ${score},
+          qualification_breakdown = ${tx.json(breakdown as never)},
+          updated_at = now()
+        where id = ${parsed.data.prospectId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.score_compute",
+        entity: "prospect",
+        entityId: parsed.data.prospectId,
+        detail: {
+          score,
+          version: PROSPECT_SCORE_VERSION,
+          weightSetVersion: view.weightSet.version,
+          missing: view.missing,
+          flags: view.fixability.flags.map((f) => f.flag),
+        },
+      });
+      await logActivity(
+        tx,
+        parsed.data.prospectId,
+        "score_computed",
+        { score, missing: view.missing },
+        user.id
+      );
+    });
+    return ok({ prospectId: parsed.data.prospectId, score });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Override with a recorded reason — the computed score is never erased.
+ * Pass score: null to clear an override; that too requires a reason. */
+export async function overrideProspectScore(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ prospectId: string }>> {
+  const parsed = z
+    .object({
+      prospectId: z.string().uuid(),
+      score: z.number().int().min(0).max(100).nullable(),
+      reason: z.string().trim().min(3).max(1000),
+    })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(
+      new ClassifiedError("validation", "An override needs a score (or null) and a reason.")
+    );
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    await sql.begin(async (tx) => {
+      await lockProspect(tx, input.prospectId);
+      await tx`
+        update prospects set
+          qualification_override = ${input.score},
+          qualification_override_reason = ${input.reason},
+          qualification_override_by = ${input.score === null ? null : user.id},
+          qualification_override_at = ${input.score === null ? null : new Date()},
+          updated_at = now()
+        where id = ${input.prospectId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action:
+          input.score === null ? "prospect.score_override_clear" : "prospect.score_override",
+        entity: "prospect",
+        entityId: input.prospectId,
+        detail: { score: input.score, reason: input.reason },
+      });
+      await logActivity(
+        tx,
+        input.prospectId,
+        input.score === null ? "score_override_cleared" : "score_overridden",
+        { score: input.score, reason: input.reason },
+        user.id
+      );
+    });
+    return ok({ prospectId: input.prospectId });
   } catch (err) {
     return fail(err);
   }
@@ -956,6 +1512,20 @@ export interface AuditSnapshot {
   promptEvidence: PromptEvidence[];
   methodology: string;
   cta: string;
+  /** Spec 038 — present only when both sides were measurable at publish
+   * time. Additive: audits published before the field render unchanged. */
+  authorityGap?: {
+    authorityVersion: string;
+    visibilityVersion: string;
+    authorityScore: number;
+    visibilityScore: number;
+    gap: number;
+    confidence: number | null;
+    components: { label: string; points: number; maxPoints: number }[];
+    organicResponses: number;
+    /** Counted evidence statements only — provenance-labeled, source-linked. */
+    signals: { label: string; provenance: string; sourceUrl: string | null }[];
+  };
 }
 
 const METHODOLOGY_TEXT =
@@ -978,6 +1548,9 @@ export async function publishAudit(
     .object({
       prospectId: z.string().uuid(),
       expiresAt: z.string().datetime().optional(),
+      /** A stale benchmark (spec 042 freshness windows) publishes only with
+       * this explicit acknowledgment, which is recorded in the audit log. */
+      acknowledgeStale: z.boolean().optional(),
     })
     .safeParse(raw);
   if (!parsed.success) {
@@ -1007,6 +1580,13 @@ export async function publishAudit(
 
       const run = await runSummary(benchmark.runId as string);
       if (!run) throw new ClassifiedError("not_found", "Run not found.");
+      const benchmarkAge = staleness(run.startedAt, FRESHNESS_WINDOWS_DAYS.benchmark);
+      if (benchmarkAge.stale && !input.acknowledgeStale) {
+        throw new ClassifiedError(
+          "validation",
+          `The benchmark run is ${benchmarkAge.ageDays} days old — past the ${FRESHNESS_WINDOWS_DAYS.benchmark}-day freshness window. Re-run the benchmark, or publish anyway with an explicit acknowledgment.`
+        );
+      }
       const entities = await scoredEntities(benchmark.runId as string);
       const prospectMetrics = entities.find((e) => e.companyId === benchmark.companyId);
       const rivals = entities
@@ -1022,6 +1602,39 @@ export async function publishAudit(
         join markets m on m.id = l.market_id
         where l.id = ${prospect.launchId}
       `;
+
+      // Authority vs valuable visibility (spec 038) — included only when
+      // both sides are measurable; a one-sided "gap" would be a fabrication.
+      const gapView = await authorityGapForRun(
+        input.prospectId,
+        benchmark.runId as string,
+        benchmark.companyId as string
+      );
+      const countedIds = new Set(gapView.authority.components.flatMap((c) => c.signalIds));
+      const authorityGap =
+        gapView.gap !== null && gapView.visibility !== null
+          ? {
+              authorityVersion: gapView.authority.version,
+              visibilityVersion: gapView.visibility.version,
+              authorityScore: gapView.authority.score as number,
+              visibilityScore: gapView.visibility.score as number,
+              gap: gapView.gap,
+              confidence: gapView.authority.confidence,
+              components: gapView.authority.components.map((c) => ({
+                label: c.label,
+                points: c.points,
+                maxPoints: c.maxPoints,
+              })),
+              organicResponses: gapView.visibility.organicResponses,
+              signals: gapView.signals
+                .filter((s) => countedIds.has(s.id))
+                .map((s) => ({
+                  label: s.label,
+                  provenance: s.provenance,
+                  sourceUrl: s.sourceUrl,
+                })),
+            }
+          : undefined;
 
       // The snapshot IS the page. Internal fields (notes, scores, owners,
       // rationales) are structurally absent, not filtered at render time.
@@ -1067,6 +1680,7 @@ export async function publishAudit(
         promptEvidence: evidence,
         methodology: METHODOLOGY_TEXT,
         cta: "Review the full benchmark with us.",
+        ...(authorityGap ? { authorityGap } : {}),
       };
 
       const accessToken = randomBytes(AUDIT_TOKEN_BYTES).toString("base64url");
@@ -1084,7 +1698,13 @@ export async function publishAudit(
         action: "prospect.audit_publish",
         entity: "prospect_audit",
         entityId: row?.id as string,
-        detail: { prospectId: input.prospectId, findingId: finding.id },
+        detail: {
+          prospectId: input.prospectId,
+          findingId: finding.id,
+          ...(benchmarkAge.stale
+            ? { staleBenchmarkAcknowledged: true, benchmarkAgeDays: benchmarkAge.ageDays }
+            : {}),
+        },
       });
       await logActivity(
         tx,
@@ -1185,6 +1805,7 @@ export async function createOutreachDraft(
     .object({
       prospectId: z.string().uuid(),
       channel: z.enum(OUTREACH_CHANNELS).default("email"),
+      contactId: z.string().uuid().optional(),
       subject: z.string().trim().max(300).optional(),
       body: z.string().trim().min(1).max(10000).optional(),
       tone: z.string().trim().max(120).optional(),
@@ -1199,6 +1820,18 @@ export async function createOutreachDraft(
     assertCanWrite(user);
     const result = await sql.begin(async (tx) => {
       const prospect = await lockProspect(tx, input.prospectId);
+      if (input.contactId) {
+        // The DB cannot express "the contact belongs to this draft's
+        // prospect" (042 note) — enforced here, the only insert path.
+        const [contact] = await tx`
+          select id from prospect_contacts
+          where id = ${input.contactId} and prospect_id = ${input.prospectId}
+            and archived_at is null
+        `;
+        if (!contact) {
+          throw new ClassifiedError("validation", "Contact not found on this prospect.");
+        }
+      }
       const finding = await getPrimaryFinding(tx, input.prospectId);
 
       let subject = input.subject ?? null;
@@ -1242,9 +1875,10 @@ export async function createOutreachDraft(
       const version = latest ? Number(latest.version) + 1 : 1;
       const [row] = await tx`
         insert into outreach_drafts
-          (prospect_id, finding_id, channel, version, parent_id, subject, body,
-           tone, cta, generated_by, prompt_version, created_by)
-        values (${input.prospectId}, ${finding.id}, ${input.channel}, ${version},
+          (prospect_id, finding_id, channel, contact_id, version, parent_id,
+           subject, body, tone, cta, generated_by, prompt_version, created_by)
+        values (${input.prospectId}, ${finding.id}, ${input.channel},
+          ${input.contactId ?? null}, ${version},
           ${latest?.id ?? null}, ${subject}, ${body}, ${tone}, ${cta},
           ${generatedBy}, ${promptVersion}, ${user.id})
         returning id
@@ -1271,6 +1905,58 @@ export async function createOutreachDraft(
   }
 }
 
+/**
+ * The recipient gates shared by approval and record-sent, fail-closed and in
+ * order: account do-not-contact → contact do-not-contact → global suppression
+ * list on the recipient's normalised identifiers (roadmap 2.3 acceptance:
+ * "suppression checks match on contact identifiers"). A draft with no email
+ * or phone on file has nothing to match — the DNC gates still apply.
+ */
+async function assertRecipientContactable(
+  tx: TransactionSql,
+  prospect: ProspectRow,
+  contactId: string | null,
+  refusalVerb: string
+): Promise<void> {
+  if (prospect.doNotContact) {
+    throw new ClassifiedError(
+      "validation",
+      `This prospect is flagged do-not-contact — ${refusalVerb}.`
+    );
+  }
+  let email = prospect.email;
+  let phone = prospect.phone;
+  if (contactId) {
+    const [contact] = await tx`
+      select name, email, phone, do_not_contact, archived_at
+      from prospect_contacts where id = ${contactId}
+    `;
+    if (!contact || contact.archivedAt) {
+      throw new ClassifiedError(
+        "validation",
+        `The draft's contact has been removed — ${refusalVerb}.`
+      );
+    }
+    if (contact.doNotContact) {
+      throw new ClassifiedError(
+        "validation",
+        `Contact "${contact.name}" is flagged do-not-contact — ${refusalVerb}.`
+      );
+    }
+    email = (contact.email as string | null) ?? email;
+    phone = (contact.phone as string | null) ?? phone;
+  }
+  if (email || phone) {
+    const suppression = await checkSuppression({ email, phone, projectId: null });
+    if (suppression.suppressed) {
+      throw new ClassifiedError(
+        "validation",
+        `The recipient is on the suppression list (${suppression.matchedScope}: ${suppression.reason}) — ${refusalVerb}.`
+      );
+    }
+  }
+}
+
 export async function approveOutreachDraft(
   user: CurrentUser,
   raw: unknown
@@ -1283,7 +1969,7 @@ export async function approveOutreachDraft(
     assertCanWrite(user);
     await sql.begin(async (tx) => {
       const [draft] = await tx`
-        select d.id, d.prospect_id, d.channel, d.body, d.subject, d.status
+        select d.id, d.prospect_id, d.channel, d.contact_id, d.body, d.subject, d.status
         from outreach_drafts d where d.id = ${parsed.data.draftId} for update
       `;
       if (!draft) throw new ClassifiedError("not_found", "Draft not found.");
@@ -1291,12 +1977,12 @@ export async function approveOutreachDraft(
         throw new ClassifiedError("conflict", `Draft is already ${draft.status}.`);
       }
       const prospect = await lockProspect(tx, draft.prospectId as string);
-      if (prospect.doNotContact) {
-        throw new ClassifiedError(
-          "validation",
-          "This prospect is flagged do-not-contact — outreach cannot be approved."
-        );
-      }
+      await assertRecipientContactable(
+        tx,
+        prospect,
+        (draft.contactId as string | null) ?? null,
+        "outreach cannot be approved"
+      );
       const banned =
         findProhibitedPhrase((draft.body as string) ?? "") ??
         findProhibitedPhrase((draft.subject as string) ?? "");
@@ -1350,7 +2036,7 @@ export async function recordDraftSent(
     assertCanWrite(user);
     await sql.begin(async (tx) => {
       const [draft] = await tx`
-        select id, prospect_id, channel, status, sent_recorded_at
+        select id, prospect_id, channel, contact_id, status, sent_recorded_at
         from outreach_drafts where id = ${parsed.data.draftId} for update
       `;
       if (!draft) throw new ClassifiedError("not_found", "Draft not found.");
@@ -1361,12 +2047,12 @@ export async function recordDraftSent(
         throw new ClassifiedError("conflict", "This draft is already recorded as sent.");
       }
       const prospect = await lockProspect(tx, draft.prospectId as string);
-      if (prospect.doNotContact) {
-        throw new ClassifiedError(
-          "validation",
-          "This prospect is flagged do-not-contact — a send cannot be recorded."
-        );
-      }
+      await assertRecipientContactable(
+        tx,
+        prospect,
+        (draft.contactId as string | null) ?? null,
+        "a send cannot be recorded"
+      );
       await tx`
         update outreach_drafts set sent_recorded_at = now(), sent_recorded_by = ${user.id}
         where id = ${draft.id}
@@ -1387,6 +2073,199 @@ export async function recordDraftSent(
       );
     });
     return ok({ draftId: parsed.data.draftId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export const SEND_GATE_VERSION = "prospect-send-gate-v1";
+
+/**
+ * The bridge between the two outreach stacks (spec 043): every dispatch —
+ * and every gate refusal — leaves an insert-only ledger row with the full
+ * check list and the sha256 of the exact text. First touch stays human:
+ * this runs behind a human click, never a scheduler (DECISIONS.md,
+ * spec-011 reconciliation).
+ *
+ * Dispatch happens inside the transaction because both current channels
+ * ('manual', 'mock') are in-process and instant. A future network channel
+ * restructures this into claim → dispatch → finalize.
+ */
+export async function sendProspectDraft(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ sendId: string; providerMessageId: string | null }>> {
+  const parsed = z
+    .object({
+      draftId: z.string().uuid(),
+      channel: z.string().min(1),
+      businessPurpose: z.string().trim().min(10).max(1000),
+    })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(
+      new ClassifiedError(
+        "validation",
+        "A send needs a draft, a channel, and a stated business purpose (≥ 10 characters)."
+      )
+    );
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    const channel = getEmailChannel(input.channel); // throws for guarded mock
+    const result = await sql.begin(async (tx) => {
+      const [draft] = await tx`
+        select id, prospect_id, contact_id, subject, body, status, sent_recorded_at
+        from outreach_drafts where id = ${input.draftId} for update
+      `;
+      if (!draft) throw new ClassifiedError("not_found", "Draft not found.");
+      if (draft.status !== "approved") {
+        throw new ClassifiedError("validation", "Only approved drafts can be sent.");
+      }
+      if (draft.sentRecordedAt) {
+        throw new ClassifiedError("conflict", "This draft already has a recorded send.");
+      }
+      const prospect = await lockProspect(tx, draft.prospectId as string);
+
+      // Resolve the recipient and run the gate chain, collecting verdicts.
+      const checks: { name: string; passed: boolean; detail: string }[] = [];
+      let failed: string | null = null;
+      const check = (name: string, passed: boolean, detail: string): void => {
+        checks.push({ name, passed, detail });
+        if (!passed && failed === null) failed = detail;
+      };
+
+      let email = prospect.email;
+      let phone = prospect.phone;
+      let contactBlocked: string | null = null;
+      if (draft.contactId) {
+        const [contact] = await tx`
+          select name, email, phone, do_not_contact, archived_at
+          from prospect_contacts where id = ${draft.contactId}
+        `;
+        if (!contact || contact.archivedAt) {
+          contactBlocked = "The draft's contact has been removed.";
+        } else if (contact.doNotContact) {
+          contactBlocked = `Contact "${contact.name}" is flagged do-not-contact.`;
+        } else {
+          email = (contact.email as string | null) ?? email;
+          phone = (contact.phone as string | null) ?? phone;
+        }
+      }
+      check(
+        "account_do_not_contact",
+        !prospect.doNotContact,
+        prospect.doNotContact ? "The prospect account is flagged do-not-contact." : "clear"
+      );
+      check("contact_do_not_contact", contactBlocked === null, contactBlocked ?? "clear");
+
+      if ((email || phone) && !prospect.doNotContact && contactBlocked === null) {
+        const suppression = await checkSuppression({ email, phone, projectId: null });
+        check(
+          "suppression",
+          !suppression.suppressed,
+          suppression.suppressed
+            ? `Recipient is suppressed (${suppression.matchedScope}: ${suppression.reason}).`
+            : "not suppressed"
+        );
+      } else {
+        check("suppression", true, "no identifiers to match");
+      }
+
+      let body = (draft.body as string) ?? "";
+      if (channel.transmits) {
+        check(
+          "recipient_email",
+          Boolean(email),
+          email ? `recipient ${email}` : "A transmitting channel needs a recipient email."
+        );
+        if (!hasOptOutMention(body)) body += optOutFooter(user.name);
+        check(
+          "opt_out_path",
+          hasOptOutMention(body),
+          "opt-out instruction present in the outgoing text"
+        );
+      } else {
+        check("recipient_email", true, "manual channel — the human used their own mailbox");
+        check("opt_out_path", true, "not gated for manual records");
+      }
+
+      const banned =
+        findProhibitedPhrase(body) ?? findProhibitedPhrase((draft.subject as string) ?? "");
+      check(
+        "prohibited_phrases",
+        banned === null,
+        banned ? `Contains prohibited wording ("${banned}").` : "clean"
+      );
+
+      const bodyHash = createHash("sha256")
+        .update(`${(draft.subject as string) ?? ""}\n${body}`)
+        .digest("hex");
+      const allowed = failed === null;
+
+      const writeLedger = async (providerMessageId: string | null): Promise<string> => {
+        const [row] = await tx`
+          insert into prospect_outreach_sends
+            (draft_id, prospect_id, channel, recipient_email, body_hash,
+             business_purpose, gate_verdict, allowed, provider_message_id, sent_by)
+          values (${draft.id}, ${draft.prospectId}, ${channel.id}, ${email ?? null},
+            ${bodyHash}, ${input.businessPurpose},
+            ${tx.json({ version: SEND_GATE_VERSION, checks } as never)},
+            ${allowed}, ${providerMessageId}, ${user.id})
+          returning id
+        `;
+        return row?.id as string;
+      };
+
+      // Refusals are evidence too — ledgered and audited, which is why this
+      // RETURNS instead of throwing: a throw would roll the ledger row back.
+      if (!allowed) {
+        const refusalId = await writeLedger(null);
+        await writeAudit(tx, {
+          userId: user.id,
+          action: "prospect.send_refused",
+          entity: "prospect_outreach_send",
+          entityId: refusalId,
+          detail: { draftId: draft.id, channel: channel.id, reason: failed },
+        });
+        return { refused: failed ?? "gate check failed" };
+      }
+
+      // Dispatch before the ledger row so the insert-only row carries the
+      // provider message id (both current channels are in-process; a
+      // network channel restructures this into claim → dispatch → finalize).
+      const dispatched = await channel.dispatch({
+        recipientEmail: email,
+        subject: (draft.subject as string) ?? null,
+        body,
+      });
+      const sendId = await writeLedger(dispatched.providerMessageId);
+
+      await tx`
+        update outreach_drafts set sent_recorded_at = now(), sent_recorded_by = ${user.id}
+        where id = ${draft.id}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.draft_sent",
+        entity: "prospect_outreach_send",
+        entityId: sendId,
+        detail: { draftId: draft.id, channel: channel.id, bodyHash },
+      });
+      await logActivity(
+        tx,
+        draft.prospectId as string,
+        "draft_sent",
+        { draftId: draft.id, channel: channel.id },
+        user.id
+      );
+      return { sendId, providerMessageId: dispatched.providerMessageId };
+    });
+    if ("refused" in result) {
+      return fail(new ClassifiedError("validation", `Send refused: ${result.refused}`));
+    }
+    return ok(result);
   } catch (err) {
     return fail(err);
   }
