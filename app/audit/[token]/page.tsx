@@ -207,63 +207,80 @@ export default async function ProspectAuditPage({
             </p>
           )}
         </section>
-      ) : (
-        gap && (
-          <section className="mt-10">
-            <p className="text-2xl font-semibold tracking-tight">
-              <span className="tabular-nums">{Math.round(gap.authorityScore)}</span>{" "}
-              <span className="font-normal text-muted-foreground">
-                your standing in the market,
-              </span>{" "}
-              <span className="tabular-nums text-destructive">
-                {Math.round(gap.visibilityScore)}
-              </span>{" "}
-              <span className="font-normal text-muted-foreground">
-                your visibility in AI answers.
-              </span>
-            </p>
-          </section>
-        )
-      )}
+      ) : null}
 
-      {/* The mismatch, made visual: two meters on the same 0–100 scale.
-          Rendered alongside the stakes when both were measured (spec 048). */}
-      {stakes && gap && (
-        <div className="mt-6 max-w-md space-y-2">
-          {[
-            { label: "Market authority", value: gap.authorityScore, pain: false },
-            { label: "AI visibility", value: gap.visibilityScore, pain: true },
-          ].map((m) => (
-            <div key={m.label} className="flex items-center gap-3 text-sm">
-              <span className="w-32 shrink-0 text-muted-foreground">{m.label}</span>
-              <svg
-                className="h-2 w-full"
-                viewBox="0 0 100 6"
-                preserveAspectRatio="none"
-                role="img"
-                aria-label={`${m.label}: ${Math.round(m.value)} of 100`}
-              >
-                <rect width="100" height="6" rx="3" className="fill-foreground/10" />
-                {m.value > 0 && (
-                  <rect
-                    width={Math.max(1, Math.round(m.value))}
-                    height="6"
-                    rx="3"
-                    className={m.pain ? "fill-destructive" : "fill-foreground/45"}
-                  />
-                )}
-              </svg>
-              <span
-                className={`w-8 shrink-0 text-right tabular-nums ${m.pain ? "text-destructive" : ""}`}
-              >
-                {Math.round(m.value)}
-              </span>
-            </div>
-          ))}
-          <p className="text-xs text-muted-foreground">
-            Both on a 0–100 scale — authority from your sourced record, visibility
-            from the captured answers. Versions and components under “Your track
-            record” below.
+      {/* The scorecard (spec 048): the counted moments above are the punch;
+          these three computed scores are the corroboration — authority from
+          the sourced record, visibility from captured answers, fixability
+          from assessed signals. Only measured tiles render; absence is
+          absence, never a zero. */}
+      {(gap || snapshot.fixability) && (
+        <div className="mt-8">
+          <div className="grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-3">
+            {[
+              ...(gap
+                ? [
+                    {
+                      label: "Market authority",
+                      value: Math.round(gap.authorityScore),
+                      pain: false,
+                    },
+                    {
+                      label: "AI visibility",
+                      value: Math.round(gap.visibilityScore),
+                      pain: true,
+                    },
+                  ]
+                : []),
+              ...(snapshot.fixability
+                ? [
+                    {
+                      label: "Fixability",
+                      value: snapshot.fixability.score,
+                      pain: false,
+                    },
+                  ]
+                : []),
+            ].map((tile) => (
+              <div key={tile.label} className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">{tile.label}</p>
+                <p
+                  className={`mt-1 text-2xl font-semibold tabular-nums tracking-tight ${
+                    tile.pain ? "text-destructive" : ""
+                  }`}
+                >
+                  {tile.value}
+                  <span className="text-sm font-normal text-muted-foreground">
+                    /100
+                  </span>
+                </p>
+                <svg
+                  className="mt-2 h-1.5 w-full"
+                  viewBox="0 0 100 6"
+                  preserveAspectRatio="none"
+                  role="img"
+                  aria-label={`${tile.label}: ${tile.value} of 100`}
+                >
+                  <rect width="100" height="6" rx="3" className="fill-foreground/10" />
+                  {tile.value > 0 && (
+                    <rect
+                      width={Math.max(1, tile.value)}
+                      height="6"
+                      rx="3"
+                      className={tile.pain ? "fill-destructive" : "fill-foreground/45"}
+                    />
+                  )}
+                </svg>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
+            All 0–100, all computed: authority from your sourced record, visibility
+            from the captured answers
+            {snapshot.fixability
+              ? `, fixability from your assessed signals (${snapshot.fixability.version.replaceAll("-", " ")}) — how addressable the gap is, not a promise of outcomes`
+              : ""}
+            . Components and sources are under “Your track record” below.
           </p>
         </div>
       )}
@@ -503,33 +520,19 @@ export default async function ProspectAuditPage({
         </section>
       )}
 
-      {/* ============================= fixability (spec 039, when computed):
-          the emotion turns from "we are losing" to "this is winnable" —
-          with a versioned score, never an invented one. */}
-      {snapshot.fixability && (
-        <section className="mt-10 max-w-[65ch] rounded-md border p-4">
-          <p className="text-sm font-medium">This gap looks workable</p>
-          <p className="mt-1 text-2xl font-semibold tracking-tight">
-            <span className="tabular-nums">{snapshot.fixability.score}</span>
-            <span className="text-sm font-normal text-muted-foreground">
-              /100 fixability
-            </span>
-          </p>
-          {snapshot.fixability.strengths.length > 0 && (
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              What&apos;s already working for you:{" "}
-              {snapshot.fixability.strengths.join(" · ").toLowerCase()}.
-            </p>
-          )}
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            Scored {snapshot.fixability.version.replaceAll("-", " ")} from your
-            assessed record and signals
-            {snapshot.fixability.confidence != null
-              ? `, at ${Math.round(snapshot.fixability.confidence * 100)}% data confidence`
-              : ""}
-            . It measures how addressable the gap is — not a promise of outcomes.
-          </p>
-        </section>
+      {/* Fixability's strengths line rides under the diagnosis: the score
+          lives in the scorecard strip above; here is why it's credible. */}
+      {snapshot.fixability && snapshot.fixability.strengths.length > 0 && (
+        <p className="mt-4 max-w-[65ch] text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">
+            Why the {snapshot.fixability.score}/100 fixability:
+          </span>{" "}
+          already working for you — {snapshot.fixability.strengths.join(" · ").toLowerCase()}
+          {snapshot.fixability.confidence != null
+            ? ` (${Math.round(snapshot.fixability.confidence * 100)}% data confidence)`
+            : ""}
+          .
+        </p>
       )}
 
       {/* ====================================== the second read (folded) */}

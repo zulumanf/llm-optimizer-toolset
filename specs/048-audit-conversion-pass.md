@@ -41,6 +41,13 @@
    gap is — not a promise of outcomes."
 9. **Outcome-specific CTA copy**, "no deck" dropped, mailto mechanic kept.
 10. **Market name in the table heading** (personalization).
+11. **The scorecard strip.** Up to three tiles — market authority, AI
+    visibility, fixability — rendered directly under the counted-moments
+    punch, each 0–100 with a thin bar and a shared basis footnote. Only
+    measured tiles render (absence is absence, never a zero); the strip
+    consolidates what were separate meters and a mid-page fixability card,
+    and the fixability *strengths* line now rides under the diagnosis where
+    it explains the score.
 
 ## Rejected, and why
 
