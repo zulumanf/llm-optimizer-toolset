@@ -74,6 +74,22 @@ export default async function ProspectAuditPage({
   const showMe = (
     <span className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">show me</span>
   );
+  // One-click conversion: a mailto with the two-word reply prefilled.
+  // Falls back to the plain text ask on snapshots without a reply address.
+  const replyEmail = snapshot.preparedBy?.email;
+  const mailto = replyEmail
+    ? `mailto:${replyEmail}?subject=${encodeURIComponent(
+        `show me — ${snapshot.prospectName}`
+      )}&body=${encodeURIComponent("show me")}`
+    : null;
+  const ctaButton = mailto && (
+    <a
+      href={mailto}
+      className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto"
+    >
+      Reply “show me” — get the 15-minute walkthrough
+    </a>
+  );
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
@@ -103,7 +119,9 @@ export default async function ProspectAuditPage({
             </span>
           </p>
           <p className="mt-1 text-2xl font-semibold tracking-tight">
-            <span className="tabular-nums text-primary">{stakes.yourRecommendations}×</span>{" "}
+            <span className="tabular-nums text-destructive">
+              {stakes.yourRecommendations}×
+            </span>{" "}
             <span className="font-normal text-muted-foreground">it was you.</span>
           </p>
           {stakes.competitorsNamed.length > 0 && (
@@ -123,7 +141,7 @@ export default async function ProspectAuditPage({
               <span className="font-normal text-muted-foreground">
                 your standing in the market,
               </span>{" "}
-              <span className="tabular-nums text-primary">
+              <span className="tabular-nums text-destructive">
                 {Math.round(gap.visibilityScore)}
               </span>{" "}
               <span className="font-normal text-muted-foreground">
@@ -166,50 +184,87 @@ export default async function ProspectAuditPage({
         </p>
       )}
 
-      <p className="mt-6 max-w-[65ch] text-sm">
-        Reply {showMe} to the email that brought you here. You&apos;ll get a 15-minute
-        walkthrough: the exact sources AI reads for {snapshot.marketName}, and what it
-        takes to become the name in the answer.
-      </p>
+      <div className="mt-6">
+        {ctaButton ?? (
+          <p className="max-w-[65ch] text-sm">
+            Reply {showMe} to the email that brought you here — you&apos;ll get the
+            15-minute walkthrough.
+          </p>
+        )}
+        <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
+          15 minutes, no deck, no obligation: the exact sources AI reads for{" "}
+          {snapshot.marketName}, and what it takes to become the name in the answer.
+        </p>
+      </div>
 
       {/* ================================================== the receipt */}
       {snapshot.comparison.length > 0 && (
         <section className="mt-14">
           <h2 className="text-lg font-medium">Who shows up when buyers ask</h2>
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs text-muted-foreground">
-                  <th className="py-2 pr-4 font-medium">Team</th>
-                  <th className="py-2 pr-4 text-right font-medium">Brought up</th>
-                  <th className="py-2 pr-4 text-right font-medium">Recommended</th>
-                  <th className="py-2 text-right font-medium">Answers</th>
-                </tr>
-              </thead>
-              <tbody>
-                {snapshot.comparison.map((row) => (
-                  <tr
-                    key={row.name}
-                    className={`border-b transition-colors last:border-0 hover:bg-muted/30 ${
-                      row.isProspect ? "bg-muted/40 font-semibold" : ""
-                    }`}
-                  >
-                    <td className="py-2 pr-4">
-                      {row.name}
-                      {row.isProspect ? " ← you" : ""}
-                    </td>
-                    <td className="py-2 pr-4 text-right tabular-nums">
-                      {rate(row.mentionRate)}
-                    </td>
-                    <td className="py-2 pr-4 text-right tabular-nums">
-                      {rate(row.recommendationRate)}
-                    </td>
-                    <td className="py-2 text-right tabular-nums">{row.sampleSize}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {(() => {
+            const hasRanks = snapshot.comparison.some((r) => r.marketRank != null);
+            return (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      <th className="py-2 pr-4 font-medium">Team</th>
+                      {hasRanks && (
+                        <th className="py-2 pr-4 text-right font-medium">
+                          Market rank*
+                        </th>
+                      )}
+                      <th className="py-2 pr-4 text-right font-medium">Brought up</th>
+                      <th className="py-2 pr-4 text-right font-medium">Recommended</th>
+                      <th className="py-2 text-right font-medium">Answers</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {snapshot.comparison.map((row) => (
+                      <tr
+                        key={row.name}
+                        className={`border-b transition-colors last:border-0 hover:bg-muted/30 ${
+                          row.isProspect ? "bg-muted/40 font-semibold" : ""
+                        }`}
+                      >
+                        <td className="py-2 pr-4">
+                          {row.name}
+                          {row.isProspect ? " ← you" : ""}
+                        </td>
+                        {hasRanks && (
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            {row.marketRank != null ? `#${row.marketRank}` : "—"}
+                          </td>
+                        )}
+                        <td
+                          className={`py-2 pr-4 text-right tabular-nums ${
+                            row.isProspect ? "text-destructive" : ""
+                          }`}
+                        >
+                          {rate(row.mentionRate)}
+                        </td>
+                        <td
+                          className={`py-2 pr-4 text-right tabular-nums ${
+                            row.isProspect ? "text-destructive" : ""
+                          }`}
+                        >
+                          {rate(row.recommendationRate)}
+                        </td>
+                        <td className="py-2 text-right tabular-nums">{row.sampleSize}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {hasRanks && (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    * City ranking by closed sales volume — sourced under “Your track
+                    record” below. “—” means no ranked record for that name; note who
+                    fills the answers anyway.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
           {snapshot.transcripts && snapshot.transcripts.length > 0 && (
             <p className="mt-2 text-xs text-muted-foreground">
               Don&apos;t take the table&apos;s word for it —{" "}
@@ -399,9 +454,24 @@ export default async function ProspectAuditPage({
           The answers change slowly — whoever fixes this first becomes the default
           recommendation, and compounding does the rest.
         </p>
+        <div className="mt-4">
+          {ctaButton ?? (
+            <p className="max-w-[65ch] text-sm">
+              Reply {showMe} to the email that brought you here.
+            </p>
+          )}
+        </div>
         <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
-          Reply {showMe} to the email that brought you here. Every number on this page
-          traces to a captured answer we can show you — skepticism welcome.
+          Every number on this page traces to a captured answer we can show you —
+          skepticism welcome.{" "}
+          {snapshot.transcripts && snapshot.transcripts.length > 0 && (
+            <Link
+              href={`/audit/${token}/answers`}
+              className="underline underline-offset-2 transition-colors hover:text-foreground"
+            >
+              Read the answers first
+            </Link>
+          )}
         </p>
         {snapshot.preparedBy && (
           <p className="mt-6 text-xs text-muted-foreground">

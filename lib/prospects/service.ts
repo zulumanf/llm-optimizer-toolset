@@ -1522,6 +1522,9 @@ export interface AuditSnapshot {
     mentionRate: number | null;
     recommendationRate: number | null;
     sampleSize: number;
+    /** Sourced market rank (ranking signal with a numeric value, same
+     * launch); null for entities with no ranked record — never guessed. */
+    marketRank?: number | null;
   }[];
   promptEvidence: PromptEvidence[];
   methodology: string;
@@ -1546,7 +1549,13 @@ export interface AuditSnapshot {
     capturedAt: string;
   }[];
   /** Who stands behind the report. */
-  preparedBy?: { name: string; date: string; reportId: string };
+  preparedBy?: {
+    name: string;
+    date: string;
+    reportId: string;
+    /** Reply-to for the one-click CTA (spec 045 CRO pass). */
+    email?: string;
+  };
   /** Live consumer-app share links (spec 045): operator-created exhibits on
    * the assistant vendor's own domain. Demos, never measurements. */
   exampleChats?: {
@@ -1731,6 +1740,22 @@ export async function publishAudit(
           explanation: d.explanation,
           suggestedAction: d.suggestedAction,
         }));
+      // Sourced market ranks for every company in this launch (ranking
+      // signals with a numeric value, most recent per prospect) — lets the
+      // comparison show "#9 in the market → 0% in the answers" per row.
+      const rankRows = await tx`
+        select distinct on (p.company_id) p.company_id, s.value_number
+        from prospects p
+        join prospect_authority_signals s on s.prospect_id = p.id
+          and s.kind = 'ranking' and s.value_number is not null
+        where p.launch_id = ${prospect.launchId}
+          and p.company_id is not null and p.archived_at is null
+        order by p.company_id, s.created_at desc
+      `;
+      const rankByCompany = new Map<string, number>(
+        rankRows.map((r) => [r.companyId as string, Number(r.valueNumber)])
+      );
+
       // Stakes: every "recommended" mention is a real moment an assistant
       // pointed a buyer at a specific team — counted, not estimated. Echo is
       // excluded per company (the organic rule): a recommendation on a
@@ -1837,6 +1862,7 @@ export async function publishAudit(
 
       const preparedBy = {
         name: user.name,
+        email: user.email,
         date: new Date().toISOString().slice(0, 10),
         reportId: randomBytes(4).toString("hex"),
       };
@@ -1906,6 +1932,7 @@ export async function publishAudit(
                   mentionRate: prospectMetrics.mentionRate,
                   recommendationRate: prospectMetrics.recommendationRate,
                   sampleSize: prospectMetrics.sampleSize,
+                  marketRank: rankByCompany.get(benchmark.companyId as string) ?? null,
                 },
               ]
             : []),
@@ -1915,6 +1942,7 @@ export async function publishAudit(
             mentionRate: r.mentionRate,
             recommendationRate: r.recommendationRate,
             sampleSize: r.sampleSize,
+            marketRank: rankByCompany.get(r.companyId) ?? null,
           })),
         ],
         promptEvidence: evidence,

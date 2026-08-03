@@ -48,7 +48,14 @@ untrustworthy here.
 ## What to take from the taste skills (they're right about these)
 
 - Tabular figures for every number (`tabular-nums` — already conventional here).
-- One accent, desaturated; no AI-purple gradients; off-black over pure black.
+- **Color budget is semantic and fixed (CRO pass, 2026-08-03):**
+  `text-destructive` marks the pain only (the prospect's zero/low numbers);
+  `bg-primary` marks the action only (the CTA buttons). Nothing else on the
+  page gets color. Two meanings, two colors, zero decoration.
+- The CTA is a one-click mailto button ("show me" prefilled in subject+body)
+  when the snapshot carries preparedBy.email; text fallback otherwise.
+  Commitment bar stated next to it: "15 minutes, no deck, no obligation."
+  No fake urgency, no invented social proof — the evidence is the proof.
 - Optical alignment over mathematical; asymmetry in measured doses.
 - Hover/focus/active states on every interactive element; visible focus rings.
 - ~65ch body measure; `text-wrap: balance` on headlines; sentence case.

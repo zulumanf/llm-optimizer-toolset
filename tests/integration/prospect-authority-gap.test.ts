@@ -247,6 +247,7 @@ describe.skipIf(!TEST_URL)("prospect authority & visibility gap (integration)", 
         prospectId,
         kind: "ranking",
         label: "Ranked #2 Manhattan team by closed volume",
+        valueNumber: 2,
         sourceUrl: "https://example.com/ranking",
         provenance: "verified",
       })
@@ -292,6 +293,12 @@ describe.skipIf(!TEST_URL)("prospect authority & visibility gap (integration)", 
     const compared = snapshot!.comparison.map((c) => c.name);
     expect(compared).toContain("Acme");
     expect(compared).not.toContain("Lumina");
+    // The sourced market rank rides the prospect's row; unranked rivals get
+    // null, never a guessed number.
+    const you = snapshot!.comparison.find((c) => c.isProspect);
+    expect(you?.marketRank).toBe(2);
+    const acme = snapshot!.comparison.find((c) => c.name === "Acme");
+    expect(acme?.marketRank ?? null).toBeNull();
     // Stakes are measured recommendation moments, never estimates: the mock
     // recommends rivals in every answer while the prospect never appears.
     expect(snapshot?.stakes).toBeDefined();
