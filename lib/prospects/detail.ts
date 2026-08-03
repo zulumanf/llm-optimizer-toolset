@@ -216,13 +216,14 @@ export interface DraftRow {
   sentRecordedAt: Date | null;
   contactId: string | null;
   contactName: string | null;
+  contactEmail: string | null;
 }
 
 export async function listDrafts(prospectId: string): Promise<DraftRow[]> {
   return sql<DraftRow[]>`
     select d.id, d.channel, d.version, d.subject, d.body, d.cta, d.generated_by,
       d.status, d.approved_at, d.sent_recorded_at, d.contact_id,
-      c.name as contact_name
+      c.name as contact_name, c.email as contact_email
     from outreach_drafts d
     left join prospect_contacts c on c.id = d.contact_id
     where d.prospect_id = ${prospectId}

@@ -10,6 +10,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getAuditByToken } from "@/lib/prospects/service";
+import { getCurrentUserOrNull, isStaff } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "AI Visibility Benchmark — Captured Answers",
@@ -23,9 +24,11 @@ export default async function AuditAnswersPage({
 }) {
   const { token } = await params;
   const hdrs = await headers();
+  const viewer = await getCurrentUserOrNull();
   const snapshot = await getAuditByToken(token, {
     ip: hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: hdrs.get("user-agent"),
+    internal: viewer !== null && isStaff(viewer),
   });
   if (!snapshot?.transcripts || snapshot.transcripts.length === 0) notFound();
 

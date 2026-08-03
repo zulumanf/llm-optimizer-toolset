@@ -1334,3 +1334,42 @@ prerender phase is exempt (`NEXT_PHASE=phase-production-build`) so CI can
 keep building with dev auth; the check re-fires on every served request.
 One predicate owns the rule (`devAuthRefusalReason` in `lib/env.ts`) so the
 middleware and the auth boundary cannot drift.
+
+## 2026-08-03 — Phase 2/3 of the production-readiness plan: provenance closes, the last mile opens
+
+Phase 2 (measurement provenance): the parser stamp now records what actually
+ran (a fallback parse stamps v1, and scoring readiness accepts any known
+version so honesty doesn't stall runs); mock captures are excluded from
+scoring and refused by linkBenchmark outside the test harness; scores got
+the forbid_mutation trigger every peer table already had (052); executeCell
+captures before pricing, with unknown cost as NULL — never $0 — and a halt
+(053); orphaned benchmark runs are reaped to 'failed' by the worker's idle
+sweep; DAILY_SPEND_CEILING_USD caps the rolling day portfolio-wide; the
+rate gate is process-level, one clock per provider account.
+
+Phase 3 (prospecting last mile), the choices that weren't in the plan text:
+- **Send channel stays assisted-manual for v1.** "Open in mail app"
+  prefills recipient/subject/body via mailto:; the platform still transmits
+  nothing. Gmail OAuth remains open as the operator's decision — the gap
+  that mattered (retyping the email and pasting the link by hand) is gone
+  without new credentials or deliverability surface.
+- **Draft editing = a new version through createOutreachDraft**, not an
+  UPDATE path: drafts are versioned rows and approval re-runs the
+  prohibited-phrase gate on the saved text. No second mutation path to
+  audit.
+- **Audit links default to 45-day expiry** (AUDIT_LINK_DEFAULT_EXPIRY_DAYS);
+  "Expire link" kills the token while the audit stays published — revoke
+  keeps its mandatory reason for "should not have gone out".
+- **The generated email carries the audit link when one is published**
+  (built from APP_URL, never window.location) and the ask matches the
+  page's CTA chip: reply "show me". Unpublished → the old reply-first ask.
+- **Staff opens of the audit page are labeled is_internal** and excluded
+  from view counts and the activity timeline (session read is label-only;
+  content still renders solely from the snapshot).
+- **Deep vertical-neutral copy is deferred** until a non-real-estate market
+  pack exists; fixed now: the broken "the monitored market" fallback and
+  the sentence structure around the market name. All five packs are
+  residential RE; the reader the page is designed for is an RE agent.
+- **Discover hides when no real source adapter is configured** — a button
+  that errors on submit is worse than absence; CSV/manual are the universe
+  sources until an adapter ships.

@@ -270,3 +270,8 @@ export function findProhibitedPhrase(text: string): string | null {
 export const MIN_RESPONSES_FOR_FINDINGS = 5;
 
 export const AUDIT_TOKEN_BYTES = 32;
+
+/** Audit links die on their own (plan 3.4): 45 days covers a slow reply
+ * cycle, and an operator can pass an explicit expiresAt to extend. Immortal
+ * links require deliberately unsetting — which the UI does not offer. */
+export const AUDIT_LINK_DEFAULT_EXPIRY_DAYS = 45;

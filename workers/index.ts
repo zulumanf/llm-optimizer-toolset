@@ -11,6 +11,7 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { reclaimStaleJobs } from "@/db/jobs";
+import { reapOrphanedRuns } from "@/lib/runs/reaper";
 import { sql } from "@/db/client";
 // Importing the templates module registers every node handler as a side
 // effect — the engine cannot run a graph whose handlers are unknown.
@@ -46,6 +47,9 @@ async function main(): Promise<void> {
         sinceReclaim = 0;
         const reclaimed = await reclaimStaleJobs(STALE_LEASE_MINUTES);
         if (reclaimed > 0) log("warn", "worker.reclaimed_jobs", { reclaimed });
+        // After reclaim, so a just-requeued job keeps its run alive: only
+        // runs whose execute job is truly gone (dead-lettered) get failed.
+        await reapOrphanedRuns();
       }
       await new Promise((r) => setTimeout(r, IDLE_POLL_MS));
     }

@@ -100,6 +100,9 @@ export async function publishAudit(input: unknown) {
 export async function revokeAudit(input: unknown) {
   return run((u) => svc.revokeAudit(u, input));
 }
+export async function expireAudit(input: unknown) {
+  return run((u) => svc.expireAudit(u, input));
+}
 export async function createOutreachDraft(input: unknown) {
   return run((u) => svc.createOutreachDraft(u, input));
 }

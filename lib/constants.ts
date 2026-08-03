@@ -28,6 +28,17 @@ export const CLASSIFIER_MODEL = "gpt-5.4-mini-2026-03-17";
  * includes scoring_version, so both versions coexist and cross-version
  * comparisons stay forbidden in UI/reports. */
 export const SCORING_VERSION = "v1.1";
+/**
+ * Portfolio-wide provider spend ceiling over a rolling 24h window (plan
+ * 2.7). BUDGET_MAX_USD caps one run; nothing capped fifty of them. Checked
+ * at run start (fast refusal) and again in the executor (backstop for
+ * scheduled runs). Env-overridable for deploys; NaN falls back.
+ */
+const ceilingFromEnv = Number(process.env.DAILY_SPEND_CEILING_USD);
+export const DAILY_SPEND_CEILING_USD = Number.isFinite(ceilingFromEnv)
+  ? ceilingFromEnv
+  : 25;
+
 export const CONFIDENCE_AUTO_ACCEPT = 0.9;
 export const CONFIDENCE_REVIEW_THRESHOLD = 0.7;
 export const REVIEW_TIMEOUT_HOURS = 72;

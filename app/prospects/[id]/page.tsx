@@ -26,14 +26,19 @@ import {
 import { FindingActions } from "@/components/prospects/finding-actions";
 import {
   CopyAuditLink,
+  ExpireAuditButton,
   PublishAuditButton,
   RevokeAuditButton,
 } from "@/components/prospects/audit-actions";
 import {
   ApproveDraftButton,
+  EditDraftButton,
   GenerateDraftButton,
+  OpenInMailButton,
   RecordSentButton,
+  type DraftContactOption,
 } from "@/components/prospects/draft-actions";
+import { auditUrl } from "@/lib/prospects/urls";
 import {
   GenerateRecordingButton,
   RecordingStatusSelect,
@@ -109,6 +114,14 @@ export default async function ProspectDetailPage({
     listStageHistory(id),
     listActivities(id),
   ]);
+
+  const draftContacts: DraftContactOption[] = contacts.map((c) => ({
+    id: c.id,
+    name: c.name,
+    email: c.email,
+    isPrimary: c.isPrimary,
+    doNotContact: c.doNotContact,
+  }));
 
   const latestBenchmark = benchmarks[0];
   const metrics = latestBenchmark ? await benchmarkMetrics(latestBenchmark.id) : null;
@@ -815,7 +828,8 @@ export default async function ProspectDetailPage({
                   <div className="flex items-center gap-2">
                     {a.status === "published" && a.accessToken && (
                       <>
-                        <CopyAuditLink token={a.accessToken} />
+                        <CopyAuditLink url={auditUrl(a.accessToken)} />
+                        <ExpireAuditButton auditId={a.id} />
                         <RevokeAuditButton auditId={a.id} />
                       </>
                     )}
@@ -841,7 +855,11 @@ export default async function ProspectDetailPage({
       <Section
         title="The email"
         description="Drafted from the approved story. Nothing sends itself — you send it from your own mailbox, and the do-not-contact and suppression checks run before anything is recorded."
-        actions={primaryFinding ? <GenerateDraftButton prospectId={id} /> : undefined}
+        actions={
+          primaryFinding ? (
+            <GenerateDraftButton prospectId={id} contacts={draftContacts} />
+          ) : undefined
+        }
       >
         {drafts.length === 0 ? (
           <EmptyState message="No email yet. Approve a story first — the draft is written from it, nothing else." />
@@ -872,9 +890,29 @@ export default async function ProspectDetailPage({
                       : ""}
                   </span>
                   <div className="ml-auto flex items-center gap-2">
-                    {d.status === "draft" && <ApproveDraftButton draftId={d.id} />}
+                    {d.status === "draft" && (
+                      <>
+                        <EditDraftButton
+                          prospectId={id}
+                          draft={{
+                            subject: d.subject,
+                            body: d.body,
+                            contactId: d.contactId,
+                          }}
+                          contacts={draftContacts}
+                        />
+                        <ApproveDraftButton draftId={d.id} />
+                      </>
+                    )}
                     {d.status === "approved" && !d.sentRecordedAt && (
-                      <RecordSentButton draftId={d.id} />
+                      <>
+                        <OpenInMailButton
+                          recipientEmail={d.contactEmail ?? prospect.email}
+                          subject={d.subject}
+                          body={d.body}
+                        />
+                        <RecordSentButton draftId={d.id} />
+                      </>
                     )}
                   </div>
                 </div>

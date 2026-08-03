@@ -310,6 +310,9 @@ describe.skipIf(!TEST_URL)("attribution (integration)", () => {
     // sample sizes, drop the post run's recommendation_rate, and add a second
     // provider on both sides — docs/06 requires direction consistency across
     // ≥2 providers, so a single-provider setup can never reach "notable".
+    // scores are trigger-protected since migration 052; the surgery must
+    // drop the shield the way scripts/seed-graph.ts does.
+    await sql.unsafe(`alter table scores disable trigger scores_immutable`);
     await sql`update scores set sample_size = 40`;
     const [postRun] = await sql`
       select run_id from intervention_runs
@@ -319,6 +322,7 @@ describe.skipIf(!TEST_URL)("attribution (integration)", () => {
       update scores set value = 0.2
       where run_id = ${postRun?.runId} and metric = 'recommendation_rate'
     `;
+    await sql.unsafe(`alter table scores enable trigger scores_immutable`);
     await sql`
       insert into scores (run_id, company_id, metric, provider, value,
         sample_size, scoring_version)

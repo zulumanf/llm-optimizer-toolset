@@ -18,6 +18,7 @@ import { ChevronRight } from "lucide-react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getAuditByToken } from "@/lib/prospects/service";
+import { getCurrentUserOrNull, isStaff } from "@/lib/auth";
 
 const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500"], style: ["normal", "italic"] });
 
@@ -90,9 +91,14 @@ export default async function ProspectAuditPage({
 }) {
   const { token } = await params;
   const hdrs = await headers();
+  // Session read is only to LABEL the view (plan 3.6): an operator's QA
+  // open must not count as prospect interest. Content still comes solely
+  // from the snapshot; anonymous visitors take the same path as ever.
+  const viewer = await getCurrentUserOrNull();
   const snapshot = await getAuditByToken(token, {
     ip: hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: hdrs.get("user-agent"),
+    internal: viewer !== null && isStaff(viewer),
   });
   if (!snapshot) notFound();
 
@@ -140,8 +146,8 @@ export default async function ProspectAuditPage({
       </h1>
       <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
         Buyers and sellers increasingly ask ChatGPT who to hire. We asked it{" "}
-        {snapshot.benchmark.promptCount} real {snapshot.marketName} questions —{" "}
-        {snapshot.benchmark.responseCount} answers, captured verbatim.
+        {snapshot.benchmark.promptCount} real questions about {snapshot.marketName}{" "}
+        — {snapshot.benchmark.responseCount} answers, captured verbatim.
       </p>
 
       {stakes ? (

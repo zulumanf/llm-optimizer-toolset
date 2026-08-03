@@ -104,6 +104,35 @@ describe.skipIf(!TEST_URL)("experiment runs (integration)", () => {
     return started.data.id;
   }
 
+  it("enforces the 24h portfolio spend ceiling at start and in the executor (plan 2.7)", async () => {
+    const { projectId, versionId } = await setup(["prompt one"]);
+    const queued = await startAndClaim(projectId, versionId);
+    // Synthetic spend above the ceiling, attributed to the queued run.
+    await sql`
+      insert into responses (run_id, prompt_id, prompt_text, provider, model,
+        repetition, cost_usd, error)
+      values (${queued}, gen_random_uuid(), 'synthetic', 'mock', 'mock-model',
+        99, 30, ${sql.json({ kind: "internal", message: "synthetic spend" } as never)})
+    `;
+
+    const refused = await runSvc.startRun(user, {
+      projectId,
+      promptSetVersionId: versionId,
+      providers: [{ provider: "mock", model: "mock-model", repetitions: 1 }],
+      budgetUsd: 5,
+      label: "over ceiling",
+    });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/ceiling/);
+
+    // Backstop: the already-queued run hits the ceiling in the executor and
+    // lands in a terminal state with the reason, not a retry loop.
+    await execute.executeRun(queued);
+    const run = await runsDb.getRun(queued);
+    expect(run?.status).toBe("failed");
+    expect(run?.statusDetail).toMatch(/ceiling/);
+  });
+
   it("executes every cell exactly once with full raw payloads", async () => {
     const { projectId, versionId } = await setup(["prompt one", "prompt two"]);
     const runId = await startAndClaim(projectId, versionId);

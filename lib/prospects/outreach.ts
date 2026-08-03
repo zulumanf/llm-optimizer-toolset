@@ -16,6 +16,9 @@ export interface OutreachDraftInput {
   findingExplanation: string;
   providers: string[];
   sampleSize: number;
+  /** Published audit page link (plan 3.1). Null = not published or no
+   * APP_URL; the draft falls back to the pure reply-first ask. */
+  auditUrl?: string | null;
 }
 
 export interface GeneratedDraft {
@@ -34,7 +37,15 @@ const providerLabel = (providers: string[]): string => {
 
 export function generateReplyFirstEmail(input: OutreachDraftInput): GeneratedDraft {
   const greetingName = input.teamLeader?.split(" ")[0] ?? "there";
-  const cta = "Would it be useful if I sent the benchmark over?";
+  // With a published audit the link does the proving and the ask matches the
+  // page's own CTA chip ("show me"). Without one, ask-first as before.
+  const cta = input.auditUrl
+    ? `If it's useful, reply "show me" and I'll walk you through it — 15 minutes.`
+    : "Would it be useful if I sent the benchmark over?";
+  const proofParagraph = input.auditUrl
+    ? `The full benchmark is here — every question and complete answer included, ` +
+      `so you can search for your own name: ${input.auditUrl}`
+    : `I put together the supporting benchmark with the exact prompts and responses.`;
   const body = [
     `Hi ${greetingName},`,
     ``,
@@ -44,7 +55,7 @@ export function generateReplyFirstEmail(input: OutreachDraftInput): GeneratedDra
     ``,
     `One result about ${input.prospectName} surprised me: ${input.findingExplanation}`,
     ``,
-    `I put together the supporting benchmark with the exact prompts and responses. ${cta}`,
+    `${proofParagraph}${input.auditUrl ? `\n\n${cta}` : ` ${cta}`}`,
   ].join("\n");
 
   return {

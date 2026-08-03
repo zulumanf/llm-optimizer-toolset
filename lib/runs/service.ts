@@ -57,6 +57,19 @@ export async function startRun(
         throw new ClassifiedError("conflict", "Project is archived.");
       }
 
+      // Portfolio ceiling (plan 2.7): BUDGET_MAX_USD caps one run; this caps
+      // the day. Fast refusal here; the executor re-checks for runs that
+      // bypass startRun. Raise via DAILY_SPEND_CEILING_USD when deliberate.
+      const { spendLast24hUsd } = await import("@/db/runs");
+      const { DAILY_SPEND_CEILING_USD } = await import("@/lib/constants");
+      const spent = await spendLast24hUsd();
+      if (spent >= DAILY_SPEND_CEILING_USD) {
+        throw new ClassifiedError(
+          "conflict",
+          `Provider spend in the last 24h ($${spent.toFixed(2)}) has reached the portfolio ceiling ($${DAILY_SPEND_CEILING_USD}). Wait, or raise DAILY_SPEND_CEILING_USD deliberately.`
+        );
+      }
+
       const [row] = await tx<Run[]>`
         insert into runs
           (project_id, prompt_set_version_id, label, providers, trigger,

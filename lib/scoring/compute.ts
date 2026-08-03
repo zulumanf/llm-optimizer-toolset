@@ -74,10 +74,24 @@ export async function computeScores(runId: string): Promise<void> {
   }
 
   // Valid cells: successful captures (refusals count; errors don't — docs/06)
-  const validResponses = await sql`
+  const allValidResponses = await sql`
     select id, provider, prompt_id, response_text, raw_payload from responses
     where run_id = ${runId} and error is null
   `;
+  // The registry gate stops mock at the door, but a database that once ran
+  // with ALLOW_MOCK_PROVIDER can hold mock captures; they must never fold
+  // into real metrics or the cross-provider mean (plan 2.3). Under the test
+  // runner / explicit opt-in the mock provider IS the harness, so it scores.
+  const { mockProviderAllowed } = await import("@/lib/ai/registry");
+  const validResponses = mockProviderAllowed()
+    ? allValidResponses
+    : allValidResponses.filter((r) => r.provider !== "mock");
+  if (validResponses.length < allValidResponses.length) {
+    log("error", "scoring.mock_responses_excluded", {
+      runId,
+      excluded: allValidResponses.length - validResponses.length,
+    });
+  }
   for (const row of validResponses) {
     if (holdoutPromptIds.has(row.promptId as string)) {
       excludedResponseIds.add(row.id as string);

@@ -17,3 +17,15 @@ export function activeParserVersion(): string {
     ? PARSER_VERSION_LLM
     : PARSER_VERSION_HEURISTIC;
 }
+
+/**
+ * Every version whose output is a legitimate parse. Scoring readiness asks
+ * "was this response parsed?", not "was it parsed at today's preferred
+ * version" — an LLM outage that degraded one response to the heuristic must
+ * neither stall the run nor be papered over with a v2 stamp. Upgrading is
+ * enqueueParseJobs' job (it targets activeParserVersion), never the gate's.
+ */
+export const KNOWN_PARSER_VERSIONS: string[] = [
+  PARSER_VERSION_HEURISTIC,
+  PARSER_VERSION_LLM,
+];

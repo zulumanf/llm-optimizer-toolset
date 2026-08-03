@@ -6,7 +6,7 @@
  */
 import { execSync } from "node:child_process";
 import { join } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
 
@@ -364,6 +364,92 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
       expect(unscored.ok).toBe(false);
       if (!unscored.ok) expect(unscored.error.message).toMatch(/not scored/);
     }
+  });
+
+  it("last mile: default expiry, expire-now, internal views, and the draft carries the audit link (plan 3.x)", async () => {
+    const { runId, prospectCompanyId } = await seedScoredRun();
+    const { prospectId } = await seedLaunchAndProspect(prospectCompanyId);
+    const { benchmarkId } = unwrap(await svc.linkBenchmark(operator, { prospectId, runId }));
+    unwrap(await svc.generateFindings(operator, { benchmarkId }));
+    const [candidate] = await sql`
+      select id from prospect_findings
+      where prospect_id = ${prospectId} order by created_at asc limit 1
+    `;
+    unwrap(
+      await svc.reviewFinding(operator, {
+        findingId: candidate?.id as string,
+        decision: "approved",
+        makePrimary: true,
+      })
+    );
+
+    const { auditId, accessToken } = unwrap(
+      await svc.publishAudit(operator, { prospectId })
+    );
+
+    // 3.4: publishing without an explicit expiry still sets one.
+    const [audit] = await sql`
+      select expires_at from prospect_audits where id = ${auditId}
+    `;
+    expect(audit?.expiresAt).not.toBeNull();
+
+    // 3.6: a staff QA open is labeled internal and not logged as interest.
+    await svc.getAuditByToken(accessToken, { internal: true });
+    await svc.getAuditByToken(accessToken, { userAgent: "prospect-browser" });
+    const [views] = await sql`
+      select
+        count(*) filter (where is_internal)::int as internal,
+        count(*) filter (where not is_internal)::int as external
+      from prospect_audit_views where audit_id = ${auditId}
+    `;
+    expect(views?.internal).toBe(1);
+    expect(views?.external).toBe(1);
+
+    // 3.1: with APP_URL set, the generated draft carries the audit link.
+    vi.stubEnv("APP_URL", "https://avos.example.com");
+    try {
+      const draft = unwrap(
+        await svc.createOutreachDraft(operator, { prospectId, channel: "email" })
+      );
+      const [draftRow] = await sql`
+        select body from outreach_drafts where id = ${draft.draftId}
+      `;
+      expect(draftRow?.body as string).toContain(
+        `https://avos.example.com/audit/${accessToken}`
+      );
+      expect(draftRow?.body as string).toContain('reply "show me"');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    // 3.4: expire-now kills the token while the audit stays published.
+    unwrap(await svc.expireAudit(operator, { auditId }));
+    expect(await svc.getAuditByToken(accessToken)).toBeNull();
+    const [after] = await sql`
+      select status from prospect_audits where id = ${auditId}
+    `;
+    expect(after?.status).toBe("published");
+    // Expiring twice is a refusal, not a silent no-op.
+    const twice = await svc.expireAudit(operator, { auditId });
+    expect(twice.ok).toBe(false);
+  });
+
+  it("refuses benchmark links to runs with mock captures outside the harness (plan 2.3)", async () => {
+    const { runId, prospectCompanyId } = await seedScoredRun();
+    const { prospectId } = await seedLaunchAndProspect(prospectCompanyId);
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VITEST", "");
+    vi.stubEnv("ALLOW_MOCK_PROVIDER", "");
+    try {
+      const refused = await svc.linkBenchmark(operator, { prospectId, runId });
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) expect(refused.error.message).toMatch(/mock-provider/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    // Back under the harness the same link succeeds.
+    const linked = await svc.linkBenchmark(operator, { prospectId, runId });
+    expect(linked.ok).toBe(true);
   });
 
   it("enforces evidence and wording on finding approval (service and DB)", async () => {
