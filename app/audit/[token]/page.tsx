@@ -258,8 +258,24 @@ export default async function ProspectAuditPage({
                 {hasRanks && (
                   <p className="mt-1.5 text-xs text-muted-foreground">
                     * City ranking by closed sales volume — sourced under “Your track
-                    record” below. “—” means no ranked record for that name; note who
-                    fills the answers anyway.
+                    record” below.
+                  </p>
+                )}
+                {snapshot.brandMentions && snapshot.brandMentions.length > 0 && (
+                  <p className="mt-3 max-w-[65ch] text-sm">
+                    The rest of the answers went to brand-level names, not teams:{" "}
+                    <span className="text-muted-foreground">
+                      {snapshot.brandMentions
+                        .map(
+                          (b) =>
+                            `${b.name} (brought up ${rate(b.mentionRate)}, recommended ${rate(
+                              b.recommendationRate
+                            )})`
+                        )
+                        .join(" · ")}
+                    </span>
+                    . No individual team owns the answers yet — that space is still
+                    open.
                   </p>
                 )}
               </div>

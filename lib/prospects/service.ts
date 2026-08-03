@@ -1526,6 +1526,14 @@ export interface AuditSnapshot {
      * launch); null for entities with no ranked record — never guessed. */
     marketRank?: number | null;
   }[];
+  /** Brand-level names (brokerages, out-of-market brands) that filled the
+   * answers — kept out of the team table, summarized beneath it. The
+   * first-mover argument: no individual team owns the answers yet. */
+  brandMentions?: {
+    name: string;
+    mentionRate: number | null;
+    recommendationRate: number | null;
+  }[];
   promptEvidence: PromptEvidence[];
   methodology: string;
   cta: string;
@@ -1675,7 +1683,20 @@ export async function publishAudit(
         runProject?.subjectCompanyId !== benchmark.companyId
           ? (runProject?.subjectCompanyId as string | null)
           : null;
-      const rivals = entities
+      // Teams vs brands, decided by DATA: a company is a "team" when it maps
+      // to a non-brokerage prospect in this launch. Teams go in the table
+      // (apples to apples); brands are summarized beneath it.
+      const launchTypeRows = await tx`
+        select company_id, prospect_type from prospects
+        where launch_id = ${prospect.launchId}
+          and company_id is not null and archived_at is null
+      `;
+      const teamCompanyIds = new Set(
+        launchTypeRows
+          .filter((r) => r.prospectType !== "brokerage")
+          .map((r) => r.companyId as string)
+      );
+      const visibleRivals = entities
         .filter((e) => e.companyId !== benchmark.companyId)
         .filter((e) => e.companyId !== excludedCompanyId)
         .filter((e) => (e.mentionRate ?? 0) > 0 || (e.recommendationRate ?? 0) > 0)
@@ -1683,8 +1704,18 @@ export async function publishAudit(
           (a, b) =>
             (b.recommendationRate ?? 0) - (a.recommendationRate ?? 0) ||
             (b.mentionRate ?? 0) - (a.mentionRate ?? 0)
-        )
+        );
+      const rivals = visibleRivals
+        .filter((e) => teamCompanyIds.has(e.companyId))
         .slice(0, AUDIT_COMPARISON_RIVALS);
+      const brandMentions = visibleRivals
+        .filter((e) => !teamCompanyIds.has(e.companyId))
+        .slice(0, 5)
+        .map((e) => ({
+          name: e.name,
+          mentionRate: e.mentionRate,
+          recommendationRate: e.recommendationRate,
+        }));
       const evidence = await promptEvidenceForResponses(
         finding.responseIds,
         PROMPT_EVIDENCE_LIMIT
@@ -1949,6 +1980,7 @@ export async function publishAudit(
         methodology: METHODOLOGY_TEXT,
         cta: "Review the full benchmark with us.",
         ...(authorityGap ? { authorityGap } : {}),
+        ...(brandMentions.length > 0 ? { brandMentions } : {}),
         ...(recommendationMomentsTotal > 0 ? { stakes } : {}),
         ...(whyItHappens.length > 0 ? { whyItHappens } : {}),
         ...(topSources.length > 0 ? { topSources } : {}),

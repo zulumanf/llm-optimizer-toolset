@@ -290,9 +290,14 @@ describe.skipIf(!TEST_URL)("prospect authority & visibility gap (integration)", 
     expect(JSON.stringify(snapshot?.authorityGap)).not.toContain("signalId");
     // The comparison shows visible rivals from the run — and NEVER the
     // client whose run this is (Lumina is the client project's subject).
+    // Teams-only table: Acme is visible but is NOT a launch team, so it
+    // moves to the brand summary; the client subject (Lumina) appears
+    // nowhere on a prospect-facing page.
     const compared = snapshot!.comparison.map((c) => c.name);
-    expect(compared).toContain("Acme");
+    expect(compared).not.toContain("Acme");
     expect(compared).not.toContain("Lumina");
+    expect(snapshot!.brandMentions?.map((b) => b.name)).toContain("Acme");
+    expect(snapshot!.brandMentions?.map((b) => b.name)).not.toContain("Lumina");
     // The sourced market rank rides the prospect's row; unranked rivals get
     // null, never a guessed number.
     const you = snapshot!.comparison.find((c) => c.isProspect);
