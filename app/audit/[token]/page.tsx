@@ -5,16 +5,21 @@
  * notes cannot leak because they were never put in the snapshot. Wrong,
  * revoked, and expired tokens are indistinguishable (all 404).
  *
- * Built for a cold-email reader with a five-second attention budget:
- * the first screen is the entire punch (how many times AI recommended a
- * team, how many were you, who got named instead); everything below the
- * table is progressive disclosure (<details>) for the second read.
+ * Design: trust-first evidence document (.claude/skills/audit-page-design).
+ * The first screen is the whole punch; one accent moment (the "0×"); depth
+ * folds into styled <details>; serif display face route-local so the page
+ * reads as a document, not an app screen. Presentation-only — renders any
+ * published snapshot, old or new.
  */
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Newsreader } from "next/font/google";
+import { ChevronRight } from "lucide-react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getAuditByToken } from "@/lib/prospects/service";
+
+const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500"], style: ["normal", "italic"] });
 
 export const metadata: Metadata = {
   title: "AI Visibility Benchmark",
@@ -23,6 +28,25 @@ export const metadata: Metadata = {
 
 const rate = (v: number | null): string =>
   v === null ? "not measured" : `${Math.round(v * 100)}%`;
+
+/** Styled disclosure — hover, focus ring, rotating chevron (house rules #4). */
+function Drawer({
+  summary,
+  children,
+}: {
+  summary: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="group py-4">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-sm text-sm font-medium transition-colors duration-200 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="size-4 shrink-0 transition-transform duration-200 group-open:rotate-90" />
+        {summary}
+      </summary>
+      <div className="pl-6 pt-2">{children}</div>
+    </details>
+  );
+}
 
 export default async function ProspectAuditPage({
   params,
@@ -44,21 +68,26 @@ export default async function ProspectAuditPage({
   const gap = snapshot.authorityGap;
   const stakes = snapshot.stakes;
   const firstExcerpt = snapshot.evidenceExcerpts?.[0];
-  // A real seller-side moment from the captured answers: the question a
-  // listing client would ask, and who the assistant sent them to.
   const sellerMoment = snapshot.promptEvidence.find(
     (e) => /sell/i.test(e.promptText) && e.recommendedNames.length > 0
   );
+  const showMe = (
+    <span className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">show me</span>
+  );
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
+    <div className="mx-auto max-w-3xl px-6 py-12">
       {/* ============================================= the first screen */}
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         Private AI visibility report · {snapshot.marketName} · for {snapshot.prospectName}
         {snapshot.preparedBy && ` · ${snapshot.preparedBy.date}`}
       </p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight">{snapshot.headline}</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
+      <h1
+        className={`${serif.className} mt-3 max-w-[24ch] text-balance text-2xl font-medium tracking-tight`}
+      >
+        {snapshot.headline}
+      </h1>
+      <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
         Your next seller may never ask a friend for a name — a growing share ask
         ChatGPT first. We captured what it tells them: {snapshot.benchmark.promptCount}{" "}
         real buyer and seller questions, asked repeatedly,{" "}
@@ -66,53 +95,47 @@ export default async function ProspectAuditPage({
       </p>
 
       {stakes ? (
-        <section className="mt-6 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border p-4">
-            <p className="text-2xl font-semibold tabular-nums">
-              {stakes.recommendationMomentsTotal}×
+        <section className="mt-10">
+          <p className="text-2xl font-semibold tracking-tight">
+            <span className="tabular-nums">{stakes.recommendationMomentsTotal}×</span>{" "}
+            <span className="font-normal text-muted-foreground">
+              AI recommended a specific team.
+            </span>
+          </p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight">
+            <span className="tabular-nums text-primary">{stakes.yourRecommendations}×</span>{" "}
+            <span className="font-normal text-muted-foreground">it was you.</span>
+          </p>
+          {stakes.competitorsNamed.length > 0 && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Buyers heard instead:{" "}
+              <span className="font-medium text-foreground">
+                {stakes.competitorsNamed.slice(0, 4).join(" · ")}
+              </span>
             </p>
-            <p className="mt-1 text-sm">AI recommended a specific team</p>
-          </div>
-          <div className="rounded-lg border border-foreground/30 bg-muted/40 p-4">
-            <p className="text-2xl font-semibold tabular-nums">
-              {stakes.yourRecommendations}×
-            </p>
-            <p className="mt-1 text-sm font-medium">it was you</p>
-          </div>
-          <div className="rounded-lg border p-4">
-            <p className="text-sm font-medium leading-snug">
-              {stakes.competitorsNamed.slice(0, 4).join(" · ")}
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              are who buyers heard instead
-            </p>
-          </div>
+          )}
         </section>
       ) : (
         gap && (
-          <section className="mt-6 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg border p-4">
-              <p className="text-2xl font-semibold tabular-nums">
-                {Math.round(gap.authorityScore)}
-              </p>
-              <p className="mt-1 text-sm">your standing in the market</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-2xl font-semibold tabular-nums">
+          <section className="mt-10">
+            <p className="text-2xl font-semibold tracking-tight">
+              <span className="tabular-nums">{Math.round(gap.authorityScore)}</span>{" "}
+              <span className="font-normal text-muted-foreground">
+                your standing in the market,
+              </span>{" "}
+              <span className="tabular-nums text-primary">
                 {Math.round(gap.visibilityScore)}
-              </p>
-              <p className="mt-1 text-sm">your visibility in AI answers</p>
-            </div>
-            <div className="rounded-lg border border-foreground/30 bg-muted/40 p-4">
-              <p className="text-2xl font-semibold tabular-nums">{Math.round(gap.gap)}</p>
-              <p className="mt-1 text-sm font-medium">the gap</p>
-            </div>
+              </span>{" "}
+              <span className="font-normal text-muted-foreground">
+                your visibility in AI answers.
+              </span>
+            </p>
           </section>
         )
       )}
 
       {stakes && (
-        <p className="mt-3 text-sm">
+        <p className="mt-6 max-w-[65ch] text-sm">
           Think of AI as the market&apos;s newest referral source — one that made{" "}
           {stakes.recommendationMomentsTotal} referrals in our sample and never once
           referred you. Each one is a conversation that starts with another team
@@ -121,17 +144,19 @@ export default async function ProspectAuditPage({
       )}
 
       {sellerMoment && (
-        <p className="mt-3 rounded-md border-l-4 border-foreground/20 bg-muted/30 p-3 text-sm">
+        <p className="mt-4 max-w-[65ch] border-l-2 border-primary/60 pl-4 text-sm">
           One that should sting: we asked{" "}
-          <span className="font-medium">“{sellerMoment.promptText}”</span> — a listing
-          client&apos;s question. The answer sent them to{" "}
+          <span className={`${serif.className} italic`}>
+            “{sellerMoment.promptText}”
+          </span>{" "}
+          — a listing client&apos;s question. The answer sent them to{" "}
           <span className="font-medium">{sellerMoment.recommendedNames[0]}</span>.
           That&apos;s a listing appointment forming, and your name never came up.
         </p>
       )}
 
       {stakes?.avgDealUsd != null && (
-        <p className="mt-3 text-sm text-muted-foreground">
+        <p className="mt-4 max-w-[65ch] text-sm text-muted-foreground">
           At your average sale of roughly{" "}
           <span className="font-semibold text-foreground tabular-nums">
             ${Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K
@@ -141,17 +166,15 @@ export default async function ProspectAuditPage({
         </p>
       )}
 
-      <p className="mt-4 rounded-md border bg-muted/40 px-4 py-2.5 text-sm">
-        <span className="font-medium">
-          Reply “show me” to the email that brought you here.
-        </span>{" "}
-        You&apos;ll get a 15-minute walkthrough: the exact sources AI reads for{" "}
-        {snapshot.marketName}, and what it takes to become the name in the answer.
+      <p className="mt-6 max-w-[65ch] text-sm">
+        Reply {showMe} to the email that brought you here. You&apos;ll get a 15-minute
+        walkthrough: the exact sources AI reads for {snapshot.marketName}, and what it
+        takes to become the name in the answer.
       </p>
 
       {/* ================================================== the receipt */}
       {snapshot.comparison.length > 0 && (
-        <section className="mt-8">
+        <section className="mt-14">
           <h2 className="text-lg font-medium">Who shows up when buyers ask</h2>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-sm">
@@ -167,7 +190,7 @@ export default async function ProspectAuditPage({
                 {snapshot.comparison.map((row) => (
                   <tr
                     key={row.name}
-                    className={`border-b last:border-0 ${
+                    className={`border-b transition-colors last:border-0 hover:bg-muted/30 ${
                       row.isProspect ? "bg-muted/40 font-semibold" : ""
                     }`}
                   >
@@ -190,7 +213,10 @@ export default async function ProspectAuditPage({
           {snapshot.transcripts && snapshot.transcripts.length > 0 && (
             <p className="mt-2 text-xs text-muted-foreground">
               Don&apos;t take the table&apos;s word for it —{" "}
-              <Link href={`/audit/${token}/answers`} className="underline">
+              <Link
+                href={`/audit/${token}/answers`}
+                className="underline underline-offset-2 transition-colors hover:text-foreground"
+              >
                 read all {snapshot.transcripts.length} answers, complete and verbatim
               </Link>
               , and search them for any name, including your own.
@@ -200,8 +226,10 @@ export default async function ProspectAuditPage({
       )}
 
       {firstExcerpt && (
-        <blockquote className="mt-6 rounded-md border-l-4 border-foreground/20 bg-muted/30 p-4 text-sm">
-          <p className="italic">“{firstExcerpt.quote}”</p>
+        <blockquote className="mt-8 max-w-[65ch] border-l-2 border-foreground/20 pl-4">
+          <p className={`${serif.className} text-lg italic leading-snug`}>
+            “{firstExcerpt.quote}”
+          </p>
           <p className="mt-1.5 text-xs text-muted-foreground">
             — the assistant, recommending {firstExcerpt.teamName} ·{" "}
             {new Date(firstExcerpt.capturedAt).toLocaleDateString()}
@@ -210,12 +238,17 @@ export default async function ProspectAuditPage({
       )}
 
       {snapshot.exampleChats && snapshot.exampleChats.length > 0 && (
-        <p className="mt-4 text-sm">
+        <p className="mt-6 max-w-[65ch] text-sm">
           <span className="font-medium">See it live:</span>{" "}
           {snapshot.exampleChats.map((chat, i) => (
             <span key={i}>
               {i > 0 && " · "}
-              <a href={chat.url} target="_blank" rel="noreferrer" className="underline">
+              <a
+                href={chat.url}
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2 transition-colors hover:text-muted-foreground"
+              >
                 a real {chat.assistant === "chatgpt" ? "ChatGPT" : "Perplexity"}{" "}
                 conversation from {chat.capturedOn}
               </a>
@@ -226,15 +259,12 @@ export default async function ProspectAuditPage({
       )}
 
       {/* ====================================== the second read (folded) */}
-      <div className="mt-10 space-y-3">
+      <div className="mt-14 divide-y border-y">
         {snapshot.whyItHappens && snapshot.whyItHappens.length > 0 && (
-          <details className="rounded-lg border p-4">
-            <summary className="cursor-pointer text-sm font-medium">
-              Why this is happening — and what fixes it
-            </summary>
-            <ul className="mt-3 space-y-4">
+          <Drawer summary="Why this is happening — and what fixes it">
+            <ul className="space-y-4">
               {snapshot.whyItHappens.map((why, i) => (
-                <li key={i}>
+                <li key={i} className="max-w-[65ch]">
                   <p className="text-sm font-medium">{why.title}</p>
                   <p className="mt-0.5 text-sm text-muted-foreground">
                     {why.explanation}
@@ -246,7 +276,7 @@ export default async function ProspectAuditPage({
               ))}
             </ul>
             {snapshot.topSources && snapshot.topSources.length > 0 && (
-              <p className="mt-3 text-xs text-muted-foreground">
+              <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
                 Where the answers pulled from:{" "}
                 {snapshot.topSources
                   .map((s) => `${s.domain} (${s.citations}×)`)
@@ -254,27 +284,21 @@ export default async function ProspectAuditPage({
                 — presence on these surfaces is how the answer changes.
               </p>
             )}
-          </details>
+          </Drawer>
         )}
 
-        <details className="rounded-lg border p-4">
-          <summary className="cursor-pointer text-sm font-medium">
-            What we found, in one paragraph
-          </summary>
-          <p className="mt-2 text-sm font-medium">{snapshot.keyFinding.title}</p>
-          <p className="mt-1.5 text-sm text-muted-foreground">
+        <Drawer summary="What we found, in one paragraph">
+          <p className="max-w-[65ch] text-sm font-medium">{snapshot.keyFinding.title}</p>
+          <p className="mt-1.5 max-w-[65ch] text-sm text-muted-foreground">
             {snapshot.keyFinding.explanation}
           </p>
-        </details>
+        </Drawer>
 
         {snapshot.promptEvidence.length > 0 && (
-          <details className="rounded-lg border p-4">
-            <summary className="cursor-pointer text-sm font-medium">
-              The questions we asked — and who was named
-            </summary>
-            <ul className="mt-3 space-y-3">
+          <Drawer summary="The questions we asked — and who was named">
+            <ul className="space-y-3">
               {snapshot.promptEvidence.map((e) => (
-                <li key={e.responseId} className="text-sm">
+                <li key={e.responseId} className="max-w-[65ch] text-sm">
                   <p className="font-medium">“{e.promptText}”</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {e.recommendedNames.length > 0
@@ -284,22 +308,19 @@ export default async function ProspectAuditPage({
                 </li>
               ))}
             </ul>
-            <p className="mt-3 text-xs text-muted-foreground">
+            <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
               Try one yourself in ChatGPT right now. Any single answer varies — that&apos;s
               why we report rates over {snapshot.benchmark.responseCount} captured
               answers, not one reply. The pattern is the finding.
             </p>
-          </details>
+          </Drawer>
         )}
 
         {gap && gap.signals.length > 0 && (
-          <details className="rounded-lg border p-4">
-            <summary className="cursor-pointer text-sm font-medium">
-              Your track record — the part AI is missing
-            </summary>
-            <ul className="mt-3 space-y-1.5 text-sm">
+          <Drawer summary="Your track record — the part AI is missing">
+            <ul className="space-y-1.5 text-sm">
               {gap.signals.map((s, i) => (
-                <li key={i}>
+                <li key={i} className="max-w-[65ch]">
                   {s.label}{" "}
                   <span className="text-xs text-muted-foreground">
                     {s.sourceUrl ? (
@@ -307,7 +328,7 @@ export default async function ProspectAuditPage({
                         href={s.sourceUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="underline"
+                        className="underline underline-offset-2"
                       >
                         source
                       </a>
@@ -318,50 +339,49 @@ export default async function ProspectAuditPage({
                 </li>
               ))}
             </ul>
-          </details>
+          </Drawer>
         )}
 
-        <details className="rounded-lg border p-4">
-          <summary className="cursor-pointer text-sm font-medium">
-            How this was measured
-          </summary>
-          <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <div className="rounded-md border p-3">
+        <Drawer summary="How this was measured">
+          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div>
               <dt className="text-xs text-muted-foreground">When</dt>
-              <dd className="mt-1 font-medium tabular-nums">
+              <dd className="mt-0.5 font-medium tabular-nums">
                 {from}
                 {to ? ` – ${to}` : ""}
               </dd>
             </div>
-            <div className="rounded-md border p-3">
+            <div>
               <dt className="text-xs text-muted-foreground">AI assistants</dt>
-              <dd className="mt-1 font-medium">
+              <dd className="mt-0.5 font-medium">
                 {snapshot.benchmark.providers.join(", ")}
               </dd>
             </div>
-            <div className="rounded-md border p-3">
+            <div>
               <dt className="text-xs text-muted-foreground">Questions</dt>
-              <dd className="mt-1 font-medium tabular-nums">
+              <dd className="mt-0.5 font-medium tabular-nums">
                 {snapshot.benchmark.promptCount}
               </dd>
             </div>
-            <div className="rounded-md border p-3">
+            <div>
               <dt className="text-xs text-muted-foreground">Answers captured</dt>
-              <dd className="mt-1 font-medium tabular-nums">
+              <dd className="mt-0.5 font-medium tabular-nums">
                 {snapshot.benchmark.responseCount}
               </dd>
             </div>
           </dl>
-          <p className="mt-3 text-xs text-muted-foreground">{snapshot.methodology}</p>
-          <p className="mt-2 text-xs text-muted-foreground">
+          <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
+            {snapshot.methodology}
+          </p>
+          <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
             {snapshot.benchmark.limitations} Answers are content-hashed at capture and
             never edited.
           </p>
           {snapshot.evidenceExcerpts && snapshot.evidenceExcerpts.length > 1 && (
-            <ul className="mt-3 space-y-2">
+            <ul className="mt-3 space-y-3">
               {snapshot.evidenceExcerpts.slice(1).map((e, i) => (
-                <li key={i} className="rounded-md bg-muted/30 p-3 text-sm">
-                  <p className="italic">“{e.quote}”</p>
+                <li key={i} className="max-w-[65ch] border-l-2 border-foreground/15 pl-3 text-sm">
+                  <p className={`${serif.className} italic`}>“{e.quote}”</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     recommending {e.teamName} ·{" "}
                     {new Date(e.capturedAt).toLocaleDateString()}
@@ -370,21 +390,21 @@ export default async function ProspectAuditPage({
               ))}
             </ul>
           )}
-        </details>
+        </Drawer>
       </div>
 
       {/* ========================================================= CTA */}
-      <section className="mt-10 rounded-lg border bg-muted/40 p-5 text-center">
-        <p className="font-medium">
+      <section className="mt-14 border-t pt-8">
+        <p className={`${serif.className} max-w-[40ch] text-balance text-lg`}>
           The answers change slowly — whoever fixes this first becomes the default
           recommendation, and compounding does the rest.
         </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Reply “show me” to the email that brought you here. Every number on this page
+        <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
+          Reply {showMe} to the email that brought you here. Every number on this page
           traces to a captured answer we can show you — skepticism welcome.
         </p>
         {snapshot.preparedBy && (
-          <p className="mt-2 text-xs text-muted-foreground">
+          <p className="mt-6 text-xs text-muted-foreground">
             Prepared by {snapshot.preparedBy.name} · {snapshot.preparedBy.date} · report{" "}
             {snapshot.preparedBy.reportId}
           </p>
