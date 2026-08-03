@@ -93,14 +93,14 @@ and prospect→client conversion (3.6) remain roadmap items.
 
 ## Acceptance criteria
 
-- [ ] `sendProspectDraft`: refuses unapproved/already-sent drafts, DNC recipients,
+- [x] `sendProspectDraft`: refuses unapproved/already-sent drafts, DNC recipients,
       suppressed identifiers (normalised), missing business purpose; mock channel
       requires a recipient email and appends+asserts the opt-out footer; every
       dispatch (and refusal) leaves a ledger row with body hash + gate verdict;
       draft stamped; mock refused outside tests.
-- [ ] Funnel: known-answer pure tests (reached counts, conversions, exits); renders
+- [x] Funnel: known-answer pure tests (reached counts, conversions, exits); renders
       with sample sizes; launch filter works.
-- [ ] Feedback: insufficient-data below cohort floor; direction of recommendations
+- [x] Feedback: insufficient-data below cohort floor; direction of recommendations
       matches the deltas; epilogue always present; no writes.
-- [ ] Migration 049 up/down; ledger is insert-only (mutation refused).
-- [ ] Full gates green.
+- [x] Migration 049 up/down; ledger is insert-only (mutation refused).
+- [x] Full gates green.

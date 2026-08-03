@@ -119,15 +119,15 @@ website domain, or `company_id`, for the prospects page.
 
 ## Acceptance criteria
 
-- [ ] Mock adapter is refused outside tests unless `ALLOW_MOCK_PROVIDER=1`; the flow
+- [x] Mock adapter is refused outside tests unless `ALLOW_MOCK_PROVIDER=1`; the flow
       is fully runnable keyless in CI.
-- [ ] Candidates persist the full envelope; approval creates a prospect through
+- [x] Candidates persist the full envelope; approval creates a prospect through
       `createProspect` with per-fact provenance; dismissal and duplicate outcomes
       recorded; raw payload retained.
-- [ ] Resolver: exact/alias/domain matches, possible-verdict band, none-verdict,
+- [x] Resolver: exact/alias/domain matches, possible-verdict band, none-verdict,
       brokerage collision never proposed, tie → possible, reasons populated —
       all known-answer unit tests.
-- [ ] `match` auto-links company on approval; `possible` shows as a detail-page
+- [x] `match` auto-links company on approval; `possible` shows as a detail-page
       suggestion; confirming writes through `updateProspect` (audited).
-- [ ] Cross-launch duplicates listed by name/domain/company overlap.
-- [ ] Migration 047 up/down; full gates green.
+- [x] Cross-launch duplicates listed by name/domain/company overlap.
+- [x] Migration 047 up/down; full gates green.

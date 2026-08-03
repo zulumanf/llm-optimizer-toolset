@@ -1,6 +1,11 @@
-# Spec 045 — Making the Audit Page Trustworthy to a Skeptic (PLAN — not yet approved)
+# Spec 045 — Making the Audit Page Trustworthy to a Skeptic
 
-> Status: proposed. The reader is a successful agent who gets pitched daily and
+> Status: approved and largely implemented (commits f2be492…09389fc).
+> Implemented: 1a verbatim excerpts, 1c prepared-by/report id, 1d limitations
+> promoted, 2a full-transcript appendix, 2c hash sentence. Still open: 1b
+> (the "check it yourself" box exists only as a footnote in a collapsed
+> drawer), 2b (operator-verified market-context stats — no code), and the
+> deployment prerequisite below (tracked in docs/production-readiness-plan.md). The reader is a successful agent who gets pitched daily and
 > assumes every vendor chart is cherry-picked. Every trust move below follows one
 > rule: **show receipts they can check without us, or say plainly why not.**
 

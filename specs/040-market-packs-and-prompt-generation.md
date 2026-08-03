@@ -95,13 +95,13 @@ project may use one.)
 
 ## Acceptance criteria
 
-- [ ] Geo: installed hierarchy has correct parent-child (country→…→neighborhood)
+- [x] Geo: installed hierarchy has correct parent-child (country→…→neighborhood)
       verified via the exclusivity `geoRelation`; aliases resolve; re-install
       duplicates nothing; cycle guard rejects a parent cycle.
-- [ ] Generation: deterministic (same input → identical output), per-city fixture
+- [x] Generation: deterministic (same input → identical output), per-city fixture
       assertions (e.g. "Who should I use to sell a condo in Brickell?"), excluded
       names never appear, cap reported not silent, idempotent into a set.
-- [ ] Lineage: generated prompts carry source/template_ref/audience/price_tier/tier.
-- [ ] All five packs validate structurally (placeholders known, exclusions exist in
+- [x] Lineage: generated prompts carry source/template_ref/audience/price_tier/tier.
+- [x] All five packs validate structurally (placeholders known, exclusions exist in
       hierarchy, weights/tiers legal) via a registry test.
-- [ ] Migration 046 up/down; full gates green.
+- [x] Migration 046 up/down; full gates green.

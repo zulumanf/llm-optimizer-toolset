@@ -97,13 +97,13 @@ Surfaces:
 
 ## Acceptance criteria
 
-- [ ] Every diagnosis key has a triggering and a non-triggering unit test; evidence
+- [x] Every diagnosis key has a triggering and a non-triggering unit test; evidence
       fields populated; absence-of-research diagnoses carry low confidence and honest
       wording.
-- [ ] Buying signals refuse creation without a source URL or observed date; scorer
+- [x] Buying signals refuse creation without a source URL or observed date; scorer
       known-answer tests incl. decay bands and the null-when-none rule; final score
       picks the component up (integration) and redistributes when absent.
-- [ ] Stale benchmark blocks publishAudit with age in the message; acknowledgment
+- [x] Stale benchmark blocks publishAudit with age in the message; acknowledgment
       publishes and is recorded; fresh benchmarks unaffected.
-- [ ] Staleness helper known-answer tests; badges render from real timestamps.
-- [ ] Migration 048 up/down; full gates green.
+- [x] Staleness helper known-answer tests; badges render from real timestamps.
+- [x] Migration 048 up/down; full gates green.

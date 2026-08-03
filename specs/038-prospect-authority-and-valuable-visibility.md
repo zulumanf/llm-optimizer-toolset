@@ -137,20 +137,20 @@ are non-null. Surfaces:
 
 ## Acceptance criteria
 
-- [ ] Authority: known-answer fixtures per component; global-scope and `other` signals
+- [x] Authority: known-answer fixtures per component; global-scope and `other` signals
       excluded with reasons; provenance discounts applied; max-per-kind enforced;
       empty → null score; confidence formula verified.
-- [ ] Valuable visibility: branded/holdout cells excluded; tier weighting applied;
+- [x] Valuable visibility: branded/holdout cells excluded; tier weighting applied;
       tier precedence over category; repeated-run aggregation (N reps = N cells);
       no-organic-cells → null; credit composition verified.
-- [ ] Gap renders on prospect detail with both components + evidence; absent when either
+- [x] Gap renders on prospect detail with both components + evidence; absent when either
       side is null (never rendered as 0).
-- [ ] `publishAudit` snapshot carries `authorityGap` when computable; previously
+- [x] `publishAudit` snapshot carries `authorityGap` when computable; previously
       published audits are untouched (immutability preserved).
-- [ ] `lib/gaps/detect.ts` outputs byte-identical findings after the intent-value move
+- [x] `lib/gaps/detect.ts` outputs byte-identical findings after the intent-value move
       (existing `gap-detect` tests unchanged and green).
-- [ ] Migration 044 up and down; existing signals readable with `scope='local'`.
-- [ ] Full suite, typecheck, lint, build green.
+- [x] Migration 044 up and down; existing signals readable with `scope='local'`.
+- [x] Full suite, typecheck, lint, build green.
 
 ## Test plan
 

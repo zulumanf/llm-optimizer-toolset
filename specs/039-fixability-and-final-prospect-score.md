@@ -139,13 +139,13 @@ reason — the computed score is not erased.
 
 ## Acceptance criteria
 
-- [ ] Every fixability category has known-answer unit tests, including its unmeasured
+- [x] Every fixability category has known-answer unit tests, including its unmeasured
       state; raw/confidence/adjusted verified separately; every hard flag has a
       triggering and a non-triggering test.
-- [ ] Final score: weight redistribution over null components; confidence multiplier;
+- [x] Final score: weight redistribution over null components; confidence multiplier;
       weight-set switching changes the composite (integration); breakdown explains
       every number (components, weights, versions, flags).
-- [ ] Override requires a reason, is audited, and never erases the computed score.
-- [ ] Assessments are upserts with recorded identity; unknown ≠ no.
-- [ ] Migration 045 up/down; seeded weight set sums to 1 and is active.
-- [ ] Full suite, typecheck, lint, build green; client scoring untouched.
+- [x] Override requires a reason, is audited, and never erases the computed score.
+- [x] Assessments are upserts with recorded identity; unknown ≠ no.
+- [x] Migration 045 up/down; seeded weight set sums to 1 and is active.
+- [x] Full suite, typecheck, lint, build green; client scoring untouched.
