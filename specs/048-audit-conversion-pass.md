@@ -1,0 +1,80 @@
+# Spec 048 — Audit Page Conversion Pass (external feedback, reconciled)
+
+> Status: implemented 2026-08-03. Source: operator-supplied external review of
+> the audit landing page. Each item below was accepted, adapted, or rejected
+> against the platform's integrity rules (prospect-voice, audit-page-design,
+> PROHIBITED_PHRASES, snapshot immutability). This file is the record of that
+> reconciliation — the page must not silently drift back.
+
+## Accepted (implemented)
+
+1. **Concrete hero when the data allows it.** When the snapshot carries a
+   sourced market rank AND stakes counts, the hero renders derived text:
+   "You're the #N team in {market}. In {X} AI answers, you were recommended
+   {Y} times." — every token from the snapshot. Snapshots without a rank keep
+   their approved headline. Presentation-only; no republish needed.
+2. **Hope immediately after the sting.** A "good news" paragraph — rendered
+   ONLY when sourced authority signals exist, so it is never an empty
+   consolation: the record is fine, the representation is the gap.
+3. **Authority vs visibility meters.** Two 0–100 bars from the already-
+   computed spec-038 scores, shown alongside the stakes when both measured.
+4. **Softened overclaims** (feedback item 4, all four):
+   - "a listing appointment forming" → "the kind of answer that shapes a
+     seller's shortlist"
+   - "the exact sources AI reads" → "the sources these answers actually
+     cited" (which is what topSources IS)
+   - "whoever fixes this first becomes the default recommendation" →
+     "teams that establish consistent signals early are hard to displace"
+   - "what it takes to become the name in the answer" → "the first changes
+     we'd prioritize"
+5. **Counts before percentages.** Table and brand bars label "3/40" (pct in
+   the title attribute); heading states the answer base; an overlap note
+   explains why columns don't sum to 100%.
+6. **Question above the excerpt.** evidenceExcerpts gained optional
+   promptText (additive; old snapshots render unchanged).
+7. **Diagnosis in the open.** whyItHappens (spec 042 whitelist) moved from a
+   drawer to visible numbered cards with the fix line — proof of a problem
+   earns attention; visible reasons earn the meeting. Receipts stay folded.
+8. **Fixability, real not invented.** Snapshot gains spec-039's computed
+   fixability (version, score, confidence, top measured strengths), embedded
+   only when adjusted is non-null. Explicitly labeled "how addressable the
+   gap is — not a promise of outcomes."
+9. **Outcome-specific CTA copy**, "no deck" dropped, mailto mechanic kept.
+10. **Market name in the table heading** (personalization).
+
+## Rejected, and why
+
+- **Invented scores** ("Market authority: 82/100" as static copy) — only
+  computed, versioned scores render. The feedback's numbers were examples;
+  the platform's are real, so this was accepted as *data*, rejected as copy.
+- **Sticky CTA / landing-page chrome** — the page's differentiator is that
+  it reads as an evidence document, not a funnel (audit-page-design: trust-
+  first dials, pinned). A floating "Book" button is what every vendor pitch
+  does; this page wins by not doing it.
+- **"Book the walkthrough" calendar CTA** — no scheduling infrastructure
+  exists, and spec 032 deliberately ships no calendar links. The reply
+  mechanic ("show me") is the funnel and matches the outreach email.
+- **Two-width layout (720px prose / 1200px tables)** — the document measure
+  is the design; tables scroll within it. Revisit only with real prospect
+  feedback, not speculative CRO.
+- **Un-accordioning everything** — the five-second-read invariant keeps
+  methodology, full question list, and transcripts folded. Diagnosis and
+  fixability are the exceptions the feedback correctly identified.
+- **Teams-vs-brokerages separation** — already shipped (the comparison table
+  is teams-only; brand mentions are summarized beneath it). Feedback was
+  reviewing an older render.
+- **Intent-tier recommendation breakdown** ("0 of 12 seller questions") —
+  accepted in principle, deferred: tier data exists in spec 038's cells but
+  is not yet snapshot-shaped. Tracked as the next audit-page increment; must
+  ship with per-tier sample sizes or not at all.
+- **"Joelle Chilazi" quotation-mark error** — not reproducible in the
+  template (curly quotes are consistent); likely a data-side excerpt
+  artifact. Check the excerpt content on the next publish.
+
+## Acceptance
+
+- [x] Old snapshots (no rank, no fixability, no promptText) render exactly
+      as before — all new blocks are guarded.
+- [x] No fabricated numbers; every new figure traces to a snapshot field.
+- [x] Layout test passes (type scale, no new violations).
+- [x] Full suite, typecheck, lint green.
