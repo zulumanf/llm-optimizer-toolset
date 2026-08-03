@@ -12,6 +12,8 @@
  * + 15% competitive attainability
  * + 10% expected speed
  */
+import { CATEGORY_INTENT_VALUE } from "@/lib/scoring/intent";
+
 export const DETECTOR_VERSION = "gap-detector-v1";
 
 export interface PromptOutcome {
@@ -70,15 +72,10 @@ export interface GapFinding {
   opportunityScore: number; // 0..100
 }
 
-// Commercial value per prompt category (documented assumption: high-intent
-// recommendation/problem prompts convert; branded protects; how-to educates)
-const CATEGORY_VALUE: Record<string, number> = {
-  recommendation: 1.0,
-  problem: 0.9,
-  comparison: 0.8,
-  branded: 0.6,
-  "how-to": 0.4,
-};
+// Commercial value per prompt category now lives in lib/scoring/intent.ts —
+// one intent-value model, shared with valuable visibility (spec 038). The
+// numbers are unchanged; gap scores are byte-identical.
+const CATEGORY_VALUE = CATEGORY_INTENT_VALUE;
 
 // Execution likelihood / attainability / speed per gap type (documented
 // assumptions; deterministic so scores are reproducible and comparable)
