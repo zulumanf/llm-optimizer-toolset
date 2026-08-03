@@ -86,8 +86,8 @@ describe.skipIf(!TEST_URL)("entity groups & trigger cloning (integration)", () =
   }
 
   it("groups an agent under their brokerage with an honest group rate", async () => {
-    // Mock's default answer names both Parva (agent) and Acme (brokerage).
-    const agent = await companySvc.upsertCompany(user, { name: "Parva" });
+    // Mock's default answer names both Lumina (agent) and Acme (brokerage).
+    const agent = await companySvc.upsertCompany(user, { name: "Lumina" });
     const brokerage = await companySvc.upsertCompany(user, { name: "Acme" });
     if (!agent.ok || !brokerage.ok) throw new Error("company setup failed");
     const project = await projectSvc.createProject(user, { name: "Bridge Co" });
@@ -107,7 +107,7 @@ describe.skipIf(!TEST_URL)("entity groups & trigger cloning (integration)", () =
     const [agentEntity] = await sql`
       insert into knowledge_entities
         (project_id, entity_type, canonical_name, slug, company_id)
-      values (${project.data.id}, 'person', 'Parva', 'parva', ${agent.data.id})
+      values (${project.data.id}, 'person', 'Lumina', 'lumina', ${agent.data.id})
       returning id
     `;
     const [brokerageEntity] = await sql`
@@ -158,7 +158,7 @@ describe.skipIf(!TEST_URL)("entity groups & trigger cloning (integration)", () =
     const group = result[0]!;
     expect(group.parentName).toBe("Acme");
     expect(group.members).toHaveLength(1);
-    expect(group.members[0]?.name).toBe("Parva");
+    expect(group.members[0]?.name).toBe("Lumina");
     expect(group.members[0]?.relationshipType).toBe("works_for");
     // Both members appear in every mock answer: members at 1.0 each, and
     // the group at 1.0 — NOT 2.0, proving the distinct-response arithmetic.

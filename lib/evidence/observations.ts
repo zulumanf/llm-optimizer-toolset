@@ -17,12 +17,12 @@ import { stabilityLabel, type Stability } from "@/lib/evidence/stability";
 // nothing and `matchesStored` was vacuously true for citations — the one
 // metric whose re-derivation check could never fail was the one that
 // silently didn't run.
-// v1.1's first_position_rate / top_three_rate have no drill-down yet:
-// the topThree column below already shows placement per row.
 export const DRILLDOWN_METRICS = [
   "mention_rate",
   "recommendation_rate",
   "citation_score",
+  "first_position_rate",
+  "top_three_rate",
 ] as const;
 export type DrilldownMetric = (typeof DRILLDOWN_METRICS)[number];
 
@@ -76,9 +76,18 @@ function positiveFor(metric: DrilldownMetric, row: {
   mentioned: boolean;
   recommended: boolean;
   cited: boolean;
+  listPosition: number | null;
 }): boolean {
   if (metric === "mention_rate") return row.mentioned;
   if (metric === "recommendation_rate") return row.recommended;
+  // Position rates share mention_rate's denominator (all valid cells, docs/06
+  // v1.1); a response with no list placement is simply not positive. The
+  // per-response shape here already counts distinct responses, matching
+  // scoring's firstPositionResponses/topThreeResponses sets.
+  if (metric === "first_position_rate") return row.listPosition === 1;
+  if (metric === "top_three_rate") {
+    return row.listPosition !== null && row.listPosition <= 3;
+  }
   // citation_score: this company's mention carries an owned citation
   return row.cited;
 }
@@ -173,7 +182,7 @@ export async function drilldown(args: {
       confidence: r.confidence == null ? null : Number(r.confidence),
       needsReview: Boolean(r.needsReview),
       parserVersion: (r.parserVersion as string | null) ?? null,
-      positive: positiveFor(metric, { mentioned, recommended, cited }),
+      positive: positiveFor(metric, { mentioned, recommended, cited, listPosition }),
       // Eligible = successful capture in provider scope, non-holdout
       // (errors excluded per docs/06; refusals count). For citation_score
       // the denominator additionally requires the response to carry any

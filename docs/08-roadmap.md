@@ -17,7 +17,7 @@ Milestone-driven; one spec at a time, in order, done means *done* (acceptance cr
 ## Weeks 5–6 — Classification & First Scores
 - **`specs/004-response-classification.md`** — parser v1 with confidence, review queue UI, revisions
 - Scoring engine v1.0 (mention rate, recommendation rate) + minimal trend dashboard
-- **First real weekly baseline for Parva starts here — everything after runs against live data**
+- **First real weekly baseline for the client starts here — everything after runs against live data**
 
 ## Week 7 — Competitors
 - **`specs/005-competitor-analysis.md`** — companies/aliases, competitor tracking, share of voice, comparison views, unrecognized-brand discovery

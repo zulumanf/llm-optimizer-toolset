@@ -2,7 +2,7 @@
 
 Adopted 2026-07-27 from the operator's agentic-workflow blueprint (originally
 drafted for a real-estate brokerage client). This doc generalizes it to any
-client in any vertical — Parva is client #1; real-estate agents, plastic
+client in any vertical — the original pilot engagement was client #1; real-estate agents, plastic
 surgeons, and others follow. It maps the blueprint onto what specs/001–007
 already built and defines what specs/008+ add.
 
@@ -92,7 +92,7 @@ Rules, enforced structurally rather than by prompt hope:
 
 ## Build order (extends docs/08)
 
-1. **specs/008 — Client Knowledge Base** (per-project subject + claims/evidence). Unblocks everything; also finally answers "what is Parva" as data, not folklore.
+1. **specs/008 — Client Knowledge Base** (per-project subject + claims/evidence). Unblocks everything; also finally answers "what is the client" as data, not folklore.
 2. **specs/009 — Evidence-Gap Engine** (competitor evidence + typed gaps + deterministic opportunity scoring). The most commercially valuable layer.
 3. **specs/010 — Content Engine** (opportunity → brief → draft → fact-verify against claim IDs → approve). First LLM agents beyond classification; gated by the same evidence discipline as reports.
 4. **specs/011 — Outreach CRM** (journalists/rankings; match + draft only).

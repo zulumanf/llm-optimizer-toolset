@@ -32,6 +32,7 @@ const createSchema = z.object({
     .transform((s) => s.trim())
     .pipe(z.string().min(1, "Title is required.").max(120)),
   description: z.string().max(2000).optional(),
+  hypothesis: z.string().trim().max(500).optional(),
   shippedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   urls: z.array(z.string().url()).max(10).default([]),
   promptSetVersionId: z.string().uuid(),
@@ -93,10 +94,11 @@ export async function createIntervention(
 
       const [row] = await tx`
         insert into interventions
-          (project_id, title, description, shipped_at, urls,
+          (project_id, title, description, hypothesis, shipped_at, urls,
            prompt_set_version_id, task_id, baseline_weak, created_by)
         values
           (${input.projectId}, ${input.title}, ${input.description ?? null},
+           ${input.hypothesis || null},
            ${input.shippedAt}, ${input.urls}, ${input.promptSetVersionId},
            ${input.taskId ?? null}, ${baselineWeak}, ${user.id})
         returning id

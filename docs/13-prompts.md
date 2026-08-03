@@ -71,7 +71,7 @@ mentioned=false for all companies.
 
 **Expected output:** JSON array validated by `mentionParserOutputSchema` (Zod) — one object per company, fields above. Schema violation → one retry → `needs_review`.
 
-**Example:** response "For teams in this space I'd start with Acme; Parva is also solid for smaller setups." → Acme: mentioned, recommended, position 1, positive; Parva: mentioned, recommended (qualified), position 2, positive, certainty ~0.85 ("qualified recommendation").
+**Example:** response "For teams in this space I'd start with Acme; Lumina is also solid for smaller setups." → Acme: mentioned, recommended, position 1, positive; Lumina: mentioned, recommended (qualified), position 2, positive, certainty ~0.85 ("qualified recommendation").
 
 ---
 
@@ -173,3 +173,19 @@ fluently from memory with no citations has produced nothing we can keep.
 | Date | Template | Change |
 |---|---|---|
 | 2026-07-30 | external-discovery-v1 | Initial. |
+
+## Workspace assistant (spec 044)
+
+`workspace-assistant-v1` — `lib/assistant/prompt.ts`. System prompt for the
+staff chat dock: identity, the page the operator is on, and the honesty
+rules (every figure names the tool it came from; "not measured" is an
+answer; no writes — the assistant explains which page performs an action).
+Data access is the MCP **observer** tool catalog only, injected as a name +
+description list; the model speaks a strict two-shape JSON protocol
+(`{"action":"tool",...}` / `{"action":"answer",...}`) validated by zod with
+`lib/ai/agent.ts`'s single retry. At most 6 lookups per question, then the
+prompt forces an answer.
+
+| Date | Template | Change |
+|---|---|---|
+| 2026-08-02 | workspace-assistant-v1 | Initial. |

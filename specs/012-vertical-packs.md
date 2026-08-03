@@ -52,7 +52,7 @@ Packs are versioned data (jsonb seed + docs), not branches: `vertical_packs`
 creates a new version; projects pin one (same philosophy as prompt freezing).
 
 ## First packs
-1. `generic-product` (Parva today — works with zero pack-specific machinery)
+1. `generic-product` (the original pilot client — works with zero pack-specific machinery)
 2. `real-estate-agent` (first agency client)
 3. `medical-aesthetics` (surgeons; compliance-heavy — build only with the
    checklist reviewed by a human who owns compliance)

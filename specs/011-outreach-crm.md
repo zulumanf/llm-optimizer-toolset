@@ -29,9 +29,16 @@ always**.
   classification agent → independent ledger verifier → human-approved
   submission package. The system never submits.
 
-## Red-level invariants (no code path may exist)
-Sending email, submitting rankings, contacting anyone, disclosing client
-identities. The CRM records that a human did these, it never does them.
+## Red-level invariants (human-only decision, machine-enforced execution)
+Superseded wording — see DECISIONS.md 2026-08-02 ("Spec-011 reconciliation").
+This section originally read "no code path may exist" for sending email,
+submitting rankings, contacting anyone, disclosing client identities. The
+recorded reconciliation: the *intent* stands — no automation contacts the
+outside world without a human decision — but it is enforced by
+`assertSendAllowed` (fail-closed gate: suppression, tenant match, recipient
+authorization, artifact-hash-bound approval, opt-out) plus per-message human
+dispatch for first-touch outreach. "No code path exists" now applies only to
+fully autonomous sends.
 
 ## Database sketch
 `journalists`, `journalist_articles`, `story_opportunities`, `pitches`

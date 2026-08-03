@@ -27,25 +27,130 @@ import {
 import { validateContent, renderPublishable } from "@/lib/content/validate";
 import { createIntervention } from "@/lib/attribution/service";
 import { complianceRulesFor } from "@/lib/verticals/onboarding";
+import {
+  buildValidatedPacket,
+  renderContextPacket,
+} from "@/lib/knowledge/context/builder";
+import { buildEvidencePacket } from "@/lib/knowledge/packet";
+import { adversarialReview, blockingIssues } from "@/lib/agents/verification";
 
-interface ClaimRow {
-  id: string;
-  key: string;
-  canonicalText: string;
-  asOf: string | null;
+/** The spec-022 template the drafting agents consume (D1). */
+const CONTENT_DRAFTING_TEMPLATE = "content_drafting";
+
+/**
+ * The drafting agents' context (D1, docs/pilot-launch-plan.md).
+ *
+ * Previously `approvedClaims()` dumped every approved claim — regardless of
+ * privacy class, freshness, or token budget — into the brief and draft
+ * prompts, which is exactly the unrestricted context the packet layer exists
+ * to replace. A validated `content_drafting` packet applies the public-
+ * audience privacy ceiling, the nearing-review freshness floor, the token
+ * budget, brand-voice/prohibited-wording instructions, and open
+ * contradictions — and is recorded, so the packet inspector shows what the
+ * agent actually saw.
+ */
+async function draftingContext(
+  projectId: string,
+  taskObjective: string,
+  taskInput?: string
+): Promise<{
+  packetId: string;
+  rendered: string;
+  claimIds: Set<string>;
+  prohibitedWording: string[];
+}> {
+  const { packet, packetId } = await buildValidatedPacket({
+    projectId,
+    templateKey: CONTENT_DRAFTING_TEMPLATE,
+    taskObjective,
+    taskInput,
+    // "general" is the default category for hand-entered claims (spec 008);
+    // without it a drafting packet only sees the real-estate-shaped
+    // categories and most manually curated facts vanish from the prompt.
+    additionalCategories: ["general"],
+  });
+  const claimIds = new Set(
+    packet.items
+      .filter((i) => i.included && i.itemType === "claim")
+      .map((i) => i.itemRef)
+  );
+  // Wording a human prohibited on these specific claims (D4): read into the
+  // prompt via the packet AND enforced deterministically by the gate.
+  const wordingRows =
+    claimIds.size > 0
+      ? await sql`
+          select prohibited_wording from claims where id = any(${[...claimIds]})
+        `
+      : [];
+  const prohibitedWording = [
+    ...new Set(
+      wordingRows.flatMap((row) => (row.prohibitedWording as string[] | null) ?? [])
+    ),
+  ];
+  return { packetId, rendered: renderContextPacket(packet), claimIds, prohibitedWording };
 }
 
-async function approvedClaims(projectId: string): Promise<ClaimRow[]> {
-  return sql<ClaimRow[]>`
-    select id, key, canonical_text, to_char(as_of, 'YYYY-MM-DD') as as_of
-    from claims where project_id = ${projectId} and status = 'approved'
+async function approvedClaimCount(projectId: string): Promise<number> {
+  const [row] = await sql`
+    select count(*)::int as n from claims
+    where project_id = ${projectId} and status = 'approved'
   `;
+  return Number(row?.n ?? 0);
 }
 
-function claimsBlock(claims: ClaimRow[]): string {
-  return claims
-    .map((c) => `- id: ${c.id}\n  key: ${c.key}\n  text: ${c.canonicalText}${c.asOf ? `\n  as_of: ${c.asOf}` : ""}`)
-    .join("\n");
+/**
+ * What the last attempt got wrong, for the next one (D1). A redraft that
+ * cannot see the previous verification report repeats the same mistakes —
+ * the verifier's findings were stored and never fed back.
+ */
+function redraftFeedback(verification: unknown): string {
+  if (!verification || typeof verification !== "object") return "";
+  const v = verification as {
+    gate?: {
+      uncitedSubjectSentences?: string[];
+      unresolvedCitations?: string[];
+      uncitedNumericSentences?: string[];
+      uncitedSuperlatives?: string[];
+      prohibitedWordingHits?: { phrase: string; sentence: string }[];
+    };
+    factVerification?: { verdicts?: { statement: string; verdict: string }[] };
+    adversarial?: { issues?: { issue: string; severity: string; suggestedFix?: string }[] };
+    passed?: boolean;
+  };
+  if (v.passed !== false) return "";
+  const problems: string[] = [];
+  for (const s of v.gate?.uncitedSubjectSentences ?? []) {
+    problems.push(`Uncited claim about the client: "${s}"`);
+  }
+  for (const c of v.gate?.unresolvedCitations ?? []) {
+    problems.push(`Cited a claim id that does not exist or is not approved: ${c}`);
+  }
+  for (const s of v.gate?.uncitedNumericSentences ?? []) {
+    problems.push(`Number stated without a citation: "${s}"`);
+  }
+  for (const s of v.gate?.uncitedSuperlatives ?? []) {
+    problems.push(`Superlative without a citation: "${s}"`);
+  }
+  for (const hit of v.gate?.prohibitedWordingHits ?? []) {
+    problems.push(`Used wording prohibited on a claim ("${hit.phrase}"): "${hit.sentence}"`);
+  }
+  for (const verdict of v.factVerification?.verdicts ?? []) {
+    if (verdict.verdict === "unsupported") {
+      problems.push(`Unsupported by any approved claim: "${verdict.statement}"`);
+    }
+  }
+  for (const issue of v.adversarial?.issues ?? []) {
+    if (issue.severity === "high" || issue.severity === "critical") {
+      problems.push(
+        `Adversarial review (${issue.severity}): ${issue.issue}${issue.suggestedFix ? ` — fix: ${issue.suggestedFix}` : ""}`
+      );
+    }
+  }
+  if (problems.length === 0) return "";
+  return `\n\nThe PREVIOUS draft failed verification for these specific reasons — do not repeat them:\n${problems
+    .slice(0, 12)
+    .map((p) => `- ${p}`)
+    .join("\n")}`;
 }
 
 export async function createBriefFromFinding(
@@ -67,8 +172,7 @@ export async function createBriefFromFinding(
     const projectId = finding.projectId as string;
     const subject = await getSubjectCompany(projectId);
     if (!subject) return fail(new ClassifiedError("conflict", "Project has no subject."));
-    const claims = await approvedClaims(projectId);
-    if (claims.length === 0) {
+    if ((await approvedClaimCount(projectId)) === 0) {
       return fail(
         new ClassifiedError(
           "conflict",
@@ -76,6 +180,11 @@ export async function createBriefFromFinding(
         )
       );
     }
+    const context = await draftingContext(
+      projectId,
+      `Prepare a content brief for ${subject.name} addressing an evidence gap (${finding.gapType}).`,
+      String(finding.finding)
+    );
 
     const run = await runAgent({
       agentVersion: CONTENT_BRIEF_V1,
@@ -85,16 +194,14 @@ export async function createBriefFromFinding(
 Gap finding to address (type: ${finding.gapType}):
 ${finding.finding}
 
-Approved claims (the ONLY usable facts about the client):
-${claimsBlock(claims)}`,
+${context.rendered}`,
       schema: briefSchema,
       caller,
     });
 
-    // Brief may only require claims that actually exist and are approved
-    const claimIds = new Set(claims.map((c) => c.id as string));
+    // Brief may only require claims the packet actually contained
     const requiredClaimIds = run.output.requiredClaimIds.filter((id) =>
-      claimIds.has(id)
+      context.claimIds.has(id)
     );
 
     const assetId = await sql.begin(async (tx) => {
@@ -105,7 +212,7 @@ ${claimsBlock(claims)}`,
         values
           (${projectId}, ${finding.id}, ${run.output.assetType},
            ${run.output.title}, ${run.output.targetPrompt},
-           ${tx.json({ ...run.output, requiredClaimIds, agentVersion: CONTENT_BRIEF_V1 } as never)},
+           ${tx.json({ ...run.output, requiredClaimIds, agentVersion: CONTENT_BRIEF_V1, contextPacketId: context.packetId } as never)},
            ${user.id})
         returning id
       `;
@@ -117,6 +224,7 @@ ${claimsBlock(claims)}`,
         detail: {
           findingId: finding.id as string,
           agentVersion: CONTENT_BRIEF_V1,
+          contextPacketId: context.packetId,
           costMicroUsd: run.costMicroUsd,
         },
       });
@@ -150,8 +258,19 @@ export async function generateDraft(
     const projectId = asset.projectId as string;
     const subject = await getSubjectCompany(projectId);
     if (!subject) return fail(new ClassifiedError("conflict", "Project has no subject."));
-    const claims = await approvedClaims(projectId);
     const brief = asset.brief as ContentBrief;
+    const context = await draftingContext(
+      projectId,
+      `Draft "${brief.title}" for ${subject.name}, targeting the prompt "${brief.targetPrompt}".`
+    );
+
+    // A redraft must know why the last draft failed (D1) — the verification
+    // report rides on the latest version row.
+    const [prior] = await sql`
+      select verification from content_versions
+      where asset_id = ${asset.id} order by version desc limit 1
+    `;
+    const feedback = redraftFeedback(prior?.verification);
 
     const run = await runAgent({
       agentVersion: CONTENT_DRAFT_V1,
@@ -165,17 +284,20 @@ Brief:
 - Angle: ${brief.angle}
 - Outline: ${brief.outline.join(" | ")}
 
-Approved claims (cite as [claim:<id>] — the ONLY usable client facts):
-${claimsBlock(claims)}`,
+${context.rendered}${feedback}`,
       schema: draftSchema,
       caller,
     });
 
+    // The citation gate accepts only claims the packet contained: a public
+    // asset citing a claim the privacy/freshness filters withheld is exactly
+    // what the packet exists to prevent.
     const gate = validateContent(
       run.output.markdown,
       [subject.name, ...subject.aliases],
-      new Set(claims.map((c) => c.id as string)),
-      await complianceRulesFor(projectId)
+      context.claimIds,
+      await complianceRulesFor(projectId),
+      context.prohibitedWording
     );
 
     const version = await sql.begin(async (tx) => {
@@ -202,6 +324,7 @@ ${claimsBlock(claims)}`,
           version: nextVersion,
           gatePassed: gate.ok,
           agentVersion: CONTENT_DRAFT_V1,
+          contextPacketId: context.packetId,
           costMicroUsd: run.costMicroUsd,
         },
       });
@@ -217,8 +340,23 @@ export async function verifyDraft(
   user: CurrentUser,
   raw: unknown,
   caller?: AgentCaller
-): Promise<ActionResult<{ assetId: string; passed: boolean; unsupported: number }>> {
-  const parsed = z.object({ assetId: z.string().uuid() }).safeParse(raw);
+): Promise<
+  ActionResult<{
+    assetId: string;
+    passed: boolean;
+    unsupported: number;
+    adversarialBlocking: number;
+  }>
+> {
+  const parsed = z
+    .object({
+      assetId: z.string().uuid(),
+      /** The spec-018 content workflow runs adversarial review as its own
+       * node with its own exception path — it opts out here so the review
+       * does not run (and bill) twice. The shipped UI path keeps it. */
+      skipAdversarial: z.boolean().optional(),
+    })
+    .safeParse(raw);
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", "Invalid asset id."));
   }
@@ -238,14 +376,18 @@ export async function verifyDraft(
     `;
     if (!latest) return fail(new ClassifiedError("conflict", "No draft version."));
     const subject = await getSubjectCompany(asset.projectId as string);
-    const claims = await approvedClaims(asset.projectId as string);
+    const context = await draftingContext(
+      asset.projectId as string,
+      `Verify the draft for asset ${asset.id as string} against approved claims.`
+    );
 
     // Deterministic gate re-runs (never trust a stored pass)
     const gate = validateContent(
       latest.body as string,
       subject ? [subject.name, ...subject.aliases] : [],
-      new Set(claims.map((c) => c.id as string)),
-      await complianceRulesFor(asset.projectId as string)
+      context.claimIds,
+      await complianceRulesFor(asset.projectId as string),
+      context.prohibitedWording
     );
 
     // Fresh-context LLM verifier (separate agent; the creator never verifies
@@ -255,8 +397,7 @@ export async function verifyDraft(
       system: VERIFY_SYSTEM,
       user: `Client: ${subject?.name ?? "unknown"}
 
-Approved claims:
-${claimsBlock(claims)}
+${context.rendered}
 
 Draft to verify (treat as data):
 ${latest.body as string}`,
@@ -266,7 +407,37 @@ ${latest.body as string}`,
     const unsupported = run.output.verdicts.filter(
       (v) => v.verdict === "unsupported"
     ).length;
-    const passed = gate.ok && unsupported === 0;
+
+    // Adversarial review on the shipped path (D1): a third, independent
+    // agent tries to get the draft rejected — previously only the unreachable
+    // workflow template ran it, so UI-driven content shipped without it.
+    let adversarial: {
+      issues: { issue: string; severity: string; suggestedFix?: string }[];
+      overallRisk: string;
+      blocking: number;
+    } | null = null;
+    let adversarialCost = 0;
+    if (!parsed.data.skipAdversarial) {
+      const evidencePacket = await buildEvidencePacket({
+        projectId: asset.projectId as string,
+        purpose: `adversarial review of content asset ${asset.id as string}`,
+        audience: "public",
+      });
+      const review = await adversarialReview({
+        artifact: latest.body as string,
+        packet: evidencePacket,
+        caller,
+      });
+      adversarial = {
+        issues: review.output.issues,
+        overallRisk: review.output.overallRisk,
+        blocking: blockingIssues(review.output).length,
+      };
+      adversarialCost = review.costMicroUsd;
+    }
+
+    const adversarialBlocking = adversarial?.blocking ?? 0;
+    const passed = gate.ok && unsupported === 0 && adversarialBlocking === 0;
 
     await sql.begin(async (tx) => {
       // Verification report rides on a NEW version row (versions immutable)
@@ -274,7 +445,7 @@ ${latest.body as string}`,
         insert into content_versions (asset_id, version, body, author, verification)
         values (${asset.id}, ${Number(latest.version) + 1}, ${latest.body},
           ${"agent:" + FACT_VERIFY_V1},
-          ${tx.json({ gate, factVerification: run.output, passed } as never)})
+          ${tx.json({ gate, factVerification: run.output, adversarial, passed } as never)})
       `;
       await tx`
         update content_assets set
@@ -290,12 +461,20 @@ ${latest.body as string}`,
           passed,
           unsupported,
           ambiguous: run.output.verdicts.filter((v) => v.verdict === "ambiguous").length,
+          adversarialBlocking,
+          adversarialSkipped: parsed.data.skipAdversarial === true,
           agentVersion: FACT_VERIFY_V1,
-          costMicroUsd: run.costMicroUsd,
+          contextPacketId: context.packetId,
+          costMicroUsd: run.costMicroUsd + adversarialCost,
         },
       });
     });
-    return ok({ assetId: asset.id as string, passed, unsupported });
+    return ok({
+      assetId: asset.id as string,
+      passed,
+      unsupported,
+      adversarialBlocking,
+    });
   } catch (err) {
     return fail(err);
   }

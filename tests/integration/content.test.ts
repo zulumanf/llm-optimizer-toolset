@@ -65,9 +65,9 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
     frozenVersionId: string;
   }> {
     const company = await companySvc.upsertCompany(user, {
-      name: "Parva",
-      aliases: ["parva.io"],
-      domain: "parva.io",
+      name: "Lumina",
+      aliases: ["lumina.io"],
+      domain: "lumina.io",
     });
     if (!company.ok) throw new Error(company.error.message);
     const project = await projectSvc.createProject(user, { name: "Content Test" });
@@ -79,8 +79,8 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
     const claim = await claimsSvc.proposeClaim(user, {
       projectId: project.data.id,
       key: "category_positioning",
-      canonicalText: "Parva is a link-in-bio tool built for real estate agents.",
-      evidence: [{ url: "https://parva.io", note: "homepage" }],
+      canonicalText: "Lumina is a link-in-bio tool built for real estate agents.",
+      evidence: [{ url: "https://lumina.io", note: "homepage" }],
     });
     if (!claim.ok) throw new Error(claim.error.message);
     await claimsSvc.approveClaim(user, { claimId: claim.data.id });
@@ -132,6 +132,10 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
     };
   }
 
+  // verifyDraft's shipped path now runs adversarial review after the fact
+  // verifier (D1) — the fake caller must answer both agents in order.
+  const cleanAdversarial = { issues: [], overallRisk: "low" };
+
   const briefOutput = (claimId: string) => ({
     assetType: "category_page",
     title: "Link in bio for real estate agents",
@@ -139,7 +143,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
     audience: "US residential real estate agents active on Instagram",
     angle: "One hub link that turns social attention into leads",
     requiredClaimIds: [claimId],
-    outline: ["Why one link matters", "What Parva does", "Getting set up"],
+    outline: ["Why one link matters", "What Lumina does", "Getting set up"],
   });
 
   it("full lifecycle: brief → draft → verify → approve → publish (+intervention)", async () => {
@@ -154,7 +158,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
     if (!briefed.ok) return;
 
     const goodDraft = {
-      markdown: `## Why one link matters\nAgents get attention on social platforms.\n\n## What Parva does\nParva is a link-in-bio tool built for real estate agents [claim:${claimId}].\n\n## Getting set up\nCreate a page and add your links to listings and reviews so prospects can reach everything in one place. This gives visitors a single destination for your work and contact details.`,
+      markdown: `## Why one link matters\nAgents get attention on social platforms.\n\n## What Lumina does\nLumina is a link-in-bio tool built for real estate agents [claim:${claimId}].\n\n## Getting set up\nCreate a page and add your links to listings and reviews so prospects can reach everything in one place. This gives visitors a single destination for your work and contact details.`,
     };
     const drafted = await content.generateDraft(
       user,
@@ -173,7 +177,8 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
       user,
       { assetId: briefed.data.assetId },
       fakeCaller([
-        { verdicts: [{ excerpt: "Parva is a link-in-bio tool", verdict: "verified", reason: "matches claim" }] },
+        { verdicts: [{ excerpt: "Lumina is a link-in-bio tool", verdict: "verified", reason: "matches claim" }] },
+        cleanAdversarial,
       ])
     );
     expect(verified.ok).toBe(true);
@@ -184,7 +189,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
 
     const published = await content.markPublished(user, {
       assetId: briefed.data.assetId,
-      publishedUrl: "https://parva.io/for-real-estate-agents",
+      publishedUrl: "https://lumina.io/for-real-estate-agents",
       promptSetVersionId: frozenVersionId,
       publishedOn: new Date().toISOString().slice(0, 10),
     });
@@ -195,7 +200,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
       select title, urls from interventions where id = ${published.data.interventionId}
     `;
     expect(intervention?.title).toContain("Published:");
-    expect(intervention?.urls).toEqual(["https://parva.io/for-real-estate-agents"]);
+    expect(intervention?.urls).toEqual(["https://lumina.io/for-real-estate-agents"]);
     const [asset] = await sql`
       select status from content_assets where id = ${briefed.data.assetId}
     `;
@@ -213,7 +218,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
 
     const badDraft = {
       markdown:
-        "## Intro\nParva is the best tool for agents and boosts leads by 300%.\n\n" +
+        "## Intro\nLumina is the best tool for agents and boosts leads by 300%.\n\n" +
         "## More\nEveryone loves it. It is amazing for realtors everywhere today. This section fills space to satisfy schema length requirements for the draft output contract.",
     };
     const drafted = await content.generateDraft(
@@ -229,7 +234,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
     const verified = await content.verifyDraft(
       user,
       { assetId: briefed.data.assetId },
-      fakeCaller([{ verdicts: [] }])
+      fakeCaller([{ verdicts: [] }, cleanAdversarial])
     );
     expect(verified.ok).toBe(true);
     if (!verified.ok) return;
@@ -253,7 +258,7 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
       { assetId: briefed.data.assetId },
       fakeCaller([
         {
-          markdown: `Parva is a link-in-bio tool built for real estate agents [claim:${claimId}]. General guidance follows for agents building their online presence, with plenty of practical advice about links, bios, and profiles for social platforms and search.`,
+          markdown: `Lumina is a link-in-bio tool built for real estate agents [claim:${claimId}]. General guidance follows for agents building their online presence, with plenty of practical advice about links, bios, and profiles for social platforms and search.`,
         },
       ])
     );
@@ -266,12 +271,82 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
             { excerpt: "stretchy claim", verdict: "unsupported", reason: "no claim covers this" },
           ],
         },
+        cleanAdversarial,
       ])
     );
     expect(verified.ok).toBe(true);
     if (!verified.ok) return;
     expect(verified.data.passed).toBe(false);
     expect(verified.data.unsupported).toBe(1);
+  });
+
+  it("a blocking adversarial issue keeps the asset un-verified (D1)", async () => {
+    const { findingId, claimId } = await seed();
+    const briefed = await content.createBriefFromFinding(
+      user,
+      { findingId },
+      fakeCaller([briefOutput(claimId)])
+    );
+    if (!briefed.ok) throw new Error(briefed.error.message);
+    await content.generateDraft(
+      user,
+      { assetId: briefed.data.assetId },
+      fakeCaller([
+        {
+          markdown: `Lumina is a link-in-bio tool built for real estate agents [claim:${claimId}]. Additional practical guidance for agents follows, covering profiles, links, and how a single hub page keeps listings and reviews reachable from every social bio.`,
+        },
+      ])
+    );
+
+    // Gate passes, fact verifier passes — the adversarial reviewer is the
+    // only line of defence that fires. Before D1 it never ran on this path.
+    const verified = await content.verifyDraft(
+      user,
+      { assetId: briefed.data.assetId },
+      fakeCaller([
+        { verdicts: [] },
+        {
+          issues: [
+            {
+              question: "Could this harm the client if published?",
+              issue: "The framing implies an exclusive endorsement no claim supports.",
+              severity: "high",
+              suggestedFix: "Attribute the positioning to the cited claim only.",
+              quote: "built for real estate agents",
+            },
+          ],
+          overallRisk: "high",
+        },
+      ])
+    );
+    expect(verified.ok).toBe(true);
+    if (!verified.ok) return;
+    expect(verified.data.passed).toBe(false);
+    expect(verified.data.adversarialBlocking).toBe(1);
+    const [asset] = await sql`
+      select status from content_assets where id = ${briefed.data.assetId}
+    `;
+    expect(asset?.status).toBe("drafted");
+
+    // And the redraft prompt carries the adversarial finding forward — the
+    // next attempt is told exactly what to fix.
+    let prompt = "";
+    await content.generateDraft(
+      user,
+      { assetId: briefed.data.assetId },
+      async (args) => {
+        prompt = args.user;
+        return {
+          text: JSON.stringify({
+            markdown: `Lumina is a link-in-bio tool built for real estate agents [claim:${claimId}]. Practical setup guidance follows for agents assembling their online presence with one hub for listings, reviews, and contact links across social platforms.`,
+          }),
+          tokensIn: 1,
+          tokensOut: 1,
+        };
+      }
+    );
+    expect(prompt).toContain("PREVIOUS draft failed verification");
+    expect(prompt).toContain("exclusive endorsement");
   });
 
   it("briefing requires approved claims; versions are immutable", async () => {
@@ -296,11 +371,49 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
       user,
       { assetId: briefed.data.assetId },
       fakeCaller([
-        { markdown: `Parva is a link-in-bio tool built for real estate agents [claim:${claimId}]. Plus enough additional general material about agent marketing to satisfy the minimum draft length requirement for this schema contract easily.` },
+        { markdown: `Lumina is a link-in-bio tool built for real estate agents [claim:${claimId}]. Plus enough additional general material about agent marketing to satisfy the minimum draft length requirement for this schema contract easily.` },
       ])
     );
     await expect(
       sql`update content_versions set body = 'tampered'`
     ).rejects.toThrow(/insert-only/);
+  });
+
+  it("wording a human prohibited on a claim fails the gate deterministically (D4)", async () => {
+    const { findingId, claimId } = await seed();
+    const claims = await import("@/lib/claims/service");
+    const worded = await claims.setClaimWording(user, {
+      claimId,
+      prohibitedWording: ["#1 link-in-bio tool"],
+    });
+    expect(worded.ok).toBe(true);
+
+    const briefed = await content.createBriefFromFinding(
+      user,
+      { findingId },
+      fakeCaller([briefOutput(claimId)])
+    );
+    if (!briefed.ok) throw new Error(briefed.error.message);
+
+    // The model ignores the "never say" instruction — the gate must not.
+    const drafted = await content.generateDraft(
+      user,
+      { assetId: briefed.data.assetId },
+      fakeCaller([
+        {
+          markdown: `Lumina is the #1 link-in-bio tool for real estate agents [claim:${claimId}]. General setup guidance follows for agents building a single hub for their listings, reviews, and contact links across social platforms.`,
+        },
+      ])
+    );
+    expect(drafted.ok).toBe(true);
+    if (!drafted.ok) return;
+    expect(drafted.data.gatePassed).toBe(false);
+
+    const [version] = await sql`
+      select verification from content_versions
+      where asset_id = ${briefed.data.assetId} order by version desc limit 1
+    `;
+    const gate = (version!.verification as { gate: { prohibitedWordingHits: { phrase: string }[] } }).gate;
+    expect(gate.prohibitedWordingHits[0]!.phrase).toBe("#1 link-in-bio tool");
   });
 });

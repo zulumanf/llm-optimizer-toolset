@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PROVIDER_IDS } from "@/lib/ai/types";
 import { isKnownModel } from "@/lib/ai/registry";
+import { hasPricing } from "@/lib/ai/pricing";
 
 export const RUN_LABEL_MAX = 80;
 export const MAX_REPETITIONS = 10;
@@ -18,6 +19,15 @@ export const providerConfigSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `Model ${cfg.model} is not in the pinned list for ${cfg.provider}.`,
+      });
+      return;
+    }
+    // A model without a pricing row would record every call as $0 and the
+    // budget cap could never fire — refuse at creation, not mid-run.
+    if (!hasPricing(cfg.model)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Model ${cfg.model} has no pricing entry (lib/ai/pricing.ts) — the run budget would be unenforceable.`,
       });
     }
   });

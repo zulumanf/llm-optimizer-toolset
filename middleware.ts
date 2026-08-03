@@ -8,7 +8,9 @@
  *     operator lands where they were going instead of on the dashboard.
  *
  * In dev mode this is a pass-through: `AUTH_MODE=dev` must keep booting the
- * app with nothing reachable, which is an acceptance criterion.
+ * app with nothing reachable, which is an acceptance criterion — except in a
+ * production process, where dev auth would mean a passwordless admin session
+ * for every visitor, so serving is refused (devAuthRefusalReason).
  *
  * This is a convenience gate, NOT the security boundary. Middleware only sees
  * requests that match the matcher, and a route added tomorrow would not be
@@ -17,12 +19,18 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { devAuthRefusalReason } from "@/lib/env";
 
-/** Paths reachable without a session. */
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/webhooks"];
+/** Paths reachable without a session. `/audit` is the prospect audit page —
+ * its own security is the high-entropy token (spec 032). */
+const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/webhooks", "/audit"];
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
-  if (process.env.AUTH_MODE !== "supabase") return NextResponse.next();
+  if (process.env.AUTH_MODE !== "supabase") {
+    const refusal = devAuthRefusalReason();
+    if (refusal) return new NextResponse(refusal, { status: 503 });
+    return NextResponse.next();
+  }
 
   const url = process.env.SUPABASE_URL;
   const anonKey = process.env.SUPABASE_ANON_KEY;

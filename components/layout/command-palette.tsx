@@ -20,8 +20,17 @@ interface Target {
 const GLOBAL: Target[] = [
   { label: "Today", sublabel: "Operations", href: "/", keywords: "today operations attention feed home" },
   { label: "Inbox", sublabel: "Operations", href: "/notifications", keywords: "inbox notifications alerts" },
+  { label: "Control tower", sublabel: "Operations", href: "/control-tower", keywords: "control tower portfolio queue health capacity" },
+  { label: "Approvals", sublabel: "Operations", href: "/approvals", keywords: "approvals inbox pending decisions approve reject" },
+  { label: "Automation", sublabel: "Operations", href: "/automation", keywords: "automation workflows connectors triggers events outreach safety" },
+  { label: "Connectors", sublabel: "Automation", href: "/automation/connectors", keywords: "connectors integrations health ga4 crm gmail" },
+  { label: "Workflow library", sublabel: "Automation", href: "/automation/workflows", keywords: "workflow library templates automation graphs" },
+  { label: "Workflows", sublabel: "Operations", href: "/workflows", keywords: "workflow runs engine graph" },
+  { label: "Agents", sublabel: "Registry", href: "/agents", keywords: "agents registry missions models" },
   { label: "Clients", sublabel: "Operations", href: "/projects", keywords: "clients projects portfolio" },
   { label: "Companies", sublabel: "Registry", href: "/companies", keywords: "companies brands competitors registry" },
+  { label: "Prospects", sublabel: "Operations", href: "/prospects", keywords: "prospects acquisition launches outreach pipeline audits" },
+  { label: "Exclusivity", sublabel: "Operations", href: "/exclusivity", keywords: "exclusivity conflicts markets agreements" },
   { label: "Onboard a client", sublabel: "Operations", href: "/onboarding", keywords: "onboard new client add vertical pack" },
 ];
 

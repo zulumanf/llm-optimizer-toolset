@@ -120,7 +120,18 @@ export default async function AutomationDashboardPage() {
         <Tile
           label="Live runs recorded"
           value={String(liveRuns)}
-          sub={`${AUTOMATION_WORKFLOWS.length} workflows published`}
+          sub={
+            liveRuns === 0
+              ? `${AUTOMATION_WORKFLOWS.length} workflows published · no live runs yet`
+              : // Portfolio outcome rates were computed and rendered nowhere (C5).
+                `${Math.round(
+                  (metrics.reduce((s, m) => s + m.completed, 0) / liveRuns) * 100
+                )}% completed · ${Math.round(
+                  (metrics.reduce((s, m) => s + m.safelyStopped, 0) / liveRuns) * 100
+                )}% safe-stopped · ${Math.round(
+                  (metrics.reduce((s, m) => s + m.failed, 0) / liveRuns) * 100
+                )}% failed`
+          }
           icon={<Workflow className="size-4 text-muted-foreground" />}
         />
         <Tile

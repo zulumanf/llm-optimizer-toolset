@@ -15,10 +15,11 @@
  * crawler: a 500 on robots.txt is a broken server, not a prohibition.
  */
 import { log } from "@/lib/logger";
+import { isPrivateHost } from "@/lib/security/safe-fetch";
 
 /** Ours, matching discover.ts so a webmaster sees one identity, not two. */
 export const DISCOVERY_USER_AGENT =
-  "ParvaVisibilityAudit/1.0 (internal AI-visibility audit; contact the operator who scheduled it)";
+  "AvosVisibilityAudit/1.0 (internal AI-visibility audit; contact the operator who scheduled it)";
 
 const ROBOTS_TIMEOUT_MS = 5_000;
 
@@ -40,7 +41,7 @@ const PERMISSIVE: RobotsRules = { disallow: [], allow: [] };
  * than merging, which is what the standard specifies and what a webmaster
  * writing a targeted rule expects.
  */
-export function parseRobots(body: string, userAgentToken = "parvavisibilityaudit"): RobotsRules {
+export function parseRobots(body: string, userAgentToken = "avosvisibilityaudit"): RobotsRules {
   const wildcard: RobotsRules = { disallow: [], allow: [] };
   const specific: RobotsRules = { disallow: [], allow: [] };
   let sawSpecific = false;
@@ -150,11 +151,25 @@ async function loadRobots(origin: string, fetchImpl: typeof fetch): Promise<Robo
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ROBOTS_TIMEOUT_MS);
   try {
-    const res = await fetchImpl(`${origin}/robots.txt`, {
-      headers: { "user-agent": DISCOVERY_USER_AGENT },
-      signal: controller.signal,
-      redirect: "follow",
-    });
+    // Redirects are followed manually so a robots.txt cannot bounce the
+    // crawler onto a private address (audit 2026-08-01 §H.1). Cross-host
+    // robots redirects (www → apex) remain honoured.
+    let url = `${origin}/robots.txt`;
+    let res: Response;
+    for (let hop = 0; ; hop += 1) {
+      const parsed = new URL(url);
+      if (isPrivateHost(parsed.hostname)) return PERMISSIVE;
+      res = await fetchImpl(url, {
+        headers: { "user-agent": DISCOVERY_USER_AGENT },
+        signal: controller.signal,
+        redirect: "manual",
+      });
+      const location = res.headers.get("location");
+      if (!location || ![301, 302, 303, 307, 308].includes(res.status) || hop >= 3) {
+        break;
+      }
+      url = new URL(location, parsed).toString();
+    }
     // 4xx means no usable robots policy — the standard reading is "allowed".
     if (!res.ok) return PERMISSIVE;
     const body = await res.text();

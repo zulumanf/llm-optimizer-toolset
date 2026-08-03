@@ -65,7 +65,8 @@ export async function listPortfolio(opts: {
       select label, status from runs
       where project_id = p.id order by started_at desc limit 1
     ) last_run on true
-    where (${opts.includeArchived} or p.status = 'active')
+    where p.kind = 'client'
+    and (${opts.includeArchived} or p.status = 'active')
     ${visibleIds === null ? sql`` : sql`and p.id = any(${visibleIds})`}
     ${ownerId === null ? sql`` : sql`and p.account_owner_id = ${ownerId}`}
     ${serviceTier === null ? sql`` : sql`and p.service_tier = ${serviceTier}`}
@@ -83,7 +84,8 @@ export async function listProjects(opts: {
       (select count(*)::int from runs r
         where r.project_id = p.id) as run_count
     from projects p
-    ${opts.includeArchived ? sql`` : sql`where p.status = 'active'`}
+    where p.kind = 'client'
+    ${opts.includeArchived ? sql`` : sql`and p.status = 'active'`}
     order by p.created_at desc
   `;
 }
@@ -100,7 +102,7 @@ export async function listActiveProjects(
   return sql<Project[]>`
     select id, name, description, status, created_at, archived_at
     from projects
-    where status = 'active'
+    where status = 'active' and kind = 'client'
     ${visibleIds === null ? sql`` : sql`and id = any(${visibleIds})`}
     order by name asc
   `;

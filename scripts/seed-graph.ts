@@ -67,6 +67,11 @@ async function main(): Promise<void> {
       `Refusing to seed a non-local database (${url.replace(/:[^:@]+@/, ":***@")}). Set SEED_FORCE=1 if you really mean it.`
     );
   }
+  // Demo runs use the mock provider so seeding never spends tokens. The
+  // registry refuses mock without this opt-in (a production deploy must
+  // never fall back to fabricated answers); a seed target is local-or-forced
+  // by the guard above, so the opt-in is safe here.
+  process.env.ALLOW_MOCK_PROVIDER = "1";
 
   await resetDemoData();
 

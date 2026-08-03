@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AIProvider, PromptRequest, ProviderResult } from "@/lib/ai/types";
 import { parseAnthropicMessage } from "@/lib/ai/payloads";
+import { PROVIDER_TIMEOUT_MS } from "@/lib/ai/limits";
 
 /**
  * Search-enabled variants use the server-side `web_search` tool, matching the
@@ -36,7 +37,7 @@ function getClient(): Anthropic {
     }
     // maxRetries: 0 — retries are owned by lib/ai/retry.ts so all providers
     // share one policy and budget checks run between attempts (docs/12)
-    client = new Anthropic({ maxRetries: 0 });
+    client = new Anthropic({ maxRetries: 0, timeout: PROVIDER_TIMEOUT_MS });
   }
   return client;
 }

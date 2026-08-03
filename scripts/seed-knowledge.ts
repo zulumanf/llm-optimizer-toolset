@@ -41,7 +41,7 @@ import { log } from "@/lib/logger";
 
 const user: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000001",
-  email: "seed@parva.local",
+  email: "seed@avos.local",
   name: "Seed Operator",
   role: "admin",
 };
@@ -85,7 +85,7 @@ We want to be known for waterfront new development, not for rentals.`;
  */
 const TRANSCRIPT = [
   "Quarterly review — Northvale Demo Group — 12 June 2026",
-  "Attendees: Ana Diaz (Northvale Demo), operator (Parva).",
+  "Attendees: Ana Diaz (Northvale Demo), operator (Lumina).",
   "",
   ...Array.from({ length: 40 }, (_, i) => {
     const turn = i + 1;

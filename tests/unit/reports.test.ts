@@ -64,7 +64,7 @@ function snapshotBase(): Omit<ReportBody, "narrative"> {
   const score: SnapshotScore = {
     scoreId: SCORE_ID,
     companyId: "c1",
-    companyName: "Parva",
+    companyName: "Lumina",
     isSelf: true,
     metric: "authority_score",
     provider: "all",
@@ -101,10 +101,10 @@ function snapshotBase(): Omit<ReportBody, "narrative"> {
     excerpts: [
       {
         responseId: RESPONSE_ID,
-        companyName: "Parva",
+        companyName: "Lumina",
         provider: "mock",
         runLabel: "W31",
-        excerpt: "Parva is a solid option.",
+        excerpt: "Lumina is a solid option.",
         recommended: true,
       },
     ],
@@ -179,6 +179,6 @@ describe("reportScoresCsv", () => {
     const lines = csv.split("\n");
     expect(lines[0]).toBe("company,metric,provider,value,sample_size,scoring_version");
     expect(lines).toHaveLength(3);
-    expect(lines[1]).toContain('"Parva",authority_score,all,72.4,40,v1.0');
+    expect(lines[1]).toContain('"Lumina",authority_score,all,72.4,40,v1.0');
   });
 });

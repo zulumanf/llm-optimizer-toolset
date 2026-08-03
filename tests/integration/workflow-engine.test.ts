@@ -27,8 +27,12 @@ describe.skipIf(!TEST_URL)("workflow engine (integration)", () => {
 
   /** Per-test recording of what each handler was asked to do. */
   let calls: { node: string; fanKey: string; attempt: number }[] = [];
-  /** Behaviour overrides keyed by node key, set per test. */
-  let behaviour: Record<string, (attempt: number, fanKey: string) => NodeResult> = {};
+  /** Behaviour overrides keyed by node key, set per test. Async allowed so a
+   * test can simulate a handler that outlives its timeout. */
+  let behaviour: Record<
+    string,
+    (attempt: number, fanKey: string) => NodeResult | Promise<NodeResult>
+  > = {};
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
@@ -474,6 +478,174 @@ describe.skipIf(!TEST_URL)("workflow engine (integration)", () => {
     expect(approvalNode.humanTouch).toBe(true);
   });
 
+  it("times out a hung node handler and settles it, never leaving the run open", async () => {
+    // A handler that outlives its declared timeout: withTimeout must convert
+    // the hang into a failure the retry machinery can settle. Direct test
+    // was missing — the constant was declared, the race untested.
+    behaviour.a = () =>
+      new Promise((resolve) =>
+        setTimeout(() => resolve({ outcome: "succeeded", output: {} }), 3_000)
+      );
+    await engine.registerDefinition({
+      ...fanGraph(),
+      key: "timeout_test",
+      nodes: fanGraph().nodes.map((n) =>
+        n.key === "a"
+          ? { ...n, timeoutSeconds: 1, maxAttempts: 1, retryBackoffSeconds: 0 }
+          : n
+      ),
+    });
+    const projectId = await newProject("Timeout");
+    const run = await engine.startWorkflow({
+      definitionKey: "timeout_test",
+      projectId,
+      idempotencyKey: "timeout-node-1",
+    });
+    await drain();
+
+    const nodeRuns = await store.listNodeRuns(run.id);
+    const nodeA = nodeRuns.find((n) => n.nodeKey === "a")!;
+    expect(nodeA.state).toBe("failed_terminal");
+    expect(nodeA.error).toContain("exceeded 1000ms");
+
+    const final = await store.getRun(run.id);
+    expect(final?.state).toBe("failed");
+  });
+
+  it("lists pending approvals across runs by urgency; decisions move to the trail (C2)", async () => {
+    await engine.registerDefinition(approvalGraph());
+    const projectA = await newProject("Inbox A");
+    const projectB = await newProject("Inbox B");
+    const runA = await engine.startWorkflow({
+      definitionKey: "approval_test",
+      projectId: projectA,
+      idempotencyKey: "inbox-a",
+    });
+    const runB = await engine.startWorkflow({
+      definitionKey: "approval_test",
+      projectId: projectB,
+      idempotencyKey: "inbox-b",
+    });
+    await drain();
+
+    // B's deadline has passed; the inbox must rank it first.
+    await sql`
+      update workflow_approvals set due_at = now() - interval '2 hours'
+      where workflow_run_id = ${runB.id}
+    `;
+
+    const pending = await store.pendingApprovalsAcrossRuns();
+    expect(pending).toHaveLength(2);
+    expect(pending[0]!.runId).toBe(runB.id);
+    expect(pending[0]!.projectName).toBe("Inbox B");
+    expect(pending[0]!.definitionKey).toBe("approval_test");
+    expect(pending[0]!.requiredRole).toBe("operator");
+
+    // Decide A: it leaves the pending list and lands on the evidence trail
+    // with its rationale and decider.
+    const [approvalA] = await sql`
+      select id, node_run_id from workflow_approvals where workflow_run_id = ${runA.id}
+    `;
+    await sql.begin((tx) =>
+      store.decideApproval(tx, {
+        approvalId: approvalA!.id as string,
+        decision: "approved",
+        decidedBy: OPERATOR,
+        rationale: "Checked the artifact against its claims.",
+      })
+    );
+
+    const after = await store.pendingApprovalsAcrossRuns();
+    expect(after).toHaveLength(1);
+    expect(after[0]!.runId).toBe(runB.id);
+
+    const decided = await store.recentApprovalDecisions(10);
+    expect(decided).toHaveLength(1);
+    expect(decided[0]!.runId).toBe(runA.id);
+    expect(decided[0]!.decision).toBe("approved");
+    expect(decided[0]!.rationale).toBe("Checked the artifact against its claims.");
+    expect(decided[0]!.projectName).toBe("Inbox A");
+  });
+
+  it("binds an approval to the artifact hash from the real write path (A7)", async () => {
+    // An approval node whose handler surfaces the artifact under review —
+    // the shape the automation layer's approve_outreach node produces.
+    handlers.registerHandlers({
+      "test.artifact_gate": async () => ({
+        outcome: "awaiting_approval",
+        reason: "Send this message?",
+        output: { artifact: { subject: "Hi", bodyHash: "hash-of-approved-body" } },
+      }),
+    });
+    await engine.registerDefinition({
+      ...approvalGraph(),
+      key: "hash_bind_test",
+      nodes: approvalGraph().nodes.map((n) =>
+        n.key === "approval" ? { ...n, handler: "test.artifact_gate" } : n
+      ),
+    });
+    const projectId = await newProject("Hash binding");
+    const run = await engine.startWorkflow({
+      definitionKey: "hash_bind_test",
+      projectId,
+      idempotencyKey: "hash-bind-1",
+    });
+    await drain();
+
+    // The engine — not a hand-inserted fixture — must have hoisted the hash
+    // to detail.bodyHash, the key the send gate reads. Before A7 it was
+    // buried under detail.output.artifact and the version check soft-passed.
+    const [approval] = await sql`
+      select detail->>'bodyHash' as body_hash
+      from workflow_approvals where workflow_run_id = ${run.id}
+    `;
+    expect(approval?.bodyHash).toBe("hash-of-approved-body");
+  });
+
+  it("times out an unanswered approval through the queue, not by luck (A4)", async () => {
+    await engine.registerDefinition(approvalGraph());
+    const projectId = await newProject("Approval timeout");
+    const run = await engine.startWorkflow({
+      definitionKey: "approval_test",
+      projectId,
+      idempotencyKey: "timeout-1",
+    });
+    await drain();
+    expect((await store.getRun(run.id))?.state).toBe("waiting_for_approval");
+
+    // Parking must have scheduled the deadline tick — without it,
+    // checkApprovalTimeouts was unreachable and approvals waited forever.
+    const [deadline] = await sql`
+      select id, run_after from jobs
+      where type = 'advance_workflow' and payload->>'runId' = ${run.id}
+        and status = 'queued' and run_after > now()
+    `;
+    expect(deadline).toBeDefined();
+
+    // Fast-forward: the 72h deadline passes with no human decision.
+    await sql`
+      update workflow_approvals set due_at = now() - interval '1 hour'
+      where workflow_run_id = ${run.id}
+    `;
+    await sql`update jobs set run_after = now() where id = ${deadline!.id}`;
+    await drain();
+
+    const final = await store.getRun(run.id);
+    expect(final?.state).toBe("safely_stopped");
+    expect(final?.stopReason).toContain("approval timeout");
+
+    const nodeRuns = await store.listNodeRuns(run.id);
+    expect(nodeRuns.find((n) => n.nodeKey === "approval")?.state).toBe("timed_out");
+    expect(calls.some((c) => c.node === "after")).toBe(false);
+
+    const [exception] = await sql`
+      select kind, severity from workflow_exceptions
+      where workflow_run_id = ${run.id} and kind = 'client_approval'
+    `;
+    expect(exception).toBeDefined();
+    expect(exception!.severity).toBe("high");
+  });
+
   it("stops safely when a human rejects", async () => {
     await engine.registerDefinition(approvalGraph());
     const projectId = await newProject("Rejection");
@@ -639,6 +811,108 @@ describe.skipIf(!TEST_URL)("workflow engine (integration)", () => {
       select kind from workflow_exceptions where workflow_run_id = ${run.id}
     `;
     expect(exception!.kind).toBe("cost_anomaly");
+  });
+
+  // ----------------------------------------------- crash recovery (A3)
+
+  /** Fabricate what a dead worker leaves behind: a node_run stuck in
+   * `running` with no process attached. `ageSeconds` back-dates started_at
+   * so tests can choose fresh (still in flight) vs stale (reclaimable). */
+  async function strandNode(args: {
+    runId: string;
+    versionId: string;
+    nodeKey: string;
+    attempts: number;
+    ageSeconds: number;
+  }): Promise<void> {
+    const [node] = await sql`
+      select id from workflow_nodes
+      where version_id = ${args.versionId} and node_key = ${args.nodeKey}
+    `;
+    await sql`
+      insert into node_runs (
+        workflow_run_id, node_id, node_key, fan_key, state, attempts, input,
+        ready_at, started_at
+      ) values (
+        ${args.runId}, ${node!.id}, ${args.nodeKey}, '', 'running',
+        ${args.attempts}, '{}',
+        now() - make_interval(secs => ${args.ageSeconds}),
+        now() - make_interval(secs => ${args.ageSeconds})
+      )
+    `;
+  }
+
+  it("reclaims a node stranded by a dead worker and finishes the run instead of lying", async () => {
+    const { versionId } = await engine.registerDefinition({ ...fanGraph(), key: "crash_test" });
+    const projectId = await newProject("Crash recovery");
+    const run = await engine.startWorkflow({
+      definitionKey: "crash_test",
+      projectId,
+      idempotencyKey: "crash-1",
+    });
+    // Worker died mid-`a` an hour ago: well past timeout (900s) + grace (60s).
+    await strandNode({ runId: run.id, versionId, nodeKey: "a", attempts: 1, ageSeconds: 3_600 });
+
+    await engine.advanceWorkflow(run.id);
+    await drain();
+
+    // The stranded attempt was reclaimed, re-executed, and the run truly finished.
+    expect(calls.some((c) => c.node === "a")).toBe(true);
+    const final = await store.getRun(run.id);
+    expect(final?.state).toBe("completed");
+
+    const reclaims = await sql`
+      select count(*)::int as count from workflow_transitions
+      where workflow_run_id = ${run.id} and scope = 'node'
+        and from_state = 'running' and to_state = 'failed_retryable'
+        and reason like '%reclaimed%'
+    `;
+    expect(Number(reclaims[0]!.count)).toBe(1);
+  });
+
+  it("never reports a run completed while a fresh node instance is still in flight", async () => {
+    const { versionId } = await engine.registerDefinition({ ...fanGraph(), key: "crash_fresh" });
+    const projectId = await newProject("Crash fresh");
+    const run = await engine.startWorkflow({
+      definitionKey: "crash_fresh",
+      projectId,
+      idempotencyKey: "crash-2",
+    });
+    // Crashed (or genuinely executing elsewhere) seconds ago — NOT yet stale.
+    await strandNode({ runId: run.id, versionId, nodeKey: "a", attempts: 1, ageSeconds: 5 });
+
+    const state = await engine.advanceWorkflow(run.id);
+
+    // The old engine settled this exact shape as `completed` ("no reachable
+    // work remains"). It must wait instead, with a delayed re-tick queued.
+    expect(state).toBe("waiting_for_dependency");
+    const delayed = await sql`
+      select count(*)::int as count from jobs
+      where type = 'advance_workflow' and payload->>'runId' = ${run.id}
+        and run_after > now()
+    `;
+    expect(Number(delayed[0]!.count)).toBeGreaterThan(0);
+  });
+
+  it("settles a stranded node at the attempt cap as failed_terminal, never completed", async () => {
+    const { versionId } = await engine.registerDefinition({ ...fanGraph(), key: "crash_capped" });
+    const projectId = await newProject("Crash capped");
+    const run = await engine.startWorkflow({
+      definitionKey: "crash_capped",
+      projectId,
+      idempotencyKey: "crash-3",
+    });
+    // Third (max) attempt died: no retry budget left.
+    await strandNode({ runId: run.id, versionId, nodeKey: "a", attempts: 3, ageSeconds: 3_600 });
+
+    await engine.advanceWorkflow(run.id);
+    await drain();
+
+    const nodeRuns = await store.listNodeRuns(run.id);
+    expect(nodeRuns.find((n) => n.nodeKey === "a")?.state).toBe("failed_terminal");
+    const final = await store.getRun(run.id);
+    expect(final?.state).not.toBe("completed");
+    expect(["failed", "partially_completed", "safely_stopped"]).toContain(final?.state);
   });
 
   it("cancels a live run without rewriting what already succeeded", async () => {

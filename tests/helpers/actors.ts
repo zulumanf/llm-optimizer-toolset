@@ -59,7 +59,7 @@ export const TEST_ACTOR_IDS = [
 export async function seedTestActors(sql: Sql): Promise<void> {
   await sql`
     insert into users (id, email, name, role)
-    select id, 'fixture+' || id || '@parva.local', 'Fixture Actor', 'admin'
+    select id, 'fixture+' || id || '@avos.local', 'Fixture Actor', 'admin'
     from unnest(${TEST_ACTOR_IDS as unknown as string[]}::uuid[]) as id
     on conflict (id) do nothing
   `;

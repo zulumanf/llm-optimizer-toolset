@@ -18,11 +18,11 @@
 > re-parses the last 12 completed runs (BACKFILL_RUN_LIMIT).
 
 ## Goal
-Track a competitor set per project and compute the **full v1.0 metric suite** (share of voice, position score, citation score, sentiment index, authority score) for Parva and every tracked competitor with identical methodology, plus discovery of untracked brands appearing in answers. Also adds the Google and Perplexity provider adapters (citations become meaningful).
+Track a competitor set per project and compute the **full v1.0 metric suite** (share of voice, position score, citation score, sentiment index, authority score) for the client and every tracked competitor with identical methodology, plus discovery of untracked brands appearing in answers. Also adds the Google and Perplexity provider adapters (citations become meaningful).
 
 ## User stories
 - As an operator, I manage the project's competitor list (company, tier primary/secondary).
-- As an operator, I compare Parva vs competitors: authority score, share of voice, recommendation rate — per provider, over time.
+- As an operator, I compare the client vs competitors: authority score, share of voice, recommendation rate — per provider, over time.
 - As an operator, I see "unrecognized brands" that appear frequently in answers and can promote one to a tracked company in two clicks.
 - As an operator, adding a competitor retroactively computes its metrics from existing raw data.
 
@@ -32,7 +32,7 @@ Competitors page (`/projects/[id]/competitors`):
 ```
 │ Competitors                                  [+ Add]         │
 │ Company    Tier      Auth score  SoV    Rec rate   Trend     │
-│ Parva ★    self      62          31%    42%        ▲ +4      │
+│ Lumina ★    self      62          31%    42%        ▲ +4      │
 │ Acme       primary   71          38%    55%        ▼ −2      │
 │ Beta Inc   secondary 40          12%    9%         – 0       │
 ├──────────────────────────────────────────────────────────────┤
@@ -61,7 +61,7 @@ Migration `005_competitors.sql`: `competitors` join table per `docs/03`; add `un
 Reads: comparison aggregates per project/provider/metric/date-range from `scores` (indexed reads only; materialized view when slow, per `docs/02`).
 
 ## Validation rules
-- A company can be competitor in a project once; Parva (`is_self`) is implicitly compared and cannot be added/archived as a competitor.
+- A company can be competitor in a project once; the platform's own brand (`is_self`) is implicitly compared and cannot be added/archived as a competitor.
 - Tier required; candidate promotion requires a canonical name that passes company validation (spec 004 collision rules).
 - Backfill respects the review gate: retro-parsed low-confidence mentions enter the same review queue before that company's scores compute for those runs.
 

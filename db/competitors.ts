@@ -1,5 +1,6 @@
 import { sql } from "@/db/client";
 import { getSubjectCompany } from "@/db/companies";
+import { SCORING_VERSION } from "@/lib/constants";
 
 export interface CompetitorRow {
   id: string;
@@ -37,7 +38,9 @@ export async function listComparisonCompanies(
   `;
 }
 
-/** Latest scored run's metric values per company (provider = 'all'). */
+/** Latest scored run's metric values per company (provider = 'all'),
+ * pinned to the current scoring version — a comparison matrix mixing
+ * versions across companies would be the forbidden cross-version read. */
 export async function latestScoresByCompany(
   projectId: string
 ): Promise<Map<string, Record<string, number>>> {
@@ -45,10 +48,12 @@ export async function latestScoresByCompany(
     select s.company_id, s.metric, s.value
     from scores s
     where s.provider = 'all'
+      and s.scoring_version = ${SCORING_VERSION}
       and s.run_id = (
         select r.id from runs r
         join scores s2 on s2.run_id = r.id
         where r.project_id = ${projectId}
+          and s2.scoring_version = ${SCORING_VERSION}
         order by r.started_at desc
         limit 1
       )
@@ -89,6 +94,27 @@ export async function listTopSources(
     group by s.domain
     order by citation_count desc, s.domain asc
     limit ${limit}
+  `;
+}
+
+export interface CompetitorForAnalysis {
+  companyId: string;
+  companyName: string;
+  archived: boolean;
+}
+
+/** Competitors including archived ones (spec 036): a run is history, and an
+ * analysis of that run reports everyone who was in it — flagged, not hidden. */
+export async function listCompetitorsIncludingArchived(
+  projectId: string
+): Promise<CompetitorForAnalysis[]> {
+  return sql<CompetitorForAnalysis[]>`
+    select c.id as company_id, c.name as company_name,
+      (k.archived_at is not null or c.archived_at is not null) as archived
+    from competitors k
+    join companies c on c.id = k.company_id
+    where k.project_id = ${projectId}
+    order by archived asc, c.name asc
   `;
 }
 

@@ -92,7 +92,7 @@ describe.skipIf(!TEST_URL)("attribution (integration)", () => {
     projectId: string;
     versionId: string;
   }> {
-    await companySvc.upsertCompany(user, { name: "Parva", isSelf: true });
+    await companySvc.upsertCompany(user, { name: "Lumina", isSelf: true });
     const project = await projectSvc.createProject(user, { name: "Attr Test" });
     if (!project.ok) throw new Error(project.error.message);
     const set = await setSvc.createPromptSet(user, {
@@ -276,7 +276,7 @@ describe.skipIf(!TEST_URL)("attribution (integration)", () => {
     const completed = await tasks.completeTaskAsIntervention(user, {
       taskId: suggested.data.taskId,
       shippedAt: today,
-      urls: ["https://parva.com/pricing"],
+      urls: ["https://lumina.com/pricing"],
       promptSetVersionId: versionId,
       postOffsets: ["+2w"],
     });

@@ -209,6 +209,20 @@ async function tick(runId: string): Promise<TickOutcome> {
     );
   }
 
+  // Heal crashed workers before planning: a node stranded in `running` by a
+  // dead process would otherwise be neither ready nor settled, and the run
+  // could settle around it. Stale instances go back to failed_retryable (or
+  // failed_terminal at the attempt cap) with next_attempt_at = now, so the
+  // ready-set below re-offers them in this very tick.
+  const stale = await store.reclaimStaleNodeInstances(run.id, workflowVersion);
+  if (stale.retried.length > 0 || stale.terminal.length > 0) {
+    log("warn", "workflow.stale_nodes_reclaimed", {
+      runId,
+      retried: stale.retried,
+      terminal: stale.terminal,
+    });
+  }
+
   const instances = await store.listNodeRuns(runId);
   const fanKeys = await store.fanKeysFromOutputs(runId);
   const fanKeysByNode = propagateFanKeys(def, fanKeys);
@@ -472,6 +486,21 @@ async function recordNodeResult(
         reason: result.reason ?? "approval required",
         workflowVersion,
       });
+      // An approval binds to the exact artifact version the approver saw.
+      // Hoist the artifact hash to the top of `detail` — the send gate reads
+      // `detail.bodyHash`, and burying it under output.artifact made the
+      // version check silently vacuous ("no hash recorded" soft-pass, A7).
+      const approvalOutput = (result.output ?? {}) as Record<string, unknown>;
+      const approvalArtifact = approvalOutput.artifact as
+        | Record<string, unknown>
+        | undefined;
+      const approvedBodyHash =
+        (typeof approvalOutput.bodyHash === "string"
+          ? approvalOutput.bodyHash
+          : undefined) ??
+        (approvalArtifact && typeof approvalArtifact.bodyHash === "string"
+          ? approvalArtifact.bodyHash
+          : undefined);
       await store.insertApproval(tx, {
         runId: run.id,
         nodeRunId: claimedId,
@@ -480,7 +509,11 @@ async function recordNodeResult(
         riskLevel: nodeDef.riskLevel ?? "low",
         requiredRole: nodeDef.approvalRole ?? "operator",
         summary: result.reason ?? `${nodeDef.name} needs approval`,
-        detail: { output: result.output ?? {}, autonomy: args.autonomyDetail },
+        detail: {
+          output: result.output ?? {},
+          autonomy: args.autonomyDetail,
+          ...(approvedBodyHash ? { bodyHash: approvedBodyHash } : {}),
+        },
         evidenceIds: result.evidenceIds ?? [],
         dueAt: new Date(Date.now() + APPROVAL_TIMEOUT_HOURS * 3600_000),
       });
@@ -666,6 +699,16 @@ async function settleRun(
       );
     }
     await checkApprovalTimeouts(run, workflowVersion);
+    // If the timeout just fired, report the real state instead of a wait.
+    const afterCheck = await store.getRun(run.id);
+    if (afterCheck && afterCheck.state !== "waiting_for_approval") {
+      return { state: afterCheck.state, executed: 0 };
+    }
+    // A parked run receives no further ticks on its own, which used to make
+    // checkApprovalTimeouts unreachable — an unanswered approval waited
+    // forever. Schedule one future tick at the earliest undecided deadline
+    // so the timeout path actually executes.
+    await scheduleApprovalDeadlineTick(run.id);
     return { state: "waiting_for_approval", executed: 0 };
   }
 
@@ -721,10 +764,42 @@ async function settleRun(
     to = reachedSuccess ? "completed" : "partially_completed";
     reason = "no further work is reachable";
   } else {
-    // Nothing ready, nothing parked, not everything settled: the graph's
-    // conditions have routed around the remaining nodes.
-    to = "completed";
-    reason = "no reachable work remains";
+    // Nothing ready, nothing parked, nothing retrying — and yet not every
+    // instance is settled. The old behavior here was `completed: "no
+    // reachable work remains"`, which turned a worker crash mid-node into a
+    // run reported as done: the exact undisclosed-partial failure this
+    // platform exists to prevent. In-flight instances get a durable wait
+    // (the stale reaper in tick() flips them once their timeout + grace
+    // elapses); anything else unsettled is a broken invariant and stops the
+    // run safely rather than completing it.
+    const inFlight = instances.filter((i) => i.state === "running").length;
+    if (inFlight > 0) {
+      if (run.state !== "waiting_for_dependency") {
+        await sql.begin((tx) =>
+          store.setRunState(tx, {
+            runId: run.id,
+            from: run.state,
+            to: "waiting_for_dependency",
+            actor: "engine",
+            reason: `${inFlight} node instance(s) still in flight or awaiting stale reclaim`,
+            workflowVersion,
+          })
+        );
+      }
+      await sql`
+        insert into jobs (type, payload, run_after)
+        values ('advance_workflow', ${sql.json({ runId: run.id } as never)},
+          now() + make_interval(secs => ${EXTERNAL_WAIT_SECONDS}))
+      `;
+      return { state: "waiting_for_dependency", executed: 0 };
+    }
+    await stopSafely(
+      run,
+      workflowVersion,
+      "unsettled node instances with no path to execution — refusing to report completion",
+      "safe_stop"
+    );
+    return { state: "safely_stopped", executed: 0 };
   }
 
   const output = summariseOutput(instances);
@@ -781,6 +856,32 @@ function summariseOutput(
 }
 
 /** An approval that nobody answers must not hold a client's work open forever. */
+/**
+ * Enqueue exactly one future advance_workflow at the earliest undecided
+ * approval's due_at. Idempotent per park: if a future tick for this run is
+ * already queued, do nothing — an approval decided early makes the delayed
+ * tick a harmless no-op against a terminal or resumed run.
+ */
+async function scheduleApprovalDeadlineTick(runId: string): Promise<void> {
+  const [next] = await sql`
+    select min(due_at) as due from workflow_approvals
+    where workflow_run_id = ${runId} and decision is null
+  `;
+  if (!next?.due) return;
+  const [pending] = await sql`
+    select 1 as present from jobs
+    where type = 'advance_workflow' and payload->>'runId' = ${runId}
+      and status = 'queued' and run_after > now()
+    limit 1
+  `;
+  if (pending) return;
+  await sql`
+    insert into jobs (type, payload, run_after)
+    values ('advance_workflow', ${sql.json({ runId } as never)},
+      greatest(${next.due as Date}, now()) + interval '1 second')
+  `;
+}
+
 async function checkApprovalTimeouts(run: WorkflowRun, workflowVersion: number): Promise<void> {
   const overdue = await sql`
     select a.id, a.node_run_id, n.node_key

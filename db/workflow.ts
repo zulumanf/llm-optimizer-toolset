@@ -383,6 +383,62 @@ export async function claimNodeInstance(
   return claimed;
 }
 
+/**
+ * Reclaim node instances stranded in `running` by a dead worker.
+ *
+ * A live handler is bounded by the engine's withTimeout(timeout_seconds), so
+ * an instance still `running` past timeout + grace can only belong to a
+ * process that died mid-node. Under max_attempts it returns to
+ * `failed_retryable` and the normal retry machinery re-runs it; at the cap it
+ * settles `failed_terminal` so the run discloses the failure — the one thing
+ * this function must never allow is that stranded work reads as completed.
+ */
+export const STALE_NODE_GRACE_SECONDS = 60;
+
+export async function reclaimStaleNodeInstances(
+  runId: string,
+  workflowVersion: number
+): Promise<{ retried: string[]; terminal: string[] }> {
+  return sql.begin(async (tx) => {
+    const stale = await tx`
+      select nr.id, nr.node_key, nr.attempts, wn.max_attempts
+      from node_runs nr
+      join workflow_nodes wn on wn.id = nr.node_id
+      where nr.workflow_run_id = ${runId}
+        and nr.state = 'running'
+        and nr.started_at < now() -
+          make_interval(secs => wn.timeout_seconds + ${STALE_NODE_GRACE_SECONDS})
+      for update of nr skip locked
+    `;
+    const retried: string[] = [];
+    const terminal: string[] = [];
+    for (const row of stale) {
+      const exhausted = Number(row.attempts) >= Number(row.maxAttempts);
+      const to: NodeState = exhausted ? "failed_terminal" : "failed_retryable";
+      await tx`
+        update node_runs set
+          state = ${to},
+          error = ${`stale running instance reclaimed: the worker died mid-node on attempt ${row.attempts}`},
+          next_attempt_at = ${exhausted ? sql`next_attempt_at` : sql`now()`},
+          finished_at = ${exhausted ? sql`now()` : sql`finished_at`}
+        where id = ${row.id}
+      `;
+      await tx`
+        insert into workflow_transitions (
+          workflow_run_id, node_run_id, scope, from_state, to_state, actor,
+          reason, workflow_version, node_version
+        ) values (
+          ${runId}, ${row.id}, 'node', 'running', ${to}, 'engine',
+          'stale running instance reclaimed after worker death',
+          ${workflowVersion}, ${row.nodeKey}
+        )
+      `;
+      (exhausted ? terminal : retried).push(String(row.nodeKey));
+    }
+    return { retried, terminal };
+  });
+}
+
 export async function settleNodeInstance(
   tx: Tx,
   args: {
@@ -489,6 +545,66 @@ export async function consumeSignals(
 }
 
 // ------------------------------------------------------------ approvals
+
+export interface PendingApprovalRow {
+  id: string;
+  summary: string;
+  riskLevel: string;
+  requiredRole: string;
+  actionType: string;
+  requestedAt: Date;
+  dueAt: Date | null;
+  runId: string;
+  definitionKey: string;
+  projectName: string | null;
+}
+
+/** Every undecided approval across every run — the /approvals inbox (C2).
+ * Ordered by urgency: overdue first, then nearest deadline. */
+export async function pendingApprovalsAcrossRuns(): Promise<PendingApprovalRow[]> {
+  return sql<PendingApprovalRow[]>`
+    select a.id, a.summary, a.risk_level, a.required_role, a.action_type,
+      a.requested_at, a.due_at,
+      r.id as run_id, d.key as definition_key, p.name as project_name
+    from workflow_approvals a
+    join workflow_runs r on r.id = a.workflow_run_id
+    join workflow_versions v on v.id = r.version_id
+    join workflow_definitions d on d.id = v.definition_id
+    left join projects p on p.id = a.project_id
+    where a.decision is null
+    order by a.due_at asc nulls last, a.requested_at asc
+  `;
+}
+
+export interface DecidedApprovalRow {
+  id: string;
+  summary: string;
+  decision: string;
+  rationale: string | null;
+  decidedAt: Date;
+  decidedByName: string | null;
+  runId: string;
+  definitionKey: string;
+  projectName: string | null;
+}
+
+/** Recent decisions, newest first — the inbox's evidence trail. */
+export async function recentApprovalDecisions(limit: number): Promise<DecidedApprovalRow[]> {
+  return sql<DecidedApprovalRow[]>`
+    select a.id, a.summary, a.decision, a.rationale, a.decided_at,
+      u.name as decided_by_name,
+      r.id as run_id, d.key as definition_key, p.name as project_name
+    from workflow_approvals a
+    join workflow_runs r on r.id = a.workflow_run_id
+    join workflow_versions v on v.id = r.version_id
+    join workflow_definitions d on d.id = v.definition_id
+    left join projects p on p.id = a.project_id
+    left join users u on u.id = a.decided_by
+    where a.decision is not null
+    order by a.decided_at desc
+    limit ${limit}
+  `;
+}
 
 export async function insertApproval(
   tx: Tx,

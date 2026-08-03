@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import type { AIProvider, PromptRequest, ProviderResult } from "@/lib/ai/types";
 import { parseGooglePayload } from "@/lib/ai/payloads";
+import { PROVIDER_TIMEOUT_MS } from "@/lib/ai/limits";
 
 /**
  * Search-grounded model ids carry this suffix, matching the convention the
@@ -27,7 +28,10 @@ function getClient(): GoogleGenAI {
         status: 401,
       });
     }
-    client = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
+    client = new GoogleGenAI({
+      apiKey: process.env.GOOGLE_API_KEY,
+      httpOptions: { timeout: PROVIDER_TIMEOUT_MS },
+    });
   }
   return client;
 }

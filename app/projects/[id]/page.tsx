@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { getCurrentUser } from "@/lib/auth";
+import { SCORING_VERSION } from "@/lib/constants";
 import {
   authorityTrend,
   selfTiles,
@@ -157,7 +158,7 @@ export default async function ProjectDashboardPage({
               ? authority.value - authority.previousValue
               : null
           }
-          sub={authority ? `N=${authority.sampleSize} · v1.0` : "no scored runs"}
+          sub={authority ? `N=${authority.sampleSize} · ${SCORING_VERSION}` : "no scored runs"}
         />
         <StatTile
           label="Recommendation rate"
@@ -198,7 +199,7 @@ export default async function ProjectDashboardPage({
         <Card>
           <CardContent className="p-4">
             <p className="mb-2 text-sm font-medium">
-              Parva authority over runs{" "}
+              Subject authority over runs{" "}
               <span className="font-normal text-muted-foreground">
                 (scoring v1.0 — boundaries annotated)
               </span>

@@ -4,6 +4,7 @@ import { CheckCheck } from "lucide-react";
 import { getProject } from "@/db/projects";
 import { listReviewQueue } from "@/db/mentions";
 import { ReviewQueue } from "@/components/review/review-queue";
+import { ProjectTabs } from "@/components/layout/project-tabs";
 
 export default async function ReviewPage({
   params,
@@ -17,6 +18,7 @@ export default async function ReviewPage({
 
   return (
     <div className="mx-auto max-w-5xl p-6">
+      <ProjectTabs projectId={id} setKey="measure" counts={{ "/review": queue.length }} />
       <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/projects" className="hover:text-foreground">Projects</Link>
         {" / "}

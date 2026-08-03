@@ -125,8 +125,8 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
   }
 
   it("two clients, two subjects — measurements never cross-talk", async () => {
-    // Mock canned text mentions "Acme" and "Parva"
-    const clientA = await makeClientProject("Client A", "Parva", ["parva.com"]);
+    // Mock canned text mentions "Acme" and "Lumina"
+    const clientA = await makeClientProject("Client A", "Lumina", ["lumina.com"]);
     const clientB = await makeClientProject("Client B", "Acme");
 
     const runA = await runForProject(clientA.projectId, "best tools?");
@@ -189,7 +189,7 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
   });
 
   it("legacy is_self still works as the fallback subject", async () => {
-    await companySvc.upsertCompany(user, { name: "Parva", isSelf: true });
+    await companySvc.upsertCompany(user, { name: "Lumina", isSelf: true });
     const project = await projectSvc.createProject(user, { name: "Legacy" });
     if (!project.ok) throw new Error(project.error.message);
     const runId = await runForProject(project.data.id, "best tools?");
@@ -200,7 +200,7 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
   });
 
   it("claims: evidence required, approve supersedes, only proposed rejectable", async () => {
-    const { projectId } = await makeClientProject("Claims Co", "Parva");
+    const { projectId } = await makeClientProject("Claims Co", "Lumina");
 
     const noEvidence = await claims.proposeClaim(user, {
       projectId,
@@ -213,9 +213,9 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
     const v1 = await claims.proposeClaim(user, {
       projectId,
       key: "Category Positioning", // normalizes to category_positioning
-      canonicalText: "Parva is a link-in-bio tool built for real estate agents.",
+      canonicalText: "Lumina is a link-in-bio tool built for real estate agents.",
       asOf: "2026-07-27",
-      evidence: [{ url: "https://parva.com", note: "Homepage positioning" }],
+      evidence: [{ url: "https://lumina.com", note: "Homepage positioning" }],
     });
     expect(v1.ok).toBe(true);
     if (!v1.ok) return;
@@ -229,8 +229,8 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
     const v2 = await claims.proposeClaim(user, {
       projectId,
       key: "category_positioning",
-      canonicalText: "Parva is the link-in-bio platform for real estate agents.",
-      evidence: [{ url: "https://parva.com/about", note: "Updated wording" }],
+      canonicalText: "Lumina is the link-in-bio platform for real estate agents.",
+      evidence: [{ url: "https://lumina.com/about", note: "Updated wording" }],
     });
     if (!v2.ok) throw new Error(v2.error.message);
     const approved2 = await claims.approveClaim(user, { claimId: v2.data.id });
@@ -261,5 +261,149 @@ describe.skipIf(!TEST_URL)("client knowledge (integration)", () => {
       "claim.propose",
       "claim.approve",
     ]);
+  });
+
+  it("operator-set review dates enable expiry detection; contradictions are resolvable (D2)", async () => {
+    const { projectId } = await makeClientProject("Lifecycle Co", "Lumina");
+    const proposed = await claims.proposeClaim(user, {
+      projectId,
+      key: "office_count",
+      canonicalText: "Lumina operates three offices.",
+      evidence: [{ url: "https://lumina.com/about", note: "About page" }],
+    });
+    if (!proposed.ok) throw new Error(proposed.error.message);
+    await claims.approveClaim(user, { claimId: proposed.data.id });
+
+    // Before D2 nothing wrote review_date, so this detector was blind by
+    // construction: review_date was null on every claim, everywhere.
+    const detectors = await import("@/lib/knowledge/maintenance/detectors");
+    const before = await detectors.detectExpiredClaims(projectId);
+    expect(before.findings).toHaveLength(0);
+
+    const dated = await claims.setClaimDates(user, {
+      claimId: proposed.data.id,
+      effectiveDate: "2026-01-01",
+      reviewDate: "2026-06-01", // already past — the promise to re-verify broke
+    });
+    expect(dated.ok).toBe(true);
+
+    const after = await detectors.detectExpiredClaims(projectId);
+    expect(after.findings).toHaveLength(1);
+    expect(after.findings[0]!.summary).toContain("office_count");
+
+    const listed = await claims.listClaims(projectId);
+    const claim = listed.find((c) => c.id === proposed.data.id)!;
+    expect(claim.effectiveDate).toBe("2026-01-01");
+    expect(claim.reviewDate).toBe("2026-06-01");
+
+    // Contradictions: raise one by hand, then settle it through the new
+    // write path — resolveContradiction previously had zero callers.
+    const [contradiction] = await sql`
+      insert into claim_contradictions (project_id, claim_id, severity,
+        description, detected_by)
+      values (${projectId}, ${proposed.data.id}, 'high',
+        'Office count disagrees with the site footer', 'value_divergence')
+      returning id
+    `;
+    const noNote = await claims.resolveClaimContradiction(user, {
+      contradictionId: contradiction!.id,
+      status: "resolved",
+      resolution: "",
+    });
+    expect(noNote.ok).toBe(false);
+
+    const settled = await claims.resolveClaimContradiction(user, {
+      contradictionId: contradiction!.id,
+      status: "resolved",
+      resolution: "Re-verified against the site footer; approved corrected claim.",
+    });
+    expect(settled.ok).toBe(true);
+
+    const [row] = await sql`
+      select status, resolution from claim_contradictions where id = ${contradiction!.id}
+    `;
+    expect(row!.status).toBe("resolved");
+    const [audit] = await sql`
+      select action from audit_log where entity = 'claim_contradiction'
+    `;
+    expect(audit!.action).toBe("claim.contradiction.resolved");
+
+    // Settling twice is refused — the record is already made.
+    const again = await claims.resolveClaimContradiction(user, {
+      contradictionId: contradiction!.id,
+      status: "dismissed",
+      resolution: "duplicate",
+    });
+    expect(again.ok).toBe(false);
+  });
+
+  it("instructions: create governs immediately, approval gates, revision versions (D3)", async () => {
+    const { projectId } = await makeClientProject("Rules Co", "Lumina");
+    const instructions = await import("@/lib/knowledge/instructions/service");
+
+    // The layer was schema-complete with no writer: production tables were
+    // empty and every drafting packet ran with no brand-voice rules.
+    const created = await instructions.createInstruction(user, {
+      projectId,
+      instructionType: "brand_voice",
+      scope: "project",
+      title: "Plain voice",
+      body: "Write plainly; never use superlatives the claims do not support.",
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    let resolved = await instructions.resolveInstructions({ projectId });
+    expect(resolved.instructions.map((i) => i.title)).toContain("Plain voice");
+
+    // requiresApproval: a draft rule does not govern until a human approves.
+    const gated = await instructions.createInstruction(user, {
+      projectId,
+      instructionType: "prohibited_claim",
+      scope: "project",
+      title: "No exclusivity wording",
+      body: "Never imply the client is the only provider in a market.",
+      requiresApproval: true,
+    });
+    expect(gated.ok).toBe(true);
+    if (!gated.ok) return;
+
+    resolved = await instructions.resolveInstructions({ projectId });
+    expect(resolved.instructions.map((i) => i.title)).not.toContain(
+      "No exclusivity wording"
+    );
+    expect(resolved.excluded.some((e) => e.title === "No exclusivity wording")).toBe(true);
+
+    const pending = await instructions.pendingInstructionApprovals(projectId);
+    expect(pending.map((p) => p.title)).toContain("No exclusivity wording");
+
+    const approved = await instructions.approveInstructionVersion(user, {
+      versionId: gated.data.versionId,
+    });
+    expect(approved.ok).toBe(true);
+
+    resolved = await instructions.resolveInstructions({ projectId });
+    expect(resolved.instructions.map((i) => i.title)).toContain("No exclusivity wording");
+
+    // Revision mints an immutable new version; the old one stays readable.
+    const revised = await instructions.reviseInstruction(user, {
+      instructionId: created.data.instructionId,
+      body: "Write plainly. Cite a claim for every superlative, or cut it.",
+      changeReason: "Tightened after a draft slipped an uncited superlative through.",
+    });
+    expect(revised.ok).toBe(true);
+    if (!revised.ok) return;
+    expect(revised.data.version).toBe(2);
+
+    resolved = await instructions.resolveInstructions({ projectId });
+    const active = resolved.instructions.find((i) => i.title === "Plain voice")!;
+    expect(active.version).toBe(2);
+    expect(active.body).toContain("Cite a claim");
+
+    const versions = await sql`
+      select count(*)::int as n from knowledge_instruction_versions
+      where instruction_id = ${created.data.instructionId}
+    `;
+    expect(Number(versions[0]!.n)).toBe(2);
   });
 });

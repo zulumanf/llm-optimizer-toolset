@@ -21,6 +21,11 @@ export interface ComplianceHit {
   sentence: string;
 }
 
+export interface ProhibitedWordingHit {
+  phrase: string;
+  sentence: string;
+}
+
 export interface ContentValidation {
   ok: boolean;
   uncitedSubjectSentences: string[];
@@ -29,6 +34,10 @@ export interface ContentValidation {
   uncitedSuperlatives: string[];
   /** Vertical-pack rule hits (spec 012). "block" severity fails the gate. */
   complianceHits: ComplianceHit[];
+  /** Claim-level prohibited wording (D4). Any hit fails the gate — these
+   * phrases were prohibited by a human on a specific claim, not by a
+   * heuristic. */
+  prohibitedWordingHits: ProhibitedWordingHit[];
 }
 
 function sentences(text: string): string[] {
@@ -68,13 +77,18 @@ export function validateContent(
     rule: string;
     pattern: string;
     severity: "block" | "warn";
-  }[] = []
+  }[] = [],
+  /** Phrases prohibited on the claims this draft may cite (D4). Until now
+   * these were read into prompts ("never say: …") and never enforced —
+   * prompt-level guidance is a request, this gate is a rule. */
+  prohibitedWording: string[] = []
 ): ContentValidation {
   const uncitedSubjectSentences: string[] = [];
   const unresolvedCitations: string[] = [];
   const uncitedNumericSentences: string[] = [];
   const uncitedSuperlatives: string[] = [];
   const complianceHits: ComplianceHit[] = [];
+  const prohibitedWordingHits: ProhibitedWordingHit[] = [];
 
   for (const match of markdown.matchAll(CLAIM_RE)) {
     if (!approvedClaimIds.has(match[1] as string)) {
@@ -121,18 +135,36 @@ export function validateContent(
     }
   }
 
+  // Prohibited wording — exact phrases a human forbade on specific claims.
+  // Case-insensitive substring per sentence, so the operator sees the line.
+  const phrases = prohibitedWording
+    .map((phrase) => phrase.trim())
+    .filter((phrase) => phrase.length > 0);
+  if (phrases.length > 0) {
+    for (const sentence of sentences(markdown)) {
+      const lower = sentence.toLowerCase();
+      for (const phrase of phrases) {
+        if (lower.includes(phrase.toLowerCase())) {
+          prohibitedWordingHits.push({ phrase, sentence: sentence.slice(0, 200) });
+        }
+      }
+    }
+  }
+
   return {
     ok:
       uncitedSubjectSentences.length === 0 &&
       unresolvedCitations.length === 0 &&
       uncitedNumericSentences.length === 0 &&
       uncitedSuperlatives.length === 0 &&
-      complianceHits.every((h) => h.severity !== "block"),
+      complianceHits.every((h) => h.severity !== "block") &&
+      prohibitedWordingHits.length === 0,
     uncitedSubjectSentences,
     unresolvedCitations,
     uncitedNumericSentences,
     uncitedSuperlatives,
     complianceHits,
+    prohibitedWordingHits,
   };
 }
 

@@ -153,7 +153,7 @@ describe("aggregateAcrossProviders", () => {
 });
 
 describe("detectBrandCandidates", () => {
-  const known = ["Parva", "parva.com", "Acme"];
+  const known = ["Lumina", "lumina.com", "Acme"];
 
   it("finds capitalized mid-sentence brands not in the tracked set", () => {
     const found = detectBrandCandidates(
@@ -165,7 +165,7 @@ describe("detectBrandCandidates", () => {
 
   it("ignores sentence-start capitalization and list-marker starts", () => {
     expect(detectBrandCandidates("Delta is fine. Epsilon too.", known)).toEqual([]);
-    expect(detectBrandCandidates("1. Zeta\n2. Parva", known)).toEqual([]);
+    expect(detectBrandCandidates("1. Zeta\n2. Lumina", known)).toEqual([]);
   });
 
   it("ignores stopword-only sequences", () => {

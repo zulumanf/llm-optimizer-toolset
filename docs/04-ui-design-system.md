@@ -30,7 +30,15 @@ Status colors (badges, trends): `success` (green) = improvement/completed, `warn
 
 ## Navigation
 
-Sidebar sections: **Dashboard · Prompts · Runs · Review · Competitors · Reports · Tasks · Settings**. Active item highlighted with `primary`. Project switcher at the top of the sidebar. Breadcrumbs on detail pages (`Runs / Weekly baseline 2026-W31`).
+Two sidebar states (spec 037), one source of truth (`components/layout/sections.ts` — the nav-structure test enforces coverage):
+
+- **Global:** Today (unread badge) · Approvals (pending badge) · Clients · Prospects, then the Active clients list, then a collapsible **System** group (default collapsed, persisted; auto-opens on its own pages): Control tower · Workflows · Automation · Agents · Companies · Exclusivity.
+- **Project**, grouped in the operator's reading order: **Overview** (Dashboard · Plan · Knowledge) · **Measure** (Prompts · Runs) · **Findings** (Findings · Competitors) · **Act** (Content · Work · Reports) · Settings.
+- **Same-question routes share one entry and a link-tab bar** (`PageTabs`), never separate sidebar links: Runs ⇄ Review (pending count on the tab), Gaps ⇄ Accuracy, Tasks ⇄ Campaigns ⇄ Interventions, Reports ⇄ Validation. Every merged page keeps its URL.
+- The ⌘K palette lists **every** destination including demoted ones — it is the escape hatch and must not shrink.
+- Active item highlighted with `primary`; a merged entry is active on any of its tab siblings. Breadcrumbs on detail pages (`Runs / Weekly baseline 2026-W31`).
+
+Rule going forward: a new feature earns a **tab on an existing entry or a place in an existing group** by default; a brand-new sidebar entry requires a spec that says why no group fits.
 
 ## Page primitives (`components/layout/page.tsx`) — use these, don't hand-roll
 
@@ -56,7 +64,7 @@ discovered a year later.
 
 ## Components (shadcn/ui unless noted)
 
-- **Buttons:** `default` for primary action (one per view), `outline` secondary, `ghost` inline row actions, `destructive` for irreversible ops — destructive always behind a confirm dialog naming the object ("Archive project 'Parva Core'?").
+- **Buttons:** `default` for primary action (one per view), `outline` secondary, `ghost` inline row actions, `destructive` for irreversible ops — destructive always behind a confirm dialog naming the object ("Archive project 'Acme Core'?").
 - **Cards:** stat tiles (metric name, big value, delta badge vs. previous run), section panels. Stat tile click → drill into underlying data (traceability in the UI).
 - **Tables:** shadcn Table + TanStack. Sortable headers, sticky header, row click → detail drawer or page. Pagination beyond 50 rows. Every table has an empty state (see below).
 - **Forms:** react-hook-form + Zod (same schema as the server action). Inline field errors, disabled submit while pending, toast on success/failure.

@@ -1,26 +1,60 @@
 "use client";
 
+/**
+ * The sidebar's two states (spec 037): a global map (attention → clients →
+ * prospects, with the machinery demoted into a collapsible System group)
+ * and a project map (the operator's reading order as visible groups).
+ * Same-question routes share one entry via TAB_SETS; every demoted page
+ * stays a real URL reachable from its tab bar and ⌘K.
+ */
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ArrowLeft,
-  Bell,
   Bot,
   Building2,
+  CheckSquare,
+  ChevronRight,
+  Crosshair,
   Gauge,
   LayoutDashboard,
   Shield,
   Users,
   Workflow,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PROJECT_SECTIONS } from "@/components/layout/sections";
+import {
+  PROJECT_NAV_GROUPS,
+  sectionFor,
+  tabSetFor,
+} from "@/components/layout/sections";
 
 export interface SidebarProject {
   id: string;
   name: string;
 }
 
+const SYSTEM_LINKS = [
+  { href: "/control-tower", label: "Control tower", icon: Gauge },
+  { href: "/workflows", label: "Workflows", icon: Workflow },
+  { href: "/automation", label: "Automation", icon: Zap },
+  { href: "/agents", label: "Agents", icon: Bot },
+  { href: "/companies", label: "Companies", icon: Building2 },
+  { href: "/exclusivity", label: "Exclusivity", icon: Shield },
+] as const;
+
+const SYSTEM_OPEN_KEY = "nav:system-open";
+
+function Badge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
 
 function NavLink({
   href,
@@ -46,12 +80,22 @@ function NavLink({
   );
 }
 
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-0.5 mt-3 px-3 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
 export function SidebarNav({
   projects,
   unreadCount = 0,
+  approvalsCount = 0,
 }: {
   projects: SidebarProject[];
   unreadCount?: number;
+  approvalsCount?: number;
 }) {
   const pathname = usePathname();
   const projectMatch = pathname.match(/^\/projects\/([0-9a-f-]{36})(\/.*)?$/);
@@ -59,6 +103,23 @@ export function SidebarNav({
     ? projects.find((p) => p.id === projectMatch[1])
     : undefined;
   const subPath = projectMatch?.[2] ?? "";
+
+  const onSystemPage = SYSTEM_LINKS.some((l) => pathname.startsWith(l.href));
+  // The active page must never be hidden, so a System page forces the group
+  // open; otherwise the operator's last choice (persisted) wins.
+  const [systemOpen, setSystemOpen] = useState(onSystemPage);
+  useEffect(() => {
+    if (onSystemPage) {
+      setSystemOpen(true);
+      return;
+    }
+    setSystemOpen(window.localStorage.getItem(SYSTEM_OPEN_KEY) === "1");
+  }, [onSystemPage]);
+  const toggleSystem = () => {
+    const next = !systemOpen;
+    setSystemOpen(next);
+    window.localStorage.setItem(SYSTEM_OPEN_KEY, next ? "1" : "0");
+  };
 
   if (currentProject) {
     return (
@@ -72,23 +133,36 @@ export function SidebarNav({
         <p className="mb-1 mt-2 truncate px-3 text-sm font-semibold">
           {currentProject.name}
         </p>
-        <ul className="space-y-0.5">
-          {PROJECT_SECTIONS.map((section) => {
-            const href = `/projects/${currentProject.id}${section.path}`;
-            const active =
-              section.path === ""
-                ? subPath === "" || subPath === "/"
-                : subPath.startsWith(section.path);
-            const Icon = section.icon;
-            return (
-              <li key={section.label}>
-                <NavLink href={href} active={active}>
-                  <Icon className="size-4" /> {section.label}
-                </NavLink>
-              </li>
-            );
-          })}
-        </ul>
+        {PROJECT_NAV_GROUPS.map((group, groupIndex) => (
+          <div key={group.label ?? `group-${groupIndex}`}>
+            {group.label && <GroupLabel>{group.label}</GroupLabel>}
+            <ul className="space-y-0.5">
+              {group.paths.map((path) => {
+                const section = sectionFor(path);
+                if (!section) return null;
+                const tabSet = tabSetFor(path);
+                const label = tabSet?.label ?? section.label;
+                // A tab-set entry is "here" on any of its member routes.
+                const memberPaths = tabSet?.paths ?? [path];
+                const active =
+                  path === ""
+                    ? subPath === "" || subPath === "/"
+                    : memberPaths.some((p) => subPath.startsWith(p));
+                const Icon = section.icon;
+                return (
+                  <li key={path || "dashboard"}>
+                    <NavLink
+                      href={`/projects/${currentProject.id}${path}`}
+                      active={active}
+                    >
+                      <Icon className="size-4" /> {label}
+                    </NavLink>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
     );
   }
@@ -99,31 +173,13 @@ export function SidebarNav({
         <li>
           <NavLink href="/" active={pathname === "/"}>
             <LayoutDashboard className="size-4" /> Today
+            <Badge count={unreadCount} />
           </NavLink>
         </li>
         <li>
-          <NavLink href="/notifications" active={pathname.startsWith("/notifications")}>
-            <Bell className="size-4" /> Inbox
-            {unreadCount > 0 && (
-              <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
-                {unreadCount}
-              </span>
-            )}
-          </NavLink>
-        </li>
-        <li>
-          <NavLink href="/control-tower" active={pathname.startsWith("/control-tower")}>
-            <Gauge className="size-4" /> Control tower
-          </NavLink>
-        </li>
-        <li>
-          <NavLink href="/workflows" active={pathname.startsWith("/workflows")}>
-            <Workflow className="size-4" /> Workflows
-          </NavLink>
-        </li>
-        <li>
-          <NavLink href="/agents" active={pathname.startsWith("/agents")}>
-            <Bot className="size-4" /> Agents
+          <NavLink href="/approvals" active={pathname.startsWith("/approvals")}>
+            <CheckSquare className="size-4" /> Approvals
+            <Badge count={approvalsCount} />
           </NavLink>
         </li>
         <li>
@@ -132,21 +188,15 @@ export function SidebarNav({
           </NavLink>
         </li>
         <li>
-          <NavLink href="/companies" active={pathname.startsWith("/companies")}>
-            <Building2 className="size-4" /> Companies
-          </NavLink>
-        </li>
-        <li>
-          <NavLink href="/exclusivity" active={pathname.startsWith("/exclusivity")}>
-            <Shield className="size-4" /> Exclusivity
+          <NavLink href="/prospects" active={pathname.startsWith("/prospects")}>
+            <Crosshair className="size-4" /> Prospects
           </NavLink>
         </li>
       </ul>
+
       {projects.length > 0 && (
-        <div className="mt-4 border-t pt-3">
-          <p className="px-3 pb-1 text-xs font-medium uppercase text-muted-foreground">
-            Active clients
-          </p>
+        <div className="mt-3">
+          <GroupLabel>Active clients</GroupLabel>
           <ul className="space-y-0.5">
             {projects.map((p) => (
               <li key={p.id}>
@@ -158,6 +208,33 @@ export function SidebarNav({
           </ul>
         </div>
       )}
+
+      <div className="mt-3 border-t pt-2">
+        <button
+          type="button"
+          onClick={toggleSystem}
+          className="flex w-full items-center gap-1 rounded-md px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+        >
+          <ChevronRight
+            className={cn("size-3 transition-transform", systemOpen && "rotate-90")}
+          />
+          System
+        </button>
+        {systemOpen && (
+          <ul className="space-y-0.5">
+            {SYSTEM_LINKS.map((link) => {
+              const Icon = link.icon;
+              return (
+                <li key={link.href}>
+                  <NavLink href={link.href} active={pathname.startsWith(link.href)}>
+                    <Icon className="size-4" /> {link.label}
+                  </NavLink>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </nav>
   );
 }

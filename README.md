@@ -1,6 +1,6 @@
 # LLM Optimizer Toolset
 
-Internal tool for measuring and growing Parva's visibility in AI assistants (ChatGPT, Claude, Gemini, Perplexity). Runs versioned prompt experiments against AI providers, captures raw responses immutably, scores mentions/recommendations/citations with transparent methodology, and produces evidence-backed reports and tasks.
+Internal tool for measuring and growing the client's visibility in AI assistants (ChatGPT, Claude, Gemini, Perplexity). Runs versioned prompt experiments against AI providers, captures raw responses immutably, scores mentions/recommendations/citations with transparent methodology, and produces evidence-backed reports and tasks.
 
 This README covers **only the repository** — setup, stack, structure, commands. Product decisions live in `docs/`, executable feature specs in `specs/`, working rules in `CLAUDE.md`, unbreakable rules in `PRINCIPLES.md`.
 
@@ -44,6 +44,7 @@ PERPLEXITY_API_KEY=
 npm run dev            # Next.js dev server
 npm run build          # production build
 npm run worker         # start background worker (experiment runner)
+npm run mcp            # stdio MCP server exposing read/analysis tools to AI agents (spec 033)
 npm run db:migrate     # apply pending migrations
 npm run db:rollback    # revert last migration
 npm run seed:graph     # demo portfolio: 3 clients, workflow runs, exceptions, an approval
@@ -155,4 +156,4 @@ npm test -- automation-demos    # prospect outreach, content, reporting, failure
 
 ## Deployment
 
-Internal only. Runs on Vercel (app) + Supabase (database) + a single worker process (Railway/Fly/local cron). No public signup; access restricted to the Parva team (see `docs/10-security.md`).
+Internal only. Runs on Vercel (app) + Supabase (database) + a single worker process (Railway/Fly/local cron). No public signup; access restricted to the operating team (see `docs/10-security.md`).

@@ -14,7 +14,7 @@ create table companies (
 
 create unique index companies_active_name_unique
   on companies (lower(name)) where archived_at is null;
--- Exactly one Parva (spec 004 validation rules)
+-- Exactly one own-brand (is_self) company (spec 004 validation rules)
 create unique index companies_one_self
   on companies (is_self) where is_self and archived_at is null;
 

@@ -58,14 +58,14 @@ create index user_project_access_project_idx on user_project_access (project_id)
 -- added fully validated. History stays readable rather than being rewritten or
 -- dropped — losing "who did this" to gain a constraint would be a bad trade.
 insert into users (id, email, name, role)
-values ('00000000-0000-4000-8000-000000000001', 'dev@parva.local', 'Dev User', 'admin')
+values ('00000000-0000-4000-8000-000000000001', 'dev@avos.local', 'Dev User', 'admin')
 on conflict (id) do nothing;
 
 -- Any other actor id already referenced by history (seeds, tests) gets a
 -- placeholder row so the constraint can be validated without deleting audit.
 insert into users (id, email, name, role, active)
 select distinct a.user_id,
-  'unknown+' || a.user_id || '@parva.local',
+  'unknown+' || a.user_id || '@avos.local',
   'Unknown historical actor', 'operator', false
 from audit_log a
 where a.user_id is not null

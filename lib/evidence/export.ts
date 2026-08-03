@@ -19,7 +19,7 @@ import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { drilldown, DRILLDOWN_METRICS } from "@/lib/evidence/observations";
 import { artifactPath } from "@/lib/evidence/storage";
-import { SCORING_VERSION, PARSER_VERSION } from "@/lib/constants";
+import { SCORING_VERSION } from "@/lib/constants";
 
 const execFileAsync = promisify(execFile);
 
@@ -128,6 +128,16 @@ export async function generateEvidenceExport(
       order by a.at asc
     `;
 
+    // The parser version(s) that actually classified this run, read from the
+    // rows themselves — a run parsed by v2+llm must never be manifested as
+    // v1. Plural because a re-parse under a newer version leaves both in the
+    // revision history, and the export contains every revision.
+    const parserVersions = [
+      ...new Set(classifications.map((m) => m.parserVersion as string)),
+    ].sort();
+    const parserVersionLabel =
+      parserVersions.length > 0 ? parserVersions.join(", ") : "none (unparsed run)";
+
     // --- metric summary (numerator/denominator per drill-down) ---
     const metricSummaries = [];
     for (const metric of DRILLDOWN_METRICS) {
@@ -190,7 +200,7 @@ export async function generateEvidenceExport(
         ``,
         `- Benchmark: ${run.setName} v${run.setVersion} (frozen prompt set — prompts immutable per version)`,
         `- Run: ${run.label} (${runId})`,
-        `- Scoring version: ${SCORING_VERSION} · Parser version: ${PARSER_VERSION}`,
+        `- Scoring version: ${SCORING_VERSION} · Parser version(s): ${parserVersionLabel}`,
         `- Eligible observation: successful capture (refusals count, errors do not), non-holdout prompt.`,
         `- Mention/recommendation/citation rates = positive observations / eligible observations; numerators and denominators are in benchmark-summary.csv and reproducible by counting observations.csv joined to classifications.csv (latest revision per observation+company).`,
         `- Raw evidence is immutable at the database level; every response and payload carries a SHA-256 computed at capture. Verify: sha256(raw-responses/<id>.json field responseText bytes) == response_hash.`,
@@ -220,7 +230,7 @@ export async function generateEvidenceExport(
       runLabel: run.label,
       benchmark: `${run.setName} v${run.setVersion}`,
       scoringVersion: SCORING_VERSION,
-      parserVersion: PARSER_VERSION,
+      parserVersions,
       observationCount: responses.length,
       metrics: metricSummaries,
       files: manifestFiles,

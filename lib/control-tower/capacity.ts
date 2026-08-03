@@ -57,7 +57,7 @@ export async function computeCapacity(period: {
   const weeks = Math.max(1, periodWeeks(period.start, period.end));
 
   const [clients] = await sql`
-    select count(*) as n from projects where status = 'active'
+    select count(*) as n from projects where status = 'active' and kind = 'client'
   `;
   const activeClients = Number(clients?.n ?? 0);
 

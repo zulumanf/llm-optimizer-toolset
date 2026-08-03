@@ -5,6 +5,9 @@ import { getCurrentUser } from "@/lib/auth";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import * as setService from "@/lib/prompts/set-service";
 import * as promptService from "@/lib/prompts/prompt-service";
+import * as importService from "@/lib/prompts/import";
+import * as marketGenerate from "@/lib/markets/generate";
+import * as marketInstall from "@/lib/markets/install";
 
 /**
  * Thin wrappers: identity + revalidation around lib/prompts services
@@ -50,4 +53,13 @@ export async function archivePrompt(input: unknown) {
 }
 export async function reorderPrompts(input: unknown) {
   return run((u) => promptService.reorderPrompts(u, input));
+}
+export async function importPrompts(input: unknown) {
+  return run((u) => importService.importPrompts(u, input));
+}
+export async function generateMarketPrompts(input: unknown) {
+  return run((u) => marketGenerate.generateMarketPrompts(u, input));
+}
+export async function installMarketPack(input: unknown) {
+  return run((u) => marketInstall.installMarketPack(u, input));
 }

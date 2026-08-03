@@ -6,6 +6,57 @@
  * paths never import it — their scope is a single project by construction.
  */
 import { sql } from "@/db/client";
+
+export interface ExecutiveBriefRow {
+  id: string;
+  projectId: string;
+  projectName: string;
+  kind: string;
+  periodStart: Date;
+  periodEnd: Date;
+  status: string;
+  sections: {
+    headline?: string;
+    statements?: {
+      text: string;
+      kind: string;
+      evidenceIds: string[];
+      material: boolean;
+    }[];
+    risks?: string[];
+    uncertainties?: string[];
+  };
+  materiality: Record<string, unknown>;
+  evidenceIds: string[];
+  generatedBy: string;
+  createdAt: Date;
+}
+
+/** Generated briefs, newest first — executive_briefs was write-only until
+ * C4: an operator got a success toast and no way to read the artifact. */
+export async function listExecutiveBriefs(limit: number): Promise<ExecutiveBriefRow[]> {
+  return sql<ExecutiveBriefRow[]>`
+    select b.id, b.project_id, p.name as project_name, b.kind,
+      b.period_start, b.period_end, b.status, b.sections, b.materiality,
+      b.evidence_ids, b.generated_by, b.created_at
+    from executive_briefs b
+    join projects p on p.id = b.project_id
+    order by b.created_at desc
+    limit ${limit}
+  `;
+}
+
+export async function getExecutiveBrief(id: string): Promise<ExecutiveBriefRow | null> {
+  const [row] = await sql<ExecutiveBriefRow[]>`
+    select b.id, b.project_id, p.name as project_name, b.kind,
+      b.period_start, b.period_end, b.status, b.sections, b.materiality,
+      b.evidence_ids, b.generated_by, b.created_at
+    from executive_briefs b
+    join projects p on p.id = b.project_id
+    where b.id = ${id}
+  `;
+  return row ?? null;
+}
 import { criticalPath, parallelizableShare } from "@/lib/workflow/graph";
 import type { NodeRun, WorkflowDefinition, WorkflowState } from "@/lib/workflow/types";
 
@@ -26,8 +77,9 @@ export interface PortfolioMetrics {
 export async function portfolioMetrics(): Promise<PortfolioMetrics> {
   const [row] = await sql`
     select
-      (select count(*) from projects where status = 'active') as active_clients,
-      (select count(*) from projects p where p.status = 'active'
+      (select count(*) from projects
+         where status = 'active' and kind = 'client') as active_clients,
+      (select count(*) from projects p where p.status = 'active' and p.kind = 'client'
          and not exists (select 1 from runs r where r.project_id = p.id)) as onboarding_clients,
       (select count(distinct project_id) from workflow_exceptions
          where status in ('open','acknowledged') and severity in ('high','critical')

@@ -138,6 +138,10 @@ export interface MeasurementPair {
   after: number | null;
 }
 
+/** Relative movement below this is noise, not a signal — the 0.1 every
+ * spec-019 caller already used, now named once (spec 034). */
+export const OUTCOME_MATERIALITY_THRESHOLD = 0.1;
+
 export interface EffectivenessInput {
   visibility: MeasurementPair;
   citations: MeasurementPair;

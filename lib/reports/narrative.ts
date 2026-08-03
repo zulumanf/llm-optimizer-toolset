@@ -110,7 +110,7 @@ export function draftNarrative(
   const program = body.program;
   const isPulse = body.kind === "weekly_pulse";
 
-  // Summary — Parva's headline numbers with deltas where comparable
+  // Summary — the subject's headline numbers with deltas where comparable
   const summaryParts: string[] = [];
 
   // Weekly pulse leads with what changed and what needs a human, not with
@@ -154,7 +154,7 @@ export function draftNarrative(
   const authority = findScore(scores, { isSelf: true, metric: "authority_score" });
   if (authority) {
     summaryParts.push(
-      `Parva's authority score is ${authority.value.toFixed(1)} (N=${authority.sampleSize}) [score:${authority.scoreId}].`
+      `${authority.companyName}'s authority score is ${authority.value.toFixed(1)} (N=${authority.sampleSize}) [score:${authority.scoreId}].`
     );
   }
   const recRate = findScore(scores, { isSelf: true, metric: "recommendation_rate" });

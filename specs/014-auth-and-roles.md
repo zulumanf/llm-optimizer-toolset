@@ -71,10 +71,9 @@ client can be given read-only access without real sessions.
   has been provisioned. Clients receive exported evidence packages, which is
   what the pilot-readiness doc already assumed. `user_project_access` is the
   seam that makes issuing one a data change rather than a refactor.
-- **The magic-link flow has not been exercised end to end.** `AUTH_MODE` is
-  still `dev`, so no real sign-in has happened against the live Supabase
-  project. The code paths are typed, built and unit-covered; they are not
-  proven. Flipping the mode is the remaining step.
+- **`AUTH_MODE=supabase` is now live** (flipped by 2026-08-01; `.env` carries
+  the Supabase keys and middleware enforces sessions). The historical note
+  that the mode was still `dev` is obsolete.
 - **RLS is defence in depth, not the primary control.** The application
   connects as the table owner, and owners bypass RLS. Policies bite on the
   Supabase-client path; service-layer scoping remains the control that governs

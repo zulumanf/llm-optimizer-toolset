@@ -60,8 +60,14 @@ export async function getSubjectCompany(projectId: string): Promise<Company | nu
 
 /**
  * Companies this project's parser/scorer considers: its subject plus every
- * active company that is not another project's subject — clients never leak
- * into each other's measurements (spec 008 no-cross-talk).
+ * active company that is not another CLIENT project's subject — clients
+ * never leak into each other's measurements (spec 008 no-cross-talk).
+ *
+ * Prospect benchmark projects (spec 032, kind='prospect') are deliberately
+ * NOT excluded: their subjects are market teams that were ordinary measured
+ * companies before the prospect existed, and dropping them here would
+ * silently shrink every client's share-of-voice denominator the moment a
+ * prospect is created.
  */
 export async function listCompaniesForProject(projectId: string): Promise<Company[]> {
   const subject = await getSubjectCompany(projectId);
@@ -74,6 +80,7 @@ export async function listCompaniesForProject(projectId: string): Promise<Compan
         id not in (
           select subject_company_id from projects
           where subject_company_id is not null and id != ${projectId}
+            and kind = 'client'
         )
       )
     order by (id = ${subject?.id ?? null}) desc, name asc

@@ -12,6 +12,7 @@ import { ClassifiedError } from "@/lib/errors";
 import { publishEvent } from "@/lib/events/bus";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
+import { resolveContradiction } from "@/lib/knowledge/contradictions/detect";
 
 export interface Claim {
   id: string;
@@ -20,6 +21,10 @@ export interface Claim {
   canonicalText: string;
   value: unknown;
   asOf: string | null;
+  effectiveDate: string | null;
+  reviewDate: string | null;
+  allowedWording: string[];
+  prohibitedWording: string[];
   status: "proposed" | "approved" | "rejected" | "superseded";
   evidenceIds: string[];
   createdBy: string | null;
@@ -28,8 +33,11 @@ export interface Claim {
 }
 
 const COLUMNS = sql`id, project_id, key, canonical_text, value,
-  to_char(as_of, 'YYYY-MM-DD') as as_of, status, evidence_ids,
-  created_by, approved_by, created_at`;
+  to_char(as_of, 'YYYY-MM-DD') as as_of,
+  to_char(effective_date, 'YYYY-MM-DD') as effective_date,
+  to_char(review_date, 'YYYY-MM-DD') as review_date,
+  allowed_wording, prohibited_wording,
+  status, evidence_ids, created_by, approved_by, created_at`;
 
 const proposeSchema = z.object({
   projectId: z.string().uuid(),
@@ -260,4 +268,178 @@ export async function listClaims(projectId: string): Promise<Claim[]> {
         when 'superseded' then 2 else 3 end,
       created_at desc
   `;
+}
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Set a claim's effective and review dates (D2, docs/pilot-launch-plan.md).
+ *
+ * These columns previously had no production writer, which quietly disabled
+ * three things that key on them: date-window contradiction detection
+ * (periodsOverlap always fell back to as_of), the expired-claim maintenance
+ * detector, and the automation freshness checks — all of which reported
+ * "fresh" forever because review_date was always null. `undefined` leaves a
+ * date unchanged; `null` clears it.
+ */
+export async function setClaimDates(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ claimId: string }>> {
+  assertCanWrite(user);
+  const parsed = z
+    .object({
+      claimId: z.string().uuid(),
+      effectiveDate: z.string().regex(DATE_PATTERN).nullable().optional(),
+      reviewDate: z.string().regex(DATE_PATTERN).nullable().optional(),
+    })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const { claimId, effectiveDate, reviewDate } = parsed.data;
+  if (effectiveDate === undefined && reviewDate === undefined) {
+    return fail(new ClassifiedError("validation", "Nothing to change."));
+  }
+  try {
+    await sql.begin(async (tx) => {
+      const [claim] = await tx`
+        select id, key from claims where id = ${claimId} for update
+      `;
+      if (!claim) throw new ClassifiedError("not_found", "Claim not found.");
+      await tx`
+        update claims set
+          effective_date = ${
+            effectiveDate === undefined ? sql`effective_date` : effectiveDate
+          },
+          review_date = ${reviewDate === undefined ? sql`review_date` : reviewDate},
+          updated_at = now()
+        where id = ${claimId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "claim.dates",
+        entity: "claim",
+        entityId: claimId,
+        detail: {
+          key: claim.key,
+          effectiveDate: effectiveDate === undefined ? "(unchanged)" : effectiveDate,
+          reviewDate: reviewDate === undefined ? "(unchanged)" : reviewDate,
+        },
+      });
+    });
+    return ok({ claimId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Resolve or dismiss a contradiction (D2). The detector wrote into
+ * claim_contradictions and nothing could ever settle one — the queue only
+ * grew. Resolution requires a recorded note, and the underlying
+ * resolveContradiction publishes claim.conflict_resolved inside the same
+ * transaction so dependent pages invalidate with it.
+ */
+export async function resolveClaimContradiction(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ contradictionId: string }>> {
+  assertCanWrite(user);
+  const parsed = z
+    .object({
+      contradictionId: z.string().uuid(),
+      status: z.enum(["resolved", "dismissed"]),
+      resolution: z
+        .string()
+        .transform((s) => s.trim())
+        .pipe(z.string().min(3, "Record how the contradiction was settled.").max(1000)),
+    })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  try {
+    await sql.begin(async (tx) => {
+      const resolved = await resolveContradiction(tx, {
+        contradictionId: parsed.data.contradictionId,
+        status: parsed.data.status,
+        resolution: parsed.data.resolution,
+        resolvedBy: user.id,
+      });
+      await writeAudit(tx, {
+        userId: user.id,
+        action: `claim.contradiction.${parsed.data.status}`,
+        entity: "claim_contradiction",
+        entityId: parsed.data.contradictionId,
+        detail: { claimId: resolved.claimId, resolution: parsed.data.resolution },
+      });
+    });
+    return ok({ contradictionId: parsed.data.contradictionId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Set a claim's allowed / prohibited wording (D4, docs/pilot-launch-plan.md).
+ *
+ * The columns were read in four places — packets render "never say: …" into
+ * prompts — but only the demo seed ever wrote them, and nothing enforced
+ * them deterministically. With this writer plus the validateContent gate,
+ * prohibited wording becomes a rule the draft physically cannot pass with,
+ * not a request the model may ignore.
+ */
+export async function setClaimWording(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ claimId: string }>> {
+  assertCanWrite(user);
+  const parsed = z
+    .object({
+      claimId: z.string().uuid(),
+      allowedWording: z.array(z.string().trim().min(1).max(300)).max(20).optional(),
+      prohibitedWording: z.array(z.string().trim().min(1).max(300)).max(20).optional(),
+    })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const { claimId, allowedWording, prohibitedWording } = parsed.data;
+  if (allowedWording === undefined && prohibitedWording === undefined) {
+    return fail(new ClassifiedError("validation", "Nothing to change."));
+  }
+  try {
+    await sql.begin(async (tx) => {
+      const [claim] = await tx`
+        select id, key, project_id from claims where id = ${claimId} for update
+      `;
+      if (!claim) throw new ClassifiedError("not_found", "Claim not found.");
+      await tx`
+        update claims set
+          allowed_wording = ${
+            allowedWording === undefined ? sql`allowed_wording` : allowedWording
+          },
+          prohibited_wording = ${
+            prohibitedWording === undefined ? sql`prohibited_wording` : prohibitedWording
+          },
+          updated_at = now()
+        where id = ${claimId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "claim.wording",
+        entity: "claim",
+        entityId: claimId,
+        detail: {
+          key: claim.key,
+          allowedWording: allowedWording ?? "(unchanged)",
+          prohibitedWording: prohibitedWording ?? "(unchanged)",
+        },
+      });
+    });
+    return ok({ claimId });
+  } catch (err) {
+    return fail(err);
+  }
 }

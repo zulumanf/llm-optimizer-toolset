@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { AIProvider, PromptRequest, ProviderResult } from "@/lib/ai/types";
 import { parseChatCompletion, parseResponsesPayload } from "@/lib/ai/payloads";
+import { PROVIDER_TIMEOUT_MS } from "@/lib/ai/limits";
 
 let client: OpenAI | undefined;
 
@@ -12,7 +13,7 @@ function getClient(): OpenAI {
       });
     }
     // maxRetries: 0 — retries are owned by lib/ai/retry.ts (see anthropic.ts)
-    client = new OpenAI({ maxRetries: 0 });
+    client = new OpenAI({ maxRetries: 0, timeout: PROVIDER_TIMEOUT_MS });
   }
   return client;
 }

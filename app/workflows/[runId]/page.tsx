@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { workflowRunDetail } from "@/db/control-tower";
 import { Badge } from "@/components/ui/badge";
-import { ApprovalDecision } from "@/components/workflows/approval-decision";
+import { ApprovalDecision } from "@/components/approvals/approval-decision";
 import { RunGraph } from "@/components/workflows/run-graph";
 
 export const dynamic = "force-dynamic";

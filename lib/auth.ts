@@ -14,7 +14,7 @@
  *
  * Role checks belong in services, never only in UI (docs/10).
  */
-import { getEnv } from "@/lib/env";
+import { getEnv, devAuthRefusalReason } from "@/lib/env";
 import { ClassifiedError } from "@/lib/errors";
 import { sql } from "@/db/client";
 
@@ -55,6 +55,10 @@ export class NotAuthenticatedError extends ClassifiedError {
 export async function getCurrentUser(): Promise<CurrentUser> {
   const env = getEnv();
   if (env.AUTH_MODE !== "supabase") {
+    // Middleware already refuses these requests, but middleware is a
+    // convenience gate — this is the boundary (docs/10).
+    const refusal = devAuthRefusalReason();
+    if (refusal) throw new ClassifiedError("forbidden", refusal);
     return {
       id: DEV_USER_ID,
       email: env.DEV_USER_EMAIL,
@@ -97,6 +101,37 @@ export async function getCurrentUser(): Promise<CurrentUser> {
     id: row.id as string,
     email: row.email as string,
     name: (row.name as string) || (data.user.email ?? ""),
+    role: row.role as Role,
+  };
+}
+
+/**
+ * The platform's own principal for background work (migration 037).
+ *
+ * Worker handlers and engine node handlers act as this user rather than
+ * calling getCurrentUser(): a worker has no request context, so under
+ * AUTH_MODE=supabase that call throws on every job, and under dev it
+ * silently attributed platform-initiated work to the dev admin. "Acted by
+ * the platform" and "acted by a person" are different facts, and audit rows
+ * should record which one happened.
+ */
+export const SYSTEM_USER_ID = "00000000-0000-4000-a000-000000000001";
+
+export async function systemUser(): Promise<CurrentUser> {
+  const [row] = await sql`
+    select id, email, name, role from users
+    where id = ${SYSTEM_USER_ID} and active
+  `;
+  if (!row) {
+    throw new ClassifiedError(
+      "internal",
+      "The system user is missing — run database migrations (037_system_user)."
+    );
+  }
+  return {
+    id: row.id as string,
+    email: row.email as string,
+    name: row.name as string,
     role: row.role as Role,
   };
 }

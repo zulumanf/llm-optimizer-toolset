@@ -17,7 +17,7 @@ import { analyzeRun } from "@/lib/gaps/service";
 import { analyzeRunAccuracy } from "@/lib/accuracy/service";
 import { generateReportDraft } from "@/lib/reports/service";
 import { getSubjectCompany } from "@/db/companies";
-import { getCurrentUser } from "@/lib/auth";
+import { systemUser } from "@/lib/auth";
 import type { ProviderConfig } from "@/lib/runs/cells";
 import { log } from "@/lib/logger";
 
@@ -94,7 +94,7 @@ export async function startWeeklyCycles(): Promise<StartCyclesResult> {
   const week = weekStart();
   const projects = await sql`
     select id, name, baseline_prompt_set_id, baseline_config
-    from projects where status = 'active'
+    from projects where status = 'active' and kind = 'client'
   `;
   const started: string[] = [];
   const skipped: { projectId: string; reason: string }[] = [];
@@ -147,7 +147,7 @@ export async function advanceCycle(cycleId: string): Promise<CycleState> {
   if (["completed", "halted", "failed"].includes(state)) return state;
 
   const projectId = cycle.projectId as string;
-  const user = await getCurrentUser();
+  const user = await systemUser();
 
   // --- started → launch the benchmark ---------------------------------
   if (state === "started") {
@@ -179,7 +179,9 @@ export async function advanceCycle(cycleId: string): Promise<CycleState> {
     const [existingRun] = await sql`
       select id from runs
       where project_id = ${projectId} and trigger = 'scheduled'
-        and started_at >= ${cycle.weekStart}::date
+        -- UTC-anchored: weekStart is a UTC Monday; a bare ::date cast would
+        -- compare in the session timezone (see lib/reports/snapshot.ts).
+        and started_at >= (${cycle.weekStart} || ' 00:00:00+00')::timestamptz
       order by started_at desc limit 1
     `;
     let runId = existingRun?.id as string | undefined;

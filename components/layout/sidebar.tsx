@@ -1,4 +1,5 @@
 import { listActiveProjects } from "@/db/projects";
+import { pendingApprovalsAcrossRuns } from "@/db/workflow";
 import { getCurrentUserOrNull, isStaff, visibleProjectIds } from "@/lib/auth";
 import { unreadCount } from "@/lib/notifications/service";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
@@ -27,9 +28,10 @@ export async function Sidebar(): Promise<React.ReactElement | null> {
   // not reach the projects or notifications tables at all. Client roles see
   // only their granted projects; other clients' names never leave the DB.
   const visible = await visibleProjectIds(user);
-  const [projects, unread] = await Promise.all([
+  const [projects, unread, approvals] = await Promise.all([
     listActiveProjects(visible),
     unreadCount(),
+    pendingApprovalsAcrossRuns(),
   ]);
 
   return (
@@ -47,6 +49,7 @@ export async function Sidebar(): Promise<React.ReactElement | null> {
       <SidebarNav
         projects={projects.map((p) => ({ id: p.id, name: p.name }))}
         unreadCount={unread}
+        approvalsCount={approvals.length}
       />
       <div className="flex items-center justify-between gap-2 border-t px-4 py-3">
         <p className="truncate text-xs text-muted-foreground">

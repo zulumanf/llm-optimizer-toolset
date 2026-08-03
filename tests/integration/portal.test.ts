@@ -83,7 +83,7 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
   }
 
   it("overview, work, and reports expose only the client-safe subset", async () => {
-    const company = await companySvc.upsertCompany(user, { name: "Parva" });
+    const company = await companySvc.upsertCompany(user, { name: "Lumina" });
     if (!company.ok) throw new Error(company.error.message);
     const project = await projectSvc.createProject(user, { name: "Portal Co" });
     if (!project.ok) throw new Error(project.error.message);
@@ -115,7 +115,7 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
 
     // Overview: headline metrics with sample sizes and scoring version.
     const overview = await portal.portalOverview(projectId);
-    expect(overview.subjectName).toBe("Parva");
+    expect(overview.subjectName).toBe("Lumina");
     const mention = overview.headlines.find((h) => h.metric === "mention_rate");
     expect(mention?.value).toBe(1);
     expect(mention?.sampleSize).toBe(2);
@@ -203,13 +203,13 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
     // A staff email is never converted into a client account.
     await sql`
       insert into users (id, email, name, role)
-      values ('00000000-0000-4000-8000-00000000f001', 'staff@parva.local',
+      values ('00000000-0000-4000-8000-00000000f001', 'staff@avos.local',
         'Staff Member', 'operator')
       on conflict (id) do nothing
     `;
     const collision = await invite.inviteClientViewer(admin, {
       projectId: project.data.id,
-      email: "staff@parva.local",
+      email: "staff@avos.local",
       name: "X",
     });
     expect(collision.ok).toBe(false);

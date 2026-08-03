@@ -53,6 +53,18 @@ describe("quota exhaustion is not a rate limit", () => {
     const err = Object.assign(new Error("Too many concurrent requests"), { status: 429 });
     expect(classifyProviderError(err).kind).toBe("provider_rate_limit");
   });
+
+  /** The verbatim body OpenAI returned during the failed 2026-08-03 run —
+   * a creditless account, sent WITH a Retry-After header. */
+  const REAL_OPENAI_NO_CREDITS =
+    "You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.";
+
+  it("billing exhaustion beats a Retry-After header — waiting does not refill an account", () => {
+    expect(isQuotaExhausted(REAL_OPENAI_NO_CREDITS)).toBe(true);
+    expect(isQuotaExhausted(REAL_OPENAI_NO_CREDITS, 5_000)).toBe(true);
+    expect(isQuotaExhausted("(credit_balance_exhausted)", 1_000)).toBe(true);
+    expect(isQuotaExhausted("insufficient_quota for this org", 1_000)).toBe(true);
+  });
 });
 
 describe("search-grounded models are distinct instruments", () => {

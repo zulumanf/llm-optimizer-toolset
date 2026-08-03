@@ -18,7 +18,7 @@ const ROOT = join(__dirname, "..", "..");
 
 const STAFF: CurrentUser = {
   id: "00000000-0000-4000-8000-00000000a001",
-  email: "staff@parva.local",
+  email: "staff@avos.local",
   name: "Staff",
   role: "operator",
 };

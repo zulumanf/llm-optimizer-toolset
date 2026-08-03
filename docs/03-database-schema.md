@@ -16,7 +16,7 @@ projects ─┬─ prompt_sets ── prompts
 ```
 
 ## projects
-Groups everything by initiative ("Parva Core", "Feature X Launch").
+Groups everything by initiative ("Acme Core", "Feature X Launch").
 
 | field | type | notes |
 |---|---|---|
@@ -61,15 +61,15 @@ Frozen snapshot created when a set is frozen. Runs reference versions, never liv
 | frozen_at | timestamptz | |
 
 ## companies
-Every brand we track (Parva + competitors + incidental brands found in answers).
+Every brand we track (each client's own brand + competitors + incidental brands found in answers).
 
 | field | type | notes |
 |---|---|---|
 | id | uuid pk | |
 | name | text | canonical |
-| aliases | text[] | matching variants ("Parva", "parva.com", "Parva App") |
+| aliases | text[] | matching variants ("Lumina", "lumina.com", "Lumina App") |
 | domain | text | |
-| is_self | boolean | exactly one row true (Parva) |
+| is_self | boolean | exactly one row true (the platform's own brand) |
 
 ## competitors
 Join: which companies are tracked as competitors in a project.

@@ -6,13 +6,21 @@ This file tells Claude Code how to think. It is not documentation — it is oper
 
 ## Mission
 
-This repository is the **internal operating system used to grow Parva through AI visibility experiments**.
+This repository is the **AI Visibility OS — the internal operating system used to grow clients through AI visibility experiments**.
 
-We measure how AI assistants (ChatGPT, Claude, Gemini, Perplexity, etc.) mention, describe, and recommend Parva versus competitors. We run controlled, versioned prompt experiments; capture raw responses immutably; score them with transparent, versioned methodology; and turn findings into evidence-backed tasks.
+We measure how AI assistants (ChatGPT, Claude, Gemini, Perplexity, etc.) mention, describe, and recommend each client versus its competitors. We run controlled, versioned prompt experiments; capture raw responses immutably; score them with transparent, versioned methodology; and turn findings into evidence-backed tasks.
 
 - **Not SaaS.** No billing, no plans, no marketing pages.
-- **Not multi-tenant.** One team, internal only.
-- **Internal only.** Optimize for operator effectiveness, not polish for strangers.
+- **One agency, many audiences.** Operated by one internal team — but clients
+  and prospects have real, scoped access: client roles (`client_viewer`,
+  `client_validator`) see only their granted project through `/portal`;
+  prospects see published, snapshot-frozen audit pages via high-entropy
+  tokens (`/audit/[token]`). Every new surface must declare which audience it
+  serves; anything reachable by a client or prospect follows deny-by-default
+  visibility (`client_visible`, published-only) and the prospect-voice and
+  audit-page-design skills.
+- **Operator-first.** Optimize internal surfaces for operator effectiveness;
+  polish is reserved for the client- and prospect-facing surfaces above.
 
 ## Never Figure Out — Implement
 

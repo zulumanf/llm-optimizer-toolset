@@ -85,6 +85,7 @@ export default async function AutomationWorkflowsPage() {
                   <th className="p-2">Needs</th>
                   <th className="p-2 text-right">Nodes</th>
                   <th className="p-2 text-right">Runs</th>
+                  <th className="p-2 text-right">Outcomes</th>
                   <th className="p-2 text-right">Manual touch</th>
                 </tr>
               </thead>
@@ -149,6 +150,23 @@ export default async function AutomationWorkflowsPage() {
                         ) : null}
                       </td>
                       <td className="p-2 text-right tabular-nums text-xs">
+                        {metric === undefined || metric.runs === 0 ? (
+                          "—"
+                        ) : (
+                          <span title="completed · safe-stopped · failed">
+                            {Math.round(metric.completionRate * 100)}% ·{" "}
+                            {Math.round(metric.safeStopRate * 100)}% ·{" "}
+                            <span
+                              className={
+                                metric.failureRate > 0 ? "text-destructive" : undefined
+                              }
+                            >
+                              {Math.round(metric.failureRate * 100)}%
+                            </span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2 text-right tabular-nums text-xs">
                         {metric === undefined || metric.runs === 0
                           ? "—"
                           : `${Math.round(metric.manualInterventionRate * 100)}%`}
@@ -163,8 +181,9 @@ export default async function AutomationWorkflowsPage() {
       ))}
 
       <p className="text-xs text-muted-foreground">
-        &ldquo;Manual touch&rdquo; is the share of live runs where a human had to
-        act on a node. It is the number that says whether the automation is
+        &ldquo;Outcomes&rdquo; is completed · safe-stopped · failed as a share of
+        live runs. &ldquo;Manual touch&rdquo; is the share of live runs where a
+        human had to act on a node. Together they say whether the automation is
         actually helping — a run count on its own does not.
       </p>
     </div>

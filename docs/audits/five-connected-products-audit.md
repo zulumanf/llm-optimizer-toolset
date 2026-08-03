@@ -72,7 +72,7 @@ inspectable evidence.
 
 **Biggest real risk (not a score line): classification quality.** The
 heuristic parser (`parser-heuristic-v1`) miscounts *other* entities named
-like the client — proven live: "What is Parva?" answered with Mahabharata
+like the client — proven live: a "What is [the client]?" prompt answered with an unrelated same-name topic
 content and was counted as a mention (memory + specs/009 notes; visible in
 `mentions` for run `c777b034…`). An evidence portal faithfully displaying
 wrong classifications is worse than no portal for a paying client. → P0.
@@ -95,7 +95,7 @@ wrong classifications is worse than no portal for a paying client. → P0.
 
 | Category | Points | Evidence / gaps |
 |---|---|---|
-| Core functionality | 13/25 | Gap taxonomy real: 6 typed detectors + deterministic 30/25/20/15/10 opportunity scoring (`lib/gaps/detect.ts`, live-validated on Parva). Evidence-backed task state machine with approval gates (`lib/tasks/service.ts`, migration 007). Content graph brief→draft→fact-verify→approve→publish with LLM agents behind a deterministic citation gate (`lib/content/*`, `lib/ai/agent.ts`) — live-validated (~$0.06, gates caught the system's own agents; DECISIONS). Publish auto-creates measuring intervention (`markPublished` → `createIntervention`). **Missing: the entire third-party arm** — media/journalist ops, ranking ops, transaction-to-authority (specs/011 is a draft doc only — DOCUMENTED ONLY), profile-correction workflow, content indexation/citation tracking post-publish. |
+| Core functionality | 13/25 | Gap taxonomy real: 6 typed detectors + deterministic 30/25/20/15/10 opportunity scoring (`lib/gaps/detect.ts`, live-validated on the pilot client). Evidence-backed task state machine with approval gates (`lib/tasks/service.ts`, migration 007). Content graph brief→draft→fact-verify→approve→publish with LLM agents behind a deterministic citation gate (`lib/content/*`, `lib/ai/agent.ts`) — live-validated (~$0.06, gates caught the system's own agents; DECISIONS). Publish auto-creates measuring intervention (`markPublished` → `createIntervention`). **Missing: the entire third-party arm** — media/journalist ops, ranking ops, transaction-to-authority (specs/011 is a draft doc only — DOCUMENTED ONLY), profile-correction workflow, content indexation/citation tracking post-publish. |
 | Data model | 11/15 | gap_findings, tasks+evidence, content_assets/immutable versions, interventions. No journalists/pitches/rankings/transactions tables. |
 | Workflow completeness | 9/15 | finding→task→complete-as-intervention→scheduled remeasure is wired and tested (`tests/unit/attribution.test.ts` loop-closure test). Content publish is human-external (by design). No recurring work, no dependencies between tasks. |
 | UI | 6/10 | Gaps, Tasks board, Content pages in workspace nav. |

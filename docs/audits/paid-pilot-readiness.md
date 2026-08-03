@@ -37,8 +37,9 @@ in, and NOT ready to promise in-system revenue attribution.
 
 1. **LLM classifier v2 (with fresh-context verification).** The heuristic
    parser counts other entities named like the client as client mentions —
-   proven live with "Parva" (Mahabharata answer counted as a mention;
-   collision set includes parvahealth.com, parvaconsulting.com). A paid
+   proven live with the pilot client (an unrelated same-name topic counted
+   as a mention; the collision set includes several unrelated same-name
+   companies). A paid
    pilot built on evidence-grade transparency cannot show a client
    miscounted evidence. Feasible: the fact-verify agent pattern
    (`lib/ai/agent.ts`) already exists; mention revisions absorb re-parses

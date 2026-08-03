@@ -41,7 +41,7 @@ export async function addCompetitor(
       if (company.isSelf) {
         throw new ClassifiedError(
           "validation",
-          "Parva is always compared — it cannot be added as a competitor."
+          "The platform's own brand is always compared — it cannot be added as a competitor."
         );
       }
       if (company.archivedAt) {

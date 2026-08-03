@@ -8,8 +8,8 @@ Append-only. Every non-obvious technical decision gets a dated entry: the decisi
 
 The operator adopted an agentic-workflow blueprint (drafted for a real-estate
 brokerage) as the product direction: one platform serving many client
-engagements across verticals (Parva first, then realtors, plastic surgeons,
-…). Superseded: the "not multi-tenant, Parva only" framing in docs/00 —
+engagements across verticals (the pilot client first, then realtors, plastic surgeons,
+…). Superseded: the "not multi-tenant, single-subject" framing in docs/00 —
 amended to "project = client engagement; still not self-serve SaaS."
 Rationale for evolving this codebase rather than starting the blueprint's
 repo from scratch: specs/001–007 already implement its Phase 1–2 measurement
@@ -76,8 +76,8 @@ for now. Promote to a settings UI when a second consumer appears.
 
 ### Heuristic-first parser (spec 004)
 Mention parser v1 (`mention-parser-v1+heuristic`) is fully deterministic:
-word-boundary alias scanning (domain-aware boundaries so "Parva" ≠
-"parva.com" ≠ "Parvati"), list-position detection, recommendation/sentiment
+word-boundary alias scanning (domain-aware boundaries so "Lumina" ≠
+"lumina.com" ≠ "Luminate"), list-position detection, recommendation/sentiment
 lexicons, verbatim-excerpt selection. No LLM call — provider keys don't exist
 yet, and an untestable LLM stage would be riskier than an honest heuristic
 whose uncertainty routes to human review via the docs/06 confidence formula
@@ -144,7 +144,7 @@ rather than trusting either silently. Holdout prompts (locked into
 frozen_prompts at freeze) are excluded from standard metric denominators
 WITHOUT a scoring-version bump: no historical run contains holdout prompts,
 so every historical value is bit-identical under the clarified eligible-set
-definition — a version bump would have severed Parva's baseline
+definition — a version bump would have severed the client's baseline
 comparability for zero measurement benefit. Deferred with named integration
 points rather than half-built: consumer-interface capture (browser runner) →
 EvidenceCaptureAdapter interface; per-client portal logins → Supabase auth
@@ -163,8 +163,8 @@ capture — and feed sources, mention citation attribution, the citation_rate
 metric, and the source_target gap detector. Caveat kept visible: OpenAI
 bills the search tool per call outside token usage, so +search pricing rows
 stay flagged unverified. First live search baseline promptly exposed that
-the "Parva" name is contested territory in retrieval (parvahealth.com,
-parvaconsulting.com, getparva.com) — the entity problem is about winning a
+the pilot client's name is contested territory in retrieval (several
+unrelated same-name companies rank for it) — the entity problem is about winning a
 collision, not filling a void.
 
 ### First LLM agents, behind deterministic gates (spec 010)
@@ -759,3 +759,578 @@ the core loop: benchmark.started/completed/partially_failed now publish
 transactionally with the run writes, and visibility.materially_declined
 publishes after scoring with a (run, metric) dedupe key so a re-score
 cannot double-fire the automation layer.
+
+## 2026-07-31 — Pilot-first finish plan; attribution stays deferred
+
+Full-platform QA audit (295 items, nine-agent code trace, this date)
+scored the system at ~64% with the measurement/reporting core solid and
+the automation library non-functional live. Operator decision: drive to a
+sellable paid pilot first (~3 weeks solo), then grow toward five clients
+— rather than finishing the full checklist or gating launch on 5-client
+infrastructure. Revenue attribution remains deferred (re-confirmed);
+solo operation for the quarter moves RLS depth and multi-operator role
+separation to the post-pilot track and moves correctness P0s up: mock
+provider reachable in production, crash-mid-node runs reported
+`completed`, approval timeouts never firing, unpriced models disabling
+budget caps, scoring-version mixing in dashboards. Plan and sequencing:
+`docs/pilot-launch-plan.md` (supersedes the completed phases 0–3 of
+`docs/implementation-roadmap.md`; its Phase 4 items fold into the
+post-pilot track).
+
+## 2026-08-01 — Prospect acquisition (spec 032): link, don't fork, the measurement core
+
+The acquisition slice models a prospect benchmark as a LINK to an existing
+scored run (`prospect_benchmarks(prospect_id, run_id, company_id)`), with
+every metric read from `scores`/`mentions` at render time. Rejected
+alternative: prospect-owned runs via a `projects.kind='prospect'` marker —
+correct long-term (roadmap Phase 2) but touches four load-bearing couplings
+(`runs.project_id`, the subject-company parse gate, the
+`listCompaniesForProject` share-of-voice denominator, global name uniques),
+and getting the denominator wrong would silently change existing clients'
+numbers. Linking costs nothing, can never drift from the scoring engine,
+and covers the common case where the prospect is already tracked as a
+market competitor.
+
+Related choices, same date and spec:
+- Finding candidates and outreach drafts are DETERMINISTIC (template +
+  threshold generators, versioned as `prospect-findings-v1+deterministic` /
+  `reply-first-email-v1`). An LLM generator is Phase 2, behind the same
+  evidence gate; the slice must not be able to fabricate a claim.
+- Prohibited-wording enforcement (`PROHIBITED_PHRASES`) blocks approval of
+  findings and drafts containing revenue-loss/causality/hype language —
+  validation at approval time, mirroring D4's "the gate enforces wording".
+- The prospect audit page is the platform's first anonymous surface:
+  256-bit `base64url` token minted at publish, snapshot-only rendering
+  (internal fields structurally absent, not filtered), published rows
+  DB-locked except revocation, wrong/revoked/expired tokens all 404.
+  `/audit` added to middleware PUBLIC_PREFIXES.
+- A blocked exclusivity verdict during a stage transition COMMITS the check
+  record and conflict status but skips the stage change (the tx returns an
+  outcome instead of throwing — a thrown error would roll back the
+  evidence that the check happened). Found by the integration test.
+- Prospect-facing views are tracked in a dedicated insert-only
+  `prospect_audit_views` table rather than widening
+  `artifact_access_log`'s CHECK constraint — that table's types are
+  report/evidence artifacts and its rows are project-scoped; audit views
+  are anonymous and prospect-scoped.
+
+## 2026-08-01 — MCP is one thin server over existing services, not a new system (spec 033)
+
+An audit for the "AI Visibility Intelligence system" request
+(docs/ai-visibility-system-audit.md, four parallel deep reads) concluded the
+requested system already substantially exists in this repository; the only
+wholly absent layer was an MCP interface. Decisions taken:
+
+- **One MCP server with tool groups (observer/operator), not the three
+  services the request sketched.** This is one app with a ~15-tool surface;
+  separate services would manufacture infrastructure. Groups keep the split
+  seam visible.
+- **Handlers are transport-free delegations.** `lib/mcp/tools.ts` calls the
+  same services and `db/` readers the UI uses, zero business logic; the SDK
+  touches only `mcp/server.ts`. Contract tests never load the SDK.
+- **MCP adds no role model.** The server refuses non-staff identities
+  (startup + per-invocation), and writes pass through the services' own
+  `assertCanWrite` — which permits all staff, reviewers included, exactly as
+  the UI does. An earlier draft assumed reviewers were read-only; the
+  integration test caught the discrepancy and the spec was corrected to
+  match the platform rather than forking authorization semantics.
+- **Mutations are ledgered append-only** (`mcp_invocations`, migration 039)
+  with optional idempotency keys. Because the ledger is insert-only there is
+  no pre-execution claim: truly concurrent duplicate keys can both execute,
+  and the unique index turns the second record into an explicit conflict
+  naming both entities — honesty over pretend-replay.
+- **No external-action tools.** Publishing/sending/connectors are not
+  exposed; the approval boundary stays upstream and UI-only. `run_prompt_set`
+  and `create_experiment` are the only mutations (internal, budget-capped,
+  same gates as the forms).
+- **The actor is never the system principal.** MCP work is operator-
+  initiated; attributing it to the platform would erase who acted.
+
+## 2026-08-01 — Audit phase 1: five named defects, one outbound-fetch policy
+
+Fix pass for the correctness/security findings of
+docs/ai-visibility-system-audit.md (§H/§I), branch fix/visibility-audit-phase-1.
+Non-obvious choices:
+
+- **One `safeFetch`, not per-caller patches.** The SSRF redirect bypass
+  existed because three call sites each owned their own fetch. The policy
+  (scheme check, private-host refusal, per-hop manual redirects, DNS
+  resolution check, streaming byte caps) now lives once in
+  `lib/security/safe-fetch.ts`; ingestion, crawling, and robots.txt all go
+  through it. `isPrivateHost` moved there; ingest re-exports it.
+- **The ambient DNS check is disabled under vitest.** Integration suites
+  stub the global fetch with fictional hostnames; resolving them for real
+  would couple tests to a resolver. The DNS path is not untested — unit
+  tests inject a resolver and prove a public name resolving privately is
+  refused, per hop. The resolve-then-connect TOCTOU race is documented in
+  the module rather than half-solved.
+- **Evidence manifests now report `parserVersions` (plural), read from the
+  run's own classification rows.** The deprecated `PARSER_VERSION` constant
+  stamped v1+heuristic into every manifest regardless of what ran; it is
+  deleted, not just unused. Plural because the export ships every revision,
+  and a re-parsed run legitimately carries two versions.
+- **Position-rate drill-downs share mention_rate's denominator** (all valid
+  cells, docs/06 v1.1) — the per-response current-mention join already
+  counts distinct responses, so the numerator definition is one predicate.
+- **Provider timeout is one constant (180s) on the SDK clients**, not a
+  wrapper: retries already live in lib/ai/retry.ts and classify timeouts as
+  transient; a second timing layer would fight the first. Instrument
+  settings (temperature etc.) remain unrecorded because no adapter sets
+  them — there is nothing true to record.
+
+## 2026-08-02 — Prospect benchmark projects (spec 032 Phase 2.1): kind, not status
+
+Prospect-owned benchmark runs are `projects` rows with a new `kind` column
+('client' | 'prospect', migration 041) rather than a new status value or a
+parallel entity. `startRun` needed no change — kind is orthogonal to the
+active/archived lifecycle. The one semantic change is in
+`listCompaniesForProject`: the no-cross-talk exclusion now applies only to
+CLIENT subjects, because spec 008's promise is between clients — a prospect
+subject was an ordinary measured company the day before the prospect
+existed, and excluding it would silently shrink every client's
+share-of-voice denominator. Regression-tested: client scores are
+byte-identical across runs before/after a prospect project claims the
+company. Prospect projects are filtered out of client-facing and portfolio
+surfaces (sidebar, /projects, control-tower counts, Today feed, weekly
+cycles, knowledge maintenance sweep) but the measurement pipeline runs on
+them unchanged. `createBenchmarkProject` composes existing services and
+reuses an already-registered company by name instead of failing on the
+collision (why `onboardClient` couldn't be reused directly); the launch's
+other prospects are pre-tracked as competitors; the prompt set is
+deliberately left to a human in the project workspace (docs/07).
+
+Note: the migration file is 041 (not 039/040) because specs 033/034 landed
+migrations concurrently; the schema_migrations ledger on dev and test was
+updated in place when the file was renumbered.
+
+## 2026-08-02 — Learning loop closed (spec 034): measured, not assumed
+
+- **Outcome measurement sources are the platform's own numbers**: visibility
+  = subject mention_rate (provider 'all', current scoring version), citations
+  = owned-citation count in the compared run. Traffic/leads/pipeline stay
+  null until a real data source exists — null is not zero, and the label
+  logic already treats it so.
+- **The sweep needs no window claim.** measureAction is write-once behind
+  FOR UPDATE, so any number of heartbeats measure each due outcome exactly
+  once; idempotency is structural, like the trigger layer's fire keys.
+- **A stuck outcome settles honestly.** No comparable post-action run after
+  60 days past due → measured with nulls → 'insufficient_measurement',
+  ending the retry loop with a recorded "we waited, nothing became
+  comparable" rather than pending forever.
+- **Learnings are never auto-generated.** A measured outcome suggests one; a
+  person (or an operator explicitly acting through MCP) records it.
+  'confirmed'/'strongly_supported' require measured source outcomes — a
+  label that asserts evidence must point at it. Learnings retire with a
+  reason instead of being edited: what a past decision cited stays readable
+  as cited.
+- Confidence vocabulary is shared with outcome_relationships (spec 019) —
+  one language for "how sure are we" across the graph and the store.
+
+## 2026-08-02 — Prompt intelligence is rules first, and refuses to guess (spec 035)
+
+- **The classifier returns null for an unmatched prompt** instead of a
+  default category — the same stance as source classification ("the honest
+  label for an unknown domain is `other`, not a guess"). Import surfaces
+  those rows as rejections the operator resolves; nothing enters the
+  library with a category no one chose. The hand-labeled fixture set in
+  tests/unit/prompt-classify.test.ts is the seed validation set an LLM v2
+  must beat before it ships (docs/12).
+- **Rule order is specificity, not preference**: brand > comparison >
+  how-to > recommendation > problem, so "best alternatives to X" lands in
+  comparison despite saying "best".
+- **Clusters are computed on read, not stored.** v1 (category + salient-term
+  Jaccard, greedy, order-stable) exists to make coverage discussable;
+  storing versioned cluster snapshots before the algorithm has been used in
+  anger would freeze a shape nobody has validated.
+- **Format detection is a rule, not a heuristic**: a first CSV cell of
+  "text" means header-mapped CSV; anything else is plain lines with commas
+  preserved — real questions contain commas, and a paste must never be
+  silently reinterpreted as columns.
+- **MCP dry-run imports skip brand matching** — a dry run reads no registry
+  state it doesn't disclose; the real import uses the project's
+  companies/aliases for the branded rule.
+- No demand/search-volume fields anywhere: no legitimate source exists, and
+  a fabricated number is worse than none (re-confirmed).
+
+## 2026-08-02 — Win rates are analyses, not scores (spec 036)
+
+- **Head-to-head and citation profiles are derived on read, never stored.**
+  Storing a win rate would demand a scoring-version bump and forward-only
+  re-scoring ceremony (docs/06) for a number that is cheap to re-derive
+  and whose definition is still settling. Movement (spec 030) set this
+  precedent; competitive depth follows it. If win rate ever enters
+  reports, THAT is the moment it becomes a versioned scored metric.
+- **An unranked co-mention is a tie, not a loss.** Being mentioned without
+  a list position is a different observation from being ranked below
+  someone; calling it a loss would fabricate an ordering the answer never
+  expressed.
+- **Win rate is null when nothing is contested** — the null-is-not-zero
+  rule from scoring applies to analyses too.
+- **Citation profiles say "co-occurrence" in the payload itself.** The
+  note rides the API response and the UI copy, not just documentation —
+  a number that travels without its caveat becomes a causal claim.
+- Archived competitors stay in run-scoped analyses, flagged: a run is
+  history, and history includes everyone who was in it.
+
+## 2026-08-02 — Discovery's entry point is a job an identified human requests
+
+Spec-027 wiring (the last "not wired" gap in the visibility roadmap's
+Phase 4). Choices:
+
+- **The crawl runs as the system principal; the request is audited to the
+  human.** B3's rule holds — background work is the platform's act — but
+  the `discovery.requested` audit row and the job payload's `requestedBy`
+  keep "who asked" answerable without impersonating anyone in a worker.
+- **One in-flight discovery per project**, enforced against the jobs table
+  ('queued'/'running'), not a new table — a second click while one runs is
+  a conflict, because two concurrent crawls of the same identity would
+  double-spend and double-ingest.
+- **No subject company → refused at click time**, not discovered as a
+  failed job later. The queries are built from the subject's identity;
+  requesting a search for nobody is an operator error worth an immediate,
+  named message.
+- The integration test drives the real worker handler keylessly: searches
+  fail per-query by design and the run settles with zero candidates —
+  proving the plumbing without touching the network, and matching the
+  spec's standing honesty that no live provider run has ever executed.
+
+## 2026-08-02 — Nav consolidation: tabs over route moves (spec 037)
+
+The sidebar had grown 3× past docs/04's design (16 flat project sections,
+11 global links) by accretion — every spec added a link, none merged one.
+Choices:
+
+- **Merged pages keep their URLs; the merge is a link-tab bar.** Moving
+  routes (e.g. /gaps → /findings/gaps) would have meant redirects, link
+  rewrites, and test churn across five pages for zero user-visible gain
+  over tabs. `PageTabs` renders on each sibling; the sidebar shows one
+  entry, active for any member. Bookmarks, cross-links, and the entire
+  integration suite survive untouched.
+- **The reading order became visible.** The operator-question grouping
+  (Overview / Measure / Findings / Act) lived in a sections.ts comment;
+  now it is the rendered structure, enforced by a covering test: every
+  section reachable exactly once, no orphans, no duplicates.
+- **Machinery is demoted, not hidden**: Control tower, Workflows,
+  Automation, Agents, Companies, Exclusivity live in a collapsed System
+  group (persisted per browser, auto-opens when one of its pages is
+  active — the current page must never be invisible).
+- **Attention is badges on fewer doors**: unread on Today (the Inbox
+  entry was a duplicate — Today already renders the attention feed),
+  pending count on Approvals, review-queue count on the Runs tab.
+- **The ⌘K palette keeps every destination** including demoted ones — the
+  escape hatch must not shrink with the sidebar.
+- New rule recorded in docs/04: a feature earns a tab or a group slot by
+  default; a new sidebar entry requires a spec that says why no group fits.
+
+## 2026-08-02 — Contacts get their own do-not-contact, and drafts meet the suppression list (spec 032, 2.2/2.3)
+
+Outreach goes to a person, not a business, so refusal must exist at both
+levels: `prospects.do_not_contact` (the account) and
+`prospect_contacts.do_not_contact` (the human). Choices:
+
+- **The recipient gate runs at approval AND record-sent, in fixed order:**
+  account DNC → contact DNC → global `suppression_entries` match on the
+  recipient's normalised email/phone (reusing `checkSuppression` from
+  `lib/outreach/suppression.ts` — the prospect path previously bypassed
+  the platform's suppression list entirely, a gap the audit flagged).
+  Fail-closed; no second matcher was written, so `x+tag@y.com` cannot
+  slip past a suppression on `x@y.com` here either.
+- **Suppression checks run with `projectId: null`** — prospect outreach is
+  not client-scoped, so only global entries apply. A client-scoped
+  suppression suppresses that client's sends, not agency prospecting.
+- **A draft with no email or phone on file skips the list check** (there
+  is nothing to match) but never skips the DNC gates. The real send gate
+  (`assertSendAllowed`) still stands between any future automated send and
+  the world; these gates protect the human-sends-it path we have today.
+- **`outreach_drafts.contact_id` same-prospect rule lives in the service**
+  (the only insert path); a plain FK cannot express "the contact belongs
+  to this draft's prospect" without a composite-key rework migration 042
+  deliberately avoided.
+- **CSV import persists through `createProspect`/`addContact`**, not its
+  own insert path — dedup (unique per launch), validation, audit rows, and
+  provenance labels cannot fork between manual and imported prospects. One
+  provenance label is applied per file (the file is one source); per-fact
+  URLs remain the job of authority signals.
+- Migration 042 was numbered behind the already-committed 043; the runner
+  keys on filename so it applies cleanly, recorded in docs/qa.
+
+## 2026-08-02 — Authority and valuable visibility are derived on read, not scored rows (spec 038)
+
+Phase B of the implementation plan needed a 0–100 local-authority score, an
+intent-weighted visibility score, and their gap. Choices:
+
+- **Derived on read, never stored** — the spec-036 precedent (win rates) and
+  the spec-032 rule (benchmark deltas computed at render). The alternative,
+  new metric rows under a bumped `scoring_version`, would have orphaned every
+  already-linked benchmark run (reads pin the current version) or required a
+  historical re-scoring pass the roadmap explicitly defers. Each computation
+  carries a code version shown with the number (`authority-v1`,
+  `valuable-visibility-v1`); changing a formula means bumping the constant.
+- **One commercial-intent model.** `CATEGORY_VALUE` moved verbatim from
+  `lib/gaps/detect.ts` into `lib/scoring/intent.ts`; tiers (persisted since
+  migration 030, consumed by nothing until now) take precedence when present.
+  A regression test pins the table so gap scores stayed byte-identical.
+- **Global evidence is excluded, not discounted.** "Global sales volume must
+  not automatically count as local authority" — a discounted contribution
+  still counts, so `scope='global'` signals earn zero points and a stated
+  reason. Same for `kind='other'`: unclassifiable evidence earns display,
+  not points.
+- **`verification_status` was NOT added** to signals despite the original
+  plan sketch: the provenance label already carries the verification axis
+  (verified requires a source URL, service-enforced). A second column would
+  be the duplicate-concept pattern the audit criticized.
+- **Max per kind, not sum**: five press mentions score once — the best one.
+  Signal stuffing cannot inflate authority; all signals still render as
+  evidence.
+- **The gap needs both sides.** No signals → authority null; no organic
+  cells → visibility null; either null → no gap, and the audit snapshot
+  omits the section entirely rather than rendering a one-sided number.
+- Weights remain named module constants (the `AUTHORITY_WEIGHTS` pattern);
+  Phase C's configurable weights table is where they migrate — a fifth
+  hardcoded table was avoided by making intent.ts shared now.
+
+## 2026-08-02 — Fixability and the final score: one weights mechanism, stored with its explanation (spec 039)
+
+Phase C needed the 0–100 fixability rubric and the configurable final
+prospect score. Choices:
+
+- **`scoring_weight_sets` is THE weights mechanism** — versioned rows, one
+  active per name, refusing to score when weights don't sum to 1
+  (`lib/scoring/weights.ts`). New scoring uses it; the legacy hardcoded
+  tables (AUTHORITY_WEIGHTS, gap factors) migrate on their next
+  scoring-version bump rather than being silently changed.
+- **The final score is STORED, unlike the derived-on-read spec-038 scores** —
+  deliberately: the list filters/sorts on it, and a stored score is a
+  snapshot computed at a known time whose breakdown records every component,
+  weight, weight-set version, fixability category, and flag that produced
+  it. Recompute is an explicit audited action.
+- **Underivable fixability inputs are operator-recorded facts**
+  (`prospect_assessments`, upsert per item, identity kept), never guesses.
+  "unknown" is a recorded answer distinct from never-asked; unanswered
+  items make a category "not measured". Raw fixability is a rate over
+  MEASURED categories only — unknown is never scored as bad or good — and
+  missing coverage lowers data confidence instead (adjusted = raw ×
+  confidence; the three shown separately).
+- **Hard flags downgrade and explain, never delete**; reputation_concern
+  additionally sets needsReview. A flagged prospect keeps its score.
+- **Override never erases the computed score** — separate columns, required
+  reason, audited both ways; lists filter on the effective value
+  (override wins).
+- **JSONB keys must be camelCase in this codebase**: db/client.ts uses
+  `transform: postgres.camel`, which rewrites snake_case JSONB keys ON READ
+  — a snake_case weights seed came back as different strings than were
+  stored and silently dropped five of six components. Weight-set and
+  breakdown keys are camelCase; recorded here so the next JSONB vocabulary
+  doesn't rediscover it.
+- Buying signals (Phase F) are a declared component whose weight
+  redistributes until the data exists — the breakdown says "not measured"
+  rather than pretending a zero.
+
+## 2026-08-02 — Market packs are data, installed into the one markets tree (spec 040)
+
+Phase D needed per-city geography, vocabulary, and prompt templates for five
+launch markets. Choices:
+
+- **Packs are code-versioned data (`lib/markets/packs.ts`), not DB config
+  and not per-city code** — the vertical-pack philosophy applied to place.
+  Adding a city is adding a registry entry; a structural test validates
+  every pack (placeholders known, exclusions exist in the hierarchy, tiers
+  legal). No core logic changes per city.
+- **One hierarchy.** Packs install into the exclusivity `markets` tree
+  (kinds widened to country/state/metro/county/zip) instead of creating a
+  parallel geo model — the audit counted three market representations
+  already. The installer matches by name-or-alias under the same parent, so
+  re-installs duplicate nothing and cross-pack ancestors ("United States")
+  converge on one row. Installs are recorded with the exact definition
+  snapshot (`market_pack_installs`).
+- **ZIP rows are not materialized** — hundreds of rows nobody prompts
+  against; ZIPs ride the pack as data, `kind='zip'` exists when a real need
+  appears.
+- **A cycle guard trigger now protects `markets.parent_id`** (audit §10:
+  conflict detection recurses over this tree; a cycle would hang it).
+- **Generation is deterministic, capped with a report, and idempotent** —
+  no LLM, same input → same prompts; texts already in the set are skipped;
+  cap overflow is counted, never silent. Ambiguous place names (Chinatown,
+  The Heights, Downtown Miami) stay in the hierarchy but are excluded from
+  expansion with stated reasons: an unattributable prompt measures nothing.
+- **Lineage on prompts** (`audience`, `price_tier`, `template_ref`,
+  `source='expansion'`). Extending FrozenPrompt with audience/price-tier is
+  deferred until a consumer exists — tier already flows into snapshots and
+  is what valuable visibility reads.
+
+## 2026-08-02 — Discovery lands as candidates; a brokerage is not the team (spec 041)
+
+Phase E added provider-based prospect discovery and entity resolution.
+Choices:
+
+- **Adapter output is never a prospect.** `ProspectSourceAdapter` results
+  land as candidates with the full SourceRecord envelope (provider, source
+  URL, retrieval date, confidence, provenance label) and their raw payload;
+  only human approval creates a prospect — through `createProspect`, the
+  one persistence path. A same-name conflict is a recorded `duplicate`
+  outcome, not an error. The mock adapter (obviously fictional fixture
+  teams) is refused outside tests via the same `mockProviderAllowed` guard
+  as the mock AI provider.
+- **One name matcher.** The resolver reuses `scoreNameMatch`/`bestMatch`
+  semantics from `lib/knowledge/normalize.ts` (exact 0.9 / probable 0.65 /
+  ambiguous 0.45) plus the two signals prospects uniquely have: website
+  domain (0.95, decisive — companies.domain existed unused) and brokerage
+  affiliation.
+- **The brokerage rule is an exclusion, not a penalty**: a company whose
+  match is explained by the affiliation at least as well as by the business
+  name — with no domain tie — is excluded from candidacy and reported as a
+  collision with the reason. "Rivera Team at Compass" can never resolve to
+  the company "Compass". A domain tie overrides: identity beats affiliation.
+- **Ambiguity stays ambiguous**: equal top scores → `possible`, never a
+  coin toss; `possible` never auto-links — it renders as a detail-page
+  suggestion whose confirmation goes through the audited `updateProspect`.
+- **Deviations recorded:** CSV/manual ingestion keeps its existing
+  provenance shape (refactoring shipped code onto SourceRecord would be
+  churn for symmetry); discovery runs execute inline while the only adapter
+  is the instant mock — a network adapter moves execution onto the jobs
+  queue.
+- Cross-launch dedup is a read surface (same normalized name / domain /
+  company), and "merging" is linking both rows to one canonical company —
+  prospects stay launch-scoped by design (spec 032).
+
+## 2026-08-02 — Diagnoses are typed and honest; intent evidence expires (spec 042)
+
+Phase F added the diagnosis layer, buying signals, and freshness. Choices:
+
+- **Diagnoses are derived on read** with a version constant, from data the
+  platform already trusts. Eleven computable keys, each with a triggering
+  and non-triggering test. **Absence-of-research diagnoses ("no review
+  footprint recorded") are about OUR evidence base**, carry 0.4 confidence,
+  and say "gap in our research" — never presented as measured facts about
+  the prospect. Suggested actions are a static reviewable map, no LLM.
+- **Buying signals have a hard floor**: source URL and observed date are
+  NOT NULL at the table, not just service-validated — the target rule
+  ("every buying signal requires a source and date") made structural.
+- **Intent evidence goes cold**: score contribution = 25 × provenance ×
+  recency, where recency is 1.0 within the 180-day window, 0.5 to 2×, then
+  0. Zero recorded signals = null (not measured, weight redistributes);
+  recorded-but-expired = 0 (intent measured and gone cold). The distinction
+  matters and is tested.
+- **Freshness windows are named constants** (benchmark 90d, authority
+  signals 365d, buying signals 180d, contacts 180d, assessments 365d) with
+  a pure injectable-clock `staleness` helper. A stale benchmark **fails
+  publishAudit closed** with the run's age in the message; publishing
+  anyway requires `acknowledgeStale: true`, and the acknowledgment lands in
+  the audit log with the age. The UI offers the acknowledgment through an
+  explicit confirm, never silently.
+
+## 2026-08-02 — Spec-011 reconciliation: the red level is "human-decided, machine-enforced", not "no code path" (roadmap 3.1)
+
+docs/15's red level said sending outreach must have **no code path**; migration
+020 later shipped `assertSendAllowed`, a seven-check fail-closed send gate —
+a code path. The written reconciliation, unblocking Phase 3:
+
+**The gated send stands; the red level's wording is superseded by its
+intent.** The intent was that no automation contacts the outside world
+without a human decision. "No code path" turned out to be the weaker
+implementation of that intent: it pushes real sends into untracked personal
+mailboxes, where the suppression list, the artifact-hash approval binding,
+and the compliance checks protect no one. A send path that *refuses* to
+work without a recorded human decision enforces the red level better than
+the absence of one.
+
+Standing rules going forward:
+1. Every platform send passes `assertSendAllowed` — suppression on
+   normalised identifiers, tenant match, recipient authorization or stated
+   business purpose, approval bound to the exact artifact hash, opt-out
+   path. Fail-closed, no warn-and-continue.
+2. **First-touch prospect outreach is additionally human-dispatched**: a
+   human clicks send (or records a send) per message. Autonomous first
+   contact remains forbidden.
+3. Autonomous *sequence* steps (roadmap 3.3) stay per-step human-approved
+   until a separate recorded decision lifts that — this entry does not.
+4. docs/15's red-level table reads as "human-only decision, machine-enforced
+   execution"; "no code path exists" applies only to fully autonomous sends.
+
+## 2026-08-02 — The send bridge: every dispatch and every refusal is ledgered (spec 043)
+
+Phase G implemented the credential-free half of outreach activation on top
+of the spec-011 reconciliation above. Choices:
+
+- **`sendProspectDraft` is the bridge between the two outreach stacks** the
+  audit flagged as disconnected: prospect drafts now pass the full
+  fail-closed chain (approval state → account DNC → contact DNC →
+  suppression on normalised identifiers → prohibited phrases → stated
+  business purpose → opt-out present) before ANY channel is reached.
+- **Refusals are evidence.** `prospect_outreach_sends` is an insert-only
+  ledger (forbid_mutation trigger) recording the full gate verdict, the
+  sha256 of the exact outgoing text, and the stated business purpose — for
+  refusals as well as sends. The refusal path RETURNS from the transaction
+  instead of throwing, precisely so the ledger row commits.
+- **Channels are dispatch mechanisms behind a human click.** 'manual'
+  records a send the human made from their own mailbox — the record-sent
+  UI now routes through it, so even mailbox sends get suppression/DNC
+  checks and a ledger. 'mock' is CI-only behind the standard mock guard. A
+  real Gmail/ESP channel is an append to channels.ts after live
+  verification — interface first, credentials later.
+- **Cold email carries a reply-based opt-out**: transmitting channels
+  append a footer with sender identity and an unsubscribe instruction, and
+  the gate asserts an opt-out mention exists. Opt-out replies belong on the
+  suppression list, which the gate then enforces forever.
+- **The funnel counts ever-reached, not snapshots** — a contracted prospect
+  fills every earlier stage; conversion is null (never 0) on an empty base;
+  exits are counted beside the ladder, not inside it.
+- **The feedback loop recommends, humans reweight**: cohort comparison
+  (reached `replied`+ vs not) refuses below 5-per-cohort, reports means
+  with sample sizes, and every report ends with the fixed epilogue that
+  weights change only through scoring_weight_sets. Nothing is written
+  automatically — target req. 21's rule, made structural.
+- **Deferrals recorded:** live Gmail/ESP verification, OAuth flow, reply
+  ingest + classification (roadmap 3.2's live half, 3.4) are blocked on
+  funded credentials, not architecture; deal economics (3.5) and
+  prospect→client conversion (3.6) remain open roadmap items.
+
+## 2026-08-03 — The assistant's only hands are the observer tools (spec 044)
+
+The workspace chat dock answers from live platform data. Choices:
+
+- **Its entire data access is the MCP observer registry via invokeTool,
+  as the logged-in user** — same staff assertion, zod validation, and
+  classified errors as the MCP server; zero duplicated business logic.
+  Mutating (operator) tools never enter its catalog, so the model cannot
+  even see them: v1 reads and explains, it does not act.
+- **One agent runner** (lib/ai/agent.ts): strict two-shape JSON protocol
+  per iteration (tool call or answer), at most 6 lookups per question,
+  then the prompt forces an answer. Invalid tool names/inputs return to
+  the model as tool errors instead of crashing the turn. Injectable
+  caller keeps CI keyless.
+- **Transcripts are records**: insert-only assistant_messages carrying
+  the tool calls each reply rests on plus per-turn cost; conversations
+  are per-user (another user's conversation reads as not-found).
+- **Honesty in the prompt** (docs/13, workspace-assistant-v1): every
+  figure names the tool it came from; "not measured" is an answer; if
+  asked to act, the assistant points at the page that does it.
+- Rendering follows the sidebar rule (nothing without a staff session);
+  the boundary stays the service, which re-asserts staff per call.
+
+## 2026-08-03 — Report periods are UTC-anchored, not session-timezone (bug fix)
+
+Found live: the weekly pulse failed to draft every Sunday evening in
+negative-offset timezones. weekStart is a UTC Monday, but
+`started_at >= period::date` makes Postgres cast the date in the SESSION
+timezone — so between UTC midnight and local midnight, a cycle's own
+benchmark run fell before its period and buildSnapshot saw "no completed
+runs". Fixed by casting period bounds explicitly as UTC timestamptz in
+lib/reports/snapshot.ts (both bounds + previous-run lookup) and the
+cycle's run-reuse window. Verified inside the failure window itself.
+Grep found no other `::date` comparisons against timestamptz on hot
+paths; any new period math must anchor its timezone explicitly.
+
+## 2026-08-03 — Dev auth fails closed in a production process (phase 0.1, production-readiness plan)
+
+`AUTH_MODE` defaults to `dev`, and dev mode returns a hardcoded admin for
+every request. That default was correct for the test suite and wrong for the
+internet: the single most likely deploy mistake (one forgotten env var) would
+have published the whole workspace as a passwordless admin session. Decision:
+a production process refuses to serve under dev auth — 503 in middleware,
+`forbidden` at `getCurrentUser()` — with `ALLOW_DEV_AUTH_IN_PROD=1` as the
+explicit override, mirroring `ALLOW_MOCK_PROVIDER`. The `next build`
+prerender phase is exempt (`NEXT_PHASE=phase-production-build`) so CI can
+keep building with dev auth; the check re-fires on every served request.
+One predicate owns the rule (`devAuthRefusalReason` in `lib/env.ts`) so the
+middleware and the auth boundary cannot drift.

@@ -291,7 +291,7 @@ export default async function ReportPage({
                     <TableRow key={s.scoreId}>
                       <TableCell className="font-medium">
                         {s.companyName}
-                        {s.isSelf && <Badge className="ml-2">Parva</Badge>}
+                        {s.isSelf && <Badge className="ml-2">own brand</Badge>}
                       </TableCell>
                       <TableCell className="text-sm">{s.metric}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">

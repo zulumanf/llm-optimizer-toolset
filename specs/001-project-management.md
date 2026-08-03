@@ -28,7 +28,7 @@ Projects index (`/projects`):
 │ Projects                                        [+ New]      │
 ├──────────────────────────────────────────────────────────────┤
 │ Name          Status    Prompt sets  Runs   Created          │
-│ Parva Core    ● active  3            12     2026-07-27       │
+│ Acme Core    ● active  3            12     2026-07-27       │
 │ Launch X      ● active  1            2      2026-07-27       │
 │ Old Test      ◌ archived 1           1      2026-06-01       │
 └──────────────────────────────────────────────────────────────┘

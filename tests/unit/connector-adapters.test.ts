@@ -283,23 +283,23 @@ describe("Search Console adapter", () => {
 });
 
 describe("Gmail adapter", () => {
-  const config = { userId: "me", sendAsAddress: "ops@parva.example" };
+  const config = { userId: "me", sendAsAddress: "ops@lumina.example" };
 
   it("base64url-encodes an RFC 2822 message with compliance headers", () => {
     const encoded = __testables.encodeMessage({
       to: "agent@example.com",
-      from: "ops@parva.example",
+      from: "ops@lumina.example",
       subject: "Hello",
       body: "Body text",
-      unsubscribeUrl: "https://parva.example/unsub/abc",
+      unsubscribeUrl: "https://lumina.example/unsub/abc",
     });
     // base64url alphabet only.
     expect(encoded).not.toMatch(/[+/=]/);
     const decoded = Buffer.from(encoded.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
     expect(decoded).toContain("To: agent@example.com");
-    expect(decoded).toContain("From: ops@parva.example");
+    expect(decoded).toContain("From: ops@lumina.example");
     // An opt-out path is a compliance field, not a nicety.
-    expect(decoded).toContain("List-Unsubscribe: <https://parva.example/unsub/abc>");
+    expect(decoded).toContain("List-Unsubscribe: <https://lumina.example/unsub/abc>");
     expect(decoded).toContain("List-Unsubscribe-Post: List-Unsubscribe=One-Click");
   });
 
@@ -391,7 +391,7 @@ describe("Calendar adapter", () => {
             summary: "Quarterly review",
             start: { dateTime: "2026-08-04T14:00:00Z" },
             end: { dateTime: "2026-08-04T15:00:00Z" },
-            organizer: { email: "ops@parva.example" },
+            organizer: { email: "ops@lumina.example" },
             attendees: [{ email: "client@example.com", displayName: "Client", responseStatus: "accepted" }],
           },
         ],

@@ -82,8 +82,8 @@ describe.skipIf(!TEST_URL)("reports (integration)", () => {
 
   async function seedScoredRun(promptText = "What are the best tools?"): Promise<string> {
     await companySvc.upsertCompany(user, {
-      name: "Parva",
-      aliases: ["parva.com"],
+      name: "Lumina",
+      aliases: ["lumina.com"],
       isSelf: true,
     });
     const project = await projectSvc.createProject(user, { name: "Rep Test" });
@@ -309,7 +309,7 @@ describe.skipIf(!TEST_URL)("reports (integration)", () => {
 
     const [report] = await sql`select body from reports where id = ${draft.data.id}`;
     const body = report?.body as ReportBody;
-    expect(body.scores.every((s) => s.companyName === "Parva")).toBe(true);
+    expect(body.scores.every((s) => s.companyName === "Lumina")).toBe(true);
   });
 
   it("empty periods are rejected with a clear error", async () => {

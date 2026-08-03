@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CreateInterventionDialog } from "@/components/attribution/create-intervention-dialog";
+import { ProjectTabs } from "@/components/layout/project-tabs";
 
 export default async function InterventionsPage({
   params,
@@ -48,6 +49,7 @@ export default async function InterventionsPage({
 
   return (
     <div className="mx-auto max-w-7xl p-6">
+      <ProjectTabs projectId={id} setKey="work" />
       <nav className="mb-3 text-sm text-muted-foreground">
         <Link href="/projects" className="hover:text-foreground">Projects</Link>
         {" / "}
@@ -61,7 +63,7 @@ export default async function InterventionsPage({
         <div>
           <h1 className="text-2xl font-semibold">Interventions</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            What Parva shipped, tied to before/after measurement on a frozen
+            What the client shipped, tied to before/after measurement on a frozen
             prompt set (docs/07). Post runs re-use the baseline instrument at
             +2/+6/+12 weeks.
           </p>
@@ -81,7 +83,7 @@ export default async function InterventionsPage({
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <FlaskConical className="size-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
-            No interventions yet. Record one when Parva ships something that
+            No interventions yet. Record one when the client ships something that
             should move AI answers.
           </p>
         </div>

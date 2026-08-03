@@ -196,6 +196,7 @@ export async function onboardClient(
         category: prompt.category,
         isHoldout: prompt.isHoldout,
         tier: prompt.tier,
+        source: "vertical_pack",
       });
       if (added.ok) promptsCreated += 1;
     }

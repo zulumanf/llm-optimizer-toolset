@@ -2,10 +2,10 @@
 
 > Status: done (2026-07-29)
 >
-> Live validation on the real Parva captures (24 observations re-parsed):
-> **all three "What is Parva?" false positives retracted** — the
-> Mahabharata answer, the "several different companies" answer, and the
-> healthcare-Parva answer — including the false *recommendation*. Three
+> Live validation on the real pilot-client captures (24 observations re-parsed):
+> **all three "What is [the client]?" false positives retracted** — the
+> unrelated-topic answer, the "several different companies" answer, and the
+> unrelated-healthcare-company answer — including the false *recommendation*. Three
 > retraction revisions written; v1 rows preserved. The three surviving
 > mentions are the genuine comparison-prompt ones (conf 0.97–0.98).
 >
@@ -17,7 +17,7 @@
 >    substantively discussed" → prompt now states `isSameEntity` is about
 >    identity ONLY, never prominence; brief mentions still count.
 > After the fix: Linktree 16 mentions/14 recommendations, Beacons 11/9,
-> Carrd 8/8, Stan 5/4, Parva 3/2 across both baselines.
+> Carrd 8/8, Stan 5/4, the pilot client 3/2 across both baselines.
 >
 > Checked, not assumed: Linktree's high recommendation rate is real, not
 > over-marking — excerpts read "Best overall for real estate: **Linktree**",
@@ -33,11 +33,11 @@
 The heuristic parser (`mention-parser-v1+heuristic`) matches aliases by
 string. Live captures proved two failure modes for the real client:
 
-1. **Name collision → false positive.** "What is Parva and what does it
-   do?" returned an answer about *the Mahabharata's parvas*; the parser
+1. **Name collision → false positive.** A "what is [the client]" prompt
+   returned an answer about an unrelated same-name topic; the parser
    counted it as a client mention (and, in the searched run, as a
-   recommendation). GPT's searched answers also retrieve
-   `parvahealth.com`, `parvaconsulting.com`, `getparva.com`.
+   recommendation). Searched answers also retrieved several unrelated
+   same-name companies' domains.
 2. **Prose inference is shaky** — recommendation language elsewhere in an
    answer can be misattributed to a company merely mentioned.
 
@@ -69,9 +69,9 @@ Rules:
   (A response naming the client with an unregistered alias is a
   registry problem, surfaced by brand discovery — spec 005.)
 - **Precision is the LLM's job**, and its single most important output is
-  `isSameEntity`: the answer's "Parva" must be *this* Parva
-  (link-in-bio for real estate agents, parva.io), not a Sanskrit term, a
-  health company, or a consultancy.
+  `isSameEntity`: the answer's brand mention must be *this* client
+  (its real category and domain), not an unrelated same-name term or
+  company.
 - **Identity context comes only from approved claims** (spec 008) plus the
   registry's aliases/domain — never invented, never model recollection.
 - **Deterministic outputs stay deterministic**: cited URLs remain
@@ -108,7 +108,7 @@ observation). Registered in docs/13 with both prompts.
       (`isSameEntity: false`) and produces a retraction revision on
       re-parse; the searched-run "recommended" false positive disappears.
 - [ ] Genuine mentions of the client survive re-parse (no over-correction
-      to zero) — verified against the real Parva comparison prompts.
+      to zero) — verified against the real pilot comparison prompts.
 - [ ] Low-confidence rows trigger a fresh-context verifier call with a
       different agent version; disagreement sets `needs_review`.
 - [ ] No provider key → heuristic v1 runs and rows record the heuristic

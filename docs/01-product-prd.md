@@ -1,18 +1,18 @@
 # 01 — Product PRD
 
-**What are we building?** An internal web app + worker that runs frozen prompt sets against AI providers on a schedule, captures raw responses immutably, classifies mentions of Parva and competitors, computes versioned scores, and produces reports and tasks.
+**What are we building?** An internal web app + worker that runs frozen prompt sets against AI providers on a schedule, captures raw responses immutably, classifies mentions of the client and competitors, computes versioned scores, and produces reports and tasks.
 
 ## Problem
 
-We don't know how AI assistants talk about Parva. Anecdotal checks ("I asked ChatGPT and we weren't mentioned") are unrepeatable, unversioned, and can't measure change. Without instrumentation we can't tell whether any content/PR/docs investment moved AI answers at all.
+We don't know how AI assistants talk about the client. Anecdotal checks ("I asked ChatGPT and we weren't mentioned") are unrepeatable, unversioned, and can't measure change. Without instrumentation we can't tell whether any content/PR/docs investment moved AI answers at all.
 
 ## Target user
 
-The Parva team (2–5 internal operators): whoever runs growth/marketing experiments and whoever builds content. Technical enough for an internal tool; not willing to babysit scripts and spreadsheets.
+the operating team (2–5 internal operators): whoever runs growth/marketing experiments and whoever builds content. Technical enough for an internal tool; not willing to babysit scripts and spreadsheets.
 
 ## Goals
 
-1. Measure Parva's AI visibility reproducibly across providers, weekly.
+1. Measure the client's AI visibility reproducibly across providers, weekly.
 2. Compare against a tracked competitor set.
 3. Detect change over time with confidence (was it noise or a real shift?).
 4. Convert findings into concrete, evidence-linked tasks.
@@ -29,7 +29,7 @@ The Parva team (2–5 internal operators): whoever runs growth/marketing experim
 ## Requirements
 
 **Functional**
-- Projects group prompt sets, competitors, and reports (e.g., "Parva Core", "Feature X Launch").
+- Projects group prompt sets, competitors, and reports (e.g., "Acme Core", "Feature X Launch").
 - Prompt library: create/edit prompts, organize into sets, freeze sets into immutable versions.
 - Run engine: execute a frozen set × providers × models × N repetitions; retries, rate limiting, cost tracking.
 - Raw capture: full provider payload stored before any processing.

@@ -7,9 +7,9 @@
  *
  * Usage: npx tsx scripts/verify-providers.ts   (spends a few cents)
  */
-import * as dotenv from "dotenv";
-dotenv.config();
-
+// Must be the first import — later imports read env at module load, and
+// hoisting would otherwise run them before a dotenv.config() call.
+import "dotenv/config";
 import { getProvider } from "@/lib/ai/registry";
 import { extractCitations } from "@/lib/ai/citations";
 import type { ProviderId } from "@/lib/ai/types";

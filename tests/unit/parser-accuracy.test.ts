@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { classifyResponse, type CompanyInput } from "@/lib/parsing/classify";
 
 const companies: CompanyInput[] = [
-  { id: "parva", name: "Parva", aliases: ["parva.com"], domain: "parva.com" },
+  { id: "lumina", name: "Lumina", aliases: ["lumina.com"], domain: "lumina.com" },
   { id: "acme", name: "Acme", aliases: ["AcmeHQ"], domain: "acme.io" },
   { id: "beta", name: "Beta Inc", aliases: ["BetaInc"], domain: "betainc.dev" },
 ];
@@ -18,28 +18,28 @@ interface LabeledCase {
 }
 
 const CORPUS: LabeledCase[] = [
-  { text: "For most teams I'd recommend Parva — it's the strongest option.", mentioned: ["parva"] },
-  { text: "Top tools:\n1. Acme\n2. Parva\n3. Beta Inc", mentioned: ["acme", "parva", "beta"] },
-  { text: "Acme leads this space; Parva is a newer challenger.", mentioned: ["acme", "parva"] },
+  { text: "For most teams I'd recommend Lumina — it's the strongest option.", mentioned: ["lumina"] },
+  { text: "Top tools:\n1. Acme\n2. Lumina\n3. Beta Inc", mentioned: ["acme", "lumina", "beta"] },
+  { text: "Acme leads this space; Lumina is a newer challenger.", mentioned: ["acme", "lumina"] },
   { text: "There are many options depending on your needs.", mentioned: [] },
-  { text: "Parvati temple guides are outside my expertise.", mentioned: [] },
-  { text: "Check parva.com for pricing details.", mentioned: ["parva"] },
+  { text: "Luminati temple guides are outside my expertise.", mentioned: [] },
+  { text: "Check lumina.com for pricing details.", mentioned: ["lumina"] },
   { text: "AcmeHQ recently shipped a big update.", mentioned: ["acme"] },
   { text: "I would avoid Beta Inc — support is poor.", mentioned: ["beta"] },
-  { text: "Popular picks include Acme and Beta Inc, with Parva close behind.", mentioned: ["acme", "beta", "parva"] },
+  { text: "Popular picks include Acme and Beta Inc, with Lumina close behind.", mentioned: ["acme", "beta", "lumina"] },
   { text: "The best choice is Acme.", mentioned: ["acme"] },
   { text: "Some prefer open-source tools over commercial ones.", mentioned: [] },
-  { text: "- Parva: great for small teams\n- Acme: enterprise standard", mentioned: ["parva", "acme"] },
+  { text: "- Lumina: great for small teams\n- Acme: enterprise standard", mentioned: ["lumina", "acme"] },
   { text: "Beta Inc's betainc.dev docs are thorough.", mentioned: ["beta"] },
   { text: "Nothing beats a spreadsheet for tiny projects.", mentioned: [] },
   { text: "Acme, Acme, and Acme again — it dominates every list.", mentioned: ["acme"] },
-  { text: "Start with Parva; switch to Acme if you outgrow it.", mentioned: ["parva", "acme"] },
-  { text: "PARVA (all caps) still counts as a mention.", mentioned: ["parva"] },
+  { text: "Start with Lumina; switch to Acme if you outgrow it.", mentioned: ["lumina", "acme"] },
+  { text: "LUMINA (all caps) still counts as a mention.", mentioned: ["lumina"] },
   // Known heuristic false positive: "acme" as a common noun. Labeled honestly
   // as not-mentioned; it costs precision until an LLM parser version lands.
   { text: "The acme of perfection is hard to reach.", mentioned: [] },
   { text: "Beta testing your product is essential.", mentioned: [] },
-  { text: "Compare Parva vs Acme on pricing and support.", mentioned: ["parva", "acme"] },
+  { text: "Compare Lumina vs Acme on pricing and support.", mentioned: ["lumina", "acme"] },
   { text: "I can't help with that request.", mentioned: [] },
   { text: "Betas of Beta Inc products ship monthly.", mentioned: ["beta"] },
 ];

@@ -8,7 +8,7 @@
 ## The reframe
 
 Product 1 is strong at measuring **one** client. Running an **agency** is a
-different problem: the work is no longer "measure Parva well," it is
+different problem: the work is no longer "measure one client well," it is
 "onboard client N in minutes, run twenty benchmarks a week without touching
 them, know which clients need me today, and hand each one a deliverable that
 stands up to scrutiny." Almost everything below is about *repeatability,

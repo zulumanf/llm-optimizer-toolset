@@ -16,6 +16,7 @@ import {
   runDailyMaintenance,
   runWeeklyMaintenance,
 } from "@/lib/knowledge/maintenance/service";
+import { measureDueActionOutcomes } from "@/lib/outcomes/sweep";
 import { requireCronSecret } from "@/lib/security/cron-auth";
 import { log } from "@/lib/logger";
 
@@ -78,6 +79,20 @@ export async function POST(request: Request): Promise<Response> {
       maintenance = { error: "maintenance failed; dispatch was unaffected" };
     }
 
+    // Outcome measurement rides the heartbeat too (spec 034). Idempotent by
+    // construction: measureAction is write-once behind FOR UPDATE, so any
+    // number of concurrent heartbeats measure each due outcome exactly once.
+    // Isolated like maintenance — a measurement failure must not fail dispatch.
+    let outcomes: Record<string, unknown> = { skipped: true };
+    try {
+      outcomes = { ...(await measureDueActionOutcomes()) };
+    } catch (err) {
+      log("error", "cron.outcome_measurement_failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      outcomes = { error: "outcome measurement failed; dispatch was unaffected" };
+    }
+
     if (events.deadLettered > 0 || triggers.failed > 0 || health.failing > 0) {
       log("warn", "cron.automation.degraded", {
         deadLettered: events.deadLettered,
@@ -103,6 +118,7 @@ export async function POST(request: Request): Promise<Response> {
           }
         : { skipped: true },
       maintenance,
+      outcomes,
     });
   } catch (err) {
     log("error", "cron.automation_failed", {

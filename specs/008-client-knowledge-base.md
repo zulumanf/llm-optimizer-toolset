@@ -10,9 +10,9 @@
 > and scoring scope = subject + registry companies that are not other
 > projects' subjects (no cross-client talk, proven by test). Claim keys are
 > normalized snake_case; approval supersedes the prior approved claim per
-> key. Seeded live: Parva (link-in-bio for real estate agents — operator-
+> key. Seeded live: the pilot client (link-in-bio for real estate agents — operator-
 > stated 2026-07-27) as subject with one approved positioning claim
-> (domain parva.com is a PLACEHOLDER — verify), competitors Linktree/
+> (the domain is a PLACEHOLDER — verify), competitors Linktree/
 > Beacons/Stan/Milkshake/Carrd, frozen "Realtor link-in-bio" v1, and
 > Baseline #1 executed on gpt-5.4-mini (16/16, $0.036).
 
@@ -21,7 +21,7 @@ Turn each project into a **client engagement** with a verified factual
 record: a per-project subject company (replacing the global `is_self`), and a
 claims register where every fact an agent may use has canonical wording,
 evidence links, an as-of date, and human approval. After this spec, "what is
-Parva" is data the system enforces, and adding a second client (a realtor, a
+the client" is data the system enforces, and adding a second client (a realtor, a
 surgeon) is creating a project — not forking the tool.
 
 ## User stories
@@ -87,6 +87,6 @@ scoping across two projects; supersede chain; evidence requirement; migration
 up/down on seeded data.
 
 ## Definition of done
-Per `specs/_TEMPLATE.md`, plus: Parva's real subject company, aliases, and
+Per `specs/_TEMPLATE.md`, plus: the client's real subject company, aliases, and
 first approved claims entered through the UI (requires the operator to supply
-the actual facts — the system stops guessing what Parva is).
+the actual facts — the system stops guessing what the client is).

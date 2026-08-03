@@ -121,7 +121,7 @@ export function AssetControls({ assetId, status, versions }: Props) {
                 id="pub-url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://parva.io/for-real-estate-agents"
+                placeholder="https://lumina.io/for-real-estate-agents"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">

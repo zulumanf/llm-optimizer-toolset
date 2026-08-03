@@ -26,7 +26,10 @@ export type AttentionKind =
   // Derived in lib/competitors/movement.ts (spec 030) and merged into the
   // feed by lib/notifications/feed.ts — not produced by signals() below.
   | "competitor_overtake"
-  | "visibility_drop";
+  | "visibility_drop"
+  // C6: automation failures must reach the inbox an operator actually
+  // watches — workflow_exceptions previously surfaced only on /control-tower.
+  | "workflow_exception";
 
 export type Severity = "urgent" | "attention" | "info";
 
@@ -51,6 +54,8 @@ const SEVERITY: Record<AttentionKind, Severity> = {
   // Movement is client-facing news, not broken measurement (spec 030)
   competitor_overtake: "attention",
   visibility_drop: "attention",
+  // Broken or safe-stopped automation is measurement-affecting news
+  workflow_exception: "urgent",
 };
 
 const SEVERITY_ORDER: Record<Severity, number> = {
@@ -98,6 +103,8 @@ interface SignalRow {
   suggestedTasks: number;
   contentWaiting: number;
   dueScheduledRuns: number;
+  openWorkflowExceptions: number;
+  severeWorkflowExceptions: number;
   spend7d: number;
   spend30d: number;
   runs7d: number;
@@ -145,6 +152,13 @@ async function signals(): Promise<SignalRow[]> {
       (select count(*)::int from content_assets ca
         where ca.project_id = p.id and ca.status in ('drafted', 'verified'))
         as content_waiting,
+      (select count(*)::int from workflow_exceptions we
+        where we.project_id = p.id and we.status in ('open', 'acknowledged'))
+        as open_workflow_exceptions,
+      (select count(*)::int from workflow_exceptions we
+        where we.project_id = p.id and we.status in ('open', 'acknowledged')
+          and we.severity in ('high', 'critical'))
+        as severe_workflow_exceptions,
       (select count(*)::int from jobs j
         where j.type = 'start_scheduled_run' and j.status = 'queued'
           and j.run_after < now()
@@ -159,7 +173,7 @@ async function signals(): Promise<SignalRow[]> {
         where r.project_id = p.id and r.started_at > now() - interval '7 days')
         as runs7d
     from projects p
-    where p.status = 'active'
+    where p.status = 'active' and p.kind = 'client'
     order by p.name asc
   `;
 }
@@ -206,6 +220,23 @@ export async function attentionFeed(): Promise<{
         item(row, "run_failed", row.failedRuns,
           `${row.failedRuns} run(s) failed or completed partially in the last 14 days.`, "/runs")
       );
+    }
+    if (row.openWorkflowExceptions > 0) {
+      const severe =
+        row.severeWorkflowExceptions > 0
+          ? ` ${row.severeWorkflowExceptions} high/critical.`
+          : "";
+      items.push({
+        projectId: row.id,
+        projectName: row.name,
+        kind: "workflow_exception",
+        severity: SEVERITY.workflow_exception,
+        count: row.openWorkflowExceptions,
+        detail: `${row.openWorkflowExceptions} open workflow exception(s) — automation stopped or failed and is waiting on you.${severe}`,
+        // Cross-client surface: exceptions are resolved from the control
+        // tower's queue, not a project page.
+        href: "/control-tower",
+      });
     }
     if (row.highAccuracy > 0) {
       items.push(

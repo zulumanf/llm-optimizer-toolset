@@ -23,7 +23,7 @@ export default async function CompaniesPage() {
         <div>
           <h1 className="text-2xl font-semibold">Companies</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Brands the parser tracks. Exactly one is Parva (is_self); aliases
+            Brands the parser tracks. Exactly one is the platform&rsquo;s own brand (is_self); aliases
             drive mention detection — collisions are blocked.
           </p>
         </div>
@@ -32,8 +32,8 @@ export default async function CompaniesPage() {
 
       {!hasSelf && (
         <div className="mb-4 rounded-md border border-warning/50 bg-warning/10 px-4 py-2 text-sm">
-          No is_self company yet — parsing refuses to run until Parva is added
-          with &ldquo;This is Parva&rdquo; checked.
+          No is_self company yet — parsing refuses to run until the platform&rsquo;s own
+          brand is added with &ldquo;This is our own brand&rdquo; checked.
         </div>
       )}
 
@@ -41,7 +41,7 @@ export default async function CompaniesPage() {
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <Building2 className="size-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
-            No companies yet — add Parva first, then competitors.
+            No companies yet — add the platform&rsquo;s own brand first, then competitors.
           </p>
         </div>
       ) : (
@@ -60,7 +60,7 @@ export default async function CompaniesPage() {
                 <TableRow key={c.id}>
                   <TableCell className="font-medium">
                     {c.name}{" "}
-                    {c.isSelf && <Badge className="ml-1">Parva</Badge>}
+                    {c.isSelf && <Badge className="ml-1">own brand</Badge>}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {c.aliases.length > 0 ? c.aliases.join(", ") : "—"}
