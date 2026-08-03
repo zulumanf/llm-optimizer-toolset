@@ -4,9 +4,9 @@
  * in lib/mcp/tools.ts onto the stdio transport, and contains no logic of
  * its own. One operator identity per process; see lib/mcp/context.ts.
  */
-import * as dotenv from "dotenv";
-dotenv.config();
-
+// Must be the first import — later imports read env at module load, and
+// hoisting would otherwise run them before a dotenv.config() call.
+import "dotenv/config";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { z } from "zod";
