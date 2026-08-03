@@ -1110,6 +1110,22 @@ export async function linkBenchmark(
           "This company was not scored in that run — the benchmark would be empty. Pick a run that tracked it."
         );
       }
+      // A benchmark is prospect-facing evidence; fabricated captures must
+      // never back it (plan 2.3). Outside the test harness, any mock
+      // response poisons the whole run for this purpose.
+      const { mockProviderAllowed } = await import("@/lib/ai/registry");
+      if (!mockProviderAllowed()) {
+        const [mockRow] = await tx`
+          select 1 from responses
+          where run_id = ${input.runId} and provider = 'mock' limit 1
+        `;
+        if (mockRow) {
+          throw new ClassifiedError(
+            "validation",
+            "That run contains mock-provider responses and cannot back a prospect benchmark."
+          );
+        }
+      }
       const [row] = await tx`
         insert into prospect_benchmarks (prospect_id, run_id, company_id, note, created_by)
         values (${input.prospectId}, ${input.runId}, ${prospect.companyId},

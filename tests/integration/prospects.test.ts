@@ -6,7 +6,7 @@
  */
 import { execSync } from "node:child_process";
 import { join } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
 
@@ -364,6 +364,24 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
       expect(unscored.ok).toBe(false);
       if (!unscored.ok) expect(unscored.error.message).toMatch(/not scored/);
     }
+  });
+
+  it("refuses benchmark links to runs with mock captures outside the harness (plan 2.3)", async () => {
+    const { runId, prospectCompanyId } = await seedScoredRun();
+    const { prospectId } = await seedLaunchAndProspect(prospectCompanyId);
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VITEST", "");
+    vi.stubEnv("ALLOW_MOCK_PROVIDER", "");
+    try {
+      const refused = await svc.linkBenchmark(operator, { prospectId, runId });
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) expect(refused.error.message).toMatch(/mock-provider/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    // Back under the harness the same link succeeds.
+    const linked = await svc.linkBenchmark(operator, { prospectId, runId });
+    expect(linked.ok).toBe(true);
   });
 
   it("enforces evidence and wording on finding approval (service and DB)", async () => {

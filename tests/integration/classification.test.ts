@@ -173,6 +173,28 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
     expect(scoreRows.length).toBeGreaterThan(0);
   });
 
+  it("excludes mock captures from scoring outside the test harness (plan 2.3)", async () => {
+    await seedCompanies();
+    const runId = await runPipeline(["What are the best tools?"]);
+    // Drain execute + parse but leave scoring unrun (scores are immutable
+    // once written), then score as production would see it: mock captures
+    // present, opt-in absent.
+    for (let i = 0; i < 100; i += 1) {
+      const job = await jobs.claimNextJob("test-worker");
+      if (!job) break;
+      if (job.type === "execute_run") await execute.executeRun(job.payload.runId as string);
+      else if (job.type === "parse_response")
+        await parsing.parseResponse(job.payload.responseId as string);
+      await jobs.completeJob(job.id);
+    }
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VITEST", "");
+    vi.stubEnv("ALLOW_MOCK_PROVIDER", "");
+    await scoring.computeScores(runId);
+    const scoreRows = await sql`select 1 from scores where run_id = ${runId}`;
+    expect(scoreRows.length).toBe(0);
+  });
+
   it("company registry: alias collisions blocked; multiple is_self allowed since spec 008", async () => {
     await seedCompanies();
     // Spec 008 dropped the one-is_self constraint (multi-client world;
