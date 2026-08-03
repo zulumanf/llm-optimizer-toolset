@@ -1284,3 +1284,39 @@ of the spec-011 reconciliation above. Choices:
   ingest + classification (roadmap 3.2's live half, 3.4) are blocked on
   funded credentials, not architecture; deal economics (3.5) and
   prospect→client conversion (3.6) remain open roadmap items.
+
+## 2026-08-03 — The assistant's only hands are the observer tools (spec 044)
+
+The workspace chat dock answers from live platform data. Choices:
+
+- **Its entire data access is the MCP observer registry via invokeTool,
+  as the logged-in user** — same staff assertion, zod validation, and
+  classified errors as the MCP server; zero duplicated business logic.
+  Mutating (operator) tools never enter its catalog, so the model cannot
+  even see them: v1 reads and explains, it does not act.
+- **One agent runner** (lib/ai/agent.ts): strict two-shape JSON protocol
+  per iteration (tool call or answer), at most 6 lookups per question,
+  then the prompt forces an answer. Invalid tool names/inputs return to
+  the model as tool errors instead of crashing the turn. Injectable
+  caller keeps CI keyless.
+- **Transcripts are records**: insert-only assistant_messages carrying
+  the tool calls each reply rests on plus per-turn cost; conversations
+  are per-user (another user's conversation reads as not-found).
+- **Honesty in the prompt** (docs/13, workspace-assistant-v1): every
+  figure names the tool it came from; "not measured" is an answer; if
+  asked to act, the assistant points at the page that does it.
+- Rendering follows the sidebar rule (nothing without a staff session);
+  the boundary stays the service, which re-asserts staff per call.
+
+## 2026-08-03 — Report periods are UTC-anchored, not session-timezone (bug fix)
+
+Found live: the weekly pulse failed to draft every Sunday evening in
+negative-offset timezones. weekStart is a UTC Monday, but
+`started_at >= period::date` makes Postgres cast the date in the SESSION
+timezone — so between UTC midnight and local midnight, a cycle's own
+benchmark run fell before its period and buildSnapshot saw "no completed
+runs". Fixed by casting period bounds explicitly as UTC timestamptz in
+lib/reports/snapshot.ts (both bounds + previous-run lookup) and the
+cycle's run-reuse window. Verified inside the failure window itself.
+Grep found no other `::date` comparisons against timestamptz on hot
+paths; any new period math must anchor its timezone explicitly.
