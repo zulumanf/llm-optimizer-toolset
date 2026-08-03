@@ -179,7 +179,9 @@ export async function advanceCycle(cycleId: string): Promise<CycleState> {
     const [existingRun] = await sql`
       select id from runs
       where project_id = ${projectId} and trigger = 'scheduled'
-        and started_at >= ${cycle.weekStart}::date
+        -- UTC-anchored: weekStart is a UTC Monday; a bare ::date cast would
+        -- compare in the session timezone (see lib/reports/snapshot.ts).
+        and started_at >= (${cycle.weekStart} || ' 00:00:00+00')::timestamptz
       order by started_at desc limit 1
     `;
     let runId = existingRun?.id as string | undefined;

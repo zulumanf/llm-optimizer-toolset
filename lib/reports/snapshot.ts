@@ -55,8 +55,12 @@ export async function buildSnapshot(
     select r.id, r.label, r.started_at, r.prompt_set_version_id
     from runs r
     where r.project_id = ${projectId}
-      and r.started_at >= ${periodStart}::date
-      and r.started_at < (${periodEnd}::date + 1)
+      -- Period bounds are UTC-anchored explicitly: a bare ::date cast would
+      -- compare in the SESSION timezone, so a run started after UTC midnight
+      -- but before local midnight would fall outside its own period (bit the
+      -- weekly cycle every Sunday evening in negative-offset zones).
+      and r.started_at >= (${periodStart} || ' 00:00:00+00')::timestamptz
+      and r.started_at < (((${periodEnd}::date + 1)::text) || ' 00:00:00+00')::timestamptz
       and r.status in ('completed', 'partial')
     order by r.started_at asc
   `;
@@ -86,7 +90,7 @@ export async function buildSnapshot(
   const [previous] = await sql`
     select r.id from runs r
     where r.project_id = ${projectId}
-      and r.started_at < ${periodStart}::date
+      and r.started_at < (${periodStart} || ' 00:00:00+00')::timestamptz
       and r.prompt_set_version_id = ${current.promptSetVersionId}
       and exists (select 1 from scores s where s.run_id = r.id
         and s.scoring_version = ${SCORING_VERSION})
