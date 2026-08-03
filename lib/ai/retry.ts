@@ -35,13 +35,26 @@ const DAILY_QUOTA_MARKERS = [
   /quota\s*exceeded/i,
   /exceeded your current quota/i,
   /check your plan and billing/i,
+];
+
+/** Out of money, not out of window: no Retry-After makes these come back.
+ * (Found live 2026-08-03: a creditless OpenAI account 429s every call with
+ * "no credits remaining" AND a Retry-After header, which the header guard
+ * below misread as a rate limit — the worker ground through 40 cells × 3
+ * retries instead of aborting on the first.) */
+const BILLING_EXHAUSTED_MARKERS = [
   /insufficient_quota/i,
   /credit balance is too low/i,
+  /no credits remaining/i,
+  /credit_balance_exhausted/i,
 ];
 
 /** True when a 429 will still be a 429 in a minute. */
 export function isQuotaExhausted(message: string, retryAfterMs?: number): boolean {
-  // A provider that tells us when to come back is rate limiting, not refusing.
+  // Billing exhaustion beats a Retry-After header — waiting does not refill
+  // an empty account.
+  if (BILLING_EXHAUSTED_MARKERS.some((pattern) => pattern.test(message))) return true;
+  // Otherwise, a provider that tells us when to come back is rate limiting.
   if (retryAfterMs !== undefined && retryAfterMs <= 120_000) return false;
   return DAILY_QUOTA_MARKERS.some((pattern) => pattern.test(message));
 }
