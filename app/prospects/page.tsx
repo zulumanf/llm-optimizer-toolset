@@ -48,10 +48,16 @@ export default async function ProspectsPage() {
         actions={
           <>
             <LaunchDialog markets={markets.map((m) => ({ id: m.id, name: m.name, parentName: m.parentName }))} />
-            <DiscoverDialog
-              launches={launches.map((l) => ({ id: l.id, name: l.name }))}
-              providers={providers}
-            />
+            {/* No source adapter = no Discover button (plan 3.8): a dialog
+                with an empty provider list errors on submit. CSV import and
+                manual entry are the working universe sources until a real
+                adapter ships. */}
+            {providers.length > 0 && (
+              <DiscoverDialog
+                launches={launches.map((l) => ({ id: l.id, name: l.name }))}
+                providers={providers}
+              />
+            )}
             <ImportDialog launches={launches.map((l) => ({ id: l.id, name: l.name }))} />
             <ProspectDialog launches={launches.map((l) => ({ id: l.id, name: l.name }))} />
           </>
