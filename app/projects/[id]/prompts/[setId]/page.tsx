@@ -16,6 +16,7 @@ import { PromptRowControls } from "@/components/prompts/prompt-row-controls";
 import { FreezeButton } from "@/components/prompts/freeze-button";
 import { DuplicateSetDialog } from "@/components/prompts/duplicate-set-dialog";
 import { ImportPromptsDialog } from "@/components/prompts/import-prompts-dialog";
+import { GenerateMarketDialog } from "@/components/prompts/generate-market-dialog";
 import { clusterPrompts, PROMPT_CLUSTER_VERSION } from "@/lib/prompts/cluster";
 import { formatDate } from "@/lib/format";
 
@@ -94,6 +95,7 @@ export default async function PromptSetDetailPage({
           <div className="flex shrink-0 gap-2">
             <SetFormDialog mode="edit" set={set} />
             <ImportPromptsDialog setId={set.id} />
+            <GenerateMarketDialog setId={set.id} />
             <DuplicateSetDialog sourceSetId={set.id} sourceName={set.name} />
             <FreezeButton
               setId={set.id}

@@ -21,6 +21,10 @@ export interface Prompt {
   isHoldout: boolean;
   /** Intent tier 1–4 (migration 030); null = untiered (all historical prompts). */
   tier: number | null;
+  /** Generation lineage (spec 040); null on manual/imported prompts. */
+  audience: string | null;
+  priceTier: string | null;
+  templateRef: string | null;
   createdAt: Date;
   archivedAt: Date | null;
 }

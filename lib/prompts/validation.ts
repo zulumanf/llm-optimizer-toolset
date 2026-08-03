@@ -72,6 +72,11 @@ export const addPromptSchema = z.object({
   // Provenance (spec 035): where this prompt came from. Bulk import writes
   // its own rows and stamps 'import' itself.
   source: z.enum(["manual", "vertical_pack", "expansion"]).optional(),
+  // Generation lineage (spec 040): who the prompt targets, which price tier
+  // it probes, and exactly which pack template produced it.
+  audience: z.string().trim().max(40).optional(),
+  priceTier: z.string().trim().max(60).optional(),
+  templateRef: z.string().trim().max(120).optional(),
 });
 
 export const updatePromptSchema = z.object({
