@@ -26,6 +26,7 @@ import {
   ALL_PROSPECT_STAGES,
   ASSESSMENT_ITEMS,
   ASSESSMENT_VALUES,
+  AUDIT_LINK_DEFAULT_EXPIRY_DAYS,
   AUDIT_TOKEN_BYTES,
   AUTHORITY_SIGNAL_KINDS,
   CONTACT_CHANNELS,
@@ -1943,7 +1944,9 @@ export async function publishAudit(
         citations: Number(s.citations),
       }));
 
-      const marketName = (launchRow?.marketName as string) ?? "the monitored market";
+      // Fallback reads correctly inside "questions about {marketName}" —
+      // "the monitored market" produced a broken sentence on the page.
+      const marketName = (launchRow?.marketName as string) ?? "your market";
       const headline =
         authorityGap && authorityGap.gap >= 20
           ? `${prospect.businessName} is one of ${marketName}'s strongest teams — and AI assistants almost never say so.`
@@ -2013,7 +2016,9 @@ export async function publishAudit(
            expires_at, published_by, published_at, created_by)
         values (${input.prospectId}, ${finding.id}, ${snapshot.headline},
           ${tx.json(snapshot as never)}, 'published', ${accessToken},
-          ${input.expiresAt ?? null}, ${user.id}, now(), ${user.id})
+          ${input.expiresAt ??
+            new Date(Date.now() + AUDIT_LINK_DEFAULT_EXPIRY_DAYS * 86_400_000)},
+          ${user.id}, now(), ${user.id})
         returning id
       `;
       await writeAudit(tx, {
@@ -2039,6 +2044,53 @@ export async function publishAudit(
       return { auditId: row?.id as string, accessToken };
     });
     return ok(result);
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Kill the link without the ceremony of a revocation (plan 3.4): the audit
+ * stays 'published' in the record — nothing was wrong with it — but the
+ * token stops resolving now. Revoke remains the "this should not have gone
+ * out" path with its mandatory reason.
+ */
+export async function expireAudit(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ auditId: string }>> {
+  const parsed = z.object({ auditId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid audit id."));
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    await sql.begin(async (tx) => {
+      const [row] = await tx`
+        update prospect_audits set expires_at = now()
+        where id = ${input.auditId} and status = 'published'
+          and (expires_at is null or expires_at > now())
+        returning id, prospect_id
+      `;
+      if (!row) {
+        throw new ClassifiedError("conflict", "Audit not found, not published, or already expired.");
+      }
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.audit_expire",
+        entity: "prospect_audit",
+        entityId: input.auditId,
+      });
+      await logActivity(
+        tx,
+        row.prospectId as string,
+        "audit_expired",
+        { auditId: input.auditId },
+        user.id
+      );
+    });
+    return ok({ auditId: input.auditId });
   } catch (err) {
     return fail(err);
   }
@@ -2097,7 +2149,7 @@ export async function revokeAudit(
  */
 export async function getAuditByToken(
   token: string,
-  meta: { ip?: string | null; userAgent?: string | null } = {}
+  meta: { ip?: string | null; userAgent?: string | null; internal?: boolean } = {}
 ): Promise<AuditSnapshot | null> {
   if (!token || token.length < 20 || token.length > 100) return null;
   const rows = await sql`
@@ -2107,12 +2159,17 @@ export async function getAuditByToken(
   `;
   const row = rows[0];
   if (!row) return null;
+  // internal = a signed-in staff session opened it (plan 3.6): the
+  // operator's own QA pass must not read as prospect interest.
   await sql.begin(async (tx) => {
     await tx`
       insert into prospect_audit_views (audit_id, ip, user_agent, is_internal)
-      values (${row.id}, ${meta.ip ?? null}, ${meta.userAgent ?? null}, false)
+      values (${row.id}, ${meta.ip ?? null}, ${meta.userAgent ?? null},
+        ${meta.internal ?? false})
     `;
-    await logActivity(tx, row.prospectId as string, "audit_viewed", { auditId: row.id }, null);
+    if (!meta.internal) {
+      await logActivity(tx, row.prospectId as string, "audit_viewed", { auditId: row.id }, null);
+    }
   });
   return row.snapshot as AuditSnapshot;
 }
@@ -2173,6 +2230,16 @@ export async function createOutreachDraft(
           select m.name as market_name from market_launches l
           join markets m on m.id = l.market_id where l.id = ${prospect.launchId}
         `;
+        // The email's proof is the published audit page (plan 3.1) — the
+        // page CTA says "reply to the email that brought you here", so the
+        // email must actually carry the link. Unpublished or no APP_URL →
+        // the template falls back to the pure reply-first ask.
+        const [publishedAudit] = await tx`
+          select access_token from prospect_audits
+          where prospect_id = ${input.prospectId} and status = 'published'
+            and (expires_at is null or expires_at > now())
+        `;
+        const { auditUrl } = await import("@/lib/prospects/urls");
         const generated = generateReplyFirstEmail({
           prospectName: prospect.businessName,
           teamLeader: prospect.teamLeader,
@@ -2181,6 +2248,9 @@ export async function createOutreachDraft(
           findingExplanation: finding.explanation,
           providers: run?.providers ?? [],
           sampleSize: run?.responseCount ?? 0,
+          auditUrl: publishedAudit
+            ? auditUrl(publishedAudit.accessToken as string)
+            : null,
         });
         subject = generated.subject;
         body = generated.body;

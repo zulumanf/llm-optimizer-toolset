@@ -16,6 +16,12 @@ const envSchema = z
     ANTHROPIC_API_KEY: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
     CRON_SECRET: z.string().optional(),
+    /** Public origin of the deployed app (no trailing slash), e.g.
+     * https://avos.example.com. Everything that leaves the building — audit
+     * share links, outreach drafts — builds absolute URLs from this, never
+     * from window.location (which is localhost on the operator's machine).
+     * Optional so dev boots; link-bearing features degrade without it. */
+    APP_URL: z.string().url().optional(),
     // Supabase (spec 014). Optional at field level so `AUTH_MODE=dev` boots —
     // and the whole test suite runs — with no identity provider reachable.
     // That is an explicit acceptance criterion, not a convenience.
