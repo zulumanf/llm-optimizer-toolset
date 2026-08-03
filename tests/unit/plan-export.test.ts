@@ -48,6 +48,8 @@ function plan(overrides: Partial<PlanSummary> = {}): PlanSummary {
         measurement: "Ask AI directly who you are.",
         status: "planned",
         exclusionReason: null,
+        id: null,
+        taskId: null,
       },
       {
         phase: "compounding",
@@ -63,6 +65,8 @@ function plan(overrides: Partial<PlanSummary> = {}): PlanSummary {
         measurement: "Track review count and recency.",
         status: "planned",
         exclusionReason: null,
+        id: null,
+        taskId: null,
       },
       {
         phase: "foundation",
@@ -78,6 +82,8 @@ function plan(overrides: Partial<PlanSummary> = {}): PlanSummary {
         measurement: "Ask AI for that brokerage's agents.",
         status: "excluded",
         exclusionReason: "No verified brokerage on file. Confirm it first.",
+        id: null,
+        taskId: null,
       },
     ],
     ...overrides,
