@@ -14,6 +14,8 @@ import { LaunchDialog } from "@/components/prospects/launch-dialog";
 import { ProspectDialog } from "@/components/prospects/prospect-dialog";
 import { DiscoverDialog } from "@/components/prospects/discover-dialog";
 import { CandidateActions } from "@/components/prospects/candidate-actions";
+import { PipelineGuide } from "@/components/prospects/pipeline-guide";
+import { PROSPECT_STAGES } from "@/lib/prospects/constants";
 import { listLaunches, listProspects } from "@/lib/prospects/service";
 import {
   listDiscoveryCandidates,
@@ -91,6 +93,32 @@ export default async function ProspectsPage() {
             </TableBody>
           </Table>
         )}
+      </Section>
+
+      <Section
+        title="Pipeline"
+        description="The prospecting flow start to finish — the highlighted step is where this workspace is right now."
+      >
+        <PipelineGuide
+          state={{
+            hasLaunch: launches.length > 0,
+            hasProspects: prospects.length > 0,
+            hasBenchmarking: prospects.some(
+              (p) =>
+                p.qualificationScore !== null ||
+                PROSPECT_STAGES.indexOf(p.stage as (typeof PROSPECT_STAGES)[number]) >=
+                  PROSPECT_STAGES.indexOf("benchmarking")
+            ),
+            hasScore: prospects.some(
+              (p) => p.qualificationScore !== null || p.qualificationOverride !== null
+            ),
+            hasOutreach: prospects.some(
+              (p) =>
+                PROSPECT_STAGES.indexOf(p.stage as (typeof PROSPECT_STAGES)[number]) >=
+                PROSPECT_STAGES.indexOf("outreach_ready")
+            ),
+          }}
+        />
       </Section>
 
       {funnel.totalProspects > 0 && (

@@ -121,6 +121,27 @@ describe.skipIf(!TEST_URL)("market packs (integration)", () => {
     expect(rows[0]?.aliases).toContain("US");
   });
 
+  it("quick-start: one call installs the pack and opens the launch; a repeat says 'already started'", async () => {
+    const quickstart = await import("@/lib/prospects/quickstart");
+    const first = unwrap(
+      await quickstart.quickStartLaunch(operator, { packKey: "jersey-city" })
+    );
+    expect(first.cityName).toBe("Jersey City");
+    const [launch] = await sql`
+      select l.name, m.name as market_name from market_launches l
+      join markets m on m.id = l.market_id where l.id = ${first.launchId}
+    `;
+    expect(launch).toMatchObject({
+      name: "Jersey City — luxury residential",
+      marketName: "Jersey City",
+    });
+    const again = await quickstart.quickStartLaunch(operator, { packKey: "jersey-city" });
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.error.message).toContain("already started");
+    const unknown = await quickstart.quickStartLaunch(operator, { packKey: "atlantis" });
+    expect(unknown.ok).toBe(false);
+  });
+
   it("the cycle guard refuses a parent cycle", async () => {
     unwrap(await install.installMarketPack(operator, { packKey: "chicago" }));
     const [city] = await sql`select id from markets where name = 'Chicago'`;

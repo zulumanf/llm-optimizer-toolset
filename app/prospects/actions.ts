@@ -6,6 +6,7 @@ import { fail, type ActionResult } from "@/lib/actions/result";
 import * as svc from "@/lib/prospects/service";
 import * as discovery from "@/lib/prospects/discovery";
 import * as buying from "@/lib/prospects/buying-signals";
+import * as quickstart from "@/lib/prospects/quickstart";
 
 async function run<T>(
   fn: (user: Awaited<ReturnType<typeof getCurrentUser>>) => Promise<ActionResult<T>>
@@ -70,6 +71,9 @@ export async function addBuyingSignal(input: unknown) {
 }
 export async function archiveBuyingSignal(input: unknown) {
   return run((u) => buying.archiveBuyingSignal(u, input));
+}
+export async function quickStartLaunch(input: unknown) {
+  return run((u) => quickstart.quickStartLaunch(u, input));
 }
 export async function linkBenchmark(input: unknown) {
   return run((u) => svc.linkBenchmark(u, input));
