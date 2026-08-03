@@ -64,6 +64,66 @@ describe.skipIf(!TEST_URL)("worker dispatch substrate (integration)", () => {
     return row!.id as string;
   }
 
+  async function insertRunningRun(): Promise<string> {
+    const [project] = await sql`
+      insert into projects (name) values (${`Reaper ${Math.random().toString(36).slice(2)}`})
+      returning id
+    `;
+    const [set] = await sql`
+      insert into prompt_sets (project_id, name) values (${project!.id}, 'Set')
+      returning id
+    `;
+    const [version] = await sql`
+      insert into prompt_set_versions (prompt_set_id, version, frozen_prompts)
+      values (${set!.id}, 1, '[]'::jsonb) returning id
+    `;
+    const [run] = await sql`
+      insert into runs (project_id, prompt_set_version_id, label, providers,
+        status, trigger, budget_usd)
+      values (${project!.id}, ${version!.id}, 'orphan test', '[]'::jsonb,
+        'running', 'manual', 5)
+      returning id
+    `;
+    return run!.id as string;
+  }
+
+  // ------------------------------------------------ orphaned-run reaper (plan 2.5)
+
+  it("fails a running run whose execute job dead-lettered, spares one mid-retry", async () => {
+    const { reapOrphanedRuns } = await import("@/lib/runs/reaper");
+
+    const orphaned = await insertRunningRun();
+    await insertJob({
+      type: "execute_run",
+      status: "failed",
+      attempts: 3,
+      payload: { runId: orphaned },
+    });
+    const retrying = await insertRunningRun();
+    await insertJob({
+      type: "execute_run",
+      status: "queued",
+      attempts: 1,
+      payload: { runId: retrying },
+    });
+
+    const reaped = await reapOrphanedRuns();
+    expect(reaped).toBe(1);
+
+    const [dead] = await sql`
+      select status, status_detail, completed_at from runs where id = ${orphaned}
+    `;
+    expect(dead!.status).toBe("failed");
+    expect(dead!.statusDetail).toMatch(/Reaped/);
+    expect(dead!.completedAt).not.toBeNull();
+
+    const [alive] = await sql`select status from runs where id = ${retrying}`;
+    expect(alive!.status).toBe("running");
+
+    // Idempotent: a second sweep finds nothing.
+    expect(await reapOrphanedRuns()).toBe(0);
+  });
+
   // ------------------------------------------------ stale-lease reclaim
 
   it("reclaims a lease whose worker died, and the job becomes claimable again", async () => {
