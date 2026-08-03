@@ -208,6 +208,45 @@ export async function updateInterventionSchedule(
   }
 }
 
+/**
+ * Portal visibility (plan 4.1): interventions reach the client portal only
+ * when an operator flips this deliberately — same deny-by-default rule as
+ * tasks.client_visible (migration 031).
+ */
+export async function setInterventionVisibility(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ interventionId: string; clientVisible: boolean }>> {
+  const parsed = z
+    .object({ interventionId: z.string().uuid(), clientVisible: z.boolean() })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid input."));
+  }
+  const { interventionId, clientVisible } = parsed.data;
+  try {
+    assertCanWrite(user);
+    await sql.begin(async (tx) => {
+      const [row] = await tx`
+        update interventions set client_visible = ${clientVisible}
+        where id = ${interventionId} and archived_at is null
+        returning id
+      `;
+      if (!row) throw new ClassifiedError("not_found", "Intervention not found.");
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "intervention.visibility",
+        entity: "intervention",
+        entityId: interventionId,
+        detail: { clientVisible },
+      });
+    });
+    return ok({ interventionId, clientVisible });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 /** Worker handler: start the post run on the intervention's instrument. */
 export async function startScheduledRun(payload: {
   interventionId: string;

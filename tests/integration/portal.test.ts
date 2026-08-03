@@ -114,7 +114,7 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
     await drainJobs();
 
     // Overview: headline metrics with sample sizes and scoring version.
-    const overview = await portal.portalOverview(projectId);
+    const overview = await portal.portalOverview(user, projectId);
     expect(overview.subjectName).toBe("Lumina");
     const mention = overview.headlines.find((h) => h.metric === "mention_rate");
     expect(mention?.value).toBe(1);
@@ -142,10 +142,24 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
     await doneTask("Shared work item", true);
     await doneTask("Internal only item", false);
 
-    const work = await portal.portalWork(projectId);
+    // Interventions follow the same deny-by-default rule (plan 4.1).
+    await sql`
+      insert into interventions (project_id, title, shipped_at, prompt_set_version_id)
+      values
+        (${projectId}, 'Internal experiment title', current_date, ${version?.id}),
+        (${projectId}, 'Shared shipped change', current_date, ${version?.id})
+    `;
+    await sql`
+      update interventions set client_visible = true
+      where title = 'Shared shipped change'
+    `;
+
+    const work = await portal.portalWork(user, projectId);
     const titles = work.map((w) => w.title);
     expect(titles).toContain("Shared work item");
     expect(titles).not.toContain("Internal only item");
+    expect(titles).toContain("Shared shipped change");
+    expect(titles).not.toContain("Internal experiment title");
 
     // Reports: published only.
     await sql`
@@ -157,7 +171,7 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
         (${projectId}, 'July report', '2026-07-01', '2026-07-28',
           '{}'::jsonb, 'published', now())
     `;
-    const reports = await portal.portalReports(projectId);
+    const reports = await portal.portalReports(user, projectId);
     expect(reports).toHaveLength(1);
     expect(reports[0]?.title).toBe("July report");
   });
@@ -165,11 +179,11 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
   it("no subject or no runs renders honest emptiness, not errors", async () => {
     const project = await projectSvc.createProject(user, { name: "Empty Co" });
     if (!project.ok) throw new Error(project.error.message);
-    const overview = await portal.portalOverview(project.data.id);
+    const overview = await portal.portalOverview(user, project.data.id);
     expect(overview.subjectName).toBeNull();
     expect(overview.headlines).toHaveLength(0);
-    expect(await portal.portalWork(project.data.id)).toHaveLength(0);
-    expect(await portal.portalReports(project.data.id)).toHaveLength(0);
+    expect(await portal.portalWork(user, project.data.id)).toHaveLength(0);
+    expect(await portal.portalReports(user, project.data.id)).toHaveLength(0);
   });
 
 

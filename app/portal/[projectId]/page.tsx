@@ -1,4 +1,5 @@
 import { portalOverview } from "@/lib/portal/service";
+import { getCurrentUser } from "@/lib/auth";
 import {
   AuthorityTrendChart,
   type TrendDatum,
@@ -19,7 +20,7 @@ export default async function PortalOverviewPage({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const overview = await portalOverview(projectId);
+  const overview = await portalOverview(await getCurrentUser(), projectId);
 
   if (overview.headlines.length === 0) {
     return (
