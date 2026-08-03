@@ -195,6 +195,20 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
     expect(scoreRows.length).toBe(0);
   });
 
+  it("scores are insert-only at the database level (plan 2.4)", async () => {
+    await seedCompanies();
+    const runId = await runPipeline(["What are the best tools?"]);
+    await drainJobs();
+    const before = await sql`select 1 from scores where run_id = ${runId}`;
+    expect(before.length).toBeGreaterThan(0);
+    await expect(
+      sql`update scores set value = 0.99 where run_id = ${runId}`
+    ).rejects.toThrow(/insert-only/);
+    await expect(
+      sql`delete from scores where run_id = ${runId}`
+    ).rejects.toThrow(/insert-only/);
+  });
+
   it("company registry: alias collisions blocked; multiple is_self allowed since spec 008", async () => {
     await seedCompanies();
     // Spec 008 dropped the one-is_self constraint (multi-client world;
