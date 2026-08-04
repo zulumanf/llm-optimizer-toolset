@@ -45,3 +45,17 @@ test("generate-draft opens the recipient dialog when contacts exist, or generate
   // The draft carries the audit link (plan 3.1) since APP_URL is set.
   await expect(page.getByText(`http://localhost:3100/audit/${state.auditToken}`)).toBeVisible();
 });
+
+test("editing a draft saves a new version through the gated pipeline (plan 3.2)", async ({
+  page,
+}) => {
+  // Depends on the draft the previous test generated (workers: 1, serial).
+  await page.goto(path);
+  await page.getByRole("button", { name: /^edit$/i }).first().click();
+  const subject = page.getByLabel("Subject");
+  await expect(subject).toBeVisible();
+  await subject.fill("A benchmark result worth two minutes");
+  await page.getByRole("button", { name: /save new version/i }).click();
+  await expect(page.getByText(/saved as v2/i)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("A benchmark result worth two minutes").first()).toBeVisible();
+});

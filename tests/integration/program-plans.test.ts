@@ -248,6 +248,27 @@ describe.skipIf(!TEST_URL)("program plans (integration)", () => {
     const [after] = await sql`select status from plan_items where id = ${item?.id}`;
     expect(after?.status).toBe("done");
 
+    // Dropping is explicit and reasoned — never silent (plan 5.4).
+    const [second] = await sql`
+      select id from plan_items
+      where plan_id = ${composed.data.id} and status = 'planned'
+      order by phase, position limit 1
+    `;
+    const unreasoned = await plans.dropPlanItem(user, {
+      planItemId: second?.id as string,
+      reason: "",
+    });
+    expect(unreasoned.ok).toBe(false);
+    const dropped = await plans.dropPlanItem(user, {
+      planItemId: second?.id as string,
+      reason: "Client is handling this internally.",
+    });
+    expect(dropped.ok).toBe(true);
+    const [droppedRow] = await sql`select status from plan_items where id = ${second?.id}`;
+    expect(droppedRow?.status).toBe("dropped");
+    // A dropped item cannot be activated.
+    expect((await plans.activatePlanItem(user, { planItemId: second?.id as string })).ok).toBe(false);
+
     // Dropping requires a reason; a settled item cannot be dropped.
     expect((await plans.dropPlanItem(user, { planItemId: item?.id as string, reason: "x" })).ok).toBe(false);
     const [other] = await sql`

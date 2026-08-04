@@ -84,3 +84,20 @@ those were fixed; see DECISIONS.md 2026-08-04.
     (47/47) but the hosted runner boots the compiled server then produces
     no test output until timeout. Diagnose, then remove the flag — a
     non-blocking test job is a decorative one.
+
+## Test gaps (assessed 2026-08-04, after the regression additions)
+
+19. **Role-denial through the browser.** All E2E runs under AUTH_MODE=dev
+    (staff). SQL-level portal isolation is well tested, but no browser test
+    proves a client_viewer session sees only the portal, or that the login
+    flow works. Needs a Supabase test rig (local supabase or a dedicated
+    test project) — the one infrastructure piece standing between here and
+    honest auth E2E.
+20. **The two docs/09 flows still not browser-tested**: review-queue
+    correction → revision recorded, and report publish → locked. Both are
+    integration-tested at the service layer; the browser layer needs a
+    seed with low-confidence mentions (review queue) and a draft report.
+21. **deliverDigest** (webhook delivery) — needs a fetch mock; currently
+    only the not-configured path is implicitly exercised.
+22. **Onboarding wizard, approvals inbox decide, CSV import dialog** —
+    render-tested only; their submit flows are untested in the browser.
