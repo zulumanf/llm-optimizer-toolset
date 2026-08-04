@@ -137,3 +137,22 @@ Findings from a cold read of the rendered page:
    research step, not a second funnel. Kept: exactly two button CTAs
    (top and close), zero-repetition of the prospect's 0 (the zero is the
    product), no sticky elements, no scarcity theater.
+
+## Round 3b (2026-08-04): format & design pass, from rendered screenshots
+
+Reviewed as pixels (desktop/mobile, light/dark), not JSX. Dark mode and the
+overall editorial restraint hold. Fixed:
+
+1. **The hero's payoff line was muted** — the setup outweighed the punch.
+   Full ink now; only the red zero is colored.
+2. **Excerpt data artifacts**: captured answers arrive wearing their own
+   quotation marks and markdown bold markers — rendered ""like this"" and
+   **like this**. Render-side sanitizer strips the formatting, never the
+   words. The blockquote also now picks the most substantial excerpt
+   rather than whichever company sorted first (a two-word quote read as a
+   glitch).
+3. **Mobile table crushed team names into four lines** — min-width + nowrap
+   makes it scroll sideways instead.
+4. **Scorecard tiles were under-weighted** for their conceptual load —
+   wider container, more padding, thicker bars. Still two tiles, still
+   quiet.

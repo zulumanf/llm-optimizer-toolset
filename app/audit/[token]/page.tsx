@@ -120,7 +120,20 @@ export default async function ProspectAuditPage({
     : null;
   const gap = snapshot.authorityGap;
   const stakes = snapshot.stakes;
-  const firstExcerpt = snapshot.evidenceExcerpts?.[0];
+  // Captured excerpts arrive wearing the assistant's own formatting — outer
+  // quotation marks (rendered ""like this"" inside our curly quotes; the
+  // round-1 reviewer's "quotation mark error", found in the wild) and
+  // literal markdown bold markers. Strip both; the template supplies the
+  // typography. The words themselves are never altered.
+  const trimQuotes = (s: string): string =>
+    s
+      .replaceAll("**", "")
+      .replace(/^[\s"'“”‘’]+|[\s"'“”‘’]+$/g, "");
+  // The blockquote earns its serif with the most substantial excerpt, not
+  // whichever company sorted first — a two-word quote reads as a glitch.
+  const firstExcerpt = [...(snapshot.evidenceExcerpts ?? [])].sort(
+    (a, b) => b.quote.length - a.quote.length
+  )[0];
   // Concrete beats evocative when the data allows it (spec 048): a sourced
   // market rank plus counted answers makes the hero unarguable. Snapshots
   // without a rank keep their approved headline.
@@ -162,13 +175,13 @@ export default async function ProspectAuditPage({
         >
           You&apos;re the #{prospectRank} team in {snapshot.marketName}.
           <br />
-          <span className="text-muted-foreground">
-            In {snapshot.benchmark.responseCount} AI answers, you were recommended{" "}
-          </span>
+          {/* The payoff line carries full ink — muting it made the punch
+              read subordinate to the setup (round 3 design pass). */}
+          In {snapshot.benchmark.responseCount} AI answers, you were recommended{" "}
           <span className="tabular-nums text-destructive">
             {stakes!.yourRecommendations}
-          </span>
-          <span className="text-muted-foreground"> times.</span>
+          </span>{" "}
+          times.
         </h1>
       ) : (
         <h1
@@ -217,7 +230,7 @@ export default async function ProspectAuditPage({
           not tiled here: in a strip it reads as a proprietary vendor score. */}
       {gap && (
         <div className="mt-8">
-          <div className="grid max-w-md grid-cols-2 gap-3">
+          <div className="grid max-w-lg grid-cols-2 gap-4">
             {[
               {
                 // "Documented", not "market": the score measures how much of
@@ -234,7 +247,7 @@ export default async function ProspectAuditPage({
                 pain: true,
               },
             ].map((tile) => (
-              <div key={tile.label} className="rounded-md border p-3">
+              <div key={tile.label} className="rounded-md border p-4">
                 <p className="text-xs text-muted-foreground">{tile.label}</p>
                 <p
                   className={`mt-1 text-2xl font-semibold tabular-nums tracking-tight ${
@@ -247,7 +260,7 @@ export default async function ProspectAuditPage({
                   </span>
                 </p>
                 <svg
-                  className="mt-2 h-1.5 w-full"
+                  className="mt-2 h-2 w-full"
                   viewBox="0 0 100 6"
                   preserveAspectRatio="none"
                   role="img"
@@ -337,7 +350,9 @@ export default async function ProspectAuditPage({
             const hasRanks = snapshot.comparison.some((r) => r.marketRank != null);
             return (
               <div className="mt-3 overflow-x-auto">
-                <table className="w-full text-sm">
+                {/* min-w keeps columns intact on phones: the table scrolls
+                    sideways instead of crushing team names into four lines. */}
+                <table className="w-full min-w-[560px] text-sm">
                   <thead>
                     <tr className="border-b text-left text-xs text-muted-foreground">
                       <th className="py-2 pr-4 font-medium">Team</th>
@@ -359,7 +374,7 @@ export default async function ProspectAuditPage({
                           row.isProspect ? "bg-muted/40 font-semibold" : ""
                         }`}
                       >
-                        <td className="py-2 pr-4">
+                        <td className="whitespace-nowrap py-2 pr-4">
                           {row.name}
                           {row.isProspect ? " ← you" : ""}
                         </td>
@@ -444,7 +459,7 @@ export default async function ProspectAuditPage({
             </p>
           )}
           <p className={`${serif.className} mt-1 text-lg italic leading-snug`}>
-            “{firstExcerpt.quote}”
+            “{trimQuotes(firstExcerpt.quote)}”
           </p>
           <p className="mt-1.5 text-xs text-muted-foreground">
             — the assistant, recommending {firstExcerpt.teamName} ·{" "}
@@ -645,7 +660,7 @@ export default async function ProspectAuditPage({
             <ul className="mt-3 space-y-3">
               {snapshot.evidenceExcerpts.slice(1).map((e, i) => (
                 <li key={i} className="max-w-[65ch] border-l-2 border-foreground/15 pl-3 text-sm">
-                  <p className={`${serif.className} italic`}>“{e.quote}”</p>
+                  <p className={`${serif.className} italic`}>“{trimQuotes(e.quote)}”</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     recommending {e.teamName} ·{" "}
                     {new Date(e.capturedAt).toLocaleDateString()}
