@@ -18,9 +18,13 @@ npm run app        # scripts/dev-all.sh: starts Postgres if down, migrates,
 always override, or you will read/migrate production:
 
 ```bash
-DATABASE_URL="postgres://localhost:5433/llm_optimizer_dev" AUTH_MODE=dev ALLOW_MOCK_PROVIDER=1 npm run dev
-DATABASE_URL="postgres://localhost:5433/llm_optimizer_dev" AUTH_MODE=dev ALLOW_MOCK_PROVIDER=1 npm run worker
+DATABASE_URL="postgres://localhost:5433/llm_optimizer_dev" AUTH_MODE=dev ALLOW_MOCK_PROVIDER=1 APP_URL=http://localhost:3000 npm run dev
+DATABASE_URL="postgres://localhost:5433/llm_optimizer_dev" AUTH_MODE=dev ALLOW_MOCK_PROVIDER=1 APP_URL=http://localhost:3000 npm run worker
 ```
+
+- `APP_URL`: share links (audit copy button, draft audit links) are built
+  from it and the copy button refuses without it (spec 048 fail-closed).
+  Locally, localhost is the truthful value.
 
 - **Both processes are required.** `npm run dev` alone serves pages but runs
   never execute — execute/parse/score jobs need the worker.

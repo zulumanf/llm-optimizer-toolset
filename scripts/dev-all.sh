@@ -15,6 +15,10 @@ fi
 echo "▸ applying migrations…"
 npm run db:migrate --silent
 
+# Share links (audit pages, outreach drafts) are built from APP_URL and the
+# copy button refuses without it. Locally the truthful origin IS localhost.
+export APP_URL="${APP_URL:-http://localhost:3000}"
+
 trap 'kill 0' EXIT
 echo "▸ starting worker…"
 npm run worker &
