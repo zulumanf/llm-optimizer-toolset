@@ -155,8 +155,14 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
         limit ${limit}
       `,
       sql`
+        -- due_date leaves the database as TEXT (the listProjectTasks
+        -- convention): as a raw date column it round-trips into an Invalid
+        -- Date via template interpolation — the bug the e2e suite caught
+        -- TWICE (first in phase 5, again when this query was rewritten into
+        -- the wave). The regression test below the fix this time.
         select t.id, t.project_id, t.title, t.priority as task_priority,
-          t.due_date, t.created_at, p.name as project_name
+          to_char(t.due_date, 'YYYY-MM-DD') as due_date,
+          t.created_at, p.name as project_name
         from tasks t
         join projects p on p.id = t.project_id
         where t.status in ('approved', 'in_progress')

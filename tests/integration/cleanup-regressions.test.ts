@@ -187,6 +187,35 @@ describe.skipIf(!TEST_URL)("cleanup-audit regressions (integration)", () => {
     expect(index.get(proxied.id)).toBeUndefined();
   });
 
+  it("overdue queue items carry a VALID due date (the twice-caught date bug)", async () => {
+    const projectId = await scoredProject("Overdue Co", "Lumina");
+    const [response] = await sql`
+      select r.id from responses r join runs on runs.id = r.run_id
+      where runs.project_id = ${projectId} limit 1
+    `;
+    const task = unwrap(
+      await tasksSvc.suggestTask(operator, {
+        projectId,
+        title: "Overdue queue item",
+        evidence: [{ kind: "response", refId: response?.id as string, note: "seed" }],
+      })
+    );
+    unwrap(await tasksSvc.approveTask(operator, { taskId: task.taskId }));
+    unwrap(
+      await tasksSvc.updateTaskDetails(operator, {
+        taskId: task.taskId,
+        dueDate: "2026-07-01",
+      })
+    );
+    const items = await queue.actionRequiredQueue({ projectId, limit: 10 });
+    const overdue = items.find((i) => i.source === "task_overdue");
+    expect(overdue).toBeDefined();
+    // The exact crash shape: an Invalid Date throws on toISOString().
+    expect(() => overdue!.dueAt!.toISOString()).not.toThrow();
+    expect(Number.isNaN(overdue!.dueAt!.getTime())).toBe(false);
+    expect(overdue!.priority.total).toBeGreaterThan(0);
+  });
+
   it("setInterventionVisibility flips the portal flag and audits itself", async () => {
     const projectId = await scoredProject("Visible Co", "Lumina");
     const [version] = await sql`

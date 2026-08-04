@@ -40,15 +40,20 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    // CI compiles once and serves — `next dev` recompiles every route on
-    // first visit, which blew the 20-minute job timeout on a 2-core
-    // runner. Locally dev stays: instant feedback beats build time there.
-    command: process.env.CI
-      ? `npx next build && npx next start -p ${PORT}`
-      : `npx next dev -p ${PORT}`,
+    // Three shapes (backlog #18 diagnosis):
+    // - GitHub Actions: `next start` ONLY — the build runs as its own
+    //   visible CI step. Building inside this command hid many silent
+    //   minutes on a 2-core runner and jammed the port-wait.
+    // - Local CI=1 repro: build+start, mirroring CI end-to-end.
+    // - Default local: `next dev` — instant feedback beats build time.
+    command: process.env.GITHUB_ACTIONS
+      ? `npx next start -p ${PORT}`
+      : process.env.CI
+        ? `npx next build && npx next start -p ${PORT}`
+        : `npx next dev -p ${PORT}`,
     port: PORT,
     env,
     reuseExistingServer: false,
-    timeout: 420_000,
+    timeout: process.env.GITHUB_ACTIONS ? 120_000 : 420_000,
   },
 });

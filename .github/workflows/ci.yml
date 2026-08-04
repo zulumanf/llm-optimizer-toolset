@@ -114,6 +114,13 @@ jobs:
       - name: Install chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Build (e2e dist)
+        run: npx next build
+        env:
+          NEXT_DIST_DIR: .next-e2e
+          DATABASE_URL: postgres://postgres:postgres@localhost:5433/llm_optimizer_e2e
+          AUTH_MODE: dev
+
       - name: UI/E2E suite (spec 049)
         run: npm run test:e2e
 
