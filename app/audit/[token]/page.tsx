@@ -178,9 +178,10 @@ export default async function ProspectAuditPage({
         </h1>
       )}
       <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
-        Buyers and sellers increasingly ask ChatGPT who to hire. We asked it{" "}
-        {snapshot.benchmark.promptCount} real questions about {snapshot.marketName}{" "}
-        — {snapshot.benchmark.responseCount} answers, captured verbatim.
+        When buyers and sellers ask ChatGPT who to hire, the answers name names.
+        We asked it {snapshot.benchmark.promptCount} real questions about{" "}
+        {snapshot.marketName} — {snapshot.benchmark.responseCount} answers,
+        captured verbatim.
         {concreteHero && " The ranking is sourced under “Your track record” below."}
       </p>
 
@@ -219,7 +220,11 @@ export default async function ProspectAuditPage({
           <div className="grid max-w-md grid-cols-2 gap-3">
             {[
               {
-                label: "Market authority",
+                // "Documented", not "market": the score measures how much of
+                // their standing is VERIFIABLE in sourced records — a #9 team
+                // with thin documentation scores low here, and that reading
+                // must not contradict the rank in the hero.
+                label: "Documented authority",
                 value: Math.round(gap.authorityScore),
                 pain: false,
               },
@@ -262,16 +267,16 @@ export default async function ProspectAuditPage({
             ))}
           </div>
           <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
-            Both 0–100, both checkable: authority from your sourced record,
-            visibility from the captured answers. Components and sources are
-            under “Your track record” below.
+            Both 0–100, both checkable: documented authority is what your sourced
+            record proves, visibility is what the captured answers show.
+            Components and sources are under “Your track record” below.
           </p>
         </div>
       )}
 
       {sellerMoment && (
         <p className="mt-4 max-w-[65ch] border-l-2 border-foreground/20 pl-4 text-sm">
-          One that should sting: we asked{" "}
+          One moment from the capture: we asked{" "}
           <span className={`${serif.className} italic`}>
             “{sellerMoment.promptText}”
           </span>{" "}
@@ -279,17 +284,6 @@ export default async function ProspectAuditPage({
           <span className="font-medium">{sellerMoment.recommendedNames[0]}</span>.
           That&apos;s the kind of answer that shapes a seller&apos;s shortlist — and
           your name never came up.
-        </p>
-      )}
-
-      {/* Hope immediately after the sting (spec 048): rendered only when the
-          sourced record actually supports it — never as an empty consolation. */}
-      {gap && gap.signals.length > 0 && (
-        <p className="mt-4 max-w-[65ch] text-sm">
-          <span className="font-medium">The good news:</span> this doesn&apos;t look
-          like a track-record problem — your record is sourced below. The gap is in
-          how consistently that authority appears in the public sources these
-          answers cited, and that is the part that can be worked on.
         </p>
       )}
 
@@ -301,6 +295,18 @@ export default async function ProspectAuditPage({
           </span>{" "}
           ({stakes.avgDealBasis}). One introduction going elsewhere outweighs the 15
           minutes this takes to plan.
+        </p>
+      )}
+
+      {/* Hope lands AFTER the full weight of the problem (spec 048 CRO pass:
+          agitate → anchor → hope → ask), and only when the sourced record
+          actually supports it — never as an empty consolation. */}
+      {gap && gap.signals.length > 0 && (
+        <p className="mt-4 max-w-[65ch] text-sm">
+          <span className="font-medium">The good news:</span> this doesn&apos;t look
+          like a track-record problem — your record is sourced below. The gap is in
+          how consistently that authority appears in the public sources these
+          answers cited, and that is the part that can be worked on.
         </p>
       )}
 
@@ -519,6 +525,27 @@ export default async function ProspectAuditPage({
             ? ` (${Math.round(snapshot.fixability.confidence * 100)}% data confidence)`
             : ""}
           .
+        </p>
+      )}
+
+      {/* The one mid-page ask (spec 048 CRO pass): the diagnosis is peak
+          conviction, and the reader shouldn't have to scroll past the
+          receipts to act on it. A sentence, not a button — the next
+          research step, not a second funnel. */}
+      {snapshot.whyItHappens && snapshot.whyItHappens.length > 0 && (
+        <p className="mt-5 max-w-[65ch] text-sm">
+          Want these checked against your own record?{" "}
+          {mailto ? (
+            <a
+              href={mailto}
+              className="font-medium underline underline-offset-2 transition-colors hover:text-muted-foreground"
+            >
+              Reply “show me”
+            </a>
+          ) : (
+            <>Reply {showMe} to the email that brought you here</>
+          )}{" "}
+          — 15 minutes, evidence on screen the whole time.
         </p>
       )}
 

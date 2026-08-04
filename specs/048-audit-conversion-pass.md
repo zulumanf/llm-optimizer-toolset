@@ -107,3 +107,33 @@ document" — and endorses the round-1 rejections. Three deltas accepted:
 
 Held position: the two-tile contrast stays quantified — research restraint
 means every number keeps its receipt, not fewer numbers.
+
+## Round 3 (2026-08-04): CRO-psychology reassessment, self-initiated
+
+Findings from a cold read of the rendered page:
+
+1. **The document leaked its frame (fixed, the big one).** Signed-in staff
+   saw the workspace shell — sidebar, command palette, assistant bar, and
+   OTHER CLIENTS' NAMES — around the prospect document. Anonymous visitors
+   were safe (chrome renders null without a staff session), but an operator
+   could never preview what a prospect sees, and any staff screenshot
+   carried internal names. `AppShell` now strips all chrome on /audit/* for
+   everyone; an E2E test pins it under a staff session.
+2. **Emotional sequence corrected to agitate → anchor → hope → ask.** The
+   "good news" paragraph sat between the seller-moment sting and the
+   average-sale anchor, deflating the second agitation. It now lands after
+   the full weight of the problem.
+3. **"One that should sting" told the reader how to feel** — replaced with
+   "One moment from the capture" (show, don't instruct).
+4. **Unreceipted trend claim** ("buyers increasingly ask ChatGPT") became a
+   conditional the page itself proves: "When buyers and sellers ask ChatGPT
+   who to hire, the answers name names" — the 35 counted recommendation
+   moments are the receipt.
+5. **"Market authority" renamed "Documented authority."** A #9-ranked team
+   scoring 30/100 read as the page contradicting its own hero; the score
+   measures what the sourced record PROVES, and the label now says so.
+6. **One mid-page ask added** at peak conviction (after diagnosis +
+   fixability) — a sentence with the reply link, not a button: the next
+   research step, not a second funnel. Kept: exactly two button CTAs
+   (top and close), zero-repetition of the prospect's 0 (the zero is the
+   product), no sticky elements, no scarcity theater.
