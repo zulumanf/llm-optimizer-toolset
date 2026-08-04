@@ -1572,7 +1572,18 @@ export interface AuditSnapshot {
     teamName: string;
     model: string;
     capturedAt: string;
+    /** The question that produced the answer (additive, spec 048). */
+    promptText?: string;
   }[];
+  /** Spec 039's computed fixability, embedded only when measured — turns
+   * "we are losing" into "this is winnable" without inventing a number.
+   * Strengths are its top measured categories: counted facts, not promises. */
+  fixability?: {
+    version: string;
+    score: number;
+    confidence: number | null;
+    strengths: string[];
+  };
   /** Who stands behind the report. */
   preparedBy?: {
     name: string;
@@ -1883,7 +1894,7 @@ export async function publishAudit(
       // own words. Organic only (echo exclusion), one per rival, top 3.
       const excerptRows = await tx`
         select distinct on (m.company_id)
-          m.excerpt, c.name, r.model, r.requested_at
+          m.excerpt, c.name, r.model, r.requested_at, r.prompt_text
         from mentions m
         join companies c on c.id = m.company_id
         join responses r on r.id = m.response_id
@@ -1906,7 +1917,30 @@ export async function publishAudit(
         teamName: r.name as string,
         model: r.model as string,
         capturedAt: (r.requestedAt as Date).toISOString(),
+        // The question makes the excerpt land: "asked X, answered Y" beats
+        // a floating quote (conversion pass, spec 048).
+        promptText: r.promptText as string,
       }));
+
+      // Fixability (spec 039) — the emotion changes from "we are losing" to
+      // "this is winnable". Embedded only when actually computed (adjusted
+      // non-null); strengths are its top measured categories, counted facts.
+      const { computeProspectScoreView } = await import("@/lib/prospects/final-score");
+      const scoreView = await computeProspectScoreView(input.prospectId);
+      const fixabilityProfileView = scoreView.fixability;
+      const fixability =
+        fixabilityProfileView.adjusted !== null
+          ? {
+              version: fixabilityProfileView.version as string,
+              score: Math.round(fixabilityProfileView.adjusted),
+              confidence: fixabilityProfileView.confidence,
+              strengths: fixabilityProfileView.categories
+                .filter((c) => c.maxPoints > 0 && c.points / c.maxPoints >= 0.5)
+                .sort((a, b) => b.points / b.maxPoints - a.points / a.maxPoints)
+                .slice(0, 3)
+                .map((c) => c.label),
+            }
+          : null;
 
       const preparedBy = {
         name: user.name,
@@ -2005,6 +2039,7 @@ export async function publishAudit(
         ...(topSources.length > 0 ? { topSources } : {}),
         ...(transcripts.length > 0 ? { transcripts } : {}),
         ...(evidenceExcerpts.length > 0 ? { evidenceExcerpts } : {}),
+        ...(fixability ? { fixability } : {}),
         ...(exampleChats.length > 0 ? { exampleChats } : {}),
         preparedBy,
       };
