@@ -105,14 +105,3 @@ export async function resolveArray(ctx: NodeContext, path: string): Promise<unkn
   return Array.isArray(value) ? value : [];
 }
 
-/**
- * Read the first path that yields a value. Lets a template offer a computed
- * value with a raw fallback without the node hard-coding either.
- */
-export async function resolveFirst(ctx: NodeContext, paths: string[]): Promise<unknown> {
-  for (const path of paths) {
-    const value = await resolve(ctx, path);
-    if (value !== undefined && value !== null && value !== "") return value;
-  }
-  return undefined;
-}

@@ -38,7 +38,7 @@ import {
 } from "@/lib/knowledge/sources/extractors";
 import { safeFetch } from "@/lib/security/safe-fetch";
 import { sniffMimeType, sourceTypeForMime } from "@/lib/knowledge/sources/mime";
-import { readSourceBytes, storeSourceBytes } from "@/lib/knowledge/sources/storage";
+import { storeSourceBytes } from "@/lib/knowledge/sources/storage";
 import { normalizeSourceValues } from "@/lib/knowledge/sources/normalize-source";
 import { estimateTokens } from "@/lib/knowledge/context/tokens";
 
@@ -274,65 +274,6 @@ export async function ingestSource(
       extractedTextLength: extraction.text.length,
       spanCount: extraction.spanCount,
       normalizations,
-      extractionError: extraction.error,
-    });
-  } catch (err) {
-    return fail(err);
-  }
-}
-
-/**
- * Re-run extraction against stored bytes with the current parser version.
- * Inserts a new `extracted_documents` row; prior parses stay readable so a
- * claim proposed from an older parse remains explicable.
- */
-export async function reprocessSource(
-  user: CurrentUser,
-  raw: unknown
-): Promise<ActionResult<IngestionResult>> {
-  const parsed = z.object({ sourceArtifactId: z.string().uuid() }).safeParse(raw);
-  if (!parsed.success) {
-    return fail(new ClassifiedError("validation", "Invalid source id."));
-  }
-  try {
-    assertCanWrite(user);
-    const [artifact] = await sql`
-      select id, project_id, storage_key, mime_type, source_type, sha256,
-        original_filename
-      from source_artifacts where id = ${parsed.data.sourceArtifactId}
-    `;
-    if (!artifact) throw new ClassifiedError("not_found", "Source not found.");
-
-    const bytes = await readSourceBytes(artifact.storageKey as string);
-    const extraction = await extractAndStore({
-      sourceArtifactId: artifact.id as string,
-      projectId: artifact.projectId as string,
-      bytes,
-      mimeType: artifact.mimeType as string,
-      filename: (artifact.originalFilename as string | null) ?? null,
-    });
-
-    await sql.begin((tx) =>
-      writeAudit(tx, {
-        userId: user.id,
-        action: "knowledge.source.reprocess",
-        entity: "source_artifact",
-        entityId: artifact.id as string,
-        detail: { status: extraction.status, extractor: extraction.extractorKey },
-      })
-    );
-
-    return ok({
-      sourceArtifactId: artifact.id as string,
-      sha256: artifact.sha256 as string,
-      storageKey: artifact.storageKey as string,
-      mimeType: artifact.mimeType as string,
-      sourceType: artifact.sourceType as SourceType,
-      duplicate: false,
-      extractionStatus: extraction.status,
-      extractedTextLength: extraction.text.length,
-      spanCount: extraction.spanCount,
-      normalizations: 0,
       extractionError: extraction.error,
     });
   } catch (err) {

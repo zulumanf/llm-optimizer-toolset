@@ -1439,3 +1439,37 @@ version. Revocation keeps its meaning — the link is burned and the next
 publish mints a fresh token — so "update in place" and "cut the cord"
 remain distinct, deliberate acts. publishAudit returns `replaced` so the
 UI can say which one happened.
+
+## 2026-08-04 — Four-lens cleanup audit: what was fixed, what is backlogged
+
+Four parallel audits (dead code, house-rule compliance, patterns/correctness,
+structure), each required to verify with call-site evidence. Fixed in this
+pass: three confirmed bugs (publishAudit's reads escaping its own
+transaction → pool-deadlock + isolation break; a run cell able to hold both
+a success and an error row on an insert-only table; the recommendation_rate
+threshold measuring the legacy global is_self brand for every project),
+plus the systemic guards — session TimeZone pinned to UTC, the one
+production sql.unsafe made safe at the sink, the NUL byte that hid a
+350-line file from grep, and the codebase's only runtime import cycle.
+
+**The design-system ratchet was inverted and is now frozen.** The layout
+guard computed its exemption list as "pages that don't import the
+primitives", so non-compliance granted its own exemption and width drift
+widened after the guard shipped (6 → 10 widths). The 62 offenders are now a
+literal list that can only shrink, and the hex/inline-style checks cover
+components/ too — which immediately caught chart chrome hardcoded to
+dark-only hex.
+
+Consolidated: 15 copies of the server-action `run()` wrapper into
+`lib/actions/run.ts` (parameterized on revalidate targets, no default — a
+wrong default silently breaks cache invalidation), and 10 copies of the
+test `unwrap()` into `tests/helpers/result.ts`. Deleted 27 zero-reference
+exports and `scripts/_tmp-discover.ts` (which hard-coded a personal email).
+
+**Backlogged deliberately** (in docs/cleanup-backlog.md): the 3,000-line
+prospects service split, 39 inline SQL queries in pages, 109 `as never`
+casts pending a typed json() helper, the `date-fns` rule with no
+dependency installed, 22 copies of the current-revision SQL predicate, 9
+divergent percent formatters, and the write-only tables. Each needs either
+a product decision or a wide mechanical diff, and none is a correctness
+risk today.

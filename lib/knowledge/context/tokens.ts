@@ -48,16 +48,6 @@ export function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(Math.max(byChars, byWords) + newlines * 0.5));
 }
 
-/** Estimate tokens for a JSON-serialisable value as an agent would receive it. */
-export function estimateJsonTokens(value: unknown): number {
-  return estimateTokens(JSON.stringify(value ?? null));
-}
-
-/** Sum an estimate across parts, for a packet assembled from many pieces. */
-export function totalTokens(parts: string[]): number {
-  return parts.reduce((sum, part) => sum + estimateTokens(part), 0);
-}
-
 /**
  * Truncate to a token budget on a whitespace boundary, returning what was cut.
  * Never truncates mid-word: a half-word in an agent prompt reads as a typo in

@@ -20,7 +20,7 @@ type Tx = TransactionSql | typeof sql;
 export type PacketAudience = "internal" | "client" | "public";
 
 export { PRIVACY_ORDER, type PrivacyStatus } from "@/lib/knowledge/privacy";
-import { PRIVACY_ORDER, type PrivacyStatus } from "@/lib/knowledge/privacy";
+import type { PrivacyStatus } from "@/lib/knowledge/privacy";
 
 /**
  * Maximum privacy class an audience may see. `restricted` is never included

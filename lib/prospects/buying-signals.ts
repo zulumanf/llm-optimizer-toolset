@@ -23,7 +23,6 @@ import {
   type ProvenanceLabel,
 } from "@/lib/prospects/constants";
 
-export const BUYING_SIGNAL_VERSION = "buying-signals-v1";
 /** Base points per active signal before provenance and recency factors. */
 export const SIGNAL_BASE_POINTS = 25;
 

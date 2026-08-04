@@ -178,10 +178,4 @@ export async function bootstrapAutomation(options?: {
   };
 }
 
-/** Register definitions in memory without touching the database. For the UI. */
-export function loadWorkflowRegistry(): AutomationWorkflowDefinition[] {
-  registerAutomationNodes();
-  return AUTOMATION_WORKFLOWS;
-}
-
 export { registeredWorkflows };
