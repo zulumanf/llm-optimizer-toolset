@@ -194,24 +194,32 @@ async function executeCell(
       });
     }
     try {
-      await sql`
-        insert into responses
-          (run_id, prompt_id, prompt_text, provider, model, repetition,
-           raw_payload, response_text, refusal, latency_ms, tokens_in,
-           tokens_out, cost_usd)
-        values
-          (${runId}, ${cell.promptId}, ${cell.promptText}, ${cell.provider},
-           ${cell.model}, ${cell.repetition},
-           ${sql.json(result.rawPayload as never)}, ${result.responseText},
-           ${result.refusal}, ${Date.now() - startedAt}, ${result.tokensIn},
-           ${result.tokensOut}, ${micro === null ? null : microToUsd(micro)})
-      `;
-      if (micro !== null) {
-        await sql`
-          update runs set cost_usd = cost_usd + ${microToUsd(micro)}
-          where id = ${runId}
+      // Capture and cost commit together (correctness audit 2026-08-04):
+      // separately, a failure between them either lost the cell's cost from
+      // the budget cap's ledger, or — worse — let the outer catch insert an
+      // error row for a cell that was already captured (the success unique
+      // index is partial on `error is null`, so it cannot block that), and
+      // responses is insert-only, so the double state was unrepairable.
+      await sql.begin(async (tx) => {
+        await tx`
+          insert into responses
+            (run_id, prompt_id, prompt_text, provider, model, repetition,
+             raw_payload, response_text, refusal, latency_ms, tokens_in,
+             tokens_out, cost_usd)
+          values
+            (${runId}, ${cell.promptId}, ${cell.promptText}, ${cell.provider},
+             ${cell.model}, ${cell.repetition},
+             ${tx.json(result.rawPayload as never)}, ${result.responseText},
+             ${result.refusal}, ${Date.now() - startedAt}, ${result.tokensIn},
+             ${result.tokensOut}, ${micro === null ? null : microToUsd(micro)})
         `;
-      }
+        if (micro !== null) {
+          await tx`
+            update runs set cost_usd = cost_usd + ${microToUsd(micro)}
+            where id = ${runId}
+          `;
+        }
+      });
     } catch (err) {
       // 23505: another attempt already captured this cell — keep the original
       if (!(typeof err === "object" && err !== null && "code" in err &&

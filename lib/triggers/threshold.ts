@@ -38,16 +38,22 @@ const RESOLVERS: Record<string, MetricResolver> = {
    * denominator is the hits is not a rate.
    */
   recommendation_rate: async ({ projectId, lookbackDays }) => {
+    // "The client's own brand" is the PROJECT's subject company, with the
+    // legacy global is_self company only as fallback — the same resolution
+    // getSubjectCompany() uses. Filtering on bare `c.is_self` measured one
+    // global brand for every project (cleanup audit 2026-08-04, D).
     const [row] = await sql`
       select
         count(distinct r.id)::int as total,
         count(distinct r.id) filter (
-          where m.recommended and c.is_self
+          where m.recommended and m.company_id = coalesce(
+            (select p.subject_company_id from projects p where p.id = run.project_id),
+            (select id from companies where is_self and archived_at is null limit 1)
+          )
         )::int as hits
       from responses r
       join runs run on run.id = r.run_id
       left join mentions m on m.response_id = r.id
-      left join companies c on c.id = m.company_id
       where run.project_id = ${projectId}
         and r.requested_at > now() - make_interval(days => ${lookbackDays})
     `;

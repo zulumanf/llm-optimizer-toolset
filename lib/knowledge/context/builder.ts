@@ -42,7 +42,7 @@ import {
   getPacketTemplate,
   type PacketTemplate,
 } from "@/lib/knowledge/context/templates";
-import { PRIVACY_ORDER, type PrivacyStatus } from "@/lib/knowledge/packet";
+import { PRIVACY_ORDER, type PrivacyStatus } from "@/lib/knowledge/privacy";
 
 // ------------------------------------------------------------------- types
 

@@ -19,8 +19,8 @@ type Tx = TransactionSql | typeof sql;
 /** Who the output is for; decides which privacy classes may be included. */
 export type PacketAudience = "internal" | "client" | "public";
 
-export const PRIVACY_ORDER = ["public", "client_only", "internal", "restricted"] as const;
-export type PrivacyStatus = (typeof PRIVACY_ORDER)[number];
+export { PRIVACY_ORDER, type PrivacyStatus } from "@/lib/knowledge/privacy";
+import { PRIVACY_ORDER, type PrivacyStatus } from "@/lib/knowledge/privacy";
 
 /**
  * Maximum privacy class an audience may see. `restricted` is never included
