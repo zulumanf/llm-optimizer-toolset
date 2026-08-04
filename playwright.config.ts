@@ -16,6 +16,11 @@ const env = {
   ALLOW_MOCK_PROVIDER: "1",
   APP_URL: `http://localhost:${PORT}`,
   NEXT_DIST_DIR: ".next-e2e",
+  // CI runs the compiled app (below), and `next start` forces
+  // NODE_ENV=production — where dev auth deliberately fails closed
+  // (lib/env.ts). This is the explicit, visible override that rule
+  // provides, scoped to the throwaway e2e runtime.
+  ALLOW_DEV_AUTH_IN_PROD: "1",
 };
 
 export default defineConfig({
@@ -31,10 +36,15 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: `npx next dev -p ${PORT}`,
+    // CI compiles once and serves — `next dev` recompiles every route on
+    // first visit, which blew the 20-minute job timeout on a 2-core
+    // runner. Locally dev stays: instant feedback beats build time there.
+    command: process.env.CI
+      ? `npx next build && npx next start -p ${PORT}`
+      : `npx next dev -p ${PORT}`,
     port: PORT,
     env,
     reuseExistingServer: false,
-    timeout: 120_000,
+    timeout: 420_000,
   },
 });

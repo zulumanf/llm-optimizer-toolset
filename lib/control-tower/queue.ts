@@ -100,17 +100,74 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
 
   const items: QueueItem[] = [];
 
+  // One round-trip wave, not six (perf pass 2026-08-04): the sources are
+  // independent reads, and the page's latency was their sum — measured
+  // ~420ms warm before, dominated by serial query time.
+  const [exceptions, approvals, gaps, accuracy, content, overdueTasks] =
+    await Promise.all([
+      sql`
+        select e.id, e.project_id, e.kind, e.severity, e.summary, e.recommended_action,
+          e.due_at, e.created_at, e.workflow_run_id, p.name as project_name
+        from workflow_exceptions e
+        left join projects p on p.id = e.project_id
+        where e.status in ('open', 'acknowledged')
+          ${projectFilter ? sql`and e.project_id = ${projectFilter}` : sql``}
+        order by e.created_at desc
+        limit ${limit}
+      `,
+      sql`
+        select a.id, a.project_id, a.action_type, a.risk_level, a.summary, a.due_at,
+          a.requested_at, a.workflow_run_id, p.name as project_name
+        from workflow_approvals a
+        left join projects p on p.id = a.project_id
+        where a.decision is null
+          ${projectFilter ? sql`and a.project_id = ${projectFilter}` : sql``}
+        order by a.requested_at asc
+        limit ${limit}
+      `,
+      sql`
+        select g.id, g.project_id, g.gap_type, g.finding, g.severity, g.opportunity_score,
+          g.created_at, p.name as project_name
+        from gap_findings g
+        join projects p on p.id = g.project_id
+        where g.status = 'open'
+          ${projectFilter ? sql`and g.project_id = ${projectFilter}` : sql``}
+        order by g.opportunity_score desc
+        limit ${limit}
+      `,
+      sql`
+        select a.id, a.project_id, a.kind, a.quote, a.severity, a.confidence,
+          a.created_at, p.name as project_name
+        from accuracy_findings a
+        join projects p on p.id = a.project_id
+        where a.status = 'open'
+          ${projectFilter ? sql`and a.project_id = ${projectFilter}` : sql``}
+        order by a.created_at desc
+        limit ${limit}
+      `,
+      sql`
+        select c.id, c.project_id, c.title, c.status, c.updated_at, p.name as project_name
+        from content_assets c
+        join projects p on p.id = c.project_id
+        where c.status = 'verified'
+          ${projectFilter ? sql`and c.project_id = ${projectFilter}` : sql``}
+        order by c.updated_at asc
+        limit ${limit}
+      `,
+      sql`
+        select t.id, t.project_id, t.title, t.priority as task_priority,
+          t.due_date, t.created_at, p.name as project_name
+        from tasks t
+        join projects p on p.id = t.project_id
+        where t.status in ('approved', 'in_progress')
+          and t.due_date is not null and t.due_date < current_date
+          ${projectFilter ? sql`and t.project_id = ${projectFilter}` : sql``}
+        order by t.due_date asc
+        limit ${limit}
+      `,
+    ]);
+
   // 1. Workflow exceptions -------------------------------------------------
-  const exceptions = await sql`
-    select e.id, e.project_id, e.kind, e.severity, e.summary, e.recommended_action,
-      e.due_at, e.created_at, e.workflow_run_id, p.name as project_name
-    from workflow_exceptions e
-    left join projects p on p.id = e.project_id
-    where e.status in ('open', 'acknowledged')
-      ${projectFilter ? sql`and e.project_id = ${projectFilter}` : sql``}
-    order by e.created_at desc
-    limit ${limit}
-  `;
   for (const row of exceptions) {
     const projectId = (row.projectId as string | null) ?? null;
     const severity = SEVERITY_FROM_TEXT[row.severity as string] ?? "medium";
@@ -139,16 +196,6 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
   }
 
   // 2. Pending workflow approvals -----------------------------------------
-  const approvals = await sql`
-    select a.id, a.project_id, a.action_type, a.risk_level, a.summary, a.due_at,
-      a.requested_at, a.workflow_run_id, p.name as project_name
-    from workflow_approvals a
-    left join projects p on p.id = a.project_id
-    where a.decision is null
-      ${projectFilter ? sql`and a.project_id = ${projectFilter}` : sql``}
-    order by a.requested_at asc
-    limit ${limit}
-  `;
   for (const row of approvals) {
     const projectId = (row.projectId as string | null) ?? null;
     const severity = SEVERITY_FROM_TEXT[row.riskLevel as string] ?? "medium";
@@ -182,16 +229,6 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
   }
 
   // 3. Open gap findings — opportunity, not breakage ----------------------
-  const gaps = await sql`
-    select g.id, g.project_id, g.gap_type, g.finding, g.severity, g.opportunity_score,
-      g.created_at, p.name as project_name
-    from gap_findings g
-    join projects p on p.id = g.project_id
-    where g.status = 'open'
-      ${projectFilter ? sql`and g.project_id = ${projectFilter}` : sql``}
-    order by g.opportunity_score desc
-    limit ${limit}
-  `;
   for (const row of gaps) {
     const projectId = row.projectId as string;
     const opportunity = Number(row.opportunityScore ?? 0);
@@ -223,16 +260,6 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
   }
 
   // 4. Open accuracy findings — a live factual problem ---------------------
-  const accuracy = await sql`
-    select a.id, a.project_id, a.kind, a.quote, a.severity, a.confidence,
-      a.created_at, p.name as project_name
-    from accuracy_findings a
-    join projects p on p.id = a.project_id
-    where a.status = 'open'
-      ${projectFilter ? sql`and a.project_id = ${projectFilter}` : sql``}
-    order by a.created_at desc
-    limit ${limit}
-  `;
   for (const row of accuracy) {
     const projectId = row.projectId as string;
     const severity = SEVERITY_FROM_TEXT[row.severity as string] ?? "medium";
@@ -261,15 +288,6 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
   }
 
   // 5. Content waiting on approval ----------------------------------------
-  const content = await sql`
-    select c.id, c.project_id, c.title, c.status, c.updated_at, p.name as project_name
-    from content_assets c
-    join projects p on p.id = c.project_id
-    where c.status = 'verified'
-      ${projectFilter ? sql`and c.project_id = ${projectFilter}` : sql``}
-    order by c.updated_at asc
-    limit ${limit}
-  `;
   for (const row of content) {
     const projectId = row.projectId as string;
     items.push({
@@ -297,18 +315,6 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
 
   // 6. Overdue tasks — committed work slipping (plan 5.3). The queue that
   // answers "what first?" could not see the work items until now.
-  const overdueTasks = await sql`
-    select t.id, t.project_id, t.title, t.priority as task_priority,
-      to_char(t.due_date, 'YYYY-MM-DD') as due_date,
-      t.created_at, p.name as project_name
-    from tasks t
-    join projects p on p.id = t.project_id
-    where t.status in ('approved', 'in_progress')
-      and t.due_date is not null and t.due_date < current_date
-      ${projectFilter ? sql`and t.project_id = ${projectFilter}` : sql``}
-    order by t.due_date asc
-    limit ${limit}
-  `;
   for (const row of overdueTasks) {
     const projectId = row.projectId as string;
     const severity: RiskLevel = row.taskPriority === "p1" ? "high" : "medium";
