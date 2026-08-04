@@ -9,6 +9,12 @@ alter table audit_log add column project_id uuid references projects(id);
 create index audit_log_project_idx on audit_log (project_id, at desc)
   where project_id is not null;
 
+-- The backfill must drop the insert-only shield for its own labeling pass
+-- (the scripts/seed-graph.ts precedent): it annotates rows with ownership,
+-- it never touches recorded facts. Re-armed immediately below. Caught on a
+-- live database — an empty test DB never fires the row trigger.
+alter table audit_log disable trigger audit_log_immutable;
+
 update audit_log a set project_id = t.project_id
   from tasks t where a.entity = 'task' and a.entity_id = t.id;
 update audit_log a set project_id = r.project_id
@@ -33,6 +39,8 @@ update audit_log a set project_id = w.project_id
   from workflow_runs w where a.entity = 'workflow_run' and a.entity_id = w.id;
 update audit_log a set project_id = p.id
   from projects p where a.entity = 'project' and a.entity_id = p.id;
+
+alter table audit_log enable trigger audit_log_immutable;
 
 -- Future rows resolve themselves: one central mapping instead of touching
 -- ~150 writeAudit call sites. An explicit projectId from the writer wins;
