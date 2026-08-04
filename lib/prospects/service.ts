@@ -1651,7 +1651,7 @@ const LIMITATIONS_TEXT =
 export async function publishAudit(
   user: CurrentUser,
   raw: unknown
-): Promise<ActionResult<{ auditId: string; accessToken: string }>> {
+): Promise<ActionResult<{ auditId: string; accessToken: string; replaced: boolean }>> {
   const parsed = z
     .object({
       prospectId: z.string().uuid(),
@@ -1669,16 +1669,14 @@ export async function publishAudit(
     assertCanWrite(user);
     const result = await sql.begin(async (tx) => {
       const prospect = await lockProspect(tx, input.prospectId);
+      // Stable links (057): a live audit is SUPERSEDED in place — the token
+      // moves to the successor so the prospect's link never changes. Revoke
+      // remains the burn-the-link path; a fresh token is minted only then.
       const [existing] = await tx`
-        select id from prospect_audits
+        select id, access_token from prospect_audits
         where prospect_id = ${input.prospectId} and status = 'published'
+        for update
       `;
-      if (existing) {
-        throw new ClassifiedError(
-          "conflict",
-          "A published audit already exists for this prospect — revoke it before publishing a new one."
-        );
-      }
       const finding = await getPrimaryFinding(tx, input.prospectId);
       const [benchmark] = await tx`
         select id, run_id, company_id from prospect_benchmarks
@@ -2044,7 +2042,24 @@ export async function publishAudit(
         preparedBy,
       };
 
-      const accessToken = randomBytes(AUDIT_TOKEN_BYTES).toString("base64url");
+      const accessToken =
+        (existing?.accessToken as string | null) ??
+        randomBytes(AUDIT_TOKEN_BYTES).toString("base64url");
+      if (existing) {
+        // Vacate the token first (unique index), freeze the old snapshot as
+        // superseded — the lock trigger allows exactly this transition.
+        await tx`
+          update prospect_audits set status = 'superseded', access_token = null
+          where id = ${existing.id}
+        `;
+        await writeAudit(tx, {
+          userId: user.id,
+          action: "prospect.audit_supersede",
+          entity: "prospect_audit",
+          entityId: existing.id as string,
+          detail: { prospectId: input.prospectId },
+        });
+      }
       const [row] = await tx`
         insert into prospect_audits
           (prospect_id, finding_id, headline, snapshot, status, access_token,
@@ -2076,7 +2091,7 @@ export async function publishAudit(
         { auditId: row?.id },
         user.id
       );
-      return { auditId: row?.id as string, accessToken };
+      return { auditId: row?.id as string, accessToken, replaced: Boolean(existing) };
     });
     return ok(result);
   } catch (err) {

@@ -13,7 +13,11 @@ export function PublishAuditButton({ prospectId }: { prospectId: string }) {
     startTransition(async () => {
       const result = await publishAudit({ prospectId });
       if (result.ok) {
-        toast.success("Audit published — share link is ready below.");
+        toast.success(
+          result.data.replaced
+            ? "Republished — same link, updated content."
+            : "Audit published — share link is ready below."
+        );
         return;
       }
       // Stale-benchmark gate (spec 042): surface the age and let the

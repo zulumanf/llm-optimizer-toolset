@@ -1410,3 +1410,32 @@ Phase 5 (agency layer) — the non-obvious choices:
   (?digest=1 on the notifications cron), not the code.
 - **Today embeds the control tower's top five** so the two attention
   surfaces agree on "what first" instead of ranking independently.
+
+## 2026-08-03 — Spec 049: the UI gets its own test layer (Playwright)
+
+The 1,400-test suite stopped at the service boundary; nothing verified a
+page renders or a button does what its label says. Choices: Playwright with
+chromium only and ONE worker (the suite shares a seeded database — serial
+and deterministic beats parallel and racy at this scale); a fully isolated
+runtime — database llm_optimizer_e2e, port 3100, build dir .next-e2e via
+NEXT_DIST_DIR — so the shared-.next trap is designed out and the suite runs
+while a dev server is live; fixtures seeded through the REAL services with
+the mock provider (scripts/seed-e2e.ts) — if the pipeline can't produce a
+state, the UI shouldn't be tested against it; AUTH_MODE=dev, because E2E
+covers the operator and anonymous-prospect experiences while role denial
+stays with the SQL-level portal isolation tests. project-sections.spec
+iterates PROJECT_SECTIONS from the nav registry, so a new section cannot
+ship without a rendering check.
+
+## 2026-08-04 — Stable audit links: supersede moves the token, revoke burns it (057)
+
+The operator wants one link per prospect across republishes. Chosen
+semantics: publishing over a live audit SUPERSEDES it in place — the old
+snapshot is frozen forever under a new 'superseded' status (as immutable
+as published; the lock trigger allows exactly one transition: status
+change + token vacated) and the token moves to the successor in the same
+transaction, so the prospect's bookmark always shows the latest published
+version. Revocation keeps its meaning — the link is burned and the next
+publish mints a fresh token — so "update in place" and "cut the cord"
+remain distinct, deliberate acts. publishAudit returns `replaced` so the
+UI can say which one happened.
