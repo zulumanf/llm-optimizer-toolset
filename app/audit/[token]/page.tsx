@@ -209,38 +209,25 @@ export default async function ProspectAuditPage({
         </section>
       ) : null}
 
-      {/* The scorecard (spec 048): the counted moments above are the punch;
-          these three computed scores are the corroboration — authority from
-          the sourced record, visibility from captured answers, fixability
-          from assessed signals. Only measured tiles render; absence is
-          absence, never a zero. */}
-      {(gap || snapshot.fixability) && (
+      {/* The scorecard (spec 048, round 2): the counted moments above are
+          the punch; the two-score CONTRAST is the corroboration — authority
+          from the sourced record, visibility from captured answers, both
+          checkable by the reader. Fixability is argued in the diagnosis,
+          not tiled here: in a strip it reads as a proprietary vendor score. */}
+      {gap && (
         <div className="mt-8">
-          <div className="grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="grid max-w-md grid-cols-2 gap-3">
             {[
-              ...(gap
-                ? [
-                    {
-                      label: "Market authority",
-                      value: Math.round(gap.authorityScore),
-                      pain: false,
-                    },
-                    {
-                      label: "AI visibility",
-                      value: Math.round(gap.visibilityScore),
-                      pain: true,
-                    },
-                  ]
-                : []),
-              ...(snapshot.fixability
-                ? [
-                    {
-                      label: "Fixability",
-                      value: snapshot.fixability.score,
-                      pain: false,
-                    },
-                  ]
-                : []),
+              {
+                label: "Market authority",
+                value: Math.round(gap.authorityScore),
+                pain: false,
+              },
+              {
+                label: "AI visibility",
+                value: Math.round(gap.visibilityScore),
+                pain: true,
+              },
             ].map((tile) => (
               <div key={tile.label} className="rounded-md border p-3">
                 <p className="text-xs text-muted-foreground">{tile.label}</p>
@@ -275,18 +262,15 @@ export default async function ProspectAuditPage({
             ))}
           </div>
           <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
-            All 0–100, all computed: authority from your sourced record, visibility
-            from the captured answers
-            {snapshot.fixability
-              ? `, fixability from your assessed signals (${snapshot.fixability.version.replaceAll("-", " ")}) — how addressable the gap is, not a promise of outcomes`
-              : ""}
-            . Components and sources are under “Your track record” below.
+            Both 0–100, both checkable: authority from your sourced record,
+            visibility from the captured answers. Components and sources are
+            under “Your track record” below.
           </p>
         </div>
       )}
 
       {sellerMoment && (
-        <p className="mt-4 max-w-[65ch] border-l-2 border-primary/60 pl-4 text-sm">
+        <p className="mt-4 max-w-[65ch] border-l-2 border-foreground/20 pl-4 text-sm">
           One that should sting: we asked{" "}
           <span className={`${serif.className} italic`}>
             “{sellerMoment.promptText}”
@@ -328,9 +312,8 @@ export default async function ProspectAuditPage({
           </p>
         )}
         <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
-          15 minutes, no obligation: the sources these answers actually cited for{" "}
-          {snapshot.marketName}, the gaps behind the numbers, and the first changes
-          we&apos;d prioritize.
+          15 minutes, no obligation. I&apos;ll show you the captured answers, the
+          likely causes of the gap, and the first changes I&apos;d prioritize.
         </p>
       </div>
 
@@ -520,14 +503,18 @@ export default async function ProspectAuditPage({
         </section>
       )}
 
-      {/* Fixability's strengths line rides under the diagnosis: the score
-          lives in the scorecard strip above; here is why it's credible. */}
+      {/* Fixability lives HERE, argued beside its reasons (spec 048 round
+          2) — as a tile it read as a proprietary vendor score; as a scored
+          sentence under the diagnosis it reads as analysis. */}
       {snapshot.fixability && snapshot.fixability.strengths.length > 0 && (
         <p className="mt-4 max-w-[65ch] text-sm text-muted-foreground">
           <span className="font-medium text-foreground">
-            Why the {snapshot.fixability.score}/100 fixability:
+            How addressable is this? We score it{" "}
+            {snapshot.fixability.score}/100
           </span>{" "}
-          already working for you — {snapshot.fixability.strengths.join(" · ").toLowerCase()}
+          — a measure of how workable the gap is, not a promise of outcomes.
+          Already in your favor:{" "}
+          {snapshot.fixability.strengths.join(" · ").toLowerCase()}
           {snapshot.fixability.confidence != null
             ? ` (${Math.round(snapshot.fixability.confidence * 100)}% data confidence)`
             : ""}

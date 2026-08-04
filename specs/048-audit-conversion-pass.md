@@ -85,3 +85,25 @@
 - [x] No fabricated numbers; every new figure traces to a snapshot field.
 - [x] Layout test passes (type scale, no new violations).
 - [x] Full suite, typecheck, lint green.
+
+## Round 2 (2026-08-04): the reviewer converges, and walks one thing back
+
+The second review independently arrives at this spec's governing rule —
+"the discipline of a landing page, the surface language of an evidence
+document" — and endorses the round-1 rejections. Three deltas accepted:
+
+1. **Fixability leaves the scorecard strip.** Authority and visibility are
+   defensible to a stranger (sourced record; counted answers). Fixability,
+   however computed, reads as a proprietary vendor score in tile form. The
+   number moves into the diagnosis section as an argued sentence beside its
+   reasons; the strip becomes the pure authority-vs-visibility contrast —
+   the page's strongest visual device.
+2. **CTA supporting line** adopts the reviewer's research framing: "I'll
+   show you the captured answers, the likely causes of the gap, and the
+   first changes I'd prioritize."
+3. **Color-budget repair:** the seller-moment quote used the action color
+   for its border; it takes the neutral quote treatment (accent belongs to
+   the CTA alone).
+
+Held position: the two-tile contrast stays quantified — research restraint
+means every number keeps its receipt, not fewer numbers.
