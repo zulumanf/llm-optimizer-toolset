@@ -30,7 +30,11 @@ export default defineConfig({
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
   timeout: 30_000,
-  reporter: process.env.CI ? "github" : "list",
+  // The whole run must die loudly long before the CI job timeout: the
+  // hosted-runner hang (backlog #18) produced thirty silent minutes and an
+  // unusable "cancelled". line streams per-test output as it happens.
+  globalTimeout: 12 * 60_000,
+  reporter: process.env.CI ? [["line"], ["github"]] : "list",
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: "retain-on-failure",
