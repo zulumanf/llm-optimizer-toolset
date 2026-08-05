@@ -139,6 +139,13 @@ export default async function ProspectAuditPage({
   // without a rank keep their approved headline.
   const prospectRank = snapshot.comparison.find((r) => r.isProspect)?.marketRank ?? null;
   const concreteHero = prospectRank != null && stakes != null;
+  // Plain-words repetition count for the visible recipe: exact when the
+  // arithmetic is clean, honest-vague when partial failures made it ragged.
+  const repsLabel =
+    snapshot.benchmark.promptCount > 0 &&
+    snapshot.benchmark.responseCount % snapshot.benchmark.promptCount === 0
+      ? `${snapshot.benchmark.responseCount / snapshot.benchmark.promptCount} separate times`
+      : "several separate times";
   const sellerMoment = snapshot.promptEvidence.find(
     (e) => /sell/i.test(e.promptText) && e.recommendedNames.length > 0
   );
@@ -342,8 +349,33 @@ export default async function ProspectAuditPage({
           <h2 className="text-lg font-medium">
             Who shows up when {snapshot.marketName} buyers ask
           </h2>
-          <p className="mt-1 max-w-[65ch] text-xs text-muted-foreground">
-            Counted across the {snapshot.benchmark.responseCount} captured answers.{" "}
+          {/* The whole recipe, in plain words, AT the figures it explains
+              (spec 048 round 4): a skeptic shouldn't have to open a drawer
+              to learn how a number was made. The full method + limitations
+              stay in "How this was measured" below. */}
+          <ol className="mt-3 max-w-[65ch] list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+            <li>
+              We wrote {snapshot.benchmark.promptCount} questions real buyers and
+              sellers ask{snapshot.promptEvidence.length > 0 ? " (the full list is below)" : ""}.
+            </li>
+            <li>
+              We asked each one {repsLabel} — AI answers vary, so no single reply
+              counts as a result; the pattern across{" "}
+              {snapshot.benchmark.responseCount} answers is the finding.
+            </li>
+            <li>
+              Every answer was saved word-for-word
+              {snapshot.transcripts && snapshot.transcripts.length > 0
+                ? ` — all ${snapshot.transcripts.length} are published below, unedited`
+                : ""}
+              .
+            </li>
+            <li>
+              We counted who each answer named and who it recommended. The table is
+              those counts — nothing is estimated or projected.
+            </li>
+          </ol>
+          <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
             <span className="text-foreground">Brought up</span> means the answer named
             them anywhere, even in passing;{" "}
             <span className="text-foreground">recommended</span> means the answer told

@@ -156,3 +156,15 @@ overall editorial restraint hold. Fixed:
 4. **Scorecard tiles were under-weighted** for their conceptual load —
    wider container, more padding, thicker bars. Still two tiles, still
    quiet.
+
+## Round 4 (2026-08-05): the recipe moves to the figures
+
+Operator feedback: agents couldn't tell how the figures were compiled, so
+they couldn't trust them. The four-step counting recipe now sits visibly
+inside the comparison section, in plain words with live numbers ("we wrote
+10 questions… asked each one 4 separate times… all 40 published below,
+unedited… the table is those counts — nothing is estimated or projected"),
+plus in-place definitions of brought-up vs recommended. The full method
+and limitations stay in the "How this was measured" drawer for the second
+read. Rule reaffirmed: a skeptic should never have to open a drawer to
+learn how a number was made.
