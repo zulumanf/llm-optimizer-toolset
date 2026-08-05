@@ -31,26 +31,26 @@ Stack: **Vitest** (unit/integration) · Testcontainers-style disposable Postgres
 - Every migration applies **and** rolls back cleanly on CI against a seeded database.
 - Rollback of a data-bearing migration must not lose experiment data — if it would, the migration is redesigned (expand-migrate-contract).
 
-## E2E (Playwright, `tests/e2e/`) — NOT BUILT
+## E2E (Playwright, `tests/e2e/`) — built 2026-08-03 (spec 049)
 
-Planned, never implemented. There is no `tests/e2e/` directory, no Playwright
-dependency, and no `test:e2e` script. This section described an intention, and
-until 2026-07-30 the README advertised the suite as if it existed — which is
-the kind of unearned claim `PRINCIPLES.md` #5 exists to prevent, applied to our
-own tooling rather than to a measurement.
+`npm run test:e2e`. Chromium only, one worker, fully isolated runtime:
+database `llm_optimizer_e2e`, port 3100, build dir `.next-e2e` — the suite
+runs safely while a dev server is live. Fixtures are seeded through the
+REAL services with the **mock AI provider** (`scripts/seed-e2e.ts`): a
+scored client run, tasks, an approved plan, an intervention, and a prospect
+with a published audit page. E2E never spends provider tokens.
 
-The three flows below remain the right ones to build first, against a seeded
-local stack with the **mock AI provider** (deterministic canned responses — E2E
-must never spend provider tokens):
-1. Create project → prompt set → freeze → run → see captured responses
-2. Review queue: correct a mention → revision recorded
-3. Publish report → verify locked
+Coverage: every staff surface renders (smoke), every project section
+renders (iterated from the nav registry, so a new section cannot ship
+unchecked), the task kanban lifecycle, plan-item activation, the prospect
+detail controls (copy/expire/revoke, draft generation with the audit link),
+the public audit page (hero, scorecard, drawers, appendix, 404 tokens,
+noindex), and sidebar navigation. CI runs the suite as its own job with
+trace upload on failure.
 
-What covers this ground today: `tests/integration/workflow-e2e.test.ts` drives
-a full workflow graph end to end at the service layer. That is not a substitute
-— it never renders a page or exercises a server action through the UI — but it
-does mean the critical paths are not unverified, only unverified *through the
-browser*.
+Deliberate non-goals: no screenshots/visual regression, no cross-browser
+matrix, no client-role browser sessions (SQL-level portal isolation tests
+remain the authority on role denial until a Supabase test rig exists).
 
 ## Performance tests
 Lightweight checks, not a rig: dashboard queries < 500ms on a seeded 100k-response dataset; worker throughput logged per run. Revisit only when real numbers degrade.

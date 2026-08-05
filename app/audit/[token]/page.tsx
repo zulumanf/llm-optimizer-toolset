@@ -120,7 +120,20 @@ export default async function ProspectAuditPage({
     : null;
   const gap = snapshot.authorityGap;
   const stakes = snapshot.stakes;
-  const firstExcerpt = snapshot.evidenceExcerpts?.[0];
+  // Captured excerpts arrive wearing the assistant's own formatting — outer
+  // quotation marks (rendered ""like this"" inside our curly quotes; the
+  // round-1 reviewer's "quotation mark error", found in the wild) and
+  // literal markdown bold markers. Strip both; the template supplies the
+  // typography. The words themselves are never altered.
+  const trimQuotes = (s: string): string =>
+    s
+      .replaceAll("**", "")
+      .replace(/^[\s"'“”‘’]+|[\s"'“”‘’]+$/g, "");
+  // The blockquote earns its serif with the most substantial excerpt, not
+  // whichever company sorted first — a two-word quote reads as a glitch.
+  const firstExcerpt = [...(snapshot.evidenceExcerpts ?? [])].sort(
+    (a, b) => b.quote.length - a.quote.length
+  )[0];
   // Concrete beats evocative when the data allows it (spec 048): a sourced
   // market rank plus counted answers makes the hero unarguable. Snapshots
   // without a rank keep their approved headline.
@@ -162,13 +175,13 @@ export default async function ProspectAuditPage({
         >
           You&apos;re the #{prospectRank} team in {snapshot.marketName}.
           <br />
-          <span className="text-muted-foreground">
-            In {snapshot.benchmark.responseCount} AI answers, you were recommended{" "}
-          </span>
+          {/* The payoff line carries full ink — muting it made the punch
+              read subordinate to the setup (round 3 design pass). */}
+          In {snapshot.benchmark.responseCount} AI answers, you were recommended{" "}
           <span className="tabular-nums text-destructive">
             {stakes!.yourRecommendations}
-          </span>
-          <span className="text-muted-foreground"> times.</span>
+          </span>{" "}
+          times.
         </h1>
       ) : (
         <h1
@@ -178,9 +191,10 @@ export default async function ProspectAuditPage({
         </h1>
       )}
       <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
-        Buyers and sellers increasingly ask ChatGPT who to hire. We asked it{" "}
-        {snapshot.benchmark.promptCount} real questions about {snapshot.marketName}{" "}
-        — {snapshot.benchmark.responseCount} answers, captured verbatim.
+        When buyers and sellers ask ChatGPT who to hire, the answers name names.
+        We asked it {snapshot.benchmark.promptCount} real questions about{" "}
+        {snapshot.marketName} — {snapshot.benchmark.responseCount} answers,
+        captured verbatim.
         {concreteHero && " The ranking is sourced under “Your track record” below."}
       </p>
 
@@ -209,40 +223,31 @@ export default async function ProspectAuditPage({
         </section>
       ) : null}
 
-      {/* The scorecard (spec 048): the counted moments above are the punch;
-          these three computed scores are the corroboration — authority from
-          the sourced record, visibility from captured answers, fixability
-          from assessed signals. Only measured tiles render; absence is
-          absence, never a zero. */}
-      {(gap || snapshot.fixability) && (
+      {/* The scorecard (spec 048, round 2): the counted moments above are
+          the punch; the two-score CONTRAST is the corroboration — authority
+          from the sourced record, visibility from captured answers, both
+          checkable by the reader. Fixability is argued in the diagnosis,
+          not tiled here: in a strip it reads as a proprietary vendor score. */}
+      {gap && (
         <div className="mt-8">
-          <div className="grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="grid max-w-lg grid-cols-2 gap-4">
             {[
-              ...(gap
-                ? [
-                    {
-                      label: "Market authority",
-                      value: Math.round(gap.authorityScore),
-                      pain: false,
-                    },
-                    {
-                      label: "AI visibility",
-                      value: Math.round(gap.visibilityScore),
-                      pain: true,
-                    },
-                  ]
-                : []),
-              ...(snapshot.fixability
-                ? [
-                    {
-                      label: "Fixability",
-                      value: snapshot.fixability.score,
-                      pain: false,
-                    },
-                  ]
-                : []),
+              {
+                // "Documented", not "market": the score measures how much of
+                // their standing is VERIFIABLE in sourced records — a #9 team
+                // with thin documentation scores low here, and that reading
+                // must not contradict the rank in the hero.
+                label: "Documented authority",
+                value: Math.round(gap.authorityScore),
+                pain: false,
+              },
+              {
+                label: "AI visibility",
+                value: Math.round(gap.visibilityScore),
+                pain: true,
+              },
             ].map((tile) => (
-              <div key={tile.label} className="rounded-md border p-3">
+              <div key={tile.label} className="rounded-md border p-4">
                 <p className="text-xs text-muted-foreground">{tile.label}</p>
                 <p
                   className={`mt-1 text-2xl font-semibold tabular-nums tracking-tight ${
@@ -255,7 +260,7 @@ export default async function ProspectAuditPage({
                   </span>
                 </p>
                 <svg
-                  className="mt-2 h-1.5 w-full"
+                  className="mt-2 h-2 w-full"
                   viewBox="0 0 100 6"
                   preserveAspectRatio="none"
                   role="img"
@@ -275,19 +280,16 @@ export default async function ProspectAuditPage({
             ))}
           </div>
           <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
-            All 0–100, all computed: authority from your sourced record, visibility
-            from the captured answers
-            {snapshot.fixability
-              ? `, fixability from your assessed signals (${snapshot.fixability.version.replaceAll("-", " ")}) — how addressable the gap is, not a promise of outcomes`
-              : ""}
-            . Components and sources are under “Your track record” below.
+            Both 0–100, both checkable: documented authority is what your sourced
+            record proves, visibility is what the captured answers show.
+            Components and sources are under “Your track record” below.
           </p>
         </div>
       )}
 
       {sellerMoment && (
-        <p className="mt-4 max-w-[65ch] border-l-2 border-primary/60 pl-4 text-sm">
-          One that should sting: we asked{" "}
+        <p className="mt-4 max-w-[65ch] border-l-2 border-foreground/20 pl-4 text-sm">
+          One moment from the capture: we asked{" "}
           <span className={`${serif.className} italic`}>
             “{sellerMoment.promptText}”
           </span>{" "}
@@ -295,17 +297,6 @@ export default async function ProspectAuditPage({
           <span className="font-medium">{sellerMoment.recommendedNames[0]}</span>.
           That&apos;s the kind of answer that shapes a seller&apos;s shortlist — and
           your name never came up.
-        </p>
-      )}
-
-      {/* Hope immediately after the sting (spec 048): rendered only when the
-          sourced record actually supports it — never as an empty consolation. */}
-      {gap && gap.signals.length > 0 && (
-        <p className="mt-4 max-w-[65ch] text-sm">
-          <span className="font-medium">The good news:</span> this doesn&apos;t look
-          like a track-record problem — your record is sourced below. The gap is in
-          how consistently that authority appears in the public sources these
-          answers cited, and that is the part that can be worked on.
         </p>
       )}
 
@@ -320,6 +311,18 @@ export default async function ProspectAuditPage({
         </p>
       )}
 
+      {/* Hope lands AFTER the full weight of the problem (spec 048 CRO pass:
+          agitate → anchor → hope → ask), and only when the sourced record
+          actually supports it — never as an empty consolation. */}
+      {gap && gap.signals.length > 0 && (
+        <p className="mt-4 max-w-[65ch] text-sm">
+          <span className="font-medium">The good news:</span> this doesn&apos;t look
+          like a track-record problem — your record is sourced below. The gap is in
+          how consistently that authority appears in the public sources these
+          answers cited, and that is the part that can be worked on.
+        </p>
+      )}
+
       <div className="mt-6">
         {ctaButton ?? (
           <p className="max-w-[65ch] text-sm">
@@ -328,9 +331,8 @@ export default async function ProspectAuditPage({
           </p>
         )}
         <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
-          15 minutes, no obligation: the sources these answers actually cited for{" "}
-          {snapshot.marketName}, the gaps behind the numbers, and the first changes
-          we&apos;d prioritize.
+          15 minutes, no obligation. I&apos;ll show you the captured answers, the
+          likely causes of the gap, and the first changes I&apos;d prioritize.
         </p>
       </div>
 
@@ -348,7 +350,9 @@ export default async function ProspectAuditPage({
             const hasRanks = snapshot.comparison.some((r) => r.marketRank != null);
             return (
               <div className="mt-3 overflow-x-auto">
-                <table className="w-full text-sm">
+                {/* min-w keeps columns intact on phones: the table scrolls
+                    sideways instead of crushing team names into four lines. */}
+                <table className="w-full min-w-[560px] text-sm">
                   <thead>
                     <tr className="border-b text-left text-xs text-muted-foreground">
                       <th className="py-2 pr-4 font-medium">Team</th>
@@ -370,7 +374,7 @@ export default async function ProspectAuditPage({
                           row.isProspect ? "bg-muted/40 font-semibold" : ""
                         }`}
                       >
-                        <td className="py-2 pr-4">
+                        <td className="whitespace-nowrap py-2 pr-4">
                           {row.name}
                           {row.isProspect ? " ← you" : ""}
                         </td>
@@ -455,7 +459,7 @@ export default async function ProspectAuditPage({
             </p>
           )}
           <p className={`${serif.className} mt-1 text-lg italic leading-snug`}>
-            “{firstExcerpt.quote}”
+            “{trimQuotes(firstExcerpt.quote)}”
           </p>
           <p className="mt-1.5 text-xs text-muted-foreground">
             — the assistant, recommending {firstExcerpt.teamName} ·{" "}
@@ -520,18 +524,43 @@ export default async function ProspectAuditPage({
         </section>
       )}
 
-      {/* Fixability's strengths line rides under the diagnosis: the score
-          lives in the scorecard strip above; here is why it's credible. */}
+      {/* Fixability lives HERE, argued beside its reasons (spec 048 round
+          2) — as a tile it read as a proprietary vendor score; as a scored
+          sentence under the diagnosis it reads as analysis. */}
       {snapshot.fixability && snapshot.fixability.strengths.length > 0 && (
         <p className="mt-4 max-w-[65ch] text-sm text-muted-foreground">
           <span className="font-medium text-foreground">
-            Why the {snapshot.fixability.score}/100 fixability:
+            How addressable is this? We score it{" "}
+            {snapshot.fixability.score}/100
           </span>{" "}
-          already working for you — {snapshot.fixability.strengths.join(" · ").toLowerCase()}
+          — a measure of how workable the gap is, not a promise of outcomes.
+          Already in your favor:{" "}
+          {snapshot.fixability.strengths.join(" · ").toLowerCase()}
           {snapshot.fixability.confidence != null
             ? ` (${Math.round(snapshot.fixability.confidence * 100)}% data confidence)`
             : ""}
           .
+        </p>
+      )}
+
+      {/* The one mid-page ask (spec 048 CRO pass): the diagnosis is peak
+          conviction, and the reader shouldn't have to scroll past the
+          receipts to act on it. A sentence, not a button — the next
+          research step, not a second funnel. */}
+      {snapshot.whyItHappens && snapshot.whyItHappens.length > 0 && (
+        <p className="mt-5 max-w-[65ch] text-sm">
+          Want these checked against your own record?{" "}
+          {mailto ? (
+            <a
+              href={mailto}
+              className="font-medium underline underline-offset-2 transition-colors hover:text-muted-foreground"
+            >
+              Reply “show me”
+            </a>
+          ) : (
+            <>Reply {showMe} to the email that brought you here</>
+          )}{" "}
+          — 15 minutes, evidence on screen the whole time.
         </p>
       )}
 
@@ -631,7 +660,7 @@ export default async function ProspectAuditPage({
             <ul className="mt-3 space-y-3">
               {snapshot.evidenceExcerpts.slice(1).map((e, i) => (
                 <li key={i} className="max-w-[65ch] border-l-2 border-foreground/15 pl-3 text-sm">
-                  <p className={`${serif.className} italic`}>“{e.quote}”</p>
+                  <p className={`${serif.className} italic`}>“{trimQuotes(e.quote)}”</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     recommending {e.teamName} ·{" "}
                     {new Date(e.capturedAt).toLocaleDateString()}

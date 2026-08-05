@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { SERIES_SLOTS, CHART_INK } from "@/components/charts/palette";
+import { SERIES_SLOTS, CHART_INK, CHART_TOOLTIP } from "@/components/charts/palette";
 
 export interface CompanyBarDatum {
   companyName: string;
@@ -46,14 +46,9 @@ export function AuthorityBarChart({ data }: { data: CompanyBarDatum[] }) {
           tickLine={false}
         />
         <Tooltip
-          cursor={{ fill: "rgba(255,255,255,0.04)" }}
-          contentStyle={{
-            background: "#1c1c1c",
-            border: "1px solid #2c2c2a",
-            borderRadius: 6,
-            fontSize: 12,
-          }}
-          labelStyle={{ color: "#ffffff" }}
+          cursor={{ fill: "rgba(127,127,127,0.08)" }}
+          contentStyle={CHART_TOOLTIP.contentStyle}
+          labelStyle={CHART_TOOLTIP.labelStyle}
         />
         <Bar
           dataKey="value"
@@ -67,7 +62,8 @@ export function AuthorityBarChart({ data }: { data: CompanyBarDatum[] }) {
             dataKey="value"
             position="top"
             formatter={(v) => (typeof v === "number" ? v.toFixed(1) : "")}
-            style={{ fill: "#c3c2b7", fontSize: 11 }}
+            fill={CHART_INK.muted}
+            fontSize={11}
           />
         </Bar>
       </BarChart>

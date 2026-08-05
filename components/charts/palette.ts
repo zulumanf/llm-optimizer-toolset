@@ -26,8 +26,28 @@ export const PROVIDER_COLORS: Record<string, string> = {
 /** The cross-provider aggregate is chrome, not a series: dashed neutral ink. */
 export const AGGREGATE_COLOR = "#c3c2b7";
 
+/**
+ * Chart CHROME follows the theme, unlike the series slots above (which are
+ * validated absolutes). The previous hex values were dark-theme-only, which
+ * silently broke charts in light mode (cleanup audit 2026-08-04) — and
+ * survived CI because the layout guard only scanned page.tsx. This file is
+ * the one sanctioned home for raw series hexes; chrome uses tokens.
+ */
 export const CHART_INK = {
-  muted: "#898781",
-  grid: "#2c2c2a",
-  axis: "#383835",
+  muted: "var(--muted-foreground)",
+  grid: "var(--border)",
+  axis: "var(--border)",
+} as const;
+
+/** Tooltip chrome, themed. Recharts wants style objects; the values are
+ * tokens so both themes stay correct. */
+export const CHART_TOOLTIP = {
+  contentStyle: {
+    background: "var(--popover)",
+    border: "1px solid var(--border)",
+    borderRadius: 6,
+    fontSize: 12,
+    color: "var(--popover-foreground)",
+  },
+  labelStyle: { color: "var(--popover-foreground)" },
 } as const;

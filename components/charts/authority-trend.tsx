@@ -15,6 +15,7 @@ import {
   PROVIDER_COLORS,
   AGGREGATE_COLOR,
   CHART_INK,
+  CHART_TOOLTIP,
 } from "@/components/charts/palette";
 
 export interface TrendDatum {
@@ -76,13 +77,8 @@ export function AuthorityTrendChart({ data, providers }: Props) {
           tickLine={false}
         />
         <Tooltip
-          contentStyle={{
-            background: "#1c1c1c",
-            border: "1px solid #2c2c2a",
-            borderRadius: 6,
-            fontSize: 12,
-          }}
-          labelStyle={{ color: "#ffffff" }}
+          contentStyle={CHART_TOOLTIP.contentStyle}
+          labelStyle={CHART_TOOLTIP.labelStyle}
         />
         {series.length + 1 >= 2 && (
           <Legend wrapperStyle={{ fontSize: 12, color: CHART_INK.muted }} />

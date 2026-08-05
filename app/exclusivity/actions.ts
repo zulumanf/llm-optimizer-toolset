@@ -1,22 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "@/lib/auth";
-import { fail, type ActionResult } from "@/lib/actions/result";
+import { makeActionRunner } from "@/lib/actions/run";
 import * as svc from "@/lib/exclusivity/service";
 
-async function run<T>(
-  fn: (user: Awaited<ReturnType<typeof getCurrentUser>>) => Promise<ActionResult<T>>
-): Promise<ActionResult<T>> {
-  try {
-    const user = await getCurrentUser();
-    const result = await fn(user);
-    if (result.ok) revalidatePath("/exclusivity");
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
-}
+const run = makeActionRunner("/exclusivity");
 
 export async function createMarket(input: unknown) {
   return run((u) => svc.createMarket(u, input));

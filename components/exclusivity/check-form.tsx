@@ -120,7 +120,7 @@ export function CheckForm({ markets, isAdmin }: Props) {
         <div className="rounded-md border p-4">
           {outcome.result.conflicts.length === 0 ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <ShieldCheck className="h-4 w-4 text-[var(--success,#16a34a)]" />
+              <ShieldCheck className="h-4 w-4 text-success" />
               No conflicts with any active agreement.
             </p>
           ) : (

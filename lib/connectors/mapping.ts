@@ -50,8 +50,6 @@ export const mappingFieldSchema = z.object({
 });
 export type MappingField = z.infer<typeof mappingFieldSchema>;
 
-export const mappingFieldsSchema = z.array(mappingFieldSchema).min(1);
-
 export interface MappingVersion {
   definitionId: string;
   version: number;

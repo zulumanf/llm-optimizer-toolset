@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AssistantGate } from "@/components/assistant/assistant-gate";
+import { AppShell } from "@/components/layout/app-shell";
 import "./globals.css";
 
 // Internal tool: every view reads live data, nothing is statically prerendered
@@ -35,15 +36,9 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        <div className="flex h-dvh">
-          <Sidebar />
-          {/* The assistant bar lives in the flow below main (ChatGPT-style):
-              always visible, and page content can never hide behind it. */}
-          <div className="flex min-w-0 flex-1 flex-col">
-            <main className="flex-1 overflow-y-auto">{children}</main>
-            <AssistantGate />
-          </div>
-        </div>
+        <AppShell sidebar={<Sidebar />} assistant={<AssistantGate />}>
+          {children}
+        </AppShell>
         <Toaster richColors position="bottom-right" />
       </body>
     </html>

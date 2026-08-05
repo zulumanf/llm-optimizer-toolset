@@ -47,10 +47,6 @@ const EXTRACTORS: Extractor[] = [
   xlsxExtractor,
 ];
 
-export function listExtractors(): Extractor[] {
-  return [...EXTRACTORS];
-}
-
 export function getExtractor(key: string): Extractor | undefined {
   return key === unsupportedExtractor.key
     ? unsupportedExtractor

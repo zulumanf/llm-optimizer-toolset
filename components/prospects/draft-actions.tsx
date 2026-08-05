@@ -204,12 +204,17 @@ export function EditDraftButton({
             </div>
           )}
           <div className="space-y-1.5">
-            <Label>Subject</Label>
-            <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+            <Label htmlFor="draft-subject">Subject</Label>
+            <Input
+              id="draft-subject"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
-            <Label>Body</Label>
+            <Label htmlFor="draft-body">Body</Label>
             <Textarea
+              id="draft-body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={12}

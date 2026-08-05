@@ -56,13 +56,6 @@ export async function listReviewQueue(projectId: string): Promise<ReviewQueueIte
   `;
 }
 
-export async function getMention(id: string): Promise<Mention | null> {
-  const rows = await sql<Mention[]>`
-    select ${COLUMNS} from mentions m where m.id = ${id}
-  `;
-  return rows[0] ?? null;
-}
-
 /** Pending review count for a run (current revisions only). */
 export async function pendingReviewCount(runId: string): Promise<number> {
   const rows = await sql`

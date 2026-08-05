@@ -215,11 +215,3 @@ export function parseGooglePayload(payload: unknown): ParsedPayload {
   };
 }
 
-/**
- * A note the caller can attach when a shape is unrecognised. Deliberately
- * blunt: an operator reading a run with empty answers needs to know whether
- * the models said nothing or the parser broke.
- */
-export function unrecognizedShapeNote(provider: string, note: string): string {
-  return `${provider} returned a payload shape this parser does not recognise (${note}). The raw payload was captured and can be re-parsed; the response text is NOT a measurement.`;
-}

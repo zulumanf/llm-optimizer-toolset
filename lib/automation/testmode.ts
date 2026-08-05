@@ -224,26 +224,6 @@ function toStored(row: Record<string, unknown>): StoredFixture {
   };
 }
 
-export async function upsertFixture(fixture: Omit<StoredFixture, "id">): Promise<string> {
-  const [row] = await sql`
-    insert into workflow_fixtures (
-      workflow_key, name, description, input, connector_responses, agent_responses
-    ) values (
-      ${fixture.workflowKey}, ${fixture.name}, ${fixture.description},
-      ${sql.json(fixture.input as never)},
-      ${sql.json(fixture.connectorResponses as never)},
-      ${sql.json(fixture.agentResponses as never)}
-    )
-    on conflict (workflow_key, name) do update set
-      description = excluded.description,
-      input = excluded.input,
-      connector_responses = excluded.connector_responses,
-      agent_responses = excluded.agent_responses
-    returning id
-  `;
-  return row!.id as string;
-}
-
 export async function getFixture(
   workflowKey: string,
   name: string

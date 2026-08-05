@@ -19,10 +19,13 @@ export async function buildProgram(args: {
   periodEnd: string;
 }): Promise<SnapshotProgram> {
   const { projectId, periodStart, periodEnd } = args;
-  const within = (column: string) =>
-    sql.unsafe(
-      `${column} >= '${periodStart}'::date and ${column} < ('${periodEnd}'::date + 1)`
-    );
+  // The dates are parameterized; only the column NAME is spliced, and the
+  // union type is a compile-time allowlist of literals from this file — the
+  // repo's one production sql.unsafe no longer trusts its callers for safety
+  // (cleanup audit 2026-08-04, risk #5).
+  type ProgramDateColumn = "created_at" | "updated_at" | "i.shipped_at" | "i.created_at";
+  const within = (column: ProgramDateColumn) =>
+    sql`${sql.unsafe(column)} >= ${periodStart}::date and ${sql.unsafe(column)} < (${periodEnd}::date + 1)`;
 
   const [gapRows, accuracyRows, interventionRows, taskRows, contentRows] =
     await Promise.all([

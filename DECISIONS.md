@@ -1410,3 +1410,66 @@ Phase 5 (agency layer) — the non-obvious choices:
   (?digest=1 on the notifications cron), not the code.
 - **Today embeds the control tower's top five** so the two attention
   surfaces agree on "what first" instead of ranking independently.
+
+## 2026-08-03 — Spec 049: the UI gets its own test layer (Playwright)
+
+The 1,400-test suite stopped at the service boundary; nothing verified a
+page renders or a button does what its label says. Choices: Playwright with
+chromium only and ONE worker (the suite shares a seeded database — serial
+and deterministic beats parallel and racy at this scale); a fully isolated
+runtime — database llm_optimizer_e2e, port 3100, build dir .next-e2e via
+NEXT_DIST_DIR — so the shared-.next trap is designed out and the suite runs
+while a dev server is live; fixtures seeded through the REAL services with
+the mock provider (scripts/seed-e2e.ts) — if the pipeline can't produce a
+state, the UI shouldn't be tested against it; AUTH_MODE=dev, because E2E
+covers the operator and anonymous-prospect experiences while role denial
+stays with the SQL-level portal isolation tests. project-sections.spec
+iterates PROJECT_SECTIONS from the nav registry, so a new section cannot
+ship without a rendering check.
+
+## 2026-08-04 — Stable audit links: supersede moves the token, revoke burns it (057)
+
+The operator wants one link per prospect across republishes. Chosen
+semantics: publishing over a live audit SUPERSEDES it in place — the old
+snapshot is frozen forever under a new 'superseded' status (as immutable
+as published; the lock trigger allows exactly one transition: status
+change + token vacated) and the token moves to the successor in the same
+transaction, so the prospect's bookmark always shows the latest published
+version. Revocation keeps its meaning — the link is burned and the next
+publish mints a fresh token — so "update in place" and "cut the cord"
+remain distinct, deliberate acts. publishAudit returns `replaced` so the
+UI can say which one happened.
+
+## 2026-08-04 — Four-lens cleanup audit: what was fixed, what is backlogged
+
+Four parallel audits (dead code, house-rule compliance, patterns/correctness,
+structure), each required to verify with call-site evidence. Fixed in this
+pass: three confirmed bugs (publishAudit's reads escaping its own
+transaction → pool-deadlock + isolation break; a run cell able to hold both
+a success and an error row on an insert-only table; the recommendation_rate
+threshold measuring the legacy global is_self brand for every project),
+plus the systemic guards — session TimeZone pinned to UTC, the one
+production sql.unsafe made safe at the sink, the NUL byte that hid a
+350-line file from grep, and the codebase's only runtime import cycle.
+
+**The design-system ratchet was inverted and is now frozen.** The layout
+guard computed its exemption list as "pages that don't import the
+primitives", so non-compliance granted its own exemption and width drift
+widened after the guard shipped (6 → 10 widths). The 62 offenders are now a
+literal list that can only shrink, and the hex/inline-style checks cover
+components/ too — which immediately caught chart chrome hardcoded to
+dark-only hex.
+
+Consolidated: 15 copies of the server-action `run()` wrapper into
+`lib/actions/run.ts` (parameterized on revalidate targets, no default — a
+wrong default silently breaks cache invalidation), and 10 copies of the
+test `unwrap()` into `tests/helpers/result.ts`. Deleted 27 zero-reference
+exports and `scripts/_tmp-discover.ts` (which hard-coded a personal email).
+
+**Backlogged deliberately** (in docs/cleanup-backlog.md): the 3,000-line
+prospects service split, 39 inline SQL queries in pages, 109 `as never`
+casts pending a typed json() helper, the `date-fns` rule with no
+dependency installed, 22 copies of the current-revision SQL predicate, 9
+divergent percent formatters, and the write-only tables. Each needs either
+a product decision or a wide mechanical diff, and none is a correctness
+risk today.

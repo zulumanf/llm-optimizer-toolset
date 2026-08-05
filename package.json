@@ -14,6 +14,7 @@
     "lint": "next lint --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "test:watch": "vitest",
     "db:migrate": "tsx scripts/migrate.ts up",
     "db:rollback": "tsx scripts/migrate.ts down",
@@ -46,6 +47,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.1.0",
     "@types/node": "^20.17.0",
     "@types/react": "^19.1.0",

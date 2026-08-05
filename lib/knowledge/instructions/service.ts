@@ -417,29 +417,6 @@ export async function resolveInstructions(
   return { instructions, excluded };
 }
 
-/**
- * Render instructions for an agent, labelled as rules so they cannot be
- * mistaken for facts. The label is the whole point of the layer.
- */
-export function renderInstructions(instructions: ResolvedInstruction[]): string {
-  if (instructions.length === 0) return "";
-  const lines = [
-    "# Operating instructions (rules, not facts — follow them; do not restate them as client facts)",
-  ];
-  for (const instruction of instructions) {
-    const marker = instruction.isSafety ? "MUST" : "SHOULD";
-    lines.push(
-      `- [${marker}] (${instruction.instructionType.replace(/_/g, " ")}) ${instruction.title}: ${instruction.body}`
-    );
-  }
-  return lines.join("\n");
-}
-
-export async function listInstructions(projectId: string | null): Promise<ResolvedInstruction[]> {
-  const { instructions } = await resolveInstructions({ projectId });
-  return instructions;
-}
-
 function dateString(value: unknown): string | null {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString().slice(0, 10);

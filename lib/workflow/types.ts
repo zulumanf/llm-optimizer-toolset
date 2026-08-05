@@ -43,15 +43,6 @@ export const WORKFLOW_STATES = [
 ] as const;
 export type WorkflowState = (typeof WORKFLOW_STATES)[number];
 
-export const TERMINAL_WORKFLOW_STATES: readonly WorkflowState[] = [
-  "completed",
-  "failed",
-  "cancelled",
-  "safely_stopped",
-  "timed_out",
-  "partially_completed",
-];
-
 export const NODE_STATES = [
   "pending",
   "ready",

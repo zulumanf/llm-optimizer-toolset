@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import type { AgentCaller } from "@/lib/ai/agent";
 import { seedTestActors } from "../helpers/actors";
+import { unwrap } from "../helpers/result";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -69,10 +70,6 @@ describe.skipIf(!TEST_URL)("workspace assistant (integration)", () => {
     await sql.end();
   });
 
-  const unwrap = <T,>(r: { ok: true; data: T } | { ok: false; error: { message: string } }): T => {
-    if (!r.ok) throw new Error(r.error.message);
-    return r.data;
-  };
 
   it("answers through a real observer tool and persists the turn with its lookups", async () => {
     unwrap(await projectSvc.createProject(operator, { name: "Client Alpha" }));

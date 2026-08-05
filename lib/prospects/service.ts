@@ -10,7 +10,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { sql } from "@/db/client";
-import type { TransactionSql } from "@/db/client";
+import type { Sql, TransactionSql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import { assertCanWrite, assertRole, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
@@ -198,6 +198,22 @@ async function lockProspect(tx: TransactionSql, prospectId: string): Promise<Pro
     select id, launch_id, business_name, company_id, team_leader, stage,
       conflict_status, do_not_contact, email, phone, archived_at
     from prospects where id = ${prospectId} for update
+  `;
+  const row = rows[0] as ProspectRow | undefined;
+  if (!row || row.archivedAt) {
+    throw new ClassifiedError("not_found", "Prospect not found.");
+  }
+  return row;
+}
+
+/** Non-locking twin of lockProspect for read-only assembly phases that run
+ * OUTSIDE a transaction (correctness audit 2026-08-04: reads holding no
+ * locks must not pretend to). */
+async function readProspect(prospectId: string): Promise<ProspectRow> {
+  const rows = await sql`
+    select id, launch_id, business_name, company_id, team_leader, stage,
+      conflict_status, do_not_contact, email, phone, archived_at
+    from prospects where id = ${prospectId}
   `;
   const row = rows[0] as ProspectRow | undefined;
   if (!row || row.archivedAt) {
@@ -1495,7 +1511,7 @@ interface PrimaryFindingRow {
 }
 
 async function getPrimaryFinding(
-  tx: TransactionSql,
+  tx: Sql | TransactionSql,
   prospectId: string
 ): Promise<PrimaryFindingRow> {
   const rows = await tx`
@@ -1651,7 +1667,7 @@ const LIMITATIONS_TEXT =
 export async function publishAudit(
   user: CurrentUser,
   raw: unknown
-): Promise<ActionResult<{ auditId: string; accessToken: string }>> {
+): Promise<ActionResult<{ auditId: string; accessToken: string; replaced: boolean }>> {
   const parsed = z
     .object({
       prospectId: z.string().uuid(),
@@ -1667,384 +1683,409 @@ export async function publishAudit(
   const input = parsed.data;
   try {
     assertCanWrite(user);
-    const result = await sql.begin(async (tx) => {
-      const prospect = await lockProspect(tx, input.prospectId);
-      const [existing] = await tx`
-        select id from prospect_audits
-        where prospect_id = ${input.prospectId} and status = 'published'
-      `;
-      if (existing) {
-        throw new ClassifiedError(
-          "conflict",
-          "A published audit already exists for this prospect — revoke it before publishing a new one."
-        );
-      }
-      const finding = await getPrimaryFinding(tx, input.prospectId);
-      const [benchmark] = await tx`
-        select id, run_id, company_id from prospect_benchmarks
-        where id = ${finding.benchmarkId}
-      `;
-      if (!benchmark) throw new ClassifiedError("not_found", "Benchmark not found.");
+    // Assembly phase: every read below is a plain pooled query — no
+    // transaction, no locks. The data is point-in-time-close rather than
+    // snapshot-perfect, which publishing always was; what matters is that
+    // assembly can never starve the pool or hold locks across helpers.
+    const prospect = await readProspect(input.prospectId);
+    const finding = await getPrimaryFinding(sql, input.prospectId);
+    const [benchmark] = await sql`
+      select id, run_id, company_id from prospect_benchmarks
+      where id = ${finding.benchmarkId}
+    `;
+    if (!benchmark) throw new ClassifiedError("not_found", "Benchmark not found.");
 
-      const run = await runSummary(benchmark.runId as string);
-      if (!run) throw new ClassifiedError("not_found", "Run not found.");
-      const benchmarkAge = staleness(run.startedAt, FRESHNESS_WINDOWS_DAYS.benchmark);
-      if (benchmarkAge.stale && !input.acknowledgeStale) {
-        throw new ClassifiedError(
-          "validation",
-          `The benchmark run is ${benchmarkAge.ageDays} days old — past the ${FRESHNESS_WINDOWS_DAYS.benchmark}-day freshness window. Re-run the benchmark, or publish anyway with an explicit acknowledgment.`
-        );
-      }
-      const entities = await scoredEntities(benchmark.runId as string);
-      const prospectMetrics = entities.find((e) => e.companyId === benchmark.companyId);
-      // The comparison shows who actually shows up in the run — top rivals
-      // by visibility, not just the ones the approved finding referenced.
-      // When the linked run belongs to a CLIENT project, the client's own
-      // brand is excluded: it must never appear on a prospect-facing page.
-      const [runProject] = await tx`
-        select p.kind, p.subject_company_id from projects p
-        join runs r on r.project_id = p.id
-        where r.id = ${benchmark.runId}
-      `;
-      const excludedCompanyId =
-        runProject?.kind === "client" &&
-        runProject?.subjectCompanyId !== benchmark.companyId
-          ? (runProject?.subjectCompanyId as string | null)
-          : null;
-      // Teams vs brands, decided by DATA: a company is a "team" when it maps
-      // to a non-brokerage prospect in this launch. Teams go in the table
-      // (apples to apples); brands are summarized beneath it.
-      const launchTypeRows = await tx`
-        select company_id, prospect_type from prospects
-        where launch_id = ${prospect.launchId}
-          and company_id is not null and archived_at is null
-      `;
-      const teamCompanyIds = new Set(
-        launchTypeRows
-          .filter((r) => r.prospectType !== "brokerage")
-          .map((r) => r.companyId as string)
+    const run = await runSummary(benchmark.runId as string);
+    if (!run) throw new ClassifiedError("not_found", "Run not found.");
+    const benchmarkAge = staleness(run.startedAt, FRESHNESS_WINDOWS_DAYS.benchmark);
+    if (benchmarkAge.stale && !input.acknowledgeStale) {
+      throw new ClassifiedError(
+        "validation",
+        `The benchmark run is ${benchmarkAge.ageDays} days old — past the ${FRESHNESS_WINDOWS_DAYS.benchmark}-day freshness window. Re-run the benchmark, or publish anyway with an explicit acknowledgment.`
       );
-      const visibleRivals = entities
-        .filter((e) => e.companyId !== benchmark.companyId)
-        .filter((e) => e.companyId !== excludedCompanyId)
-        .filter((e) => (e.mentionRate ?? 0) > 0 || (e.recommendationRate ?? 0) > 0)
-        .sort(
-          (a, b) =>
-            (b.recommendationRate ?? 0) - (a.recommendationRate ?? 0) ||
-            (b.mentionRate ?? 0) - (a.mentionRate ?? 0)
-        );
-      const rivals = visibleRivals
-        .filter((e) => teamCompanyIds.has(e.companyId))
-        .slice(0, AUDIT_COMPARISON_RIVALS);
-      const brandMentions = visibleRivals
-        .filter((e) => !teamCompanyIds.has(e.companyId))
-        .slice(0, 5)
-        .map((e) => ({
-          name: e.name,
-          mentionRate: e.mentionRate,
-          recommendationRate: e.recommendationRate,
-        }));
-      const evidence = await promptEvidenceForResponses(
-        finding.responseIds,
-        PROMPT_EVIDENCE_LIMIT
+    }
+    const entities = await scoredEntities(benchmark.runId as string);
+    const prospectMetrics = entities.find((e) => e.companyId === benchmark.companyId);
+    // The comparison shows who actually shows up in the run — top rivals
+    // by visibility, not just the ones the approved finding referenced.
+    // When the linked run belongs to a CLIENT project, the client's own
+    // brand is excluded: it must never appear on a prospect-facing page.
+    const [runProject] = await sql`
+      select p.kind, p.subject_company_id from projects p
+      join runs r on r.project_id = p.id
+      where r.id = ${benchmark.runId}
+    `;
+    const excludedCompanyId =
+      runProject?.kind === "client" &&
+      runProject?.subjectCompanyId !== benchmark.companyId
+        ? (runProject?.subjectCompanyId as string | null)
+        : null;
+    // Teams vs brands, decided by DATA: a company is a "team" when it maps
+    // to a non-brokerage prospect in this launch. Teams go in the table
+    // (apples to apples); brands are summarized beneath it.
+    const launchTypeRows = await sql`
+      select company_id, prospect_type from prospects
+      where launch_id = ${prospect.launchId}
+        and company_id is not null and archived_at is null
+    `;
+    const teamCompanyIds = new Set(
+      launchTypeRows
+        .filter((r) => r.prospectType !== "brokerage")
+        .map((r) => r.companyId as string)
+    );
+    const visibleRivals = entities
+      .filter((e) => e.companyId !== benchmark.companyId)
+      .filter((e) => e.companyId !== excludedCompanyId)
+      .filter((e) => (e.mentionRate ?? 0) > 0 || (e.recommendationRate ?? 0) > 0)
+      .sort(
+        (a, b) =>
+          (b.recommendationRate ?? 0) - (a.recommendationRate ?? 0) ||
+          (b.mentionRate ?? 0) - (a.mentionRate ?? 0)
       );
+    const rivals = visibleRivals
+      .filter((e) => teamCompanyIds.has(e.companyId))
+      .slice(0, AUDIT_COMPARISON_RIVALS);
+    const brandMentions = visibleRivals
+      .filter((e) => !teamCompanyIds.has(e.companyId))
+      .slice(0, 5)
+      .map((e) => ({
+        name: e.name,
+        mentionRate: e.mentionRate,
+        recommendationRate: e.recommendationRate,
+      }));
+    const evidence = await promptEvidenceForResponses(
+      finding.responseIds,
+      PROMPT_EVIDENCE_LIMIT
+    );
 
-      const [launchRow] = await tx`
-        select m.name as market_name from market_launches l
-        join markets m on m.id = l.market_id
-        where l.id = ${prospect.launchId}
-      `;
+    const [launchRow] = await sql`
+      select m.name as market_name from market_launches l
+      join markets m on m.id = l.market_id
+      where l.id = ${prospect.launchId}
+    `;
 
-      // Authority vs valuable visibility (spec 038) — included only when
-      // both sides are measurable; a one-sided "gap" would be a fabrication.
-      const gapView = await authorityGapForRun(
-        input.prospectId,
-        benchmark.runId as string,
-        benchmark.companyId as string
-      );
-      const countedIds = new Set(gapView.authority.components.flatMap((c) => c.signalIds));
-      const authorityGap =
-        gapView.gap !== null && gapView.visibility !== null
-          ? {
-              authorityVersion: gapView.authority.version,
-              visibilityVersion: gapView.visibility.version,
-              authorityScore: gapView.authority.score as number,
-              visibilityScore: gapView.visibility.score as number,
-              gap: gapView.gap,
-              confidence: gapView.authority.confidence,
-              components: gapView.authority.components.map((c) => ({
-                label: c.label,
-                points: c.points,
-                maxPoints: c.maxPoints,
+    // Authority vs valuable visibility (spec 038) — included only when
+    // both sides are measurable; a one-sided "gap" would be a fabrication.
+    const gapView = await authorityGapForRun(
+      input.prospectId,
+      benchmark.runId as string,
+      benchmark.companyId as string
+    );
+    const countedIds = new Set(gapView.authority.components.flatMap((c) => c.signalIds));
+    const authorityGap =
+      gapView.gap !== null && gapView.visibility !== null
+        ? {
+            authorityVersion: gapView.authority.version,
+            visibilityVersion: gapView.visibility.version,
+            authorityScore: gapView.authority.score as number,
+            visibilityScore: gapView.visibility.score as number,
+            gap: gapView.gap,
+            confidence: gapView.authority.confidence,
+            components: gapView.authority.components.map((c) => ({
+              label: c.label,
+              points: c.points,
+              maxPoints: c.maxPoints,
+            })),
+            organicResponses: gapView.visibility.organicResponses,
+            signals: gapView.signals
+              .filter((s) => countedIds.has(s.id))
+              .map((s) => ({
+                label: s.label,
+                provenance: s.provenance,
+                sourceUrl: s.sourceUrl,
               })),
-              organicResponses: gapView.visibility.organicResponses,
-              signals: gapView.signals
-                .filter((s) => countedIds.has(s.id))
-                .map((s) => ({
-                  label: s.label,
-                  provenance: s.provenance,
-                  sourceUrl: s.sourceUrl,
-                })),
-            }
-          : undefined;
+          }
+        : undefined;
 
-      // Prospect-facing "why" — whitelist only; internal research-gap and
-      // QA diagnoses never ship to a prospect.
-      const diagnosisReport = await diagnoseProspect(input.prospectId);
-      const whyItHappens = diagnosisReport.diagnoses
-        .filter((d) => d.key in PROSPECT_FACING_DIAGNOSES)
-        .slice(0, 3)
-        .map((d) => ({
-          title: PROSPECT_FACING_DIAGNOSES[d.key]!,
-          explanation: d.explanation,
-          suggestedAction: d.suggestedAction,
-        }));
-      // Sourced market ranks for every company in this launch (ranking
-      // signals with a numeric value, most recent per prospect) — lets the
-      // comparison show "#9 in the market → 0% in the answers" per row.
-      const rankRows = await tx`
-        select distinct on (p.company_id) p.company_id, s.value_number
-        from prospects p
-        join prospect_authority_signals s on s.prospect_id = p.id
-          and s.kind = 'ranking' and s.value_number is not null
-        where p.launch_id = ${prospect.launchId}
-          and p.company_id is not null and p.archived_at is null
-        order by p.company_id, s.created_at desc
-      `;
-      const rankByCompany = new Map<string, number>(
-        rankRows.map((r) => [r.companyId as string, Number(r.valueNumber)])
-      );
-
-      // Stakes: every "recommended" mention is a real moment an assistant
-      // pointed a buyer at a specific team — counted, not estimated. Echo is
-      // excluded per company (the organic rule): a recommendation on a
-      // question that NAMED that team measures our question, not the market.
-      const recRows = await sql`
-        select m.company_id, c.name, count(*)::int as recs
-        from mentions m
-        join companies c on c.id = m.company_id
-        join responses r on r.id = m.response_id
-        where r.run_id = ${benchmark.runId} and r.error is null and m.recommended
-          and not exists (
-            select 1 from mentions newer
-            where newer.response_id = m.response_id
-              and newer.company_id = m.company_id and newer.revision > m.revision
-          )
-          and not exists (
-            select 1 from unnest(c.aliases || array[c.name]) as t
-            where trim(t) != '' and r.prompt_text ilike '%' || trim(t) || '%'
-          )
-        group by m.company_id, c.name
-        order by recs desc
-      `;
-      const recommendationMomentsTotal = recRows.reduce((a, r) => a + Number(r.recs), 0);
-      const yourRecommendations = Number(
-        recRows.find((r) => r.companyId === benchmark.companyId)?.recs ?? 0
-      );
-      const competitorsNamed = recRows
-        .filter((r) => r.companyId !== benchmark.companyId)
-        .slice(0, 5)
-        .map((r) => r.name as string);
-      // Average sale = arithmetic on THEIR cited numbers, never an estimate.
-      const [dealBasis] = await sql`
-        select
-          (select value_number from prospect_authority_signals
-            where prospect_id = ${input.prospectId} and kind = 'transaction_volume'
-              and value_number is not null order by created_at desc limit 1) as volume,
-          (select value_number from prospect_authority_signals
-            where prospect_id = ${input.prospectId} and kind = 'transaction_count'
-              and value_number is not null order by created_at desc limit 1) as sides
-      `;
-      const volume = dealBasis?.volume === null ? null : Number(dealBasis?.volume);
-      const sides = dealBasis?.sides === null ? null : Number(dealBasis?.sides);
-      const avgDealUsd =
-        volume !== null && sides !== null && sides > 0 ? Math.round(volume / sides) : null;
-      const stakes = {
-        recommendationMomentsTotal,
-        yourRecommendations,
-        competitorsNamed,
-        avgDealUsd,
-        avgDealBasis:
-          avgDealUsd !== null
-            ? `$${(volume! / 1_000_000).toFixed(2)}M across ${sides} sides, per the sourced record above`
-            : null,
-      };
-
-      // THE PROOF: every valid answer, complete and verbatim. An absence can
-      // only be proven by publishing everything — a reader can search these
-      // for their own name. Capped defensively; the cap is stated on the page.
-      const TRANSCRIPT_CAP = 60;
-      const transcriptRows = await tx`
-        select prompt_text, provider, model, requested_at, response_text
-        from responses
-        where run_id = ${benchmark.runId} and error is null
-          and response_text is not null
-        order by prompt_text, provider, repetition
-        limit ${TRANSCRIPT_CAP}
-      `;
-      const transcripts = transcriptRows.map((r) => ({
-        prompt: r.promptText as string,
-        provider: r.provider as string,
-        model: r.model as string,
-        capturedAt: (r.requestedAt as Date).toISOString(),
-        answer: r.responseText as string,
+    // Prospect-facing "why" — whitelist only; internal research-gap and
+    // QA diagnoses never ship to a prospect.
+    const diagnosisReport = await diagnoseProspect(input.prospectId);
+    const whyItHappens = diagnosisReport.diagnoses
+      .filter((d) => d.key in PROSPECT_FACING_DIAGNOSES)
+      .slice(0, 3)
+      .map((d) => ({
+        title: PROSPECT_FACING_DIAGNOSES[d.key]!,
+        explanation: d.explanation,
+        suggestedAction: d.suggestedAction,
       }));
+    // Sourced market ranks for every company in this launch (ranking
+    // signals with a numeric value, most recent per prospect) — lets the
+    // comparison show "#9 in the market → 0% in the answers" per row.
+    const rankRows = await sql`
+      select distinct on (p.company_id) p.company_id, s.value_number
+      from prospects p
+      join prospect_authority_signals s on s.prospect_id = p.id
+        and s.kind = 'ranking' and s.value_number is not null
+      where p.launch_id = ${prospect.launchId}
+        and p.company_id is not null and p.archived_at is null
+      order by p.company_id, s.created_at desc
+    `;
+    const rankByCompany = new Map<string, number>(
+      rankRows.map((r) => [r.companyId as string, Number(r.valueNumber)])
+    );
 
-      // Short verbatim moments: an assistant recommending a rival, in its
-      // own words. Organic only (echo exclusion), one per rival, top 3.
-      const excerptRows = await tx`
-        select distinct on (m.company_id)
-          m.excerpt, c.name, r.model, r.requested_at, r.prompt_text
-        from mentions m
-        join companies c on c.id = m.company_id
-        join responses r on r.id = m.response_id
-        where r.run_id = ${benchmark.runId} and r.error is null
-          and m.recommended and m.excerpt is not null
-          and m.company_id != ${benchmark.companyId}
-          and not exists (
-            select 1 from mentions newer
-            where newer.response_id = m.response_id
-              and newer.company_id = m.company_id and newer.revision > m.revision
-          )
-          and not exists (
-            select 1 from unnest(c.aliases || array[c.name]) as t
-            where trim(t) != '' and r.prompt_text ilike '%' || trim(t) || '%'
-          )
-        order by m.company_id, r.requested_at asc
-      `;
-      const evidenceExcerpts = excerptRows.slice(0, 3).map((r) => ({
-        quote: r.excerpt as string,
-        teamName: r.name as string,
-        model: r.model as string,
-        capturedAt: (r.requestedAt as Date).toISOString(),
-        // The question makes the excerpt land: "asked X, answered Y" beats
-        // a floating quote (conversion pass, spec 048).
-        promptText: r.promptText as string,
-      }));
+    // Stakes: every "recommended" mention is a real moment an assistant
+    // pointed a buyer at a specific team — counted, not estimated. Echo is
+    // excluded per company (the organic rule): a recommendation on a
+    // question that NAMED that team measures our question, not the market.
+    const recRows = await sql`
+      select m.company_id, c.name, count(*)::int as recs
+      from mentions m
+      join companies c on c.id = m.company_id
+      join responses r on r.id = m.response_id
+      where r.run_id = ${benchmark.runId} and r.error is null and m.recommended
+        and not exists (
+          select 1 from mentions newer
+          where newer.response_id = m.response_id
+            and newer.company_id = m.company_id and newer.revision > m.revision
+        )
+        and not exists (
+          select 1 from unnest(c.aliases || array[c.name]) as t
+          where trim(t) != '' and r.prompt_text ilike '%' || trim(t) || '%'
+        )
+      group by m.company_id, c.name
+      order by recs desc
+    `;
+    const recommendationMomentsTotal = recRows.reduce((a, r) => a + Number(r.recs), 0);
+    const yourRecommendations = Number(
+      recRows.find((r) => r.companyId === benchmark.companyId)?.recs ?? 0
+    );
+    const competitorsNamed = recRows
+      .filter((r) => r.companyId !== benchmark.companyId)
+      .slice(0, 5)
+      .map((r) => r.name as string);
+    // Average sale = arithmetic on THEIR cited numbers, never an estimate.
+    const [dealBasis] = await sql`
+      select
+        (select value_number from prospect_authority_signals
+          where prospect_id = ${input.prospectId} and kind = 'transaction_volume'
+            and value_number is not null order by created_at desc limit 1) as volume,
+        (select value_number from prospect_authority_signals
+          where prospect_id = ${input.prospectId} and kind = 'transaction_count'
+            and value_number is not null order by created_at desc limit 1) as sides
+    `;
+    const volume = dealBasis?.volume === null ? null : Number(dealBasis?.volume);
+    const sides = dealBasis?.sides === null ? null : Number(dealBasis?.sides);
+    const avgDealUsd =
+      volume !== null && sides !== null && sides > 0 ? Math.round(volume / sides) : null;
+    const stakes = {
+      recommendationMomentsTotal,
+      yourRecommendations,
+      competitorsNamed,
+      avgDealUsd,
+      avgDealBasis:
+        avgDealUsd !== null
+          ? `$${(volume! / 1_000_000).toFixed(2)}M across ${sides} sides, per the sourced record above`
+          : null,
+    };
 
-      // Fixability (spec 039) — the emotion changes from "we are losing" to
-      // "this is winnable". Embedded only when actually computed (adjusted
-      // non-null); strengths are its top measured categories, counted facts.
-      const { computeProspectScoreView } = await import("@/lib/prospects/final-score");
-      const scoreView = await computeProspectScoreView(input.prospectId);
-      const fixabilityProfileView = scoreView.fixability;
-      const fixability =
-        fixabilityProfileView.adjusted !== null
-          ? {
-              version: fixabilityProfileView.version as string,
-              score: Math.round(fixabilityProfileView.adjusted),
-              confidence: fixabilityProfileView.confidence,
-              strengths: fixabilityProfileView.categories
-                .filter((c) => c.maxPoints > 0 && c.points / c.maxPoints >= 0.5)
-                .sort((a, b) => b.points / b.maxPoints - a.points / a.maxPoints)
-                .slice(0, 3)
-                .map((c) => c.label),
-            }
-          : null;
+    // THE PROOF: every valid answer, complete and verbatim. An absence can
+    // only be proven by publishing everything — a reader can search these
+    // for their own name. Capped defensively; the cap is stated on the page.
+    const TRANSCRIPT_CAP = 60;
+    const transcriptRows = await sql`
+      select prompt_text, provider, model, requested_at, response_text
+      from responses
+      where run_id = ${benchmark.runId} and error is null
+        and response_text is not null
+      order by prompt_text, provider, repetition
+      limit ${TRANSCRIPT_CAP}
+    `;
+    const transcripts = transcriptRows.map((r) => ({
+      prompt: r.promptText as string,
+      provider: r.provider as string,
+      model: r.model as string,
+      capturedAt: (r.requestedAt as Date).toISOString(),
+      answer: r.responseText as string,
+    }));
 
-      const preparedBy = {
-        name: user.name,
-        email: user.email,
-        date: new Date().toISOString().slice(0, 10),
-        reportId: randomBytes(4).toString("hex"),
-      };
+    // Short verbatim moments: an assistant recommending a rival, in its
+    // own words. Organic only (echo exclusion), one per rival, top 3.
+    const excerptRows = await sql`
+      select distinct on (m.company_id)
+        m.excerpt, c.name, r.model, r.requested_at, r.prompt_text
+      from mentions m
+      join companies c on c.id = m.company_id
+      join responses r on r.id = m.response_id
+      where r.run_id = ${benchmark.runId} and r.error is null
+        and m.recommended and m.excerpt is not null
+        and m.company_id != ${benchmark.companyId}
+        and not exists (
+          select 1 from mentions newer
+          where newer.response_id = m.response_id
+            and newer.company_id = m.company_id and newer.revision > m.revision
+        )
+        and not exists (
+          select 1 from unnest(c.aliases || array[c.name]) as t
+          where trim(t) != '' and r.prompt_text ilike '%' || trim(t) || '%'
+        )
+      order by m.company_id, r.requested_at asc
+    `;
+    const evidenceExcerpts = excerptRows.slice(0, 3).map((r) => ({
+      quote: r.excerpt as string,
+      teamName: r.name as string,
+      model: r.model as string,
+      capturedAt: (r.requestedAt as Date).toISOString(),
+      // The question makes the excerpt land: "asked X, answered Y" beats
+      // a floating quote (conversion pass, spec 048).
+      promptText: r.promptText as string,
+    }));
 
-      // Live exhibits: allowlisted consumer-app share links (spec 045).
-      const exhibitRows = await tx`
-        select url, assistant, question, captured_on::text as captured_on
-        from prospect_exhibits
-        where prospect_id = ${input.prospectId} and archived_at is null
-        order by captured_on desc, created_at desc
-        limit 5
-      `;
-      const exampleChats = exhibitRows.map((r) => ({
-        url: r.url as string,
-        assistant: r.assistant as string,
-        question: r.question as string,
-        capturedOn: r.capturedOn as string,
-      }));
+    // Fixability (spec 039) — the emotion changes from "we are losing" to
+    // "this is winnable". Embedded only when actually computed (adjusted
+    // non-null); strengths are its top measured categories, counted facts.
+    const { computeProspectScoreView } = await import("@/lib/prospects/final-score");
+    const scoreView = await computeProspectScoreView(input.prospectId);
+    const fixabilityProfileView = scoreView.fixability;
+    const fixability =
+      fixabilityProfileView.adjusted !== null
+        ? {
+            version: fixabilityProfileView.version as string,
+            score: Math.round(fixabilityProfileView.adjusted),
+            confidence: fixabilityProfileView.confidence,
+            strengths: fixabilityProfileView.categories
+              .filter((c) => c.maxPoints > 0 && c.points / c.maxPoints >= 0.5)
+              .sort((a, b) => b.points / b.maxPoints - a.points / a.maxPoints)
+              .slice(0, 3)
+              .map((c) => c.label),
+          }
+        : null;
 
-      const sourceRows = await sql`
-        select c.domain, count(*)::int as citations
-        from response_citations c
-        join responses r on r.id = c.response_id
-        where r.run_id = ${benchmark.runId}
-        group by c.domain
-        order by citations desc
-        limit 5
-      `;
-      const topSources = sourceRows.map((s) => ({
-        domain: s.domain as string,
-        citations: Number(s.citations),
-      }));
+    const preparedBy = {
+      name: user.name,
+      email: user.email,
+      date: new Date().toISOString().slice(0, 10),
+      reportId: randomBytes(4).toString("hex"),
+    };
 
-      // Fallback reads correctly inside "questions about {marketName}" —
-      // "the monitored market" produced a broken sentence on the page.
-      const marketName = (launchRow?.marketName as string) ?? "your market";
-      const headline =
-        authorityGap && authorityGap.gap >= 20
-          ? `${prospect.businessName} is one of ${marketName}'s strongest teams — and AI assistants almost never say so.`
-          : `Your real-world market position appears stronger than your AI market position.`;
+    // Live exhibits: allowlisted consumer-app share links (spec 045).
+    const exhibitRows = await sql`
+      select url, assistant, question, captured_on::text as captured_on
+      from prospect_exhibits
+      where prospect_id = ${input.prospectId} and archived_at is null
+      order by captured_on desc, created_at desc
+      limit 5
+    `;
+    const exampleChats = exhibitRows.map((r) => ({
+      url: r.url as string,
+      assistant: r.assistant as string,
+      question: r.question as string,
+      capturedOn: r.capturedOn as string,
+    }));
 
-      // The snapshot IS the page. Internal fields (notes, scores, owners,
-      // rationales) are structurally absent, not filtered at render time.
-      const snapshot: AuditSnapshot = {
-        headline,
-        prospectName: prospect.businessName,
-        marketName,
-        benchmark: {
-          dateRange: {
-            from: run.startedAt.toISOString(),
-            to: run.completedAt?.toISOString() ?? null,
-          },
-          providers: run.providers,
-          promptCount: run.promptCount,
-          responseCount: run.responseCount,
-          limitations: LIMITATIONS_TEXT,
+    const sourceRows = await sql`
+      select c.domain, count(*)::int as citations
+      from response_citations c
+      join responses r on r.id = c.response_id
+      where r.run_id = ${benchmark.runId}
+      group by c.domain
+      order by citations desc
+      limit 5
+    `;
+    const topSources = sourceRows.map((s) => ({
+      domain: s.domain as string,
+      citations: Number(s.citations),
+    }));
+
+    // Fallback reads correctly inside "questions about {marketName}" —
+    // "the monitored market" produced a broken sentence on the page.
+    const marketName = (launchRow?.marketName as string) ?? "your market";
+    const headline =
+      authorityGap && authorityGap.gap >= 20
+        ? `${prospect.businessName} is one of ${marketName}'s strongest teams — and AI assistants almost never say so.`
+        : `Your real-world market position appears stronger than your AI market position.`;
+
+    // The snapshot IS the page. Internal fields (notes, scores, owners,
+    // rationales) are structurally absent, not filtered at render time.
+    const snapshot: AuditSnapshot = {
+      headline,
+      prospectName: prospect.businessName,
+      marketName,
+      benchmark: {
+        dateRange: {
+          from: run.startedAt.toISOString(),
+          to: run.completedAt?.toISOString() ?? null,
         },
-        keyFinding: {
-          title: finding.title,
-          explanation: finding.explanation,
-          metrics: finding.metrics,
-        },
-        comparison: [
-          ...(prospectMetrics
-            ? [
-                {
-                  name: prospect.businessName,
-                  isProspect: true,
-                  mentionRate: prospectMetrics.mentionRate,
-                  recommendationRate: prospectMetrics.recommendationRate,
-                  sampleSize: prospectMetrics.sampleSize,
-                  marketRank: rankByCompany.get(benchmark.companyId as string) ?? null,
-                },
-              ]
-            : []),
-          ...rivals.map((r) => ({
-            name: r.name,
-            isProspect: false,
-            mentionRate: r.mentionRate,
-            recommendationRate: r.recommendationRate,
-            sampleSize: r.sampleSize,
-            marketRank: rankByCompany.get(r.companyId) ?? null,
-          })),
-        ],
-        promptEvidence: evidence,
-        methodology: METHODOLOGY_TEXT,
-        cta: "Review the full benchmark with us.",
-        ...(authorityGap ? { authorityGap } : {}),
-        ...(brandMentions.length > 0 ? { brandMentions } : {}),
-        ...(recommendationMomentsTotal > 0 ? { stakes } : {}),
-        ...(whyItHappens.length > 0 ? { whyItHappens } : {}),
-        ...(topSources.length > 0 ? { topSources } : {}),
-        ...(transcripts.length > 0 ? { transcripts } : {}),
-        ...(evidenceExcerpts.length > 0 ? { evidenceExcerpts } : {}),
-        ...(fixability ? { fixability } : {}),
-        ...(exampleChats.length > 0 ? { exampleChats } : {}),
-        preparedBy,
-      };
+        providers: run.providers,
+        promptCount: run.promptCount,
+        responseCount: run.responseCount,
+        limitations: LIMITATIONS_TEXT,
+      },
+      keyFinding: {
+        title: finding.title,
+        explanation: finding.explanation,
+        metrics: finding.metrics,
+      },
+      comparison: [
+        ...(prospectMetrics
+          ? [
+              {
+                name: prospect.businessName,
+                isProspect: true,
+                mentionRate: prospectMetrics.mentionRate,
+                recommendationRate: prospectMetrics.recommendationRate,
+                sampleSize: prospectMetrics.sampleSize,
+                marketRank: rankByCompany.get(benchmark.companyId as string) ?? null,
+              },
+            ]
+          : []),
+        ...rivals.map((r) => ({
+          name: r.name,
+          isProspect: false,
+          mentionRate: r.mentionRate,
+          recommendationRate: r.recommendationRate,
+          sampleSize: r.sampleSize,
+          marketRank: rankByCompany.get(r.companyId) ?? null,
+        })),
+      ],
+      promptEvidence: evidence,
+      methodology: METHODOLOGY_TEXT,
+      cta: "Review the full benchmark with us.",
+      ...(authorityGap ? { authorityGap } : {}),
+      ...(brandMentions.length > 0 ? { brandMentions } : {}),
+      ...(recommendationMomentsTotal > 0 ? { stakes } : {}),
+      ...(whyItHappens.length > 0 ? { whyItHappens } : {}),
+      ...(topSources.length > 0 ? { topSources } : {}),
+      ...(transcripts.length > 0 ? { transcripts } : {}),
+      ...(evidenceExcerpts.length > 0 ? { evidenceExcerpts } : {}),
+      ...(fixability ? { fixability } : {}),
+      ...(exampleChats.length > 0 ? { exampleChats } : {}),
+      preparedBy,
+    };
 
-      const accessToken = randomBytes(AUDIT_TOKEN_BYTES).toString("base64url");
+    // Commit phase (correctness audit 2026-08-04): the snapshot above was
+    // assembled on ordinary pooled reads — the transaction below holds row
+    // locks only for the token supersede + insert, so a slow assembly can
+    // no longer hold locks while waiting for a second pool connection
+    // (the old shape deadlocked the 10-connection pool under concurrency).
+    const result = await sql.begin(async (tx) => {
+      await lockProspect(tx, input.prospectId);
+      // Stable links (057): a live audit is SUPERSEDED in place — the token
+      // moves to the successor so the prospect's link never changes. Revoke
+      // remains the burn-the-link path; a fresh token is minted only then.
+      const [existing] = await tx`
+        select id, access_token from prospect_audits
+        where prospect_id = ${input.prospectId} and status = 'published'
+        for update
+      `;
+      const accessToken =
+        (existing?.accessToken as string | null) ??
+        randomBytes(AUDIT_TOKEN_BYTES).toString("base64url");
+      if (existing) {
+        // Vacate the token first (unique index), freeze the old snapshot as
+        // superseded — the lock trigger allows exactly this transition.
+        await tx`
+          update prospect_audits set status = 'superseded', access_token = null
+          where id = ${existing.id}
+        `;
+        await writeAudit(tx, {
+          userId: user.id,
+          action: "prospect.audit_supersede",
+          entity: "prospect_audit",
+          entityId: existing.id as string,
+          detail: { prospectId: input.prospectId },
+        });
+      }
       const [row] = await tx`
         insert into prospect_audits
           (prospect_id, finding_id, headline, snapshot, status, access_token,
@@ -2076,7 +2117,7 @@ export async function publishAudit(
         { auditId: row?.id },
         user.id
       );
-      return { auditId: row?.id as string, accessToken };
+      return { auditId: row?.id as string, accessToken, replaced: Boolean(existing) };
     });
     return ok(result);
   } catch (err) {

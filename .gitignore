@@ -15,3 +15,7 @@ coverage/
 .vercel
 tsconfig.tsbuildinfo
 var/
+.next-e2e/
+tests/e2e/.seed-state.json
+playwright-report/
+test-results/

@@ -85,3 +85,74 @@
 - [x] No fabricated numbers; every new figure traces to a snapshot field.
 - [x] Layout test passes (type scale, no new violations).
 - [x] Full suite, typecheck, lint green.
+
+## Round 2 (2026-08-04): the reviewer converges, and walks one thing back
+
+The second review independently arrives at this spec's governing rule —
+"the discipline of a landing page, the surface language of an evidence
+document" — and endorses the round-1 rejections. Three deltas accepted:
+
+1. **Fixability leaves the scorecard strip.** Authority and visibility are
+   defensible to a stranger (sourced record; counted answers). Fixability,
+   however computed, reads as a proprietary vendor score in tile form. The
+   number moves into the diagnosis section as an argued sentence beside its
+   reasons; the strip becomes the pure authority-vs-visibility contrast —
+   the page's strongest visual device.
+2. **CTA supporting line** adopts the reviewer's research framing: "I'll
+   show you the captured answers, the likely causes of the gap, and the
+   first changes I'd prioritize."
+3. **Color-budget repair:** the seller-moment quote used the action color
+   for its border; it takes the neutral quote treatment (accent belongs to
+   the CTA alone).
+
+Held position: the two-tile contrast stays quantified — research restraint
+means every number keeps its receipt, not fewer numbers.
+
+## Round 3 (2026-08-04): CRO-psychology reassessment, self-initiated
+
+Findings from a cold read of the rendered page:
+
+1. **The document leaked its frame (fixed, the big one).** Signed-in staff
+   saw the workspace shell — sidebar, command palette, assistant bar, and
+   OTHER CLIENTS' NAMES — around the prospect document. Anonymous visitors
+   were safe (chrome renders null without a staff session), but an operator
+   could never preview what a prospect sees, and any staff screenshot
+   carried internal names. `AppShell` now strips all chrome on /audit/* for
+   everyone; an E2E test pins it under a staff session.
+2. **Emotional sequence corrected to agitate → anchor → hope → ask.** The
+   "good news" paragraph sat between the seller-moment sting and the
+   average-sale anchor, deflating the second agitation. It now lands after
+   the full weight of the problem.
+3. **"One that should sting" told the reader how to feel** — replaced with
+   "One moment from the capture" (show, don't instruct).
+4. **Unreceipted trend claim** ("buyers increasingly ask ChatGPT") became a
+   conditional the page itself proves: "When buyers and sellers ask ChatGPT
+   who to hire, the answers name names" — the 35 counted recommendation
+   moments are the receipt.
+5. **"Market authority" renamed "Documented authority."** A #9-ranked team
+   scoring 30/100 read as the page contradicting its own hero; the score
+   measures what the sourced record PROVES, and the label now says so.
+6. **One mid-page ask added** at peak conviction (after diagnosis +
+   fixability) — a sentence with the reply link, not a button: the next
+   research step, not a second funnel. Kept: exactly two button CTAs
+   (top and close), zero-repetition of the prospect's 0 (the zero is the
+   product), no sticky elements, no scarcity theater.
+
+## Round 3b (2026-08-04): format & design pass, from rendered screenshots
+
+Reviewed as pixels (desktop/mobile, light/dark), not JSX. Dark mode and the
+overall editorial restraint hold. Fixed:
+
+1. **The hero's payoff line was muted** — the setup outweighed the punch.
+   Full ink now; only the red zero is colored.
+2. **Excerpt data artifacts**: captured answers arrive wearing their own
+   quotation marks and markdown bold markers — rendered ""like this"" and
+   **like this**. Render-side sanitizer strips the formatting, never the
+   words. The blockquote also now picks the most substantial excerpt
+   rather than whichever company sorted first (a two-word quote read as a
+   glitch).
+3. **Mobile table crushed team names into four lines** — min-width + nowrap
+   makes it scroll sideways instead.
+4. **Scorecard tiles were under-weighted** for their conceptual load —
+   wider container, more padding, thicker bars. Still two tiles, still
+   quiet.

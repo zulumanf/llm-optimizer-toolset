@@ -1,5 +1,6 @@
 "use server";
 
+import { makeActionRunner } from "@/lib/actions/run";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { sql } from "@/db/client";
@@ -12,18 +13,7 @@ import * as instructionsSvc from "@/lib/knowledge/instructions/service";
 import { ingestSource } from "@/lib/knowledge/sources/ingest";
 import { requestExternalDiscovery as requestDiscoverySvc } from "@/lib/knowledge/discovery/request";
 
-async function run<T>(
-  fn: (user: Awaited<ReturnType<typeof getCurrentUser>>) => Promise<ActionResult<T>>
-): Promise<ActionResult<T>> {
-  try {
-    const user = await getCurrentUser();
-    const result = await fn(user);
-    if (result.ok) revalidatePath("/projects", "layout");
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
-}
+const run = makeActionRunner(["/projects", "layout"]);
 
 export async function proposeClaim(input: unknown) {
   return run((u) => svc.proposeClaim(u, input));

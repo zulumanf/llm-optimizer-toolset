@@ -29,18 +29,6 @@ export async function listActiveCompanies(): Promise<Company[]> {
   `;
 }
 
-export async function getCompany(id: string): Promise<Company | null> {
-  const rows = await sql<Company[]>`select ${COLUMNS} from companies where id = ${id}`;
-  return rows[0] ?? null;
-}
-
-export async function selfCompanyExists(): Promise<boolean> {
-  const rows = await sql`
-    select 1 from companies where is_self and archived_at is null limit 1
-  `;
-  return rows.length > 0;
-}
-
 /**
  * The project's subject (client) company — explicit subject_company_id, with
  * the legacy global is_self company as fallback (docs/15 migration path).

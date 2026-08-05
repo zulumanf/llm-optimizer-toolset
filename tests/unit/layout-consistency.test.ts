@@ -19,6 +19,7 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const APP_DIR = join(__dirname, "..", "..", "app");
+const COMPONENTS_DIR = join(__dirname, "..", "..", "components");
 
 function pageFiles(dir: string): string[] {
   const out: string[] = [];
@@ -26,6 +27,16 @@ function pageFiles(dir: string): string[] {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) out.push(...pageFiles(full));
     else if (entry === "page.tsx") out.push(full);
+  }
+  return out;
+}
+
+function tsxFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) out.push(...tsxFiles(full));
+    else if (entry.endsWith(".tsx")) out.push(full);
   }
   return out;
 }
@@ -39,10 +50,97 @@ const PAGES = pageFiles(APP_DIR).map((path) => ({
 /**
  * Pages still on a hand-rolled shell, from before `components/layout/page.tsx`
  * existed. Each is a migration owed, not an exemption granted.
+ *
+ * FROZEN LITERAL LIST (cleanup audit 2026-08-04). The previous version
+ * computed this set as "every page that doesn't import the primitives" —
+ * which meant not importing them WAS the exemption, every new page shipped
+ * unguarded by default, and width drift measurably widened after the guard
+ * landed (6 widths → 10). The list below is the debt as of the freeze; it
+ * may only shrink. A new page must use the shell or fail this suite.
  */
-const LEGACY_SHELLS = new Set(
-  PAGES.filter((p) => !p.source.includes("@/components/layout/page")).map((p) => p.rel)
-);
+const LEGACY_SHELLS = new Set([
+  "app/agents/page.tsx",
+  "app/approvals/page.tsx",
+  "app/audit/[token]/answers/page.tsx",
+  "app/audit/[token]/page.tsx",
+  "app/automation/connectors/page.tsx",
+  "app/automation/events/page.tsx",
+  "app/automation/outreach/page.tsx",
+  "app/automation/page.tsx",
+  "app/automation/runs/[runId]/page.tsx",
+  "app/automation/runs/page.tsx",
+  "app/automation/triggers/page.tsx",
+  "app/automation/workflows/[key]/page.tsx",
+  "app/automation/workflows/page.tsx",
+  "app/companies/page.tsx",
+  "app/control-tower/briefs/[briefId]/page.tsx",
+  "app/control-tower/page.tsx",
+  "app/exclusivity/page.tsx",
+  "app/login/page.tsx",
+  "app/notifications/page.tsx",
+  "app/onboarding/page.tsx",
+  "app/page.tsx",
+  "app/portal/[projectId]/page.tsx",
+  "app/portal/[projectId]/reports/page.tsx",
+  "app/portal/[projectId]/work/page.tsx",
+  "app/portal/page.tsx",
+  "app/projects/[id]/accuracy/page.tsx",
+  "app/projects/[id]/activity/page.tsx",
+  "app/projects/[id]/campaigns/[campaignId]/page.tsx",
+  "app/projects/[id]/campaigns/page.tsx",
+  "app/projects/[id]/competitors/page.tsx",
+  "app/projects/[id]/content/[assetId]/page.tsx",
+  "app/projects/[id]/content/page.tsx",
+  "app/projects/[id]/gaps/page.tsx",
+  "app/projects/[id]/interventions/[interventionId]/page.tsx",
+  "app/projects/[id]/interventions/page.tsx",
+  "app/projects/[id]/knowledge/builds/page.tsx",
+  "app/projects/[id]/knowledge/contradictions/page.tsx",
+  "app/projects/[id]/knowledge/instructions/page.tsx",
+  "app/projects/[id]/knowledge/packets/[packetId]/page.tsx",
+  "app/projects/[id]/knowledge/packets/page.tsx",
+  "app/projects/[id]/knowledge/page.tsx",
+  "app/projects/[id]/knowledge/sources/page.tsx",
+  "app/projects/[id]/knowledge/wiki/[slug]/page.tsx",
+  "app/projects/[id]/knowledge/wiki/page.tsx",
+  "app/projects/[id]/page.tsx",
+  "app/projects/[id]/prompts/[setId]/page.tsx",
+  "app/projects/[id]/prompts/[setId]/v/[version]/page.tsx",
+  "app/projects/[id]/prompts/page.tsx",
+  "app/projects/[id]/reports/[reportId]/page.tsx",
+  "app/projects/[id]/reports/page.tsx",
+  "app/projects/[id]/review/page.tsx",
+  "app/projects/[id]/runs/[runId]/evidence/page.tsx",
+  "app/projects/[id]/runs/[runId]/page.tsx",
+  "app/projects/[id]/runs/[runId]/responses/[responseId]/page.tsx",
+  "app/projects/[id]/runs/new/page.tsx",
+  "app/projects/[id]/runs/page.tsx",
+  "app/projects/[id]/settings/page.tsx",
+  "app/projects/[id]/tasks/page.tsx",
+  "app/projects/[id]/validation/page.tsx",
+  "app/projects/page.tsx",
+  "app/workflows/[runId]/page.tsx",
+  "app/workflows/page.tsx",
+]);
+
+// The ratchet: a page that migrates must leave the list, and a page not on
+// the list must use the shell. Both directions fail loudly.
+describe("legacy-shell ratchet", () => {
+  it("every non-legacy page uses the layout primitives", () => {
+    const offenders = PAGES.filter(
+      (p) => !LEGACY_SHELLS.has(p.rel) && !p.source.includes("@/components/layout/page")
+    ).map((p) => p.rel);
+    expect(offenders).toEqual([]);
+  });
+
+  it("the list only shrinks — migrated pages must be removed from it", () => {
+    const stale = [...LEGACY_SHELLS].filter((rel) => {
+      const page = PAGES.find((p) => p.rel === rel);
+      return !page || page.source.includes("@/components/layout/page");
+    });
+    expect(stale).toEqual([]);
+  });
+});
 
 describe("page layout consistency", () => {
   it("finds pages to check at all", () => {
@@ -88,14 +186,33 @@ describe("page layout consistency", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("never uses a raw hex colour in a page", () => {
+  // Hex and inline-style rules apply to EVERYTHING that renders, not only
+  // pages — the chart components shipped hardcoded dark-theme hex values
+  // under a green suite because only page.tsx was scanned (cleanup audit
+  // 2026-08-04). global-error.tsx is the one sanctioned exception: it
+  // renders outside the Tailwind-bearing root layout by design.
+  const RENDERED = [
+    ...PAGES,
+    ...[...tsxFiles(COMPONENTS_DIR), ...pageFiles(APP_DIR).map((p) => p)]
+      .filter((p, i, arr) => arr.indexOf(p) === i)
+      .filter((p) => !PAGES.some((page) => page.path === p))
+      .map((path) => ({
+        path,
+        rel: relative(join(__dirname, "..", ".."), path),
+        source: readFileSync(path, "utf8"),
+      })),
+  ].filter((p) => !p.rel.endsWith("global-error.tsx"));
+
+  it("never uses a raw hex colour in anything that renders", () => {
     // docs/04: semantic tokens only, so both themes stay correct.
-    const offenders = PAGES.filter((p) => /#[0-9a-fA-F]{3,8}\b/.test(p.source)).map((p) => p.rel);
+    const offenders = RENDERED.filter((p) => /#[0-9a-fA-F]{3,8}\b/.test(p.source)).map(
+      (p) => p.rel
+    );
     expect(offenders).toEqual([]);
   });
 
-  it("never uses an inline style attribute", () => {
-    const offenders = PAGES.filter((p) => /style=\{\{/.test(p.source)).map((p) => p.rel);
+  it("never uses an inline style attribute in anything that renders", () => {
+    const offenders = RENDERED.filter((p) => /style=\{\{/.test(p.source)).map((p) => p.rel);
     expect(offenders).toEqual([]);
   });
 

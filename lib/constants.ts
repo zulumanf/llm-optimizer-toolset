@@ -39,7 +39,6 @@ export const DAILY_SPEND_CEILING_USD = Number.isFinite(ceilingFromEnv)
   ? ceilingFromEnv
   : 25;
 
-export const CONFIDENCE_AUTO_ACCEPT = 0.9;
 export const CONFIDENCE_REVIEW_THRESHOLD = 0.7;
 export const REVIEW_TIMEOUT_HOURS = 72;
 

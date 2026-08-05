@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { unwrap } from "../helpers/result";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -107,10 +108,6 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     }
   }
 
-  const unwrap = <T,>(r: { ok: true; data: T } | { ok: false; error: { message: string } }): T => {
-    if (!r.ok) throw new Error(r.error.message);
-    return r.data;
-  };
 
   /**
    * A scored run where "Acme Realty" dominates recommendations and the
@@ -260,15 +257,19 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     `;
     expect(viewCount?.n).toBe(1);
 
-    // Second published audit refused while one is live
+    // A second publish supersedes in place and keeps the link (057) — the
+    // dedicated stable-link test covers the full semantics.
     const second = await svc.publishAudit(operator, { prospectId });
-    expect(second.ok).toBe(false);
+    expect(second.ok).toBe(true);
+    if (second.ok) expect(second.data.accessToken).toBe(accessToken);
 
     // Wrong token → null
     expect(await svc.getAuditByToken("nonsense-token-nonsense-token")).toBeNull();
 
-    // Revoked token stops working immediately
-    unwrap(await svc.revokeAudit(operator, { auditId, reason: "content superseded" }));
+    // Revoked token stops working immediately (revoke targets the LIVE
+    // audit — the first one is now superseded)
+    const liveAuditId = second.ok ? second.data.auditId : auditId;
+    unwrap(await svc.revokeAudit(operator, { auditId: liveAuditId, reason: "content superseded" }));
     expect(await svc.getAuditByToken(accessToken)).toBeNull();
 
     // Draft: generated from the approved finding, versioned, approved, sent
@@ -432,6 +433,49 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     // Expiring twice is a refusal, not a silent no-op.
     const twice = await svc.expireAudit(operator, { auditId });
     expect(twice.ok).toBe(false);
+  });
+
+  it("republishing keeps the link; revoking burns it (migration 057)", async () => {
+    const { runId, prospectCompanyId } = await seedScoredRun();
+    const { prospectId } = await seedLaunchAndProspect(prospectCompanyId);
+    const { benchmarkId } = unwrap(await svc.linkBenchmark(operator, { prospectId, runId }));
+    unwrap(await svc.generateFindings(operator, { benchmarkId }));
+    const [candidate] = await sql`
+      select id from prospect_findings
+      where prospect_id = ${prospectId} order by created_at asc limit 1
+    `;
+    unwrap(
+      await svc.reviewFinding(operator, {
+        findingId: candidate?.id as string,
+        decision: "approved",
+        makePrimary: true,
+      })
+    );
+
+    const first = unwrap(await svc.publishAudit(operator, { prospectId }));
+
+    // Republish: SAME link, new snapshot row; the old row is superseded,
+    // frozen, and its token slot vacated.
+    const second = unwrap(await svc.publishAudit(operator, { prospectId }));
+    expect(second.accessToken).toBe(first.accessToken);
+    expect(second.auditId).not.toBe(first.auditId);
+    const [oldRow] = await sql`
+      select status, access_token from prospect_audits where id = ${first.auditId}
+    `;
+    expect(oldRow?.status).toBe("superseded");
+    expect(oldRow?.accessToken).toBeNull();
+    // The link resolves to the NEW snapshot only.
+    expect(await svc.getAuditByToken(second.accessToken, { internal: true })).not.toBeNull();
+    // Superseded snapshots stay as immutable as published ones.
+    await expect(
+      sql`update prospect_audits set headline = 'tampered' where id = ${first.auditId}`
+    ).rejects.toThrow(/immutable/);
+
+    // Revoke burns the link: the next publish mints a FRESH token.
+    unwrap(await svc.revokeAudit(operator, { auditId: second.auditId, reason: "pulled" }));
+    expect(await svc.getAuditByToken(second.accessToken, { internal: true })).toBeNull();
+    const third = unwrap(await svc.publishAudit(operator, { prospectId }));
+    expect(third.accessToken).not.toBe(second.accessToken);
   });
 
   it("refuses benchmark links to runs with mock captures outside the harness (plan 2.3)", async () => {

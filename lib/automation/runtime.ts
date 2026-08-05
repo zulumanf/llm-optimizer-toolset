@@ -9,7 +9,6 @@
  * exception querying — none of which belong inside a graph engine.
  */
 import { sql } from "@/db/client";
-import { writeAudit } from "@/db/audit";
 import * as workflowStore from "@/db/workflow";
 import {
   cancelWorkflow as engineCancel,
@@ -29,7 +28,6 @@ import type { RiskLevel } from "@/lib/workflow/types";
 import type {
   AutomationException,
   AutomationExceptionFilters,
-  AutomationRuntime,
   AutomationWorkflowDefinition,
   AutomationWorkflowRun,
   AutomationWorkflowSignal,
@@ -43,10 +41,6 @@ const registry = new Map<string, AutomationWorkflowDefinition>();
 
 export function registeredWorkflows(): AutomationWorkflowDefinition[] {
   return [...registry.values()];
-}
-
-export function getWorkflowDefinition(key: string): AutomationWorkflowDefinition | undefined {
-  return registry.get(key);
 }
 
 /**
@@ -246,27 +240,6 @@ export async function publishWorkflowVersion(
     }
   }
   log("info", "automation.version_published", { workflowKey, version });
-}
-
-export async function deprecateWorkflowVersion(
-  workflowKey: string,
-  version: number,
-  userId: string
-): Promise<void> {
-  await sql.begin(async (tx) => {
-    await tx`
-      update workflow_versions v set status = 'deprecated'
-      where v.version = ${version}
-        and v.definition_id = (select id from workflow_definitions where key = ${workflowKey})
-    `;
-    await writeAudit(tx, {
-      userId,
-      action: "automation.version_deprecated",
-      entity: "workflow_version",
-      entityId: null,
-      detail: { workflowKey, version },
-    });
-  });
 }
 
 // -------------------------------------------------------------------- start
@@ -520,16 +493,3 @@ export async function retryNode(nodeRunId: string, userId: string | null = null)
   await engineRetry(nodeRunId, userId);
 }
 
-/** The interface implementation. */
-export const automationRuntime: AutomationRuntime = {
-  registerWorkflow: async (definition) => {
-    await registerWorkflow(definition);
-  },
-  publishWorkflowVersion,
-  startWorkflow,
-  signalWorkflow,
-  retryNode: (nodeRunId) => retryNode(nodeRunId),
-  cancelWorkflow: (workflowRunId, reason) => cancelWorkflow(workflowRunId, reason),
-  getRun,
-  listExceptions,
-};

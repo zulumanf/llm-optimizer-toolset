@@ -322,13 +322,6 @@ source does not contain. List the source claims you used.`,
   ),
 };
 
-/** Prompt versions, for the agent registry and for run reproducibility. */
-export function automationPromptVersions(): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(AUTOMATION_PROMPTS).map(([key, value]) => [key, value.version])
-  );
-}
-
 /** The version an automation agent node must name to pass graph validation. */
 export function automationAgentVersion(key: AutomationAgentKey): string {
   return AUTOMATION_PROMPTS[key].version;

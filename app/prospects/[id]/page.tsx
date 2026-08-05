@@ -78,6 +78,7 @@ import {
 } from "@/components/prospects/exhibit-dialog";
 import { listExhibits } from "@/lib/prospects/exhibits";
 import { FRESHNESS_WINDOWS_DAYS, staleness } from "@/lib/prospects/constants";
+import { CONFIDENCE_REVIEW_THRESHOLD } from "@/lib/constants";
 
 const rate = (v: number | null): string =>
   v === null ? "not measured" : `${Math.round(v * 100)}%`;
@@ -524,7 +525,11 @@ export default async function ProspectDetailPage({
               <li key={d.key} className="rounded-md border p-3 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{d.title}</span>
-                  <Badge variant={d.confidence >= 0.7 ? "default" : "secondary"}>
+                  <Badge
+                    variant={
+                      d.confidence >= CONFIDENCE_REVIEW_THRESHOLD ? "default" : "secondary"
+                    }
+                  >
                     confidence {Math.round(d.confidence * 100)}%
                   </Badge>
                 </div>

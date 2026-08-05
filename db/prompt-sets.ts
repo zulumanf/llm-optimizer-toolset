@@ -114,13 +114,3 @@ export async function getVersion(
   return rows[0] ?? null;
 }
 
-export async function getVersionById(
-  versionId: string
-): Promise<PromptSetVersion | null> {
-  const rows = await sql<PromptSetVersion[]>`
-    select id, prompt_set_id, version, frozen_prompts, frozen_by, frozen_at
-    from prompt_set_versions
-    where id = ${versionId}
-  `;
-  return rows[0] ?? null;
-}

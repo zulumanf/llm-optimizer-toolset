@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { unwrap } from "../helpers/result";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -104,10 +105,6 @@ describe.skipIf(!TEST_URL)("prospect final score (integration)", () => {
     }
   }
 
-  const unwrap = <T,>(r: { ok: true; data: T } | { ok: false; error: { message: string } }): T => {
-    if (!r.ok) throw new Error(r.error.message);
-    return r.data;
-  };
 
   async function seedAll(): Promise<{ prospectId: string; launchId: string }> {
     const subject = unwrap(await companySvc.upsertCompany(operator, { name: "Lumina" }));

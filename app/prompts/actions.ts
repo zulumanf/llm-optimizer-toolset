@@ -1,8 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "@/lib/auth";
-import { fail, type ActionResult } from "@/lib/actions/result";
+import { makeActionRunner } from "@/lib/actions/run";
 import * as setService from "@/lib/prompts/set-service";
 import * as promptService from "@/lib/prompts/prompt-service";
 import * as importService from "@/lib/prompts/import";
@@ -14,18 +12,7 @@ import * as marketInstall from "@/lib/markets/install";
  * (docs/11: logic in lib, actions at the boundary). Revalidation is
  * layout-wide — prompt pages all live under /projects.
  */
-async function run<T>(
-  fn: (user: Awaited<ReturnType<typeof getCurrentUser>>) => Promise<ActionResult<T>>
-): Promise<ActionResult<T>> {
-  try {
-    const user = await getCurrentUser();
-    const result = await fn(user);
-    if (result.ok) revalidatePath("/projects", "layout");
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
-}
+const run = makeActionRunner(["/projects", "layout"]);
 
 export async function createPromptSet(input: unknown) {
   return run((u) => setService.createPromptSet(u, input));
