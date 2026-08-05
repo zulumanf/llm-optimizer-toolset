@@ -13,7 +13,9 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 stopped fitting on 2026-08-05: the suite grew past 1,400 tests and
+    # the reversibility loop walks 57 migrations on a 2-core runner.
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -75,12 +77,10 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # KNOWN ISSUE (2026-08-04): green locally (47/47) but the hosted runner
-    # boots the compiled server and then produces no test output until the
-    # job times out — cause not yet identified, so this job must not gate
-    # merges while it is being diagnosed. `verify` remains blocking.
-    # Do not remove this line without a green run to point at.
-    continue-on-error: true
+    # Blocking as of 2026-08-05: the hang was execSync in playwright's
+    # global setup blocking the event loop while createdb waited on a tty
+    # password prompt (see tests/e2e/global-setup.ts). Green run:
+    # 48/48 in 41s — actions/runs/30961209426.
 
     services:
       postgres:
