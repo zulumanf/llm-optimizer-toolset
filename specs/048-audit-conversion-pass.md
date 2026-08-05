@@ -183,3 +183,18 @@ Result: the entire argument — hero, counted moments, competitors,
 scorecard, sting, anchor, hope, ask — fits in one viewport. Editing rule
 recorded for future rounds: additions must displace words, not stack on
 them.
+
+## Round 6 (2026-08-05): the non-technical reader
+
+Operator insight: many recipient agents are older and not tech-savvy —
+the page assumed they knew people ask ChatGPT for agent recommendations
+and that its answers vary. Fixes: (1) the intro now states the premise
+("ChatGPT is the AI assistant millions now use the way they used to use
+Google — and it answers with specific names"); (2) recipe step 2 explains
+repetition with an analogy ("answers change a little on every ask — like
+asking four different receptionists") and the count does the arithmetic;
+(3) the methodology drawer opens with a plain-terms sentence before the
+technical text; (4) ORDER: the brownstone story moves above the scorecard
+— stories before statistics for this audience — and the scorecard lands
+directly before "the good news," whose reframe it now visibly sets up.
+Still one viewport.
