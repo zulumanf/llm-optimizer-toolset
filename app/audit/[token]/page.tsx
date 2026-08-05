@@ -198,9 +198,10 @@ export default async function ProspectAuditPage({
         </h1>
       )}
       <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
-        When buyers and sellers ask ChatGPT who to hire, the answers name names.
-        We asked {snapshot.benchmark.promptCount} real {snapshot.marketName}{" "}
-        questions; every answer is published below.
+        ChatGPT is the AI assistant millions now use the way they used to use
+        Google — and when buyers and sellers ask it who to hire, it answers
+        with specific names. We asked it {snapshot.benchmark.promptCount} real{" "}
+        {snapshot.marketName} questions; every answer is published below.
       </p>
 
       {stakes ? (
@@ -227,6 +228,28 @@ export default async function ProspectAuditPage({
           )}
         </section>
       ) : null}
+
+      {sellerMoment && (
+        <p className="mt-4 max-w-[65ch] border-l-2 border-foreground/20 pl-4 text-sm">
+          One moment from the capture: we asked{" "}
+          <span className={`${serif.className} italic`}>
+            “{sellerMoment.promptText}”
+          </span>{" "}
+          — a listing client&apos;s question. The answer sent them to{" "}
+          <span className="font-medium">{sellerMoment.recommendedNames[0]}</span>.
+          Your name never came up.
+        </p>
+      )}
+
+      {stakes?.avgDealUsd != null && (
+        <p className="mt-4 max-w-[65ch] text-sm text-muted-foreground">
+          Your average sale:{" "}
+          <span className="font-semibold text-foreground tabular-nums">
+            ~${Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K
+          </span>{" "}
+          ({stakes.avgDealBasis}).
+        </p>
+      )}
 
       {/* The scorecard (spec 048, round 2): the counted moments above are
           the punch; the two-score CONTRAST is the corroboration — authority
@@ -291,28 +314,6 @@ export default async function ProspectAuditPage({
         </div>
       )}
 
-      {sellerMoment && (
-        <p className="mt-4 max-w-[65ch] border-l-2 border-foreground/20 pl-4 text-sm">
-          One moment from the capture: we asked{" "}
-          <span className={`${serif.className} italic`}>
-            “{sellerMoment.promptText}”
-          </span>{" "}
-          — a listing client&apos;s question. The answer sent them to{" "}
-          <span className="font-medium">{sellerMoment.recommendedNames[0]}</span>.
-          Your name never came up.
-        </p>
-      )}
-
-      {stakes?.avgDealUsd != null && (
-        <p className="mt-4 max-w-[65ch] text-sm text-muted-foreground">
-          Your average sale:{" "}
-          <span className="font-semibold text-foreground tabular-nums">
-            ~${Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K
-          </span>{" "}
-          ({stakes.avgDealBasis}).
-        </p>
-      )}
-
       {/* Hope lands AFTER the full weight of the problem (spec 048 CRO pass:
           agitate → anchor → hope → ask), and only when the sourced record
           actually supports it — never as an empty consolation. */}
@@ -354,8 +355,11 @@ export default async function ProspectAuditPage({
               questions{snapshot.promptEvidence.length > 0 ? " (full list below)" : ""}.
             </li>
             <li>
-              We asked each one {repsLabel} — single answers vary; the pattern
-              across {snapshot.benchmark.responseCount} is the finding.
+              We asked each one {repsLabel}. ChatGPT&apos;s answers change a
+              little on every ask — like asking four different receptionists —
+              so we count the pattern across all{" "}
+              {snapshot.benchmark.responseCount} answers, never one lucky
+              reply.
             </li>
             <li>
               Every answer
@@ -649,6 +653,12 @@ export default async function ProspectAuditPage({
         )}
 
         <Drawer summary="How this was measured">
+          <p className="mb-3 max-w-[65ch] text-sm">
+            In plain terms: we asked the same questions many times, saved every
+            answer untouched, and counted the names. The details below are for
+            the technically minded — the counting recipe above is the whole
+            method.
+          </p>
           <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             <div>
               <dt className="text-xs text-muted-foreground">When</dt>
