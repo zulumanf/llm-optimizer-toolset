@@ -342,9 +342,13 @@ export default async function ProspectAuditPage({
           <h2 className="text-lg font-medium">
             Who shows up when {snapshot.marketName} buyers ask
           </h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Counted across the {snapshot.benchmark.responseCount} captured answers.
-            One answer can bring up several names, so columns don&apos;t sum to 100%.
+          <p className="mt-1 max-w-[65ch] text-xs text-muted-foreground">
+            Counted across the {snapshot.benchmark.responseCount} captured answers.{" "}
+            <span className="text-foreground">Brought up</span> means the answer named
+            them anywhere, even in passing;{" "}
+            <span className="text-foreground">recommended</span> means the answer told
+            the asker to use them. One answer can name several teams, so columns
+            don&apos;t sum to 100%.
           </p>
           {(() => {
             const hasRanks = snapshot.comparison.some((r) => r.marketRank != null);
