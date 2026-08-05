@@ -13,7 +13,7 @@ test("renders the punch: prospect name, counted moments, scorecard", async ({ pa
   await page.goto(auditPath);
   await expect(page.locator("h1")).toContainText(/Rivera Team|#9/);
   // Counted moments (stakes) — the "N× / 0×" pair.
-  await expect(page.getByText(/AI recommended a specific team/i)).toBeVisible();
+  await expect(page.getByText(/the answer named someone specific to hire/i)).toBeVisible();
   await expect(page.getByText(/it was you/i)).toBeVisible();
   // Scorecard tiles from computed scores (spec 048).
   await expect(page.getByText("Documented authority").first()).toBeVisible();

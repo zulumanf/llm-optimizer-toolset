@@ -249,6 +249,13 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     const snapshot = await svc.getAuditByToken(accessToken, { userAgent: "vitest" });
     expect(snapshot).not.toBeNull();
     expect(snapshot?.prospectName).toBe("Rivera Team");
+    // P3 honesty: the headline total must decompose into teams + brands.
+    expect(
+      (snapshot?.stakes?.teamRecommendations ?? 0) +
+        (snapshot?.stakes?.brandRecommendations ?? 0)
+    ).toBe(snapshot?.stakes?.recommendationMomentsTotal);
+    // Second person everywhere a prospect reads (P2).
+    expect(JSON.stringify(snapshot)).not.toMatch(/the prospect/i);
     expect(snapshot?.benchmark.responseCount).toBeGreaterThanOrEqual(6);
     // Snapshot carries no internal fields
     expect(JSON.stringify(snapshot)).not.toContain("qualification");

@@ -98,7 +98,7 @@ export default async function AuditAnswersPage({
                 <li key={ri} className="rounded-lg border p-4">
                   <p className="text-xs text-muted-foreground">
                     Run {ri + 1} of {runs.length} · {t.model} · captured{" "}
-                    {new Date(t.capturedAt).toLocaleString()}
+                    {`${t.capturedAt.slice(0, 16).replace("T", " ")} UTC`}
                   </p>
                   {/* The assistant's formatting rendered AS formatting —
                       what the asker's own screen showed. Words untouched;

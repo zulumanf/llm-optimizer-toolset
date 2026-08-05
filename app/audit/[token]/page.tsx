@@ -114,9 +114,9 @@ export default async function ProspectAuditPage({
   });
   if (!snapshot) notFound();
 
-  const from = new Date(snapshot.benchmark.dateRange.from).toLocaleDateString();
+  const from = snapshot.benchmark.dateRange.from.slice(0, 10);
   const to = snapshot.benchmark.dateRange.to
-    ? new Date(snapshot.benchmark.dateRange.to).toLocaleDateString()
+    ? snapshot.benchmark.dateRange.to.slice(0, 10)
     : null;
   const gap = snapshot.authorityGap;
   const stakes = snapshot.stakes;
@@ -206,10 +206,13 @@ export default async function ProspectAuditPage({
 
       {stakes ? (
         <section className="mt-10">
+          {/* Honest total (P3): the count spans teams AND brokerage brands,
+              so the line must not say "team". The split beneath is the
+              open-space argument, not a caveat. */}
           <p className="text-2xl font-semibold tracking-tight">
             <span className="tabular-nums">{stakes.recommendationMomentsTotal}×</span>{" "}
             <span className="font-normal text-muted-foreground">
-              AI recommended a specific team.
+              the answer named someone specific to hire.
             </span>
           </p>
           <p className="mt-1 text-2xl font-semibold tracking-tight">
@@ -218,6 +221,17 @@ export default async function ProspectAuditPage({
             </span>{" "}
             <span className="font-normal text-muted-foreground">it was you.</span>
           </p>
+          {stakes.teamRecommendations != null &&
+            stakes.brandRecommendations != null &&
+            stakes.brandRecommendations > 0 && (
+              <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
+                {stakes.teamRecommendations}× that was an individual team ·{" "}
+                {stakes.brandRecommendations}× a brokerage brand
+                {stakes.brandRecommendations > stakes.teamRecommendations &&
+                  " — AI falls back to brand names when no team has given it a reason not to"}
+                .
+              </p>
+            )}
           {stakes.competitorsNamed.length > 0 && (
             <p className="mt-3 text-sm text-muted-foreground">
               Buyers heard instead:{" "}
@@ -448,18 +462,47 @@ export default async function ProspectAuditPage({
                     </p>
                     <ul className="mt-2 space-y-1.5">
                       {snapshot.brandMentions.map((b) => (
-                        <li key={b.name} className="flex items-center gap-2 text-sm">
-                          <span className="w-44 truncate text-muted-foreground">
-                            {b.name}
+                        <li key={b.name} className="text-sm">
+                          <span className="flex items-center gap-2">
+                            <span className="w-44 truncate text-muted-foreground">
+                              {b.name}
+                            </span>
+                            <RateBar
+                              value={b.mentionRate}
+                              isSubject={false}
+                              of={snapshot.benchmark.responseCount}
+                            />
                           </span>
-                          <RateBar
-                            value={b.mentionRate}
-                            isSubject={false}
-                            of={snapshot.benchmark.responseCount}
-                          />
+                          {b.children && b.children.length > 0 && (
+                            <ul className="mt-1.5 space-y-1.5">
+                              {b.children.map((child) => (
+                                <li
+                                  key={child.name}
+                                  className="flex items-center gap-2 pl-5"
+                                >
+                                  <span className="w-[9.75rem] truncate text-muted-foreground">
+                                    ↳ {child.name}
+                                  </span>
+                                  <RateBar
+                                    value={child.mentionRate}
+                                    isSubject={false}
+                                    of={snapshot.benchmark.responseCount}
+                                  />
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                         </li>
                       ))}
                     </ul>
+                    {snapshot.brandMentions.some(
+                      (b) => b.children && b.children.length > 0
+                    ) && (
+                      <p className="mt-1.5 max-w-[65ch] text-xs text-muted-foreground">
+                        Indented names extend the brand above them; one answer can
+                        register both, so the rows overlap rather than add up.
+                      </p>
+                    )}
                     <p className="mt-2 max-w-[65ch] text-sm">
                       No individual team owns the answers yet — that space is still
                       open.
@@ -496,7 +539,7 @@ export default async function ProspectAuditPage({
           </p>
           <p className="mt-1.5 text-xs text-muted-foreground">
             — the assistant, recommending {firstExcerpt.teamName} ·{" "}
-            {new Date(firstExcerpt.capturedAt).toLocaleDateString()}
+            {firstExcerpt.capturedAt.slice(0, 10)}
           </p>
         </blockquote>
       )}
@@ -700,7 +743,7 @@ export default async function ProspectAuditPage({
                   <p className={`${serif.className} italic`}>“{trimQuotes(e.quote)}”</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     recommending {e.teamName} ·{" "}
-                    {new Date(e.capturedAt).toLocaleDateString()}
+                    {e.capturedAt.slice(0, 10)}
                   </p>
                 </li>
               ))}
