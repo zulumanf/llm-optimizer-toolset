@@ -1566,6 +1566,14 @@ export interface AuditSnapshot {
     name: string;
     mentionRate: number | null;
     recommendationRate: number | null;
+    /** Sub-brands whose names extend this brand's (e.g. "Corcoran Sawyer
+     * Smith" under "Corcoran") — nested so overlap never reads as
+     * double-counting. Additive; older snapshots render flat. */
+    children?: {
+      name: string;
+      mentionRate: number | null;
+      recommendationRate: number | null;
+    }[];
   }[];
   promptEvidence: PromptEvidence[];
   methodology: string;
@@ -1624,6 +1632,11 @@ export interface AuditSnapshot {
     recommendationMomentsTotal: number;
     /** How many of those were the prospect. */
     yourRecommendations: number;
+    /** Split of the total: individual teams vs brokerage brands (P3 —
+     * the table shows teams only, so the headline must not imply the
+     * total is all teams). Additive; older snapshots lack them. */
+    teamRecommendations?: number;
+    brandRecommendations?: number;
     /** Who got named instead, most-recommended first. */
     competitorsNamed: string[];
     /** volume ÷ sides from their own sourced signals; null when unknown. */
@@ -1745,14 +1758,31 @@ export async function publishAudit(
     const rivals = visibleRivals
       .filter((e) => teamCompanyIds.has(e.companyId))
       .slice(0, AUDIT_COMPARISON_RIVALS);
-    const brandMentions = visibleRivals
+    // Brand nesting (P3): "Corcoran" and "Corcoran Sawyer Smith" as sibling
+    // rows read as double-counting — the parser can genuinely credit both
+    // for one answer. A brand whose name extends another brand's name (word
+    // prefix) nests under it. Heuristic, stated as such; counts unchanged.
+    const flatBrands = visibleRivals
       .filter((e) => !teamCompanyIds.has(e.companyId))
       .slice(0, 5)
       .map((e) => ({
         name: e.name,
         mentionRate: e.mentionRate,
         recommendationRate: e.recommendationRate,
+        children: [] as {
+          name: string;
+          mentionRate: number | null;
+          recommendationRate: number | null;
+        }[],
       }));
+    const brandMentions = flatBrands.filter((brand) => {
+      const parent = flatBrands.find(
+        (candidate) =>
+          candidate !== brand && brand.name.startsWith(`${candidate.name} `)
+      );
+      if (parent) parent.children.push(brand);
+      return !parent;
+    });
     const evidence = await promptEvidenceForResponses(
       finding.responseIds,
       PROMPT_EVIDENCE_LIMIT
@@ -1847,6 +1877,18 @@ export async function publishAudit(
       order by recs desc
     `;
     const recommendationMomentsTotal = recRows.reduce((a, r) => a + Number(r.recs), 0);
+    // The total spans teams AND brokerage brands; the comparison table shows
+    // teams only. Publishing the split keeps the headline honest (P3) — and
+    // the brand share is the open-space argument, not a caveat: AI defaults
+    // to brand names when no individual team gives it a reason not to.
+    const teamRecommendations = recRows
+      .filter(
+        (r) =>
+          teamCompanyIds.has(r.companyId as string) ||
+          r.companyId === benchmark.companyId
+      )
+      .reduce((a, r) => a + Number(r.recs), 0);
+    const brandRecommendations = recommendationMomentsTotal - teamRecommendations;
     const yourRecommendations = Number(
       recRows.find((r) => r.companyId === benchmark.companyId)?.recs ?? 0
     );
@@ -1870,12 +1912,14 @@ export async function publishAudit(
       volume !== null && sides !== null && sides > 0 ? Math.round(volume / sides) : null;
     const stakes = {
       recommendationMomentsTotal,
+      teamRecommendations,
+      brandRecommendations,
       yourRecommendations,
       competitorsNamed,
       avgDealUsd,
       avgDealBasis:
         avgDealUsd !== null
-          ? `$${(volume! / 1_000_000).toFixed(2)}M across ${sides} sides, per the sourced record above`
+          ? `$${(volume! / 1_000_000).toFixed(2)}M across ${sides} sides, per the sourced record below`
           : null,
     };
 

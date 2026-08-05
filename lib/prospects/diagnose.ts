@@ -67,11 +67,11 @@ const SUGGESTED_ACTIONS: Record<string, string> = {
   mentioned_never_recommended:
     "Add differentiation and proof (rankings, verified sales, reviews) to the pages models retrieve — being known is not being endorsed.",
   missing_from_cited_sources:
-    "Get profiles or coverage on the cited domains — the retrieval path runs through them, not through the prospect's own site.",
+    "Get profiles or coverage on the cited domains — the answers pull from them, not from your own site.",
   competitors_dominate_sources:
     "Target the competitor-controlled surfaces with neutral third-party alternatives (directories, local press) the models also cite.",
   missing_from_high_intent_prompts:
-    "Create content matching high-intent questions (best listing agent, sell-my-X) — the prospect only appears in low-intent contexts.",
+    "Create content matching the questions buyers and sellers actually ask (best listing agent, who should sell my X) — you only appear on general ones.",
   entity_ambiguity:
     "Standardize the entity name across web properties and disambiguate from the colliding brand before measurement can be trusted.",
   unstable_sample:
@@ -120,7 +120,7 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "no_organic_visibility",
         "Absent from every organic answer",
-        `The prospect appeared in 0 of ${totalResponses} responses to questions that did not name it.`,
+        `You appeared in 0 of ${totalResponses} answers to questions that didn't name you.`,
         sampleConfidence(totalResponses),
         {
           affectedPrompts: inputs.prompts
@@ -132,7 +132,7 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "mentioned_never_recommended",
         "Mentioned but never recommended",
-        `Mentioned in ${totalMentioned} of ${totalResponses} organic responses, recommended in none — answers describe without endorsing.`,
+        `You were mentioned in ${totalMentioned} of ${totalResponses} answers, recommended in none — the answers describe you without endorsing you.`,
         sampleConfidence(totalResponses),
         {
           affectedPrompts: inputs.prompts
@@ -156,7 +156,7 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "missing_from_high_intent_prompts",
         "Missing exactly where it counts",
-        `Visible in low-intent contexts but absent from all ${highIntent.length} high-intent prompts.`,
+        `You show up on general questions but are absent from all ${highIntent.length} questions buyers and sellers ask when choosing.`,
         sampleConfidence(highIntent.reduce((a, p) => a + p.responses, 0)),
         {
           affectedPrompts: absentHighIntent
@@ -190,7 +190,7 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "missing_from_cited_sources",
         "Not in the retrieval path",
-        `Answers cited sources ${totalCitations} times this run — never the prospect's own domain.`,
+        `The answers cited their sources ${totalCitations} times — never your own site.`,
         sampleConfidence(totalCitations),
         { citedDomains: top }
       );
