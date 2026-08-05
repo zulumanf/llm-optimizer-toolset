@@ -168,3 +168,18 @@ plus in-place definitions of brought-up vs recommended. The full method
 and limitations stay in the "How this was measured" drawer for the second
 read. Rule reaffirmed: a skeptic should never have to open a drawer to
 learn how a number was made.
+
+## Round 5 (2026-08-05): the subtractive pass
+
+Four additive rounds each earned their lines; together they were ~14 lines
+of supporting prose above the fold and the CTA had slipped below it. This
+pass cut ~40% of the body words with zero receipts lost: the intro
+collapsed to two sentences (the recipe owns the method now), the scorecard
+footnote to one line, the sting lost its explanatory tail (the moment
+speaks), the average-sale line lost its sales-math clause (their number
+does the work), the good news tightened to three short sentences, the
+recipe items to one line each, the definitions to the "X = Y" form.
+Result: the entire argument — hero, counted moments, competitors,
+scorecard, sting, anchor, hope, ask — fits in one viewport. Editing rule
+recorded for future rounds: additions must displace words, not stack on
+them.

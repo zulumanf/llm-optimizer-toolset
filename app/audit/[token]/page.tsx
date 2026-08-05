@@ -199,10 +199,8 @@ export default async function ProspectAuditPage({
       )}
       <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
         When buyers and sellers ask ChatGPT who to hire, the answers name names.
-        We asked it {snapshot.benchmark.promptCount} real questions about{" "}
-        {snapshot.marketName} — {snapshot.benchmark.responseCount} answers,
-        captured verbatim.
-        {concreteHero && " The ranking is sourced under “Your track record” below."}
+        We asked {snapshot.benchmark.promptCount} real {snapshot.marketName}{" "}
+        questions; every answer is published below.
       </p>
 
       {stakes ? (
@@ -287,9 +285,8 @@ export default async function ProspectAuditPage({
             ))}
           </div>
           <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
-            Both 0–100, both checkable: documented authority is what your sourced
-            record proves, visibility is what the captured answers show.
-            Components and sources are under “Your track record” below.
+            Both 0–100, both checkable — components and sources under “Your track
+            record” below.
           </p>
         </div>
       )}
@@ -302,8 +299,7 @@ export default async function ProspectAuditPage({
           </span>{" "}
           — a listing client&apos;s question. The answer sent them to{" "}
           <span className="font-medium">{sellerMoment.recommendedNames[0]}</span>.
-          That&apos;s the kind of answer that shapes a seller&apos;s shortlist — and
-          your name never came up.
+          Your name never came up.
         </p>
       )}
 
@@ -313,8 +309,7 @@ export default async function ProspectAuditPage({
           <span className="font-semibold text-foreground tabular-nums">
             ~${Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K
           </span>{" "}
-          ({stakes.avgDealBasis}). One introduction going elsewhere outweighs the 15
-          minutes this takes to plan.
+          ({stakes.avgDealBasis}).
         </p>
       )}
 
@@ -323,10 +318,10 @@ export default async function ProspectAuditPage({
           actually supports it — never as an empty consolation. */}
       {gap && gap.signals.length > 0 && (
         <p className="mt-4 max-w-[65ch] text-sm">
-          <span className="font-medium">The good news:</span> this doesn&apos;t look
-          like a track-record problem — your record is sourced below. The gap is in
-          how consistently that authority appears in the public sources these
-          answers cited, and that is the part that can be worked on.
+          <span className="font-medium">The good news:</span> your record isn&apos;t
+          the problem — it&apos;s sourced below. What&apos;s missing is that
+          record&apos;s visibility in the sources these answers cite. That part is
+          workable.
         </p>
       )}
 
@@ -355,32 +350,30 @@ export default async function ProspectAuditPage({
               stay in "How this was measured" below. */}
           <ol className="mt-3 max-w-[65ch] list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
             <li>
-              We wrote {snapshot.benchmark.promptCount} questions real buyers and
-              sellers ask{snapshot.promptEvidence.length > 0 ? " (the full list is below)" : ""}.
+              We wrote {snapshot.benchmark.promptCount} real buyer and seller
+              questions{snapshot.promptEvidence.length > 0 ? " (full list below)" : ""}.
             </li>
             <li>
-              We asked each one {repsLabel} — AI answers vary, so no single reply
-              counts as a result; the pattern across{" "}
-              {snapshot.benchmark.responseCount} answers is the finding.
+              We asked each one {repsLabel} — single answers vary; the pattern
+              across {snapshot.benchmark.responseCount} is the finding.
             </li>
             <li>
-              Every answer was saved word-for-word
+              Every answer
               {snapshot.transcripts && snapshot.transcripts.length > 0
-                ? ` — all ${snapshot.transcripts.length} are published below, unedited`
-                : ""}
-              .
+                ? " is published below,"
+                : " was saved"}{" "}
+              word-for-word.
             </li>
             <li>
-              We counted who each answer named and who it recommended. The table is
-              those counts — nothing is estimated or projected.
+              We counted who was named and who was recommended. The table is those
+              counts — nothing estimated.
             </li>
           </ol>
           <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
-            <span className="text-foreground">Brought up</span> means the answer named
-            them anywhere, even in passing;{" "}
-            <span className="text-foreground">recommended</span> means the answer told
-            the asker to use them. One answer can name several teams, so columns
-            don&apos;t sum to 100%.
+            <span className="text-foreground">Brought up</span> = named at all.{" "}
+            <span className="text-foreground">Recommended</span> = the answer said to
+            use them. One answer can name several teams, so columns don&apos;t sum
+            to 100%.
           </p>
           {(() => {
             const hasRanks = snapshot.comparison.some((r) => r.marketRank != null);
@@ -566,11 +559,9 @@ export default async function ProspectAuditPage({
       {snapshot.fixability && snapshot.fixability.strengths.length > 0 && (
         <p className="mt-4 max-w-[65ch] text-sm text-muted-foreground">
           <span className="font-medium text-foreground">
-            How addressable is this? We score it{" "}
-            {snapshot.fixability.score}/100
+            How workable is the gap? {snapshot.fixability.score}/100
           </span>{" "}
-          — a measure of how workable the gap is, not a promise of outcomes.
-          Already in your favor:{" "}
+          — a measure, not a promise. In your favor:{" "}
           {snapshot.fixability.strengths.join(" · ").toLowerCase()}
           {snapshot.fixability.confidence != null
             ? ` (${Math.round(snapshot.fixability.confidence * 100)}% data confidence)`
@@ -596,7 +587,7 @@ export default async function ProspectAuditPage({
           ) : (
             <>Reply {showMe} to the email that brought you here</>
           )}{" "}
-          — 15 minutes, evidence on screen the whole time.
+          — 15 minutes, evidence on screen.
         </p>
       )}
 
