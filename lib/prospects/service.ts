@@ -28,6 +28,9 @@ import {
   ASSESSMENT_VALUES,
   AUDIT_LINK_DEFAULT_EXPIRY_DAYS,
   AUDIT_TOKEN_BYTES,
+  COMMISSION_RATE_ESTIMATE,
+  SENDER_COMPANY,
+  SENDER_CREDENTIAL,
   AUTHORITY_SIGNAL_KINDS,
   CONTACT_CHANNELS,
   FRESHNESS_WINDOWS_DAYS,
@@ -41,6 +44,7 @@ import {
   RECORDING_STATUSES,
   RELATIONSHIP_STRENGTHS,
   findProhibitedPhrase,
+  visibilityThreshold,
   type ConflictStatus,
   type ProspectStage,
   type ProspectType,
@@ -1615,7 +1619,18 @@ export interface AuditSnapshot {
     reportId: string;
     /** Reply-to for the one-click CTA (spec 045 CRO pass). */
     email?: string;
+    /** Sender credibility (PR B, P5e) — env-configured, optional. */
+    company?: string;
+    credential?: string;
   };
+  /** Dollar stake (PR B, P5a): commission on ONE side at the prospect's
+   * sourced average sale, at a labeled estimate rate. Arithmetic, never a
+   * loss claim. */
+  commissionEstimate?: { ratePct: number; amountUsd: number };
+  /** One manually-researched, verifiable observation (PR B, P5c). */
+  humanFinding?: { text: string; sourceUrl?: string };
+  /** Objection pre-empt (PR B, P5b) — renders only when supplied. */
+  adoptionStat?: { text: string; sourceLabel: string; sourceUrl?: string };
   /** Live consumer-app share links (spec 045): operator-created exhibits on
    * the assistant vendor's own domain. Demos, never measurements. */
   exampleChats?: {
@@ -1637,6 +1652,10 @@ export interface AuditSnapshot {
      * total is all teams). Additive; older snapshots lack them. */
     teamRecommendations?: number;
     brandRecommendations?: number;
+    /** Sourced record facts (PR B): the strong side of the contrast now
+     * that the numeric authority score is gone from the page. */
+    volumeUsd?: number | null;
+    sides?: number | null;
     /** Who got named instead, most-recommended first. */
     competitorsNamed: string[];
     /** volume ÷ sides from their own sourced signals; null when unknown. */
@@ -1680,7 +1699,17 @@ const LIMITATIONS_TEXT =
 export async function publishAudit(
   user: CurrentUser,
   raw: unknown
-): Promise<ActionResult<{ auditId: string; accessToken: string; replaced: boolean }>> {
+): Promise<
+  ActionResult<{
+    auditId: string;
+    accessToken: string;
+    replaced: boolean;
+    /** Publish-time quality flags for the OPERATOR (never in the snapshot):
+     * e.g. rank tracks visibility in this market, which weakens the pitch —
+     * grounds to disqualify rather than send a soft audit (PR B amendment 4). */
+    warnings: string[];
+  }>
+> {
   const parsed = z
     .object({
       prospectId: z.string().uuid(),
@@ -1688,6 +1717,27 @@ export async function publishAudit(
       /** A stale benchmark (spec 042 freshness windows) publishes only with
        * this explicit acknowledgment, which is recorded in the audit log. */
       acknowledgeStale: z.boolean().optional(),
+      /** PR B, P5c: one manually-researched, verifiable observation about
+       * this prospect's public footprint. The highest-value block on the
+       * page — it proves a human looked. Dev mode renders a loud warning
+       * when absent; production renders nothing rather than something
+       * generic. */
+      humanFinding: z
+        .object({
+          text: z.string().trim().min(20).max(600),
+          sourceUrl: z.string().trim().url().max(1000).optional(),
+        })
+        .optional(),
+      /** PR B, P5b: adoption-stat objection pre-empt. Renders only when
+       * both the stat and its source are supplied — never a placeholder in
+       * front of a prospect. */
+      adoptionStat: z
+        .object({
+          text: z.string().trim().min(10).max(300),
+          sourceLabel: z.string().trim().min(2).max(120),
+          sourceUrl: z.string().trim().url().max(1000).optional(),
+        })
+        .optional(),
     })
     .safeParse(raw);
   if (!parsed.success) {
@@ -1916,6 +1966,10 @@ export async function publishAudit(
       brandRecommendations,
       yourRecommendations,
       competitorsNamed,
+      // The sourced record as FIELDS (PR B, P1): with the numeric authority
+      // score gone, these facts ARE the strong side of the contrast.
+      volumeUsd: volume,
+      sides,
       avgDealUsd,
       avgDealBasis:
         avgDealUsd !== null
@@ -2000,7 +2054,21 @@ export async function publishAudit(
       email: user.email,
       date: new Date().toISOString().slice(0, 10),
       reportId: randomBytes(4).toString("hex"),
+      // Sender credibility (PR B, P5e) — env-configured template fields,
+      // never hardcoded prose; absent values render nothing.
+      ...(SENDER_COMPANY ? { company: SENDER_COMPANY } : {}),
+      ...(SENDER_CREDENTIAL ? { credential: SENDER_CREDENTIAL } : {}),
     };
+
+    // Dollar stake (PR B, P5a): arithmetic on THEIR sourced numbers at a
+    // configurable, labeled estimate rate — never a loss claim.
+    const commissionEstimate =
+      avgDealUsd !== null
+        ? {
+            ratePct: Number((COMMISSION_RATE_ESTIMATE * 100).toFixed(2)),
+            amountUsd: Math.round(avgDealUsd * COMMISSION_RATE_ESTIMATE),
+          }
+        : null;
 
     // Live exhibits: allowlisted consumer-app share links (spec 045).
     const exhibitRows = await sql`
@@ -2093,9 +2161,61 @@ export async function publishAudit(
       ...(transcripts.length > 0 ? { transcripts } : {}),
       ...(evidenceExcerpts.length > 0 ? { evidenceExcerpts } : {}),
       ...(fixability ? { fixability } : {}),
+      ...(commissionEstimate ? { commissionEstimate } : {}),
+      ...(input.humanFinding ? { humanFinding: input.humanFinding } : {}),
+      ...(input.adoptionStat ? { adoptionStat: input.adoptionStat } : {}),
       ...(exampleChats.length > 0 ? { exampleChats } : {}),
       preparedBy,
     };
+
+    // Publish-time quality flags for the OPERATOR (PR B amendment 4) —
+    // returned, logged, never placed in the snapshot. The big one: if rank
+    // TRACKS visibility in this market, the "visibility doesn't follow
+    // rank" pitch is weak and the prospect may deserve disqualifying, not
+    // a soft audit.
+    const publishWarnings: string[] = [];
+    {
+      const ranked = snapshot.comparison.filter(
+        (r) => r.marketRank != null && r.recommendationRate != null
+      );
+      if (ranked.length >= 3) {
+        const byRank = [...ranked].sort((a, b) => a.marketRank! - b.marketRank!);
+        const byRecs = [...ranked].sort(
+          (a, b) => (b.recommendationRate ?? 0) - (a.recommendationRate ?? 0)
+        );
+        // Spearman rho between rank position and recommendation position.
+        let d2 = 0;
+        for (const row of ranked) {
+          const ri = byRank.indexOf(row);
+          const vi = byRecs.indexOf(row);
+          d2 += (ri - vi) ** 2;
+        }
+        const n = ranked.length;
+        const rho = 1 - (6 * d2) / (n * (n * n - 1));
+        if (rho >= 0.5) {
+          publishWarnings.push(
+            `Rank tracks AI visibility in this market (rho=${rho.toFixed(2)} over ${n} ranked teams) — the "visibility doesn't follow rank" argument is weak for this prospect. Consider disqualifying rather than sending a soft audit.`
+          );
+        }
+      }
+      if (!input.humanFinding) {
+        publishWarnings.push(
+          "No humanFinding supplied — the audit ships without its highest-value block (the one that proves a human looked)."
+        );
+      }
+      // A prospect already recommended at rival-level frequency has no
+      // visibility gap to sell against; the page will fall back to the
+      // generator headline, and the operator should reconsider sending.
+      if (snapshot.stakes) {
+        const recs = snapshot.stakes.yourRecommendations;
+        const responses = snapshot.benchmark.responseCount;
+        if (recs >= visibilityThreshold(responses)) {
+          publishWarnings.push(
+            `Prospect is already recommended in ${recs} of ${responses} answers — the visibility-gap pitch does not apply. Consider disqualifying or reframing before sending.`
+          );
+        }
+      }
+    }
 
     // Commit phase (correctness audit 2026-08-04): the snapshot above was
     // assembled on ordinary pooled reads — the transaction below holds row
@@ -2161,7 +2281,12 @@ export async function publishAudit(
         { auditId: row?.id },
         user.id
       );
-      return { auditId: row?.id as string, accessToken, replaced: Boolean(existing) };
+      return {
+        auditId: row?.id as string,
+        accessToken,
+        replaced: Boolean(existing),
+        warnings: publishWarnings,
+      };
     });
     return ok(result);
   } catch (err) {

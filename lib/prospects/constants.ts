@@ -275,3 +275,30 @@ export const AUDIT_TOKEN_BYTES = 32;
  * cycle, and an operator can pass an explicit expiresAt to extend. Immortal
  * links require deliberately unsetting — which the UI does not offer. */
 export const AUDIT_LINK_DEFAULT_EXPIRY_DAYS = 45;
+
+/**
+ * Commission rate for the audit page's dollar-stake ESTIMATE (PR B, P5a).
+ * Labeled as an estimate on the page; configurable per deploy. The frame is
+ * arithmetic on the prospect's own sourced numbers — never a loss claim
+ * (PROHIBITED_PHRASES discipline).
+ */
+const rateFromEnv = Number(process.env.COMMISSION_RATE_ESTIMATE);
+export const COMMISSION_RATE_ESTIMATE =
+  Number.isFinite(rateFromEnv) && rateFromEnv > 0 && rateFromEnv < 0.2
+    ? rateFromEnv
+    : 0.025;
+
+/**
+ * A team is "visibly recommended" in a benchmark when it appears in at least
+ * this many answers: 20% of the sample, floored at 5 so tiny samples cannot
+ * qualify. Shared by the audit template (hero variant selection) and the
+ * publish-time warnings (already-visible prospect ⇒ weak pitch).
+ */
+export function visibilityThreshold(responseCount: number): number {
+  return Math.max(5, 0.2 * responseCount);
+}
+
+/** Sender identity for the audit footer (PR B, P5e) — env-configured so
+ * the template never hardcodes a person. Absent values render nothing. */
+export const SENDER_COMPANY = process.env.SENDER_COMPANY ?? null;
+export const SENDER_CREDENTIAL = process.env.SENDER_CREDENTIAL ?? null;
