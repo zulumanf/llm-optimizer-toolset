@@ -9,6 +9,15 @@ import { expireAudit, publishAudit, revokeAudit } from "@/app/prospects/actions"
 
 export function PublishAuditButton({ prospectId }: { prospectId: string }) {
   const [pending, startTransition] = useTransition();
+  // Publish-time quality flags (PR B): the audit went out, but the operator
+  // should reconsider sending it — e.g. rank tracks visibility here (weak
+  // pitch, consider disqualifying) or no human finding was recorded. Long
+  // duration: these are the disqualify-before-sending signal.
+  const surfaceWarnings = (warnings: string[]) => {
+    for (const warning of warnings) {
+      toast.warning(warning, { duration: 15000 });
+    }
+  };
   const publish = () => {
     startTransition(async () => {
       const result = await publishAudit({ prospectId });
@@ -18,6 +27,7 @@ export function PublishAuditButton({ prospectId }: { prospectId: string }) {
             ? "Republished — same link, updated content."
             : "Audit published — share link is ready below."
         );
+        surfaceWarnings(result.data.warnings);
         return;
       }
       // Stale-benchmark gate (spec 042): surface the age and let the
@@ -28,8 +38,10 @@ export function PublishAuditButton({ prospectId }: { prospectId: string }) {
         );
         if (proceed) {
           const retried = await publishAudit({ prospectId, acknowledgeStale: true });
-          if (retried.ok) toast.success("Audit published with a stale-benchmark acknowledgment.");
-          else toast.error(retried.error.message);
+          if (retried.ok) {
+            toast.success("Audit published with a stale-benchmark acknowledgment.");
+            surfaceWarnings(retried.data.warnings);
+          } else toast.error(retried.error.message);
         }
         return;
       }

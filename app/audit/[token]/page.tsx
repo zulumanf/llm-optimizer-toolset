@@ -18,6 +18,7 @@ import { ChevronRight } from "lucide-react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getAuditByToken } from "@/lib/prospects/service";
+import { visibilityThreshold } from "@/lib/prospects/constants";
 import { getCurrentUserOrNull, isStaff } from "@/lib/auth";
 
 const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500"], style: ["normal", "italic"] });
@@ -48,25 +49,30 @@ function RateBar({
   }
   const pct = Math.round(value * 100);
   const label = of ? `${Math.round(value * of)}/${of}` : `${pct}%`;
+  // Below 10% a filled sliver is illegible noise (PR B, P6): the count alone
+  // carries it. Zero keeps its empty track — the empty track IS the finding.
+  const showTrack = pct === 0 || pct >= 10;
   return (
     <span className="inline-flex items-center justify-end gap-2">
-      <svg
-        className="h-1.5 w-20"
-        viewBox="0 0 100 6"
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={`${pct} percent`}
-      >
-        <rect width="100" height="6" rx="3" className="fill-foreground/10" />
-        {pct > 0 && (
-          <rect
-            width={pct}
-            height="6"
-            rx="3"
-            className={isSubject ? "fill-destructive" : "fill-foreground/45"}
-          />
-        )}
-      </svg>
+      {showTrack && (
+        <svg
+          className="h-1.5 w-20"
+          viewBox="0 0 100 6"
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={`${pct} percent`}
+        >
+          <rect width="100" height="6" rx="3" className="fill-foreground/10" />
+          {pct > 0 && (
+            <rect
+              width={pct}
+              height="6"
+              rx="3"
+              className={isSubject ? "fill-destructive" : "fill-foreground/45"}
+            />
+          )}
+        </svg>
+      )}
       <span
         className={`w-11 text-right tabular-nums ${isSubject ? "text-destructive" : ""}`}
         title={`${pct}%`}
@@ -138,7 +144,65 @@ export default async function ProspectAuditPage({
   // market rank plus counted answers makes the hero unarguable. Snapshots
   // without a rank keep their approved headline.
   const prospectRank = snapshot.comparison.find((r) => r.isProspect)?.marketRank ?? null;
-  const concreteHero = prospectRank != null && stakes != null;
+  // Recommendation COUNT for a comparison row (rate × its own sample).
+  const recsOf = (row: { recommendationRate: number | null; sampleSize: number }) =>
+    Math.round((row.recommendationRate ?? 0) * row.sampleSize);
+  // Two purpose-built heroes (PR B amendment 2). A named rival who owns the
+  // answers is more urgent than open space — that case gets its own hero,
+  // never the "you're #N and got zero" insult-first framing.
+  const threshold = visibilityThreshold(snapshot.benchmark.responseCount);
+  // A prospect who is already recommended at rival-level frequency has no
+  // visibility gap to headline: "no team owns the answers" would be false,
+  // and "X is ahead of you" would be manufactured urgency. Their snapshot
+  // keeps the generator-written headline (and publish warns the operator
+  // that the pitch is weak).
+  const prospectIsVisible =
+    stakes != null && stakes.yourRecommendations >= threshold;
+  const rivalTeams = snapshot.comparison.filter((r) => !r.isProspect);
+  const dominantRival =
+    stakes != null && !prospectIsVisible
+      ? rivalTeams
+          .filter(
+            (r) =>
+              recsOf(r) >= threshold && recsOf(r) > 2 * stakes.yourRecommendations
+          )
+          .sort((a, b) => recsOf(b) - recsOf(a))[0] ?? null
+      : null;
+  const heroVariant: "rival" | "open" | "legacy" =
+    stakes == null || prospectIsVisible ? "legacy" : dominantRival ? "rival" : "open";
+  // Rank-vs-visibility callout (PR B, P4.4): rendered only when rank data
+  // exists AND visibility demonstrably does not follow it — the generator
+  // flags the correlated case to the operator at publish time instead.
+  const rankedTeams = snapshot.comparison.filter(
+    (r) => r.marketRank != null && r.recommendationRate != null
+  );
+  const bestRanked = [...rankedTeams].sort((a, b) => a.marketRank! - b.marketRank!)[0];
+  const mostRecommended = [...rankedTeams].sort((a, b) => recsOf(b) - recsOf(a))[0];
+  const rankCallout =
+    stakes != null &&
+    prospectRank != null &&
+    rankedTeams.length >= 3 &&
+    bestRanked &&
+    mostRecommended &&
+    bestRanked !== mostRecommended &&
+    recsOf(mostRecommended) > recsOf(bestRanked)
+      ? {
+          bestRank: bestRanked.marketRank!,
+          bestRecs: recsOf(bestRanked),
+          topRank: mostRecommended.marketRank!,
+          topRecs: recsOf(mostRecommended),
+        }
+      : null;
+  // Three sample questions inline (PR B, P5f) — seller-intent first.
+  // promptEvidence is per-response, so repeated prompts must dedupe.
+  const sampleQuestions = [
+    ...new Set(
+      [
+        ...snapshot.promptEvidence.filter((e) => /sell/i.test(e.promptText)),
+        ...snapshot.promptEvidence.filter((e) => !/sell/i.test(e.promptText)),
+      ].map((e) => e.promptText)
+    ),
+  ].slice(0, 3);
   // Plain-words repetition count for the visible recipe: exact when the
   // arithmetic is clean, honest-vague when partial failures made it ragged.
   const repsLabel =
@@ -146,12 +210,6 @@ export default async function ProspectAuditPage({
     snapshot.benchmark.responseCount % snapshot.benchmark.promptCount === 0
       ? `${snapshot.benchmark.responseCount / snapshot.benchmark.promptCount} separate times`
       : "several separate times";
-  const sellerMoment = snapshot.promptEvidence.find(
-    (e) => /sell/i.test(e.promptText) && e.recommendedNames.length > 0
-  );
-  const showMe = (
-    <span className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">show me</span>
-  );
   // One-click conversion: a mailto with the two-word reply prefilled.
   // Falls back to the plain text ask on snapshots without a reply address.
   const replyEmail = snapshot.preparedBy?.email;
@@ -176,19 +234,34 @@ export default async function ProspectAuditPage({
         Private AI visibility report · {snapshot.marketName} · for {snapshot.prospectName}
         {snapshot.preparedBy && ` · ${snapshot.preparedBy.date}`}
       </p>
-      {concreteHero ? (
+      {heroVariant === "rival" && dominantRival && stakes ? (
+        // A named rival owns the answers: more urgent than open space, and
+        // never insult-first toward a high performer (PR B amendment 2).
         <h1
-          className={`${serif.className} mt-3 max-w-[26ch] text-balance text-2xl font-medium tracking-tight`}
+          className={`${serif.className} mt-3 max-w-[28ch] text-balance text-2xl font-medium tracking-tight`}
         >
-          You&apos;re the #{prospectRank} team in {snapshot.marketName}.
+          {dominantRival.name} is recommended in {recsOf(dominantRival)} of{" "}
+          {snapshot.benchmark.responseCount} answers.
           <br />
-          {/* The payoff line carries full ink — muting it made the punch
-              read subordinate to the setup (round 3 design pass). */}
-          In {snapshot.benchmark.responseCount} AI answers, you were recommended{" "}
+          You&apos;re in{" "}
           <span className="tabular-nums text-destructive">
-            {stakes!.yourRecommendations}
+            {stakes.yourRecommendations}
+          </span>
+          .
+        </h1>
+      ) : heroVariant === "open" && stakes ? (
+        // The open-space framing: unclaimed, not losing (PR B, P4.2) — the
+        // strongest line in the document, promoted from screen 3.
+        <h1
+          className={`${serif.className} mt-3 max-w-[28ch] text-balance text-2xl font-medium tracking-tight`}
+        >
+          No individual team owns {snapshot.marketName}&apos;s AI answers yet.
+          <br />
+          In {snapshot.benchmark.responseCount} answers, you were recommended{" "}
+          <span className="tabular-nums text-destructive">
+            {stakes.yourRecommendations}
           </span>{" "}
-          times.
+          time{stakes.yourRecommendations === 1 ? "" : "s"}.
         </h1>
       ) : (
         <h1
@@ -202,6 +275,28 @@ export default async function ProspectAuditPage({
         We asked {snapshot.benchmark.promptCount} real {snapshot.marketName}{" "}
         questions; every answer is published below.
       </p>
+      {/* Provenance up front (PR B, P5d): the trust claim before any number. */}
+      <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
+        Everything on this page comes from public records and published AI
+        answers — no estimates, no proprietary scores.
+      </p>
+      {snapshot.adoptionStat && (
+        <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
+          {snapshot.adoptionStat.text}{" "}
+          {snapshot.adoptionStat.sourceUrl ? (
+            <a
+              href={snapshot.adoptionStat.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2"
+            >
+              ({snapshot.adoptionStat.sourceLabel})
+            </a>
+          ) : (
+            <>({snapshot.adoptionStat.sourceLabel})</>
+          )}
+        </p>
+      )}
 
       {stakes ? (
         <section className="mt-10">
@@ -242,107 +337,91 @@ export default async function ProspectAuditPage({
         </section>
       ) : null}
 
-      {/* The scorecard (spec 048, round 2): the counted moments above are
-          the punch; the two-score CONTRAST is the corroboration — authority
-          from the sourced record, visibility from captured answers, both
-          checkable by the reader. Fixability is argued in the diagnosis,
-          not tiled here: in a strip it reads as a proprietary vendor score. */}
-      {gap && (
-        <div className="mt-8">
-          <div className="grid max-w-lg grid-cols-2 gap-4">
-            {[
-              {
-                // "Documented", not "market": the score measures how much of
-                // their standing is VERIFIABLE in sourced records — a #9 team
-                // with thin documentation scores low here, and that reading
-                // must not contradict the rank in the hero.
-                label: "Documented authority",
-                value: Math.round(gap.authorityScore),
-                pain: false,
-              },
-              {
-                label: "AI visibility",
-                value: Math.round(gap.visibilityScore),
-                pain: true,
-              },
-            ].map((tile) => (
-              <div key={tile.label} className="rounded-md border p-4">
-                <p className="text-xs text-muted-foreground">{tile.label}</p>
-                <p
-                  className={`mt-1 text-2xl font-semibold tabular-nums tracking-tight ${
-                    tile.pain ? "text-destructive" : ""
-                  }`}
-                >
-                  {tile.value}
-                  <span className="text-sm font-normal text-muted-foreground">
-                    /100
-                  </span>
-                </p>
-                <svg
-                  className="mt-2 h-2 w-full"
-                  viewBox="0 0 100 6"
-                  preserveAspectRatio="none"
-                  role="img"
-                  aria-label={`${tile.label}: ${tile.value} of 100`}
-                >
-                  <rect width="100" height="6" rx="3" className="fill-foreground/10" />
-                  {tile.value > 0 && (
-                    <rect
-                      width={Math.max(1, tile.value)}
-                      height="6"
-                      rx="3"
-                      className={tile.pain ? "fill-destructive" : "fill-foreground/45"}
-                    />
-                  )}
-                </svg>
-              </div>
-            ))}
-          </div>
-          <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
-            Both 0–100, both checkable — components and sources under “Your track
-            record” below.
+      {/* Rank-vs-visibility (PR B, P4.4): generated from the data; renders
+          only when rank demonstrably does NOT track visibility here — the
+          correlated case is flagged to the operator at publish instead. */}
+      {rankCallout && (
+        <p className="mt-6 max-w-[65ch] text-sm">
+          AI visibility doesn&apos;t follow market rank here: the #{rankCallout.bestRank}
+          -ranked team was recommended {rankCallout.bestRecs}×, the #
+          {rankCallout.topRank}-ranked {rankCallout.topRecs}×
+          {prospectRank != null && stakes
+            ? ` — and you (#${prospectRank}) ${stakes.yourRecommendations}×`
+            : ""}
+          .
+        </p>
+      )}
+
+      {firstExcerpt && (
+        <blockquote className="mt-8 max-w-[65ch] border-l-2 border-foreground/20 pl-4">
+          {firstExcerpt.promptText && (
+            <p className="text-xs font-medium text-muted-foreground">
+              Asked: “{firstExcerpt.promptText}”
+            </p>
+          )}
+          <p className={`${serif.className} mt-1 text-lg italic leading-snug`}>
+            “{trimQuotes(firstExcerpt.quote)}”
           </p>
-        </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            — the assistant, recommending {firstExcerpt.teamName} ·{" "}
+            {firstExcerpt.capturedAt.slice(0, 10)}
+          </p>
+        </blockquote>
       )}
 
-      {sellerMoment && (
-        <p className="mt-4 max-w-[65ch] border-l-2 border-foreground/20 pl-4 text-sm">
-          One moment from the capture: we asked{" "}
-          <span className={`${serif.className} italic`}>
-            “{sellerMoment.promptText}”
-          </span>{" "}
-          — a listing client&apos;s question. The answer sent them to{" "}
-          <span className="font-medium">{sellerMoment.recommendedNames[0]}</span>.
-          Your name never came up.
+      {snapshot.exampleChats && snapshot.exampleChats.length > 0 && (
+        <p className="mt-6 max-w-[65ch] text-sm">
+          <span className="font-medium">See it live:</span>{" "}
+          {snapshot.exampleChats.map((chat, i) => (
+            <span key={i}>
+              {i > 0 && " · "}
+              <a
+                href={chat.url}
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2 transition-colors hover:text-muted-foreground"
+              >
+                a real {chat.assistant === "chatgpt" ? "ChatGPT" : "Perplexity"}{" "}
+                conversation from {chat.capturedOn}
+              </a>
+            </span>
+          ))}{" "}
+          — hosted on the assistant&apos;s own site, not ours.
         </p>
       )}
 
-      {stakes?.avgDealUsd != null && (
-        <p className="mt-4 max-w-[65ch] text-sm text-muted-foreground">
-          Your average sale:{" "}
-          <span className="font-semibold text-foreground tabular-nums">
-            ~${Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K
-          </span>{" "}
-          ({stakes.avgDealBasis}).
+      {sampleQuestions.length >= 2 && (
+        <p className="mt-6 max-w-[65ch] text-sm text-muted-foreground">
+          We asked things like {sampleQuestions.map((q, i) => (
+            <span key={i}>
+              {i > 0 && " · "}
+              <span className={`${serif.className} italic text-foreground`}>“{q}”</span>
+            </span>
+          ))}{" "}
+          — the full list is below.
         </p>
       )}
 
-      {/* Hope lands AFTER the full weight of the problem (spec 048 CRO pass:
-          agitate → anchor → hope → ask), and only when the sourced record
-          actually supports it — never as an empty consolation. */}
-      {gap && gap.signals.length > 0 && (
-        <p className="mt-4 max-w-[65ch] text-sm">
-          <span className="font-medium">The good news:</span> your record isn&apos;t
-          the problem — it&apos;s sourced below. What&apos;s missing is that
-          record&apos;s visibility in the sources these answers cite. That part is
-          workable.
+      {/* Dollar stake (PR B, P5a): arithmetic on THEIR sourced numbers at a
+          labeled, configurable estimate rate — never a loss claim. */}
+      {stakes?.avgDealUsd != null && snapshot.commissionEstimate && (
+        <p className="mt-6 max-w-[65ch] text-sm">
+          One seller who asks an assistant instead of a neighbor:{" "}
+          <span className="font-semibold tabular-nums">
+            ~${snapshot.commissionEstimate.amountUsd.toLocaleString()}
+          </span>{" "}
+          in commission at your average sale of ~$
+          {Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K ({stakes.avgDealBasis};
+          commission estimated at {snapshot.commissionEstimate.ratePct}%).
+          {stakes.competitorsNamed.length > 0 &&
+            ` Today that introduction goes to ${stakes.competitorsNamed[0]}.`}
         </p>
       )}
 
       <div className="mt-6">
         {ctaButton ?? (
           <p className="max-w-[65ch] text-sm">
-            Reply {showMe} to the email that brought you here — you&apos;ll get the
+            Reply to the email that brought you here — you&apos;ll get the
             15-minute walkthrough.
           </p>
         )}
@@ -351,6 +430,32 @@ export default async function ProspectAuditPage({
           likely causes of the gap, and the first changes I&apos;d prioritize.
         </p>
       </div>
+
+      {/* Below the fold: the record-vs-visibility contrast in FACTS — the
+          numeric authority score is gone (PR B amendment 1); the sourced
+          record is the strong side, stated as itself. */}
+      {stakes && (stakes.volumeUsd != null || prospectRank != null) && (
+        <p className="mt-10 max-w-[65ch] text-sm">
+          <span className="font-medium">Track record:</span>{" "}
+          {[
+            prospectRank != null ? `#${prospectRank} by closed volume` : null,
+            stakes.volumeUsd != null
+              ? `$${(stakes.volumeUsd / 1_000_000).toFixed(2)}M${
+                  stakes.sides != null ? ` across ${stakes.sides} sides` : ""
+                }`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}{" "}
+          (sourced below).{" "}
+          <span className="font-medium">Visibility in AI answers:</span>{" "}
+          <span className="tabular-nums text-destructive">
+            {stakes.yourRecommendations} of {snapshot.benchmark.responseCount}
+          </span>
+          . <span className="font-medium">The good news:</span> the record
+          isn&apos;t the problem — its visibility is, and that part is workable.
+        </p>
+      )}
 
       {/* ================================================== the receipt */}
       {snapshot.comparison.length > 0 && (
@@ -523,43 +628,6 @@ export default async function ProspectAuditPage({
         </section>
       )}
 
-      {firstExcerpt && (
-        <blockquote className="mt-8 max-w-[65ch] border-l-2 border-foreground/20 pl-4">
-          {firstExcerpt.promptText && (
-            <p className="text-xs font-medium text-muted-foreground">
-              Asked: “{firstExcerpt.promptText}”
-            </p>
-          )}
-          <p className={`${serif.className} mt-1 text-lg italic leading-snug`}>
-            “{trimQuotes(firstExcerpt.quote)}”
-          </p>
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            — the assistant, recommending {firstExcerpt.teamName} ·{" "}
-            {firstExcerpt.capturedAt.slice(0, 10)}
-          </p>
-        </blockquote>
-      )}
-
-      {snapshot.exampleChats && snapshot.exampleChats.length > 0 && (
-        <p className="mt-6 max-w-[65ch] text-sm">
-          <span className="font-medium">See it live:</span>{" "}
-          {snapshot.exampleChats.map((chat, i) => (
-            <span key={i}>
-              {i > 0 && " · "}
-              <a
-                href={chat.url}
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-2 transition-colors hover:text-muted-foreground"
-              >
-                a real {chat.assistant === "chatgpt" ? "ChatGPT" : "Perplexity"}{" "}
-                conversation from {chat.capturedOn}
-              </a>
-            </span>
-          ))}{" "}
-          — hosted on the assistant&apos;s own site, not ours.
-        </p>
-      )}
 
       {/* ============================= the diagnosis, in the open (spec 048):
           proof of a problem earns attention; visible reasons and fixes earn
@@ -569,6 +637,43 @@ export default async function ProspectAuditPage({
           <h2 className="text-lg font-medium">
             Why AI is overlooking {snapshot.prospectName}
           </h2>
+          {/* The one observation a human actually made about THIS prospect's
+              footprint (PR B, P5c) — the sentence that proves a person looked,
+              not a template. Its absence is warned at publish time. */}
+          {snapshot.humanFinding && (
+            <div className="mt-4 max-w-[65ch] rounded-md border border-foreground/25 bg-muted/40 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                What we saw on your actual profiles
+              </p>
+              <p className="mt-1.5 text-sm">{snapshot.humanFinding.text}</p>
+              {snapshot.humanFinding.sourceUrl && (
+                <a
+                  href={snapshot.humanFinding.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1.5 inline-block text-xs text-muted-foreground underline underline-offset-2"
+                >
+                  source
+                </a>
+              )}
+            </div>
+          )}
+          {!snapshot.humanFinding && process.env.NODE_ENV !== "production" && (
+            <div className="mt-4 max-w-[65ch] rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm">
+              <p className="font-medium">
+                Dev only: no human finding on this snapshot.
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                Spend 10 minutes and republish with one observation from:
+              </p>
+              <ul className="mt-1.5 list-disc pl-5 text-muted-foreground">
+                <li>Zillow — review count, and whether recent solds are tagged</li>
+                <li>realtor.com — does the profile exist and match the team name</li>
+                <li>Google Business — claimed? review count vs the named rivals</li>
+                <li>Brokerage bio page — does it say what they actually specialize in</li>
+              </ul>
+            </div>
+          )}
           <ul className="mt-4 space-y-4">
             {snapshot.whyItHappens.map((why, i) => (
               <li key={i} className="max-w-[65ch] rounded-md border p-4">
@@ -594,44 +699,6 @@ export default async function ProspectAuditPage({
             </p>
           )}
         </section>
-      )}
-
-      {/* Fixability lives HERE, argued beside its reasons (spec 048 round
-          2) — as a tile it read as a proprietary vendor score; as a scored
-          sentence under the diagnosis it reads as analysis. */}
-      {snapshot.fixability && snapshot.fixability.strengths.length > 0 && (
-        <p className="mt-4 max-w-[65ch] text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">
-            How workable is the gap? {snapshot.fixability.score}/100
-          </span>{" "}
-          — a measure, not a promise. In your favor:{" "}
-          {snapshot.fixability.strengths.join(" · ").toLowerCase()}
-          {snapshot.fixability.confidence != null
-            ? ` (${Math.round(snapshot.fixability.confidence * 100)}% data confidence)`
-            : ""}
-          .
-        </p>
-      )}
-
-      {/* The one mid-page ask (spec 048 CRO pass): the diagnosis is peak
-          conviction, and the reader shouldn't have to scroll past the
-          receipts to act on it. A sentence, not a button — the next
-          research step, not a second funnel. */}
-      {snapshot.whyItHappens && snapshot.whyItHappens.length > 0 && (
-        <p className="mt-5 max-w-[65ch] text-sm">
-          Want these checked against your own record?{" "}
-          {mailto ? (
-            <a
-              href={mailto}
-              className="font-medium underline underline-offset-2 transition-colors hover:text-muted-foreground"
-            >
-              Reply “show me”
-            </a>
-          ) : (
-            <>Reply {showMe} to the email that brought you here</>
-          )}{" "}
-          — 15 minutes, evidence on screen.
-        </p>
       )}
 
       {/* ====================================== the second read (folded) */}
@@ -752,7 +819,8 @@ export default async function ProspectAuditPage({
         <div className="mt-4">
           {ctaButton ?? (
             <p className="max-w-[65ch] text-sm">
-              Reply {showMe} to the email that brought you here.
+              Reply to the email that brought you here — you&apos;ll get the
+              15-minute walkthrough.
             </p>
           )}
         </div>
@@ -770,8 +838,11 @@ export default async function ProspectAuditPage({
         </p>
         {snapshot.preparedBy && (
           <p className="mt-6 text-xs text-muted-foreground">
-            Prepared by {snapshot.preparedBy.name} · {snapshot.preparedBy.date} · report{" "}
-            {snapshot.preparedBy.reportId}
+            Prepared by {snapshot.preparedBy.name}
+            {snapshot.preparedBy.company && ` · ${snapshot.preparedBy.company}`}
+            {snapshot.preparedBy.credential && ` — ${snapshot.preparedBy.credential}`}
+            {snapshot.preparedBy.email && ` · ${snapshot.preparedBy.email}`}
+            {` · ${snapshot.preparedBy.date} · report ${snapshot.preparedBy.reportId}`}
           </p>
         )}
       </section>
