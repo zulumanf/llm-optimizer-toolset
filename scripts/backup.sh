@@ -32,10 +32,41 @@ fi
 
 # Integrity record: hashes of the backup files themselves, so a restore can
 # be verified the same way client evidence packages are (evidence spec).
-( cd "$DEST" && shasum -a 256 ./* > MANIFEST.sha256 )
+# The manifest must never hash itself (shell redirection creates the file
+# before some shells expand the glob — caught in the spec-059 restore drill).
+( cd "$DEST" && find . -maxdepth 1 -type f ! -name MANIFEST.sha256 \
+    -exec shasum -a 256 {} + > MANIFEST.sha256 )
 
-SIZE="$(du -sh "$DEST" | cut -f1)"
-echo "▸ backup complete: $DEST ($SIZE)"
+# Encryption (spec 059): the dump contains prospect PII; an unencrypted
+# copy on a synced folder or bucket is an incident waiting for a leak.
+# With BACKUP_ENCRYPTION_KEY set, the whole backup becomes one encrypted
+# artifact and the plaintext directory is removed. Production MUST set it;
+# the unencrypted default exists for local dev only.
+if [ -n "${BACKUP_ENCRYPTION_KEY:-}" ]; then
+  echo "▸ encrypting backup…"
+  tar -czf "$DEST.tar.gz" -C "$BACKUP_DIR" "$STAMP"
+  openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt     -pass env:BACKUP_ENCRYPTION_KEY     -in "$DEST.tar.gz" -out "$DEST.tar.gz.enc"
+  rm -rf "$DEST" "$DEST.tar.gz"
+  ARTIFACT="$DEST.tar.gz.enc"
+else
+  echo "▸ WARNING: BACKUP_ENCRYPTION_KEY unset — backup is PLAINTEXT (dev only)."
+  ARTIFACT="$DEST"
+fi
+
+# Off-box shipping (spec 059): any uploader works — the command receives
+# the artifact path as $1. Examples:
+#   BACKUP_UPLOAD_CMD='rclone copy "$1" remote:avos-backups/'
+#   BACKUP_UPLOAD_CMD='aws s3 cp "$1" s3://avos-backups/'
+if [ -n "${BACKUP_UPLOAD_CMD:-}" ]; then
+  echo "▸ shipping off-box…"
+  sh -c "$BACKUP_UPLOAD_CMD" upload "$ARTIFACT"
+  echo "▸ off-box upload complete."
+else
+  echo "▸ NOTE: BACKUP_UPLOAD_CMD unset — backup remains on this disk only."
+fi
+
+SIZE="$(du -sh "$ARTIFACT" | cut -f1)"
+echo "▸ backup complete: $ARTIFACT ($SIZE)"
 
 # Prune oldest backups so a tight disk never fills (this machine has run
 # out of space before — see DECISIONS/session history)

@@ -22,6 +22,29 @@ const envSchema = z
      * from window.location (which is localhost on the operator's machine).
      * Optional so dev boots; link-bearing features degrade without it. */
     APP_URL: z.string().url().optional(),
+    // Provider keys read by their adapters (spec 059: declared, not stray).
+    GOOGLE_API_KEY: z.string().optional(),
+    PERPLEXITY_API_KEY: z.string().optional(),
+    // Connector credential envelope key (AES-256-GCM, base64 32 bytes).
+    AUTOMATION_CREDENTIAL_KEY: z.string().optional(),
+    // Operator webhook for digests and system alerts (spec 059).
+    DIGEST_WEBHOOK_URL: z.string().url().optional(),
+    // MCP server actor (spec 033) — required only by `npm run mcp`.
+    MCP_USER_ID: z.string().optional(),
+    // Spend ceiling override (lib/constants.ts falls back to $25).
+    DAILY_SPEND_CEILING_USD: z.string().optional(),
+    // Prospect audit page commission-estimate rate (defaults to 0.025).
+    COMMISSION_RATE_ESTIMATE: z.string().optional(),
+    // Audit-page display credibility fields (PR B) — display only; the
+    // outbound sender of record is outreach_sender_identity (spec 052).
+    SENDER_COMPANY: z.string().optional(),
+    SENDER_CREDENTIAL: z.string().optional(),
+    // Test/demo fences (spec 050) — never set in production.
+    ALLOW_MOCK_PROVIDER: z.string().optional(),
+    ALLOW_MOCK_SCORING: z.string().optional(),
+    // Backups (spec 059). Production MUST set the encryption key.
+    BACKUP_ENCRYPTION_KEY: z.string().optional(),
+    BACKUP_UPLOAD_CMD: z.string().optional(),
     // Supabase (spec 014). Optional at field level so `AUTH_MODE=dev` boots —
     // and the whole test suite runs — with no identity provider reachable.
     // That is an explicit acceptance criterion, not a convenience.

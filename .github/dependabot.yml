@@ -1,0 +1,15 @@
+# Automated dependency update PRs (spec 059) — docs/10 claimed this existed;
+# now it does. Weekly, grouped, so updates arrive as one reviewable diff.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      all-dependencies:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

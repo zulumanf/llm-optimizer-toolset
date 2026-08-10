@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Container builds (spec 059): a self-contained server bundle.
+  output: "standalone",
   // A stray lockfile in the home dir otherwise makes Next mis-infer the root
   outputFileTracingRoot: __dirname,
   // E2E runs its own server with its own build dir (.next-e2e) so it can

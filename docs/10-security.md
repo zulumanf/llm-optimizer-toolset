@@ -10,7 +10,15 @@ Internal tool, small attack surface — but it holds API keys with real spend an
 ## Authorization
 - Roles: `admin` (user management, settings, destructive ops like archiving) and `operator` (everything else). Checked **in server actions** — never only in UI.
 - Cron endpoints authenticated by `CRON_SECRET` header (constant-time compare); reject and log anything else.
-- Supabase Row Level Security enabled with a default-deny posture; the app uses the service role only in the worker, anon key + RLS in the app.
+- **Tenant isolation is an app-layer invariant, not RLS** (spec 059 truthful
+  rewrite — this line previously overclaimed). The app connects as the table
+  owner; every project-scoped read re-asserts access via
+  `assertProjectAccess`, all client writes are refused by `assertCanWrite`,
+  and portal reads filter in SQL. RLS exists as defense-in-depth on three
+  tables (`projects`, `users`, `user_project_access`, migration 025) and is
+  proven by tests that connect as a non-owner; the compensating control is
+  that Supabase's `anon`/`authenticated` roles hold no privileges on
+  `public`, closing PostgREST. Full RLS is a scale-phase follow-up.
 
 ## Secrets
 - Single `.env`, never committed; `.env.example` documents every variable with placeholders.
@@ -21,7 +29,12 @@ Internal tool, small attack surface — but it holds API keys with real spend an
 ## Rate limits & spend protection
 - Outbound: per-provider rate limiting in `lib/ai/` (respect vendor limits, exponential backoff).
 - **Budget caps:** every run has a max `cost_usd`; the worker halts the run at the cap and marks it `partial`. A global monthly spend ceiling alerts at 80% and hard-stops new runs at 100%.
-- Inbound: basic rate limiting on auth endpoints; internal tool → nothing fancier needed yet.
+- Inbound: **no application-level rate limiting exists yet** (spec 059
+  truthful rewrite — this line previously overclaimed). Auth endpoints ride
+  Supabase's own limits; webhooks are HMAC-gated with replay windows and a
+  per-connection limiter; the public `/audit/[token]` surface relies on
+  256-bit token entropy and should gain an edge/host limiter at deployment
+  (see docs/deployment.md).
 
 ## Audit logs
 - `audit_log` (immutable, insert-only) records every consequential action: freezes, run starts, review corrections, task approvals, report publishes, role changes, settings changes — with user, entity, and detail.
@@ -59,17 +72,23 @@ npm run restore -- var/backups/<stamp>   # drill into llm_optimizer_restore
 - **Restore drill performed 2026-07-29**: manifest verified, 46 responses /
   207 mentions / 434 scores / 3 claims / 1 report restored, live database
   untouched.
-- **Operator action required for real durability:** the default
-  `var/backups` is the same disk — it protects against corruption and bad
-  migrations, not disk loss or theft. Set `BACKUP_DIR` to a synced/mounted
-  location and schedule it nightly (cron/launchd).
+- **Production backups are encrypted and shipped off-box** (spec 059):
+  `BACKUP_ENCRYPTION_KEY` turns the backup into one AES-256 artifact (the
+  dump contains prospect PII — plaintext off-box copies are forbidden), and
+  `BACKUP_UPLOAD_CMD` ships it. The same-disk plaintext default exists for
+  local dev only and the script warns loudly. Restore accepts the encrypted
+  artifact directly and refuses on a wrong key or manifest mismatch.
 - Quarterly: run a drill and execute the integration suite against the
   restored database.
 - When the Supabase milestone lands: managed daily backups + PITR replace
   the database half; artifact backups move to object storage.
 
 ## Dependencies & code
-- `npm audit` in CI (fail on high/critical), Dependabot/Renovate enabled.
+- `npm audit --audit-level=high` runs in CI as a **visible, non-blocking
+  report** (a blocking gate would freeze the repo on unfixable transitive
+  advisories); Dependabot files weekly grouped update PRs
+  (`.github/dependabot.yml`). Spec 059 made both true — the previous line
+  claimed a blocking gate that did not exist.
 - No secrets or real captured data in test fixtures — fixtures are sanitized copies.
 - Prompt-injection awareness: AI responses are untrusted text. They are rendered escaped, never executed, never fed into tool-calling contexts, and parser prompts treat response content as data (see `docs/12-ai-guidelines.md`).
 

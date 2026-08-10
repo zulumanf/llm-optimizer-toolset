@@ -1,0 +1,15 @@
+# Worker image (spec 059). Runs the job loop that everything asynchronous
+# depends on: benchmark execution, parsing, scoring, workflow ticks, event
+# delivery. Runs migrations on boot so web and worker never race a deploy
+# against an old schema.
+FROM node:22-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM node:22-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+CMD ["sh", "-c", "npx tsx scripts/migrate.ts up && npx tsx workers/index.ts"]

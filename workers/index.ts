@@ -8,6 +8,7 @@
  * bootstrap, and the stale-lease sweep.
  */
 // Must be the first import — later imports read env at module load
+import { beatHeartbeat } from "@/lib/ops/health";
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { reclaimStaleJobs } from "@/db/jobs";
@@ -37,9 +38,20 @@ async function main(): Promise<void> {
   // subscriptions. Both calls are idempotent.
   await ensureAutomationReady();
   let sinceReclaim = 0;
+  let jobsProcessed = 0;
 
   while (!shuttingDown) {
     const outcome = await dispatchOnce(WORKER_ID);
+    if (outcome.status !== "idle") jobsProcessed += 1;
+    // The pulse (spec 059): every cycle, working or idle — a dead worker
+    // was invisible, and everything asynchronous depends on this loop.
+    try {
+      await beatHeartbeat(WORKER_ID, jobsProcessed);
+    } catch (err) {
+      log("error", "worker.heartbeat_failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
     if (outcome.status === "idle") {
       sinceReclaim += 1;
       // Reclaim leases from dead workers roughly once a minute while idle

@@ -57,6 +57,17 @@ export async function POST(request: Request): Promise<Response> {
       drift = { error: err instanceof Error ? err.message : "unknown" };
     }
 
+    // System alerts (spec 059): deterministic thresholds over the health
+    // report, deduped per kind. A failure here must never fail dispatch.
+    let alerts: Record<string, unknown> = { skipped: true };
+    try {
+      const { dispatchSystemAlerts } = await import("@/lib/ops/alerts");
+      const result = await dispatchSystemAlerts();
+      alerts = { firing: result.firing.map((a) => a.kind), sent: result.sent };
+    } catch (err) {
+      alerts = { error: err instanceof Error ? err.message : "unknown" };
+    }
+
     let maintenance: Record<string, unknown> = { skipped: true };
     try {
       const daily = await runDailyMaintenance();
@@ -130,6 +141,7 @@ export async function POST(request: Request): Promise<Response> {
         : { skipped: true },
       maintenance,
       drift,
+      alerts,
       outcomes,
     });
   } catch (err) {
