@@ -89,6 +89,16 @@ describe.skipIf(!TEST_URL)("prospect contacts and import (integration)", () => {
        prompt_set_versions, prompts, prompt_sets, projects cascade`
     );
     mock.resetMockProvider();
+    // Spec 052: draft generation fails closed without a configured sender.
+    const { setSenderIdentity } = await import("@/lib/outreach/sender-identity");
+    await sql`truncate outreach_sender_identity`;
+    const identity = await setSenderIdentity(admin, {
+      senderName: "Dana Operator",
+      companyName: "AVOS Agency LLC",
+      postalAddress: "123 Grand St, Jersey City, NJ 07302",
+      replyToEmail: "dana@avos.agency",
+    });
+    if (!identity.ok) throw new Error(identity.error.message);
   });
 
   afterAll(async () => {

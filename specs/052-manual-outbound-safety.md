@@ -18,7 +18,7 @@ The prospect audit page is the highest-persuasion surface the company ships, and
 ### B. Compliant sender identity (migration 062) — fail-closed until configured
 - `outreach_sender_identity`: sender_name, company_name, **postal_address**, reply_to_email; one active row (partial unique index); changes append a new row and deactivate the old, audited. Admin-set.
 - The opt-out footer is built from the identity and includes the postal address. Cold email without a configured identity **refuses** — the missing operator decision blocks sends instead of producing non-compliant ones.
-- System-generated outreach drafts refuse to generate without (a) an active sender identity and (b) a resolvable audit link (`APP_URL` + published audit) — no more silent "no link" fallback (audit F17).
+- System-generated outreach drafts refuse without an active sender identity (the compliant footer is embedded at generation time, so manual sends copied from a draft comply too), and refuse when a **published audit exists but `APP_URL` cannot resolve its link** — the silent no-link fallback was exactly how the first real email would have shipped without its proof (audit F17). A draft with no published audit remains the documented reply-first variant.
 - The send gate gains a `sender_identity` check for transmitting channels; drafts embed the compliant footer at generation time so `manual` sends copied from the draft are compliant too.
 
 ### C. Re-contact guards (send gate)
@@ -45,7 +45,7 @@ The prospect audit page is the highest-persuasion surface the company ships, and
 ## Acceptance criteria
 - [ ] Snapshot comparison rows carry `scoreIds`; a tampered snapshot value refuses publication (test).
 - [ ] With no active sender identity, cold sends and draft generation refuse with a clear message (test); configuring one (admin, audited) unblocks; the footer contains the postal address (test).
-- [ ] Draft generation refuses without a resolvable audit link instead of silently omitting it (test).
+- [ ] Draft generation refuses when a published audit's link cannot resolve (APP_URL unset) instead of silently omitting it (test).
 - [ ] Same-email cross-prospect send within 30 days refuses; 4th brokerage send in 30 days refuses (tests).
 - [ ] Erasure: contact PII nulled + globally suppressed + audited; a post-erasure send to that email refuses on suppression (test). Stale report lists old contacts (test).
 - [ ] A `reserved` agreement produces a send-time refusal for a conflicting prospect; a recorded override passes; terminated does not conflict (tests).

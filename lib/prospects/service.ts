@@ -2413,6 +2413,26 @@ export async function createOutreachDraft(
             and (expires_at is null or expires_at > now())
         `;
         const { auditUrl } = await import("@/lib/prospects/urls");
+        // Spec 052 (audit F17): a published audit whose link cannot resolve
+        // must refuse, not silently generate the no-link fallback — the
+        // first real outreach email would ship without its entire proof.
+        if (publishedAudit && auditUrl(publishedAudit.accessToken as string) === null) {
+          throw new ClassifiedError(
+            "validation",
+            "APP_URL is not configured — the draft would omit the published audit link that is its proof. Set APP_URL, then generate the draft."
+          );
+        }
+        // Sender identity (spec 052): the compliant footer is embedded at
+        // generation time, so a manual send copied from this draft carries
+        // the postal address and opt-out path too.
+        const { getActiveSenderIdentity } = await import("@/lib/outreach/sender-identity");
+        const draftIdentity = await getActiveSenderIdentity();
+        if (!draftIdentity) {
+          throw new ClassifiedError(
+            "validation",
+            "No sender identity is configured — an admin must set the legal sender (name, company, postal address) before outreach drafts can be generated."
+          );
+        }
         const generated = generateReplyFirstEmail({
           prospectName: prospect.businessName,
           teamLeader: prospect.teamLeader,
@@ -2426,7 +2446,7 @@ export async function createOutreachDraft(
             : null,
         });
         subject = generated.subject;
-        body = generated.body;
+        body = generated.body + optOutFooter(draftIdentity);
         tone = generated.tone;
         cta = generated.cta;
         generatedBy = "system";
@@ -2739,6 +2759,18 @@ export async function sendProspectDraft(
         check("suppression", true, "no identifiers to match");
       }
 
+      // Sender identity (spec 052): cold outreach refuses until an admin has
+      // configured the legal sender — name, company, physical postal address.
+      const { getActiveSenderIdentity } = await import("@/lib/outreach/sender-identity");
+      const identity = await getActiveSenderIdentity();
+      check(
+        "sender_identity",
+        identity !== null,
+        identity
+          ? `sending as ${identity.senderName}, ${identity.companyName}`
+          : "No sender identity is configured — set the legal sender (name, company, postal address) before any outreach."
+      );
+
       let body = (draft.body as string) ?? "";
       if (channel.transmits) {
         check(
@@ -2746,11 +2778,20 @@ export async function sendProspectDraft(
           Boolean(email),
           email ? `recipient ${email}` : "A transmitting channel needs a recipient email."
         );
-        if (!hasOptOutMention(body)) body += optOutFooter(user.name);
+        if (identity && !hasOptOutMention(body)) body += optOutFooter(identity);
         check(
           "opt_out_path",
           hasOptOutMention(body),
           "opt-out instruction present in the outgoing text"
+        );
+        check(
+          "postal_address",
+          identity !== null && body.includes(identity.postalAddress),
+          identity
+            ? body.includes(identity.postalAddress)
+              ? "physical postal address present (CAN-SPAM)"
+              : "The outgoing text does not carry the sender's postal address."
+            : "no sender identity to source the postal address from"
         );
       } else {
         check("recipient_email", true, "manual channel — the human used their own mailbox");
