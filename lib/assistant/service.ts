@@ -9,6 +9,7 @@
  * carrying the tool calls it rests on and its cost. Tests inject a fake
  * caller (the lib/ai/agent.ts pattern) so CI never touches the network.
  */
+import { modelForTask } from "@/lib/ai/routing";
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { isStaff, type CurrentUser } from "@/lib/auth";
@@ -175,6 +176,7 @@ export async function askAssistant(
       const mustAnswer = step === MAX_TOOL_CALLS;
       const run = await runAgent({
         agentVersion: ASSISTANT_PROMPT_VERSION,
+        model: modelForTask("workspace_assistant"),
         system,
         user:
           transcript.join("\n\n") +

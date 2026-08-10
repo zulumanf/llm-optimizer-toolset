@@ -13,7 +13,8 @@
  */
 import { z } from "zod";
 import { runAgent, type AgentCaller } from "@/lib/ai/agent";
-import { CLASSIFIER_MODEL, CONFIDENCE_REVIEW_THRESHOLD } from "@/lib/constants";
+import { CONFIDENCE_REVIEW_THRESHOLD } from "@/lib/constants";
+import { modelForTask } from "@/lib/ai/routing";
 import type { Sentiment } from "@/lib/constants";
 import {
   scanAliases,
@@ -162,7 +163,7 @@ export async function classifyResponseLlm(
 
   const classification = await runAgent({
     agentVersion: MENTION_CLASSIFIER_V2,
-    model: CLASSIFIER_MODEL,
+    model: modelForTask("mention_classification"),
     projectId: args.projectId ?? null,
     purpose: "parse_response",
     system: CLASSIFIER_SYSTEM,
@@ -206,7 +207,7 @@ ${candidates.map((c) => identityBlock(c, identityContext)).join("\n")}`,
       try {
         const verification = await runAgent({
           agentVersion: MENTION_VERIFIER_V2,
-          model: CLASSIFIER_MODEL,
+          model: modelForTask("mention_verification"),
           projectId: args.projectId ?? null,
           purpose: "parse_response_verify",
           system: VERIFIER_SYSTEM,

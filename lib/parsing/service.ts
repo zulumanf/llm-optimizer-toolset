@@ -25,10 +25,10 @@ import {
   KNOWN_PARSER_VERSIONS,
 } from "@/lib/parsing/version";
 import {
-  CLASSIFIER_MODEL,
   PARSER_VERSION_HEURISTIC,
   PARSER_VERSION_LLM,
 } from "@/lib/constants";
+import { modelForTask } from "@/lib/ai/routing";
 import { MENTION_CLASSIFIER_V2 } from "@/lib/parsing/classify-llm";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
@@ -105,7 +105,7 @@ export async function parseResponse(responseId: string): Promise<void> {
         projectId,
       });
       parserUsed = PARSER_VERSION_LLM;
-      classifierModel = CLASSIFIER_MODEL;
+      classifierModel = modelForTask("mention_classification");
       classifierPromptVersion = MENTION_CLASSIFIER_V2;
     } catch (err) {
       // Never fail a parse on classifier trouble — fall back and record it

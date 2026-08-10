@@ -13,8 +13,7 @@
  * `lib/automation/nodes/agent.ts`; a prompt and its schema are versioned
  * together, so bumping one means bumping the other.
  */
-import { AGENT_MODEL } from "@/lib/ai/agent";
-import { CLASSIFIER_MODEL } from "@/lib/constants";
+import { modelForTask } from "@/lib/ai/routing";
 import { registerAgentVersions } from "@/lib/workflow/agent-versions";
 
 export const AUTOMATION_AGENT_KEYS = [
@@ -65,16 +64,24 @@ NON-NEGOTIABLE RULES:
   correct answer; a confident guess is not.`;
 
 function prompt(
+  key: AutomationAgentKey,
   version: string,
   system: string,
-  userPreamble: string,
-  model: string = AGENT_MODEL
+  userPreamble: string
 ): AutomationPrompt {
-  return { version, model, system: `${system.trim()}\n${GUARDRAILS}`, userPreamble };
+  // The routing table is the single authority (spec 055): no per-prompt
+  // model argument, no frontier default — an unrouted key cannot compile.
+  return {
+    version,
+    model: modelForTask(key),
+    system: `${system.trim()}\n${GUARDRAILS}`,
+    userPreamble,
+  };
 }
 
 export const AUTOMATION_PROMPTS: Record<AutomationAgentKey, AutomationPrompt> = {
   classify_lead: prompt(
+    "classify_lead",
     "classify-lead-v1",
     `You classify inbound leads for an AI-visibility service sold to high-value
 real-estate professionals, teams and brokerages.
@@ -85,12 +92,11 @@ and how much this account would benefit from AI-visibility work.
 
 Score 0-100 on commercial fit for THIS service. Do not score the person.
 "unknown" is the right answer whenever the input does not say.`,
-    "Classify this lead. Return JSON only.",
-    // A narrow, high-volume judgement: the cheaper snapshot is the right tool.
-    CLASSIFIER_MODEL
+    "Classify this lead. Return JSON only."
   ),
 
   draft_outreach: prompt(
+    "draft_outreach",
     "draft-outreach-v1",
     `You draft a first outreach email to a real-estate professional, from a firm
 that measures how AI assistants describe and recommend agents.
@@ -111,6 +117,7 @@ Requirements:
   ),
 
   classify_reply: prompt(
+    "classify_reply",
     "classify-reply-v1",
     `You classify a reply to an outreach email.
 
@@ -119,11 +126,11 @@ Set shouldStopSequence to true for ANY human reply, an opt-out, a wrong-person
 reply, or a booked meeting. An out-of-office is not a human reply — do not stop
 the sequence for it. When in doubt, stop: contacting someone who asked you to
 stop is far worse than a missed follow-up.`,
-    "Classify this reply. Return JSON only.",
-    CLASSIFIER_MODEL
+    "Classify this reply. Return JSON only."
   ),
 
   extract_claims: prompt(
+    "extract_claims",
     "extract-claims-v1",
     `You extract factual claims from a public page, profile, or document about a
 real-estate professional.
@@ -135,6 +142,7 @@ each claim so a human can confirm you did not paraphrase it into something new.`
   ),
 
   verify_claims: prompt(
+    "verify_claims",
     "verify-claims-v1",
     `You verify claims against an approved knowledge graph and evidence set.
 
@@ -150,6 +158,7 @@ verdict for a plausible claim with no backing.`,
   ),
 
   build_content_brief: prompt(
+    "build_content_brief",
     "build-content-brief-v1",
     `You turn an evidence gap into a content brief for a real-estate market
 authority asset.
@@ -162,6 +171,7 @@ transaction detail.`,
   ),
 
   draft_content: prompt(
+    "draft_content",
     "draft-content-v1",
     `You write an evidence-backed real-estate market authority asset from an
 approved brief and evidence packet.
@@ -173,6 +183,7 @@ writing vaguely. Do not use "best", "top", "leading", or any guarantee.`,
   ),
 
   verify_content: prompt(
+    "verify_content",
     "verify-content-v1",
     `You check a drafted asset claim by claim against its evidence packet, with
 fresh eyes and no memory of having written it.
@@ -183,6 +194,7 @@ it is unsupported.`,
   ),
 
   adversarial_content_review: prompt(
+    "adversarial_content_review",
     "adversarial-content-review-v1",
     `You are an adversarial reviewer. Your job is to find the reason this asset
 should NOT be published.
@@ -199,6 +211,7 @@ not being helpful by approving something marginal.`,
   ),
 
   diagnose_visibility_gap: prompt(
+    "diagnose_visibility_gap",
     "diagnose-visibility-gap-v1",
     `You diagnose why an AI assistant is not recommending a real-estate
 professional, given measured observations, competitor comparisons and the
@@ -212,6 +225,7 @@ aimed at a model's phrasing.`,
   ),
 
   prioritize_authority_actions: prompt(
+    "prioritize_authority_actions",
     "prioritize-authority-actions-v1",
     `You rank candidate authority-building actions by expected impact for one
 client, given their measured gaps and existing evidence.
@@ -222,6 +236,7 @@ rationale for each rank so a human can disagree with a specific reason.`,
   ),
 
   analyze_competitor_evidence: prompt(
+    "analyze_competitor_evidence",
     "analyze-competitor-evidence-v1",
     `You compare competitor changes for a real-estate market.
 
@@ -237,6 +252,7 @@ week-to-week movement is noise.`,
   ),
 
   summarize_meeting: prompt(
+    "summarize_meeting",
     "summarize-meeting-v1",
     `You turn meeting notes or a transcript into structured decisions, action
 items, open questions and relationship notes.
@@ -249,6 +265,7 @@ detail, or anything a participant would not want auto-emailed.`,
   ),
 
   draft_meeting_followup: prompt(
+    "draft_meeting_followup",
     "draft-meeting-followup-v1",
     `You draft a follow-up email from structured meeting decisions and actions.
 
@@ -259,6 +276,7 @@ anything ambiguous — and say why.`,
   ),
 
   summarize_support_request: prompt(
+    "summarize_support_request",
     "summarize-support-request-v1",
     `You triage a client support message.
 
@@ -270,11 +288,11 @@ It must be false for: strategic advice, pricing, complaints, legal matters,
 privacy matters, attribution disputes, performance guarantees, scope changes,
 and anything touching reputation risk. When it is false, give the escalation
 reason.`,
-    "Triage this support message. Return JSON only.",
-    CLASSIFIER_MODEL
+    "Triage this support message. Return JSON only."
   ),
 
   analyze_renewal_risk: prompt(
+    "analyze_renewal_risk",
     "analyze-renewal-risk-v1",
     `You assess renewal risk for a client engagement from delivery history,
 measured results, approval responsiveness, and support interactions.
@@ -286,6 +304,7 @@ fulfilment operator can actually take.`,
   ),
 
   detect_contradictions: prompt(
+    "detect_contradictions",
     "detect-contradictions-v1",
     `You find contradictions within a set of claims about one real-estate
 professional or firm.
@@ -297,6 +316,7 @@ by how damaging the inconsistency would be if a client or journalist noticed it.
   ),
 
   generate_executive_narrative: prompt(
+    "generate_executive_narrative",
     "generate-executive-narrative-v1",
     `You write the narrative statements for an executive report from computed
 metrics.
@@ -312,6 +332,7 @@ interpretation at best.`,
   ),
 
   repurpose_content: prompt(
+    "repurpose_content",
     "repurpose-content-v1",
     `You adapt an already-approved asset into another format.
 

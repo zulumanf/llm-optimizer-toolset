@@ -16,7 +16,7 @@
  */
 import { sql } from "@/db/client";
 import type { AgentCaller } from "@/lib/ai/agent";
-import { CLASSIFIER_MODEL } from "@/lib/constants";
+import { modelForTask } from "@/lib/ai/routing";
 import {
   classifyResponseLlm,
   MENTION_CLASSIFIER_V2,
@@ -135,7 +135,7 @@ export async function evaluateClassifier(args: {
   const result: ClassifierEvalResult = {
     goldSetVersion: CLASSIFIER_GOLD_VERSION,
     classifierPromptVersion: MENTION_CLASSIFIER_V2,
-    classifierModel: CLASSIFIER_MODEL,
+    classifierModel: modelForTask("mention_classification"),
     mode: args.mode,
     casesTotal: cases.length,
     pairsTotal: pairs,
