@@ -1,6 +1,6 @@
 # Spec 054 — Shared Market Captures
 
-**Status:** In progress
+**Status:** Implemented — all acceptance criteria verified 2026-08-10
 **Branch:** `feat/054-shared-captures` (stacked on `feat/053-fleet-drift`)
 **Source:** Architecture gap audit 2026-08-09 (cost B4, P0 — "the dominant cost multiplier at scale"): twenty same-city clients pay twenty times for identical market prompt captures, each classified separately. The no-cross-talk rule (spec 008 / migration 041) is a promise about client *subjects*, never about market *captures* — one capture classified against N clients' company sets is legally available and simply not built.
 
@@ -35,11 +35,11 @@ Downstream is untouched by construction: parsing classifies the copied text agai
 - Cross-window reuse policy (>72h) and a UI reuse indicator — follow-ups.
 
 ## Acceptance criteria
-- [ ] Second project with the byte-identical prompt within the window captures via reuse: zero provider calls, `reused_from` set, `cost_usd = 0`, payload/text/tokens/params copied (test with a stubbed non-mock provider).
-- [ ] Reused captures parse and score normally against the reusing project's own company set (test).
-- [ ] Same-project repeat runs never reuse (test) — retests and weekly cycles always sample fresh.
-- [ ] A third project reusing points `reused_from` at the ORIGINAL capture, never at a copy (test).
-- [ ] Sources older than the window are ignored — live call happens (test).
-- [ ] `reuse_captures = false` forces live calls even when a source exists (test).
-- [ ] Mock-provider cells never reuse (existing suites unchanged, green).
-- [ ] Migration 064 reversible; `npm test`, lint, typecheck green.
+- [x] Second project with the byte-identical prompt within the window captures via reuse: zero provider calls, `reused_from` set, `cost_usd = 0`, payload/text/tokens/params copied (test with a stubbed non-mock provider).
+- [x] Reused captures parse and score normally against the reusing project's own company set (test).
+- [x] Same-project repeat runs never reuse (test) — retests and weekly cycles always sample fresh.
+- [x] A third project reusing points `reused_from` at the ORIGINAL capture, never at a copy (test).
+- [x] Sources older than the window are ignored — live call happens (test).
+- [x] `reuse_captures = false` forces live calls even when a source exists (test).
+- [x] Mock-provider cells never reuse (existing suites unchanged, green).
+- [x] Migration 064 reversible; `npm test`, lint, typecheck green.
