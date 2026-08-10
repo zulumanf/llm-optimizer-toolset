@@ -17,7 +17,7 @@ import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage, duplicateNameConflict } from "@/lib/service-helpers";
 import { detectConflicts, type AgreementInput, type MarketNode } from "@/lib/exclusivity/detect";
-import { listAgreements } from "@/lib/exclusivity/service";
+import { listAgreements, createAgreement } from "@/lib/exclusivity/service";
 import { createProject } from "@/lib/projects/service";
 import { upsertCompany } from "@/lib/companies/service";
 import { addCompetitor } from "@/lib/competitors/service";
@@ -3461,6 +3461,170 @@ export async function addActivityNote(
       await logActivity(tx, parsed.data.prospectId, "note", { note: parsed.data.note }, user.id);
     });
     return ok({ prospectId: parsed.data.prospectId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ------------------------------------------------- promotion (spec 057)
+
+const promoteSchema = z.object({
+  prospectId: z.string().uuid(),
+  /** Territory at close: an ACTIVE agreement scoped to the launch market.
+   * Declinable for engagements sold without exclusivity. */
+  createAgreement: z.boolean().default(true),
+  agreementEndsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  gracePeriodDays: z.number().int().min(0).max(3650).default(0),
+});
+
+/**
+ * The close finally has a side effect (spec 057, audit 12.1-12.3): an
+ * explicit, audited promotion — never a hidden consequence of a stage
+ * click. The benchmark project converts IN PLACE (kind prospect -> client),
+ * so every pre-signing capture, mention, score, and tracked competitor
+ * becomes the client's first baseline and the first client report has a
+ * comparable prior — the platform stops paying twice for research it
+ * already did (audit B5).
+ *
+ * Ordering: the exclusivity agreement is created before the core
+ * promotion transaction (it runs its own transaction); a failure between
+ * the two leaves an audited agreement on an unpromoted project — visible
+ * and repairable — never a promoted client without its recorded close.
+ */
+export async function promoteProspectToClient(
+  user: CurrentUser,
+  raw: unknown
+): Promise<
+  ActionResult<{ projectId: string; agreementId: string | null; renamed: boolean }>
+> {
+  const parsed = promoteSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    const [prospect] = await sql`
+      select p.id, p.stage, p.business_name, p.company_id, p.launch_id,
+        p.benchmark_project_id, p.promoted_project_id, p.archived_at,
+        l.market_id, l.service_category, l.price_segment
+      from prospects p
+      join market_launches l on l.id = p.launch_id
+      where p.id = ${input.prospectId}
+    `;
+    if (!prospect || prospect.archivedAt) {
+      return fail(new ClassifiedError("not_found", "Prospect not found."));
+    }
+    if (prospect.promotedProjectId) {
+      return fail(
+        new ClassifiedError("conflict", "This prospect was already promoted to a client.")
+      );
+    }
+    if (prospect.stage !== "contracted") {
+      return fail(
+        new ClassifiedError(
+          "validation",
+          `Only a contracted prospect can be promoted (this one is at "${prospect.stage}").`
+        )
+      );
+    }
+    if (!prospect.companyId) {
+      return fail(
+        new ClassifiedError(
+          "validation",
+          "Link the prospect to its canonical company before promoting — a client without an identity cannot be measured."
+        )
+      );
+    }
+
+    // Ensure the client project: convert the benchmark, or create fresh.
+    let projectId = prospect.benchmarkProjectId as string | null;
+    if (!projectId) {
+      const created = await createProject(user, {
+        name: prospect.businessName as string,
+        description: `Promoted from prospect ${prospect.id} (spec 057).`,
+      });
+      if (!created.ok) return created;
+      projectId = created.data.id;
+      const subject = await setSubjectCompany(user, {
+        projectId,
+        companyId: prospect.companyId as string,
+      });
+      if (!subject.ok) return subject;
+    }
+
+    let agreementId: string | null = null;
+    if (input.createAgreement) {
+      const agreement = await createAgreement(user, {
+        projectId,
+        startsOn: new Date().toISOString().slice(0, 10),
+        endsOn: input.agreementEndsOn ?? null,
+        gracePeriodDays: input.gracePeriodDays,
+        status: "active",
+        notes: `Created at prospect promotion (spec 057), prospect ${prospect.id}.`,
+        scopes: [
+          {
+            marketId: prospect.marketId as string,
+            serviceCategory: (prospect.serviceCategory as string | null) ?? null,
+            segment: (prospect.priceSegment as string | null) ?? null,
+          },
+        ],
+      });
+      if (!agreement.ok) return agreement;
+      agreementId = agreement.data.agreementId;
+    }
+
+    const renamed = await sql.begin(async (tx) => {
+      let didRename = false;
+      if (prospect.benchmarkProjectId) {
+        // Collision-checked rename: an existing active project owning the
+        // business name keeps it — the benchmark name survives, noted in
+        // the audit detail, and the operator can rename later.
+        const [collision] = await tx`
+          select 1 from projects
+          where lower(name) = lower(${prospect.businessName})
+            and status = 'active' and id != ${projectId}
+        `;
+        if (collision) {
+          await tx`
+            update projects set kind = 'client' where id = ${projectId}
+          `;
+        } else {
+          await tx`
+            update projects set kind = 'client', name = ${prospect.businessName}
+            where id = ${projectId}
+          `;
+          didRename = true;
+        }
+      }
+      await tx`
+        update prospects
+        set promoted_project_id = ${projectId}, updated_at = now()
+        where id = ${prospect.id}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.promoted",
+        entity: "prospect",
+        entityId: prospect.id as string,
+        detail: {
+          projectId,
+          agreementId,
+          convertedBenchmark: Boolean(prospect.benchmarkProjectId),
+          renamed: didRename,
+        },
+      });
+      await logActivity(
+        tx,
+        prospect.id as string,
+        "promoted_to_client",
+        { projectId, agreementId },
+        user.id
+      );
+      return didRename;
+    });
+
+    return ok({ projectId, agreementId, renamed });
   } catch (err) {
     return fail(err);
   }

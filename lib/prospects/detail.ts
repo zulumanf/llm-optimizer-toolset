@@ -33,6 +33,7 @@ export interface ProspectDetail {
   qualificationOverrideReason: string | null;
   relationshipStrength: string;
   stage: string;
+  promotedProjectId: string | null;
   nextAction: string | null;
   nextActionOn: string | null;
   doNotContact: boolean;
@@ -53,7 +54,7 @@ export async function getProspectDetail(id: string): Promise<ProspectDetail | nu
       p.qualification_override_reason,
       p.relationship_strength, p.stage, p.next_action, p.next_action_on::text,
       p.do_not_contact, p.do_not_contact_reason, p.conflict_status, p.notes,
-      p.benchmark_project_id
+      p.benchmark_project_id, p.promoted_project_id
     from prospects p
     join market_launches l on l.id = p.launch_id
     join markets m on m.id = l.market_id
