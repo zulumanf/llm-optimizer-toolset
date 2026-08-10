@@ -288,8 +288,26 @@ describe.skipIf(!TEST_URL)("accuracy monitoring (integration)", () => {
     const [updated] = await sql`
       select status, task_id from accuracy_findings where id = ${findings[0]?.id}
     `;
-    expect(updated?.status).toBe("corrected");
+    // Spec 051 (audit F10): a task being created proves nothing was fixed —
+    // the finding is fix_in_progress, and corrected requires the task done.
+    expect(updated?.status).toBe("fix_in_progress");
     expect(updated?.taskId).not.toBeNull();
+
+    const early = await accuracy.markFindingCorrected(user, {
+      findingId: findings[0]?.id as string,
+    });
+    expect(early.ok).toBe(false);
+    if (!early.ok) expect(early.error.message).toMatch(/not done/);
+
+    await sql`update tasks set status = 'done' where id = ${updated?.taskId}`;
+    const done = await accuracy.markFindingCorrected(user, {
+      findingId: findings[0]?.id as string,
+    });
+    expect(done.ok).toBe(true);
+    const [after] = await sql`
+      select status from accuracy_findings where id = ${findings[0]?.id}
+    `;
+    expect(after?.status).toBe("corrected");
 
     // Double-tasking blocked; dismissal works on the other finding
     const again = await accuracy.createCorrectionTask(user, {
@@ -305,9 +323,6 @@ describe.skipIf(!TEST_URL)("accuracy monitoring (integration)", () => {
     const audits = await sql`
       select action from audit_log where action like 'accuracy.%' order by at
     `;
-    expect(audits.map((a) => a.action)).toEqual([
-      "accuracy.analyze",
-      "accuracy.dismissed",
-    ]);
+    expect(audits.map((a) => a.action)).toEqual(["accuracy.analyze", "accuracy.finding_corrected", "accuracy.dismissed"]);
   });
 });

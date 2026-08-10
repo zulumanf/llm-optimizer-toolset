@@ -49,7 +49,7 @@ export default async function AccuracyPage({
   ]);
 
   const byStatus = new Map(counts.map((c) => [c.status as string, c.n as number]));
-  const filters = ["open", "acknowledged", "corrected", "dismissed", "all"];
+  const filters = ["open", "acknowledged", "fix_in_progress", "corrected", "dismissed", "all"];
 
   return (
     <div className="mx-auto max-w-4xl p-6">

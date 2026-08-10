@@ -148,6 +148,76 @@ describe.skipIf(!TEST_URL)("attribution (integration)", () => {
     expect((queued[0]?.runAfter as Date).getTime()).toBeGreaterThan(Date.now());
   });
 
+  it("spec 051: lifecycle fields, the outcome spine, and live verification", async () => {
+    const { projectId, versionId } = await seedScoredRuns(1);
+    const created = await attribution.createIntervention(user, {
+      projectId,
+      title: "Neighborhood guide",
+      shippedAt: today,
+      urls: ["https://example.com/live", "https://example.com/missing"],
+      promptSetVersionId: versionId,
+      ownerId: user.id,
+      costUsd: 350,
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const interventionId = created.data.interventionId;
+
+    // Lifecycle fields persisted
+    const [row] = await sql`
+      select owner_id, cost_usd from interventions where id = ${interventionId}
+    `;
+    expect(row?.ownerId).toBe(user.id);
+    expect(Number(row?.costUsd)).toBe(350);
+
+    // The outcome spine: Loop A and Loop B share one row now (audit F43)
+    const [outcome] = await sql`
+      select action_type, landing_urls, expected_days_to_impact, completed_on
+      from action_outcomes where intervention_id = ${interventionId}
+    `;
+    expect(outcome?.actionType).toBe("intervention_shipped");
+    expect(outcome?.landingUrls).toContain("https://example.com/live");
+    expect(Number(outcome?.expectedDaysToImpact)).toBe(42);
+
+    // Verification job enqueued with the insert
+    const [job] = await sql`
+      select 1 from jobs where type = 'verify_intervention_urls'
+        and payload->>'interventionId' = ${interventionId}
+    `;
+    expect(job).toBeDefined();
+
+    // The worker's check records per-URL truth via safeFetch (stubbed here)
+    const { verifyInterventionUrls, latestUrlChecks } = await import(
+      "@/lib/attribution/verify-urls"
+    );
+    const fetchImpl = (async (url: RequestInfo | URL) => {
+      const target = String(url);
+      return new Response(target.includes("missing") ? "gone" : "ok", {
+        status: target.includes("missing") ? 404 : 200,
+      });
+    }) as typeof fetch;
+    const results = await verifyInterventionUrls(interventionId, {
+      fetchImpl,
+      lookupImpl: null,
+    });
+    expect(results).toHaveLength(2);
+
+    const checks = await latestUrlChecks(interventionId);
+    const byUrl = new Map(checks.map((c) => [c.url, c]));
+    expect(byUrl.get("https://example.com/live")?.ok).toBe(true);
+    expect(byUrl.get("https://example.com/missing")?.ok).toBe(false);
+    expect(byUrl.get("https://example.com/missing")?.httpStatus).toBe(404);
+
+    // A failed page is a recorded fact the intervention view exposes
+    const view = await attribution.interventionView(interventionId);
+    expect(view.urlChecks.some((c) => !c.ok)).toBe(true);
+
+    // The verification ledger is append-only
+    await expect(
+      sql`delete from url_verifications where intervention_id = ${interventionId}`
+    ).rejects.toThrow(/insert-only/);
+  });
+
   it("scheduled post run executes on the same instrument and joins the intervention", async () => {
     const { projectId, versionId } = await seedScoredRuns(1);
     const created = await attribution.createIntervention(user, {

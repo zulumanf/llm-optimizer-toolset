@@ -37,6 +37,10 @@ const createSchema = z.object({
   urls: z.array(z.string().url()).max(10).default([]),
   promptSetVersionId: z.string().uuid(),
   taskId: z.string().uuid().optional(),
+  // Lifecycle fields (spec 051): who owns it, what it cost. Optional —
+  // interventions predating the record stay null.
+  ownerId: z.string().uuid().optional(),
+  costUsd: z.number().nonnegative().optional(),
   postOffsets: z.array(z.enum(POST_OFFSETS)).default([...POST_OFFSETS]),
 });
 
@@ -95,20 +99,50 @@ export async function createIntervention(
       const [row] = await tx`
         insert into interventions
           (project_id, title, description, hypothesis, shipped_at, urls,
-           prompt_set_version_id, task_id, baseline_weak, created_by)
+           prompt_set_version_id, task_id, baseline_weak, created_by,
+           owner_id, cost_usd)
         values
           (${input.projectId}, ${input.title}, ${input.description ?? null},
            ${input.hypothesis || null},
            ${input.shippedAt}, ${input.urls}, ${input.promptSetVersionId},
-           ${input.taskId ?? null}, ${baselineWeak}, ${user.id})
+           ${input.taskId ?? null}, ${baselineWeak}, ${user.id},
+           ${input.ownerId ?? null}, ${input.costUsd ?? null})
         returning id
       `;
       const interventionId = row?.id as string;
+
+      // One outcome spine (spec 051, audit F43): the intervention loop and
+      // the action_outcomes/learnings loop never met — intervention_id was
+      // populated on no product path, so a learning could never cite a real
+      // intervention's verdict. Recorded in the same transaction; the
+      // existing outcome sweep measures it unchanged (+6w horizon matches
+      // the retest schedule).
+      const { recordAction } = await import("@/lib/outcomes/graph");
+      await recordAction(tx, {
+        projectId: input.projectId,
+        actionType: "intervention_shipped",
+        hypothesis: input.hypothesis ?? "",
+        interventionId,
+        taskId: input.taskId ?? null,
+        landingUrls: input.urls,
+        completedOn: input.shippedAt,
+        expectedDaysToImpact: 42,
+      });
 
       for (const baseline of baselines) {
         await tx`
           insert into intervention_runs (intervention_id, run_id, role)
           values (${interventionId}, ${baseline.id}, 'baseline')
+        `;
+      }
+
+      // Live verification (spec 051): every claimed URL gets fetched and
+      // its result recorded — enqueued with the insert so it cannot be
+      // forgotten. markPublished flows through here and inherits it.
+      if (input.urls.length > 0) {
+        await tx`
+          insert into jobs (type, payload)
+          values ('verify_intervention_urls', ${tx.json({ interventionId } as never)})
         `;
       }
 
@@ -339,6 +373,8 @@ export interface InterventionView {
   verdicts: MetricVerdict[];
   instrumentChanged: boolean;
   confoundedWith: { id: string; title: string }[];
+  /** Latest live-verification result per shipped URL (spec 051). */
+  urlChecks: import("@/lib/attribution/verify-urls").UrlCheck[];
 }
 
 /** Verdicts + flags, computed on read for the self company (never stored). */
@@ -408,5 +444,8 @@ export async function interventionView(
     )
     .map((o) => ({ id: o.id as string, title: o.title as string }));
 
-  return { verdicts, instrumentChanged, confoundedWith };
+  const { latestUrlChecks } = await import("@/lib/attribution/verify-urls");
+  const urlChecks = await latestUrlChecks(interventionId);
+
+  return { verdicts, instrumentChanged, confoundedWith, urlChecks };
 }

@@ -47,6 +47,12 @@ export const handlers: Record<
       payload as { interventionId: string; offsetLabel: string }
     );
   },
+  // Spec 051: fetch each shipped intervention URL through safeFetch and
+  // record the result — "it actually shipped" becomes a database fact.
+  verify_intervention_urls: async (payload) => {
+    const { verifyInterventionUrls } = await import("@/lib/attribution/verify-urls");
+    await verifyInterventionUrls(payload.interventionId as string);
+  },
   // Derived from the live attention feed — safe to run on any schedule
   sync_notifications: async () => {
     await syncNotifications();
