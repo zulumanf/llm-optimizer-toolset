@@ -44,3 +44,11 @@ export const REVIEW_TIMEOUT_HOURS = 72;
 
 export const SENTIMENTS = ["positive", "neutral", "negative", "mixed"] as const;
 export type Sentiment = (typeof SENTIMENTS)[number];
+
+/**
+ * Shared market captures (spec 054): a cell may be satisfied by a capture
+ * of the byte-identical prompt from a DIFFERENT project no older than this.
+ * 72h keeps reuse inside one measurement cycle — never across weeks, so
+ * week-over-week deltas still compare fresh samples.
+ */
+export const CAPTURE_REUSE_WINDOW_HOURS = 72;

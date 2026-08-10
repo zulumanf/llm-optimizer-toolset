@@ -1630,3 +1630,27 @@ exclusion from client/portfolio surfaces from the existing kind='client'
 filters. On a sentinel, ANY comparable-pair movement is the anomaly —
 that inversion is the whole design. Weekly-cycle inclusion for sentinels
 is a deliberate follow-up, not an accident.
+
+## 2026-08-10 — Spec 054: shared market captures (branch feat/054-shared-captures)
+
+**Capture reuse, not shared runs.** Runs stay project-owned (budgets,
+evidence, immutability, scheduling all key on project); the saving comes
+from satisfying a cell with a copy of another project's recent capture of
+the byte-identical prompt. Moving run ownership to markets would have
+reworked half the platform for no additional saving.
+
+**Same-project never reuses.** A retest or weekly cycle must sample fresh
+— reusing within a project would let a measurement "measure" its own
+baseline. Cross-project reuse inside a 72h window is the deliberate
+inverse: same-market clients measured in the same cycle should see the
+same market reality (it improves comparability, not just cost).
+
+**Provenance always points at the paid original.** Copies never serve as
+sources (`reused_from is null` in the eligibility query), so every copy
+is one hop from the capture the platform actually paid for. Cost is
+recorded as 0 on copies — the ledger stays truthful about what was spent,
+and `reused_from` answers "did we pay for this answer or share it?".
+
+**Mock never participates.** Test and demo behavior is a contract other
+suites rely on; excluding the mock keeps every existing suite's
+call-counting semantics intact and costs nothing (the mock is free).
