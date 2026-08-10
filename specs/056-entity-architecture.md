@@ -1,6 +1,6 @@
 # Spec 056 — Entity Architecture: Relationships, Market Scoping, Merge
 
-**Status:** In progress
+**Status:** Implemented — all acceptance criteria verified 2026-08-10
 **Branch:** `feat/056-entity-architecture`
 **Source:** Architecture gap audit 2026-08-09 (entity §10): the rich `knowledge_entities` relationship model — types, effective dates, evidence, approval states — **has no write path anywhere in the codebase** (P0); the `companies` registry that actually carries every mention, score, and report has a *global* unique-name index, so two real "Smith Group"s in different cities are structurally unrepresentable (P1); and there is no merge/split/unmerge operation on it at all (P1).
 
@@ -33,11 +33,11 @@ Real estate is teams inside brokerages, agents inside teams, and same-named firm
 - Automatic relationship inference from crawled sources — proposals stay human-created or (later) extraction-proposed; approval stays human either way.
 
 ## Acceptance criteria
-- [ ] Propose → approve a `brokerage` relationship between two tracked companies; `relationshipGroups` returns the group with live metrics (test — the P0 rollup returns non-empty for the first time).
-- [ ] Effective dating: ending a relationship and proposing a successor keeps both rows; only the approved, current one groups (test).
-- [ ] Rejection keeps history; approval stamps `approved_by`; both audited (test).
-- [ ] Two active companies with the same name coexist in different markets; same-bucket duplicates still refuse (test).
-- [ ] The prospect resolver surfaces cross-market same-name candidates as `possible`, never auto-match (test).
-- [ ] Merge: aliases move, prospects repoint, competitors re-track, history stays on the merged row, chain resolver follows; refusals for self/cycle/double-merge/two-subjects (tests).
-- [ ] Unmerge restores the row and the exact moved aliases (test).
-- [ ] Migration 065 reversible; `npm test`, lint, typecheck green.
+- [x] Propose → approve a `brokerage` relationship between two tracked companies; `relationshipGroups` returns the group with live metrics (test — the P0 rollup returns non-empty for the first time).
+- [x] Effective dating: ending a relationship and proposing a successor keeps both rows; only the approved, current one groups (test).
+- [x] Rejection keeps history; approval stamps `approved_by`; both audited (test).
+- [x] Two active companies with the same name coexist in different markets; same-bucket duplicates still refuse (test).
+- [x] The prospect resolver surfaces cross-market same-name candidates as `possible`, never auto-match (test).
+- [x] Merge: aliases move, prospects repoint, competitors re-track, history stays on the merged row, chain resolver follows; refusals for self/cycle/double-merge/two-subjects (tests).
+- [x] Unmerge restores the row and the exact moved aliases (test).
+- [x] Migration 065 reversible; `npm test`, lint, typecheck green.

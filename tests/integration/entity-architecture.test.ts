@@ -80,7 +80,7 @@ describe.skipIf(!TEST_URL)("entity architecture (integration)", () => {
       insert into projects (name) values ('Rel Test') returning id
     `;
     await sql`
-      update projects set subject_company_id = ${companyIds[0]} where id = ${project!.id}
+      update projects set subject_company_id = ${companyIds[0]!} where id = ${project!.id}
     `;
     for (const companyId of companyIds.slice(1)) {
       await sql`

@@ -1683,3 +1683,30 @@ verification), accuracy analysis, contradiction detection, outreach.
 **Provenance shows the route.** The classifier instrument stamps
 (spec 050) and the llm_calls ledger record the RESOLVED model, so a
 routing change is visible in the data, not just the diff.
+
+## 2026-08-10 — Spec 056: entity architecture (branch feat/056-entity-architecture)
+
+**Company-first relationships.** The relationship write path takes company
+ids, not knowledge-entity ids: companies are what operators see and what
+the groups rollup joins on. Each side bridges to a typed knowledge entity
+(created on demand via the existing upsertEntity), so the rich graph fills
+in behind the surface operators already use. Proposals land `proposed`;
+approval is a human decision (the schema's own design); a brokerage move
+is an end date plus a successor proposal — history is never edited.
+
+**Market scoping via a null-bucket coalesce index.** One active company
+name per market, plus one in the global (null-market) bucket — existing
+rows stay global, nothing migrates. Cross-market same names deliberately
+reach the prospect resolver as a tie → `possible` → human, which is
+exactly the spec-050 contract: representable ambiguity, never a silent
+pick. The alias false-merge check scopes to the same bucket.
+
+**Merges move the future, never the past.** mergeCompanies moves the name
+and aliases to the survivor (future parsing credits it), repoints
+prospects, re-tracks competitors — and leaves every historical mention and
+score on the merged row, because those measurements were of the entity as
+then understood; rewriting them onto the survivor would be fabrication.
+Refusals: self, chains at write time, double-merge, and merging two
+active client subjects (that would merge two clients). Unmerge is possible
+precisely because nothing was destroyed: the audit row records the exact
+alias set that moved, and unmergeCompany restores it.
