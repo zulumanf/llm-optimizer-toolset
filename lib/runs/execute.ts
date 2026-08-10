@@ -205,13 +205,14 @@ async function executeCell(
           insert into responses
             (run_id, prompt_id, prompt_text, provider, model, repetition,
              raw_payload, response_text, refusal, latency_ms, tokens_in,
-             tokens_out, cost_usd)
+             tokens_out, cost_usd, request_params)
           values
             (${runId}, ${cell.promptId}, ${cell.promptText}, ${cell.provider},
              ${cell.model}, ${cell.repetition},
              ${tx.json(result.rawPayload as never)}, ${result.responseText},
              ${result.refusal}, ${Date.now() - startedAt}, ${result.tokensIn},
-             ${result.tokensOut}, ${micro === null ? null : microToUsd(micro)})
+             ${result.tokensOut}, ${micro === null ? null : microToUsd(micro)},
+             ${tx.json(result.requestParams as never)})
         `;
         if (micro !== null) {
           await tx`

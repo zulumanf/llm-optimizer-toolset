@@ -88,6 +88,13 @@ export const googleProvider: AIProvider = {
     // network call, and an unrecognised shape is flagged rather than silently
     // becoming an empty answer (docs/09).
     const payload = JSON.parse(JSON.stringify(response));
-    return { rawPayload: payload, ...parseGooglePayload(payload) };
+    return {
+      rawPayload: payload,
+      ...parseGooglePayload(payload),
+      requestParams: {
+        sampling: "provider_default",
+        ...(grounded ? { tools: ["googleSearch"] } : {}),
+      },
+    };
   },
 };

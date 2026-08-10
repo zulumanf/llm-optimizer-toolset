@@ -21,6 +21,21 @@ export interface PromptRequest {
   promptText: string;
 }
 
+/**
+ * The sampling configuration the adapter ACTUALLY sent (spec 050). Recorded
+ * on every response so a measurement can be replayed to the same
+ * configuration — docs/07 promised this and nothing implemented it. Fields
+ * left at provider defaults are recorded as the string "provider_default"
+ * (a truthful statement, unlike omitting them); explicitly-set values are
+ * recorded as values. Required, so an adapter cannot forget to declare.
+ */
+export interface RequestParams {
+  sampling: "provider_default" | Record<string, number>;
+  maxTokens?: number;
+  tools?: string[];
+  [key: string]: unknown;
+}
+
 /** Full capture of one provider call. rawPayload is stored verbatim (docs/07 step 4). */
 export interface ProviderResult {
   rawPayload: unknown;
@@ -42,6 +57,8 @@ export interface ProviderResult {
   shapeRecognized?: boolean;
   /** Why the shape was not recognised. Set only when shapeRecognized is false. */
   shapeNote?: string;
+  /** What the adapter sent — stored on the response row (spec 050). */
+  requestParams: RequestParams;
 }
 
 export interface AIProvider {

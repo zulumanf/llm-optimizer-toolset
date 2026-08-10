@@ -19,7 +19,7 @@ Freezing snapshots the set into an immutable `prompt_set_versions` row. **Runs o
 - Week-over-week comparison requires the *same version*. New version = new baseline, annotated on all charts.
 
 ### 3. Run
-Configuration is explicit and recorded on the run: providers, exact model IDs, repetitions per cell (default **5** — single samples are anecdotes), temperature/params (provider defaults, recorded), budget cap. Runs execute via the worker queue; the same code path serves cron and manual runs.
+Configuration is explicit and recorded on the run: providers, exact model IDs, repetitions per cell (default **5** — single samples are anecdotes), temperature/params (provider defaults, recorded per response in `request_params` — spec 050), budget cap. Runs execute via the worker queue; the same code path serves cron and manual runs.
 
 - **Never rerun into old datasets.** A rerun is a new `runs` row. Retrying failed cells within a run is allowed and appends responses to the *same* run — it never replaces existing rows.
 
