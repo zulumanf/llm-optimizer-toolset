@@ -138,6 +138,8 @@ export async function buildSnapshot(
         current: score.value,
         previous: prev.value,
         delta: score.value - prev.value,
+        nCurrent: score.sampleSize,
+        nPrevious: prev.sampleSize,
         verdict: changeVerdict(
           score.metric,
           {

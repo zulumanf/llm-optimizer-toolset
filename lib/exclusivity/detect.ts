@@ -38,7 +38,9 @@ export interface AgreementInput {
   agreementId: string;
   projectId: string;
   clientName: string;
-  status: "active" | "terminated";
+  /** reserved = a pending-proposal hold (spec 052): occupies the territory
+   * in detection exactly like active; dates still govern the window. */
+  status: "active" | "reserved" | "terminated";
   startsOn: string; // YYYY-MM-DD
   endsOn: string | null;
   gracePeriodDays: number;

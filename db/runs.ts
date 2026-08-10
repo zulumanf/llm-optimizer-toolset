@@ -17,6 +17,8 @@ export interface Run {
   costUsd: string;
   startedAt: Date;
   completedAt: Date | null;
+  /** Spec 054: false forces fresh sampling even when a reusable capture exists. */
+  reuseCaptures: boolean;
 }
 
 export interface RunListItem extends Run {
@@ -48,7 +50,7 @@ export interface ResponseDetail extends ResponseCell {
 
 const RUN_COLUMNS = sql`id, project_id, prompt_set_version_id, label, providers,
   status, status_detail, trigger, started_by, budget_usd, cost_usd,
-  started_at, completed_at`;
+  started_at, completed_at, reuse_captures`;
 
 export async function getRun(runId: string): Promise<Run | null> {
   const rows = await sql<Run[]>`select ${RUN_COLUMNS} from runs where id = ${runId}`;
@@ -110,11 +112,22 @@ export async function successfulCellKeys(runId: string): Promise<Set<string>> {
   );
 }
 
-/** Recorded provider spend across ALL runs in the last 24 hours (plan 2.7). */
+/**
+ * Recorded LLM spend across the whole platform in the last 24 hours
+ * (plan 2.7 + spec 050): benchmark captures (responses.cost_usd) PLUS every
+ * agent-path call (llm_calls) — classification, content, accuracy, gaps,
+ * workflows, assistant. The daily ceiling draws down one pool; before the
+ * ledger existed, agent traffic was invisible to it.
+ */
 export async function spendLast24hUsd(): Promise<number> {
   const rows = await sql`
-    select coalesce(sum(cost_usd), 0) as total from responses
-    where requested_at > now() - interval '24 hours'
+    select
+      (select coalesce(sum(cost_usd), 0) from responses
+        where requested_at > now() - interval '24 hours')
+      +
+      (select coalesce(sum(cost_micro_usd), 0) / 1e6 from llm_calls
+        where called_at > now() - interval '24 hours')
+      as total
   `;
   return Number(rows[0]?.total ?? 0);
 }

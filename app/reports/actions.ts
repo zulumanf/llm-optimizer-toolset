@@ -20,3 +20,6 @@ export async function publishReport(input: unknown) {
 export async function deleteDraft(input: unknown) {
   return run((u) => svc.deleteDraft(u, input));
 }
+export async function recordReportDelivery(input: unknown) {
+  return run((u) => svc.recordReportDelivery(u, input));
+}

@@ -42,6 +42,9 @@ const agreementSchema = z
     endsOn: dateSchema.nullish(),
     gracePeriodDays: z.number().int().min(0).max(3650).default(0),
     notes: z.string().trim().max(2000).optional(),
+    // reserved = pending-proposal hold (spec 052): occupies the territory in
+    // conflict detection so a late-stage negotiation blocks parallel outreach.
+    status: z.enum(["active", "reserved"]).default("active"),
     scopes: z
       .array(
         z.object({
@@ -175,9 +178,11 @@ export async function createAgreement(
     const agreementId = await sql.begin(async (tx) => {
       const [row] = await tx`
         insert into exclusivity_agreements
-          (project_id, starts_on, ends_on, grace_period_days, notes, created_by)
+          (project_id, starts_on, ends_on, grace_period_days, notes, status,
+           created_by)
         values (${input.projectId}, ${input.startsOn}, ${input.endsOn ?? null},
-          ${input.gracePeriodDays}, ${input.notes ?? null}, ${user.id})
+          ${input.gracePeriodDays}, ${input.notes ?? null}, ${input.status},
+          ${user.id})
         returning id
       `;
       const id = row?.id as string;
@@ -266,6 +271,47 @@ export interface AgreementRow {
   }[];
 }
 
+/** A reserved hold becomes a signed agreement (spec 052). Audited. */
+export async function activateAgreement(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ agreementId: string }>> {
+  const parsed = z.object({ agreementId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid agreement id."));
+  }
+  try {
+    assertCanWrite(user);
+    await sql.begin(async (tx) => {
+      const [row] = await tx`
+        select status, project_id from exclusivity_agreements
+        where id = ${parsed.data.agreementId} for update
+      `;
+      if (!row) throw new ClassifiedError("not_found", "Agreement not found.");
+      if (row.status !== "reserved") {
+        throw new ClassifiedError(
+          "conflict",
+          `Only a reserved agreement can be activated (this one is ${row.status}).`
+        );
+      }
+      await tx`
+        update exclusivity_agreements set status = 'active', updated_at = now()
+        where id = ${parsed.data.agreementId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "exclusivity.agreement_activated",
+        entity: "exclusivity_agreement",
+        entityId: parsed.data.agreementId,
+        detail: {},
+      });
+    });
+    return ok({ agreementId: parsed.data.agreementId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 export async function listAgreements(): Promise<AgreementRow[]> {
   const rows = await sql`
     select a.id, a.project_id, p.name as client_name, a.status,
@@ -292,7 +338,7 @@ async function loadAgreementInputs(): Promise<AgreementInput[]> {
     agreementId: row.id,
     projectId: row.projectId,
     clientName: row.clientName,
-    status: row.status as "active" | "terminated",
+    status: row.status as "active" | "reserved" | "terminated",
     startsOn: row.startsOn,
     endsOn: row.endsOn,
     gracePeriodDays: Number(row.gracePeriodDays),

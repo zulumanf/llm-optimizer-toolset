@@ -25,9 +25,11 @@ import {
   KNOWN_PARSER_VERSIONS,
 } from "@/lib/parsing/version";
 import {
+  CLASSIFIER_MODEL,
   PARSER_VERSION_HEURISTIC,
   PARSER_VERSION_LLM,
 } from "@/lib/constants";
+import { MENTION_CLASSIFIER_V2 } from "@/lib/parsing/classify-llm";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
@@ -80,6 +82,11 @@ export async function parseResponse(responseId: string): Promise<void> {
   // whole point of the stamp).
   let drafts;
   let parserUsed: string = PARSER_VERSION_HEURISTIC;
+  // Instrument stamps (spec 050): parser_version names the family; these
+  // name the actual classifier model + prompt version that judged the row.
+  // Null = heuristic, no LLM instrument involved.
+  let classifierModel: string | null = null;
+  let classifierPromptVersion: string | null = null;
   if (llmClassificationAvailable() && text.trim().length > 0) {
     const claimRows = await sql`
       select canonical_text from claims
@@ -95,8 +102,11 @@ export async function parseResponse(responseId: string): Promise<void> {
         promptText: (response.promptText as string) ?? "",
         companies: companyInputs,
         identityContext,
+        projectId,
       });
       parserUsed = PARSER_VERSION_LLM;
+      classifierModel = CLASSIFIER_MODEL;
+      classifierPromptVersion = MENTION_CLASSIFIER_V2;
     } catch (err) {
       // Never fail a parse on classifier trouble — fall back and record it
       log("warn", "parse.llm_classifier_failed", {
@@ -139,12 +149,13 @@ export async function parseResponse(responseId: string): Promise<void> {
       await tx`
         insert into mentions
           (response_id, company_id, revision, mentioned, parser_version,
-           confidence, needs_review)
+           confidence, needs_review, classifier_model, classifier_prompt_version)
         values
           (${responseId}, ${prev.companyId},
            (select max(revision) from mentions
             where response_id = ${responseId} and company_id = ${prev.companyId}) + 1,
-           false, ${parserUsed}, 0.85, false)
+           false, ${parserUsed}, 0.85, false, ${classifierModel},
+           ${classifierPromptVersion})
       `;
     }
 
@@ -154,14 +165,15 @@ export async function parseResponse(responseId: string): Promise<void> {
         insert into mentions
           (response_id, company_id, revision, mentioned, recommended,
            list_position, sentiment, excerpt, cited_urls, parser_version,
-           confidence, needs_review)
+           confidence, needs_review, classifier_model, classifier_prompt_version)
         values
           (${responseId}, ${draft.companyId},
            coalesce((select max(revision) from mentions
              where response_id = ${responseId} and company_id = ${draft.companyId}), 0) + 1,
            ${draft.mentioned}, ${draft.recommended}, ${draft.listPosition},
            ${draft.sentiment}, ${draft.excerpt}, ${draft.citedUrls},
-           ${parserUsed}, ${draft.confidence}, ${draft.needsReview})
+           ${parserUsed}, ${draft.confidence}, ${draft.needsReview},
+           ${classifierModel}, ${classifierPromptVersion})
       `;
     }
 
@@ -234,8 +246,11 @@ export async function parseResponse(responseId: string): Promise<void> {
     }
 
     await tx`
-      insert into response_parses (response_id, run_id, parser_version)
-      values (${responseId}, ${response.runId}, ${parserUsed})
+      insert into response_parses
+        (response_id, run_id, parser_version, classifier_model,
+         classifier_prompt_version)
+      values (${responseId}, ${response.runId}, ${parserUsed},
+        ${classifierModel}, ${classifierPromptVersion})
       on conflict do nothing
     `;
   });

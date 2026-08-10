@@ -20,6 +20,7 @@ import { costMicroUsd, microToUsd, usdToMicro } from "@/lib/ai/pricing";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 import { expandCells, type Cell } from "@/lib/runs/cells";
+import { findReusableCapture } from "@/lib/runs/reuse";
 import { concurrencyFor, sharedRateGate } from "@/lib/ai/limits";
 
 /** Ceiling. The effective figure is the lowest limit among the run's providers. */
@@ -46,6 +47,8 @@ interface ExecState {
   spentMicro: number;
   failed: number;
   launched: number;
+  /** Cells satisfied by copying another project's capture (spec 054). */
+  reused: number;
 }
 
 export async function executeRun(runId: string): Promise<void> {
@@ -99,6 +102,7 @@ export async function executeRun(runId: string): Promise<void> {
     spentMicro: await runCostMicroUsd(runId),
     failed: 0,
     launched: 0,
+    reused: 0,
   };
   const budgetMicro = usdToMicro(Number(run.budgetUsd));
 
@@ -141,6 +145,16 @@ export async function executeRun(runId: string): Promise<void> {
           return;
         }
         state.launched += 1;
+
+        // Shared market captures (spec 054): a recent original capture of
+        // the byte-identical prompt from ANOTHER project satisfies this
+        // cell without a provider call or budget draw. Same-project runs
+        // never reuse — a retest must not "measure" its own baseline.
+        if (run.reuseCaptures) {
+          const reused = await tryReuseCapture(runId, run.projectId, cell, state);
+          if (reused) continue;
+        }
+
         await waitForSlot(cell.provider);
         await executeCell(runId, cell, state);
       }
@@ -149,6 +163,53 @@ export async function executeRun(runId: string): Promise<void> {
   await Promise.all(workers);
 
   await finalizeRun(runId, allCells.length, state);
+}
+
+/**
+ * Copy a reusable capture into this run (spec 054). Full payload, tokens,
+ * request params, and shape verdict travel; cost is 0 — the platform paid
+ * once, at the original — and `reused_from` is the provenance. Returns
+ * false when no eligible source exists (the caller then spends).
+ */
+async function tryReuseCapture(
+  runId: string,
+  projectId: string,
+  cell: Cell,
+  state: ExecState
+): Promise<boolean> {
+  const source = await findReusableCapture(cell, projectId);
+  if (!source) return false;
+  try {
+    await sql`
+      insert into responses
+        (run_id, prompt_id, prompt_text, provider, model, repetition,
+         raw_payload, response_text, refusal, latency_ms, tokens_in,
+         tokens_out, cost_usd, request_params, shape_recognized, reused_from)
+      values
+        (${runId}, ${cell.promptId}, ${cell.promptText}, ${cell.provider},
+         ${cell.model}, ${cell.repetition},
+         ${sql.json(source.rawPayload as never)}, ${source.responseText},
+         ${source.refusal}, 0, ${source.tokensIn}, ${source.tokensOut}, 0,
+         ${sql.json(source.requestParams as never)},
+         ${source.shapeRecognized}, ${source.id})
+    `;
+  } catch (err) {
+    // 23505: a concurrent attempt already captured this cell — that row wins.
+    if (!(typeof err === "object" && err !== null && "code" in err &&
+        (err as { code?: string }).code === "23505")) {
+      throw err;
+    }
+  }
+  state.reused += 1;
+  log("info", "run.capture_reused", {
+    runId,
+    provider: cell.provider,
+    model: cell.model,
+    promptId: cell.promptId,
+    repetition: cell.repetition,
+    sourceResponseId: source.id,
+  });
+  return true;
 }
 
 async function executeCell(
@@ -205,13 +266,15 @@ async function executeCell(
           insert into responses
             (run_id, prompt_id, prompt_text, provider, model, repetition,
              raw_payload, response_text, refusal, latency_ms, tokens_in,
-             tokens_out, cost_usd)
+             tokens_out, cost_usd, request_params, shape_recognized)
           values
             (${runId}, ${cell.promptId}, ${cell.promptText}, ${cell.provider},
              ${cell.model}, ${cell.repetition},
              ${tx.json(result.rawPayload as never)}, ${result.responseText},
              ${result.refusal}, ${Date.now() - startedAt}, ${result.tokensIn},
-             ${result.tokensOut}, ${micro === null ? null : microToUsd(micro)})
+             ${result.tokensOut}, ${micro === null ? null : microToUsd(micro)},
+             ${tx.json(result.requestParams as never)},
+             ${result.shapeRecognized !== false})
         `;
         if (micro !== null) {
           await tx`
@@ -329,7 +392,13 @@ async function finalizeRun(
       dedupeKey: `benchmark-final:${runId}`,
     });
   });
-  log("info", "run.execute.done", { runId, status, successes, totalCells });
+  log("info", "run.execute.done", {
+    runId,
+    status,
+    successes,
+    totalCells,
+    reusedCaptures: state.reused,
+  });
 
   // Parsing kicks off automatically after execution (spec 004 / docs/07 step 5)
   const { enqueueParseJobs } = await import("@/lib/parsing/service");

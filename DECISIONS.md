@@ -1473,3 +1473,184 @@ dependency installed, 22 copies of the current-revision SQL predicate, 9
 divergent percent formatters, and the write-only tables. Each needs either
 a product decision or a wide mechanical diff, and none is a correctness
 risk today.
+
+## 2026-08-09 — Spec 050: truth hardening (branch feat/050-truth-hardening)
+
+**Mock scoring is a separate permission from mock running.**
+`ALLOW_MOCK_PROVIDER` was one flag doing two jobs: letting the mock provider
+run (a dev convenience) and letting its fabricated captures fold into score
+rows (fabricated evidence). Split: `mockScoringAllowed()` requires the test
+runner or an explicit `ALLOW_MOCK_SCORING=1`, and returns false under
+`AUTH_MODE=supabase` unconditionally — the real-auth posture never scores
+fiction, whatever the flags say. Seeds/e2e opt in explicitly.
+
+**The instrument is recorded, not inferred.** `responses.request_params`
+stores what each adapter actually sent (provider defaults recorded AS
+"provider_default" — a truthful statement, unlike omission); mentions and
+response_parses carry `classifier_model` + `classifier_prompt_version`.
+A pinned SHA-256 unit test fails CI when a classifier prompt is edited
+without bumping its version constant. Why: parser_version named the family
+but not the instrument, so a model/prompt change altered every future
+client metric with no stamp changing and no CI signal.
+
+**One spend pool.** Insert-only `llm_calls` written from inside `runAgent`
+(success and terminal failure — the spend happened either way);
+`spendLast24hUsd()` and per-client rollups now include agent spend. The
+daily ceiling semantics deliberately changed: classification/content/
+accuracy traffic draws down the same $25/day as benchmark runs, because a
+cap that ignores the highest-volume caller is a receipt, not a cap.
+
+**Team/Group equality is a hypothesis, not a match.** `scoreNameMatch`
+demotes name equality that exists only because `group`/`team` were stripped
+to `probable` (requires review); legal suffixes and "the" still collapse; a
+domain tie still auto-matches. "Rivera Team" vs "Rivera Group" are
+frequently different real-estate firms, and a team is not the agent it is
+named after. Consequence accepted: discovery auto-links less and surfaces
+more `possible` verdicts for a human. `createBenchmarkProject` now resolves
+through the one resolver (match links / possible refuses with candidates
+named / none creates) instead of exact-lower(name)-or-create, which minted
+duplicate companies.
+
+**The production classifier is measured.** Versioned gold corpus
+(`classifier-gold-v1`, real-estate traps: brokerage-vs-team, Team/Group
+collisions, agent-vs-team, same-name-other-industry) runs through
+`classifyResponseLlm` itself; metrics are pure math against exported
+floors; every evaluation persists to insert-only `classifier_evaluations`.
+CI proves the harness with stub callers (an all-positive classifier fails
+the shipped corpus); `scripts/eval-classifier.ts` runs it live and is
+required before any instrument change ships. The review queue's human
+verdicts become `classifierDisagreementRate()` — a continuously-produced
+accuracy signal that was previously discarded.
+
+## 2026-08-09 — Spec 051: value loop closure (branch feat/051-value-loop)
+
+**Verdicts are frozen into the snapshot, not recomputed for display.**
+`SnapshotIntervention.verdictSummaries` is computed by the existing
+`computeVerdicts` at snapshot-build time and stored in the immutable body:
+the client's report records exactly what was known at publication — later
+post-runs change future reports, never a delivered one. One shared helper
+(`interventionVerdictSummaries`) feeds the snapshot and the portal; one
+translation (`verdictLine`) turns verdicts into client language, and it
+deliberately says "no clear change yet", never "didn't work" — absence of
+a notable delta at one offset is not a negative result.
+
+**The causal gate rides the evidence gate.** `CAUSAL_PHRASES` is exported
+from the workflow gates (one list) and `validateNarrative` blocks causal
+sentences at publish regardless of digits. Why: the digit rule alone let
+"our work drove your gains" publish clean, and that sentence is precisely
+what the attribution system exists to prevent asserting without labels.
+
+**Live verification is a job, not a promise.** `url_verifications` is
+append-only; `createIntervention` enqueues `verify_intervention_urls`
+transactionally with the insert, the worker fetches through `safeFetch`
+(one egress policy), and a failed page is a recorded fact — never an
+exception. Accuracy findings now pass through `fix_in_progress`;
+`corrected` requires the linked task done (`markFindingCorrected`,
+audited) — the old path wrote `corrected` at task creation.
+
+**One outcome spine.** `createIntervention` records an `action_outcomes`
+row with `intervention_id` in the same transaction (+6w horizon matching
+the retest schedule), so the intervention-verdict loop and the
+outcomes→learnings loop finally share a row and a learning can cite a real
+intervention's verdict. Interventions carry `owner_id`/`cost_usd`;
+approval workflow stays deferred (audit F3, P2).
+
+**Delivery is a ledger, not an integration.** `report_deliveries` is
+insert-only and published-only; the operator's mail client remains the
+transport — the same honest pattern as the prospect manual channel — so no
+ESP/sender-identity decision (spec 052) is preempted while "was this ever
+sent, to whom, when" becomes answerable.
+
+## 2026-08-09 — Spec 052: manual outbound safety (branch feat/052-outbound-safety)
+
+**Audit numbers are bound to score rows, and publish verifies the binding.**
+Snapshot comparison rows carry the immutable `scores` row id per metric;
+`publishAudit` refuses any rate that is unbound or does not exactly match
+its referenced row. Traceability on the prospect surface was a code-review
+invariant (the assembly happened to read from scores); it is now
+architecture — the prospect-facing twin of the report citation gate.
+
+**The missing sender decision blocks sends instead of producing
+non-compliant ones.** `outreach_sender_identity` (one active row, admin-
+set, append-and-deactivate) is required by draft generation and the send
+gate; the opt-out footer now carries the truthful sender, company, and the
+physical postal address CAN-SPAM §7704(a)(5) requires. A published audit
+whose link cannot resolve (`APP_URL` unset) refuses draft generation — the
+silent no-link fallback was exactly how the first real email would have
+shipped without its proof.
+
+**Re-contact guards are ledger queries, not new state.** The insert-only
+send ledger already knew who was contacted when; the gate now reads it:
+same email under another prospect within 30 days refuses, and a brokerage
+is capped at 3 allowed sends per 30 days. Windows are constants, not
+config — changing them is a policy decision that belongs in a diff.
+
+**Every send re-checks territory.** `exclusivity_agreements` gains
+`reserved` (a pending-proposal hold that occupies the territory exactly
+like active; dates still govern), and the send gate re-runs conflict
+detection per send, honoring a recorded admin override. No sweep needed:
+signing or reserving suppresses conflicting in-flight sends because
+nothing sends without re-checking.
+
+**Erasure and immutability reconciled.** Measurement data (responses,
+mentions, scores) is immutable and contains no contact PII; contact PII is
+deletable on request. What must survive is the never-contact-again
+promise, and it lives in the suppression list as a normalized match key —
+tombstone and erasure commit in ONE transaction, so neither ever exists
+without the other. `stalePiiReport` makes retention visible before a
+retention policy exists.
+
+**Access grants are doors, not records.** `revokeClientAccess` deletes the
+grant (access control is deletable; the users row and audit history stay)
+and `setUserActive` finally gives the product a hand on the `users.active`
+switch auth always honored — never on yourself.
+
+## 2026-08-09 — Spec 053: fleet drift & sentinel (branch feat/053-fleet-drift)
+
+**One signal, not N client stories.** The fleet detector groups
+comparable-pair subject deltas across all client projects and opens ONE
+drift signal per (provider, metric, direction) fingerprint naming every
+affected project — the floor is ≥3 projects AND ≥50% of the *measurable*
+fleet (projects without a comparable pair are unknown, not stable, and
+leave the denominator). Pure math, known-answer tested; no model near it.
+
+**Open-fingerprint dedupe instead of a scheduler contract.** The detector
+is safe on any cadence because a partial unique index allows one OPEN
+signal per fingerprint; acknowledging (audited, with a note) re-arms
+detection for a recurrence. This is what lets it ride the existing cron
+heartbeat with zero new scheduling machinery.
+
+**Shape drift is now data.** `responses.shape_recognized` persists the
+adapter's verdict that previously died in an error log; a week's window of
+false flags per provider is a standing signal until acknowledged.
+
+**Sentinels are ordinary projects.** `kind='sentinel'` reuses the entire
+measurement stack (prompt sets, runs, scoring, scheduling) and inherits
+exclusion from client/portfolio surfaces from the existing kind='client'
+filters. On a sentinel, ANY comparable-pair movement is the anomaly —
+that inversion is the whole design. Weekly-cycle inclusion for sentinels
+is a deliberate follow-up, not an accident.
+
+## 2026-08-10 — Spec 054: shared market captures (branch feat/054-shared-captures)
+
+**Capture reuse, not shared runs.** Runs stay project-owned (budgets,
+evidence, immutability, scheduling all key on project); the saving comes
+from satisfying a cell with a copy of another project's recent capture of
+the byte-identical prompt. Moving run ownership to markets would have
+reworked half the platform for no additional saving.
+
+**Same-project never reuses.** A retest or weekly cycle must sample fresh
+— reusing within a project would let a measurement "measure" its own
+baseline. Cross-project reuse inside a 72h window is the deliberate
+inverse: same-market clients measured in the same cycle should see the
+same market reality (it improves comparability, not just cost).
+
+**Provenance always points at the paid original.** Copies never serve as
+sources (`reused_from is null` in the eligibility query), so every copy
+is one hop from the capture the platform actually paid for. Cost is
+recorded as 0 on copies — the ledger stays truthful about what was spent,
+and `reused_from` answers "did we pay for this answer or share it?".
+
+**Mock never participates.** Test and demo behavior is a contract other
+suites rely on; excluding the mock keeps every existing suite's
+call-counting semantics intact and costs nothing (the mock is free).

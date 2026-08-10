@@ -69,10 +69,24 @@ export function getEmailChannel(id: string): EmailChannel {
   return channel;
 }
 
-/** Appended to every transmitting dispatch; reply-based opt-out is the
- * functioning return path, and opt-out replies land on the suppression list. */
-export function optOutFooter(senderName: string): string {
-  return `\n\n—\nSent by ${senderName}. If you'd rather not hear from us, reply "unsubscribe" and we will not contact you again.`;
+/**
+ * Appended to every transmitting dispatch AND to system-generated draft
+ * bodies (so manual sends copied from a draft are compliant too). Built
+ * from the configured sender identity: truthful sender, company, and the
+ * physical postal address CAN-SPAM §7704(a)(5) requires — the old footer
+ * carried only a user name (spec 052). Reply-based opt-out is the
+ * functioning return path; opt-out replies land on the suppression list.
+ */
+export function optOutFooter(identity: {
+  senderName: string;
+  companyName: string;
+  postalAddress: string;
+}): string {
+  return (
+    `\n\n—\n${identity.senderName} · ${identity.companyName}\n` +
+    `${identity.postalAddress}\n` +
+    `If you'd rather not hear from us, reply "unsubscribe" and we will not contact you again.`
+  );
 }
 
 /** The gate asserts an opt-out mention exists before a transmitting send. */

@@ -6,6 +6,7 @@ import { listAllModels } from "@/lib/ai/registry";
 import { getEnv } from "@/lib/env";
 import { listActiveStaffUsers } from "@/db/users";
 import { listPortalGrants } from "@/lib/portal/invite";
+import { GrantActions } from "@/components/portal/grant-actions";
 import { getCurrentUser } from "@/lib/auth";
 import { ClientInviteForm } from "@/components/settings/client-invite-form";
 import { BaselineSettingsForm } from "@/components/settings/baseline-settings-form";
@@ -97,11 +98,19 @@ export default async function ProjectSettingsPage({
           portal — never the internal workspace. Invites are admin-only.
         </p>
         {grants.length > 0 && (
-          <ul className="mb-3 space-y-1 text-sm">
+          <ul className="mb-3 space-y-2 text-sm">
             {grants.map((g) => (
-              <li key={g.userId} className="text-muted-foreground">
-                {g.name} · {g.email}
-                {!g.active && " · deactivated"}
+              <li
+                key={g.userId}
+                className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground"
+              >
+                <span>
+                  {g.name} · {g.email}
+                  {!g.active && " · deactivated"}
+                </span>
+                {currentUser.role === "admin" && (
+                  <GrantActions projectId={id} userId={g.userId} active={g.active} />
+                )}
               </li>
             ))}
           </ul>

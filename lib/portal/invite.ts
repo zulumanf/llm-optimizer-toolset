@@ -128,3 +128,91 @@ export async function listPortalGrants(projectId: string): Promise<
     active: Boolean(r.active),
   }));
 }
+
+/**
+ * Revoke a client's portal grant (spec 052, audit F29). Grants are access
+ * control, not measurement data — deletable. The users row and any audit
+ * history stay; only the door closes. Admin-only, audited.
+ */
+export async function revokeClientAccess(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ revoked: boolean }>> {
+  const parsed = z
+    .object({ userId: z.string().uuid(), projectId: z.string().uuid() })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    assertRole(user, "admin");
+    await assertProjectAccess(user, input.projectId);
+    const revoked = await sql.begin(async (tx) => {
+      const rows = await tx`
+        delete from user_project_access
+        where user_id = ${input.userId} and project_id = ${input.projectId}
+        returning user_id
+      `;
+      if (rows.length === 0) return false;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "portal.access_revoked",
+        entity: "user",
+        entityId: input.userId,
+        detail: { projectId: input.projectId },
+      });
+      return true;
+    });
+    if (!revoked) {
+      return fail(new ClassifiedError("not_found", "No grant exists for that user and project."));
+    }
+    return ok({ revoked: true });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Deactivate (or reactivate) a login. Auth reads users.active on every
+ * request, so deactivation takes effect immediately — the column existed
+ * and nothing in the product could ever set it (audit F29). Never self:
+ * the last admin locking themselves out is not a recoverable state.
+ */
+export async function setUserActive(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ userId: string; active: boolean }>> {
+  const parsed = z
+    .object({ userId: z.string().uuid(), active: z.boolean() })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    assertRole(user, "admin");
+    if (input.userId === user.id && !input.active) {
+      return fail(
+        new ClassifiedError("validation", "You cannot deactivate your own login.")
+      );
+    }
+    await sql.begin(async (tx) => {
+      const [row] = await tx`
+        update users set active = ${input.active} where id = ${input.userId}
+        returning id
+      `;
+      if (!row) throw new ClassifiedError("not_found", "User not found.");
+      await writeAudit(tx, {
+        userId: user.id,
+        action: input.active ? "user.reactivated" : "user.deactivated",
+        entity: "user",
+        entityId: input.userId,
+        detail: {},
+      });
+    });
+    return ok({ userId: input.userId, active: input.active });
+  } catch (err) {
+    return fail(err);
+  }
+}

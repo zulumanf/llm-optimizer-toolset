@@ -53,6 +53,7 @@ export const mockProvider: AIProvider = {
       refusal,
       tokensIn: 10,
       tokensOut: 50,
+      requestParams: { sampling: "provider_default", mock: true },
     };
   },
 };

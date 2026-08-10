@@ -14,6 +14,7 @@ const env = {
   DATABASE_URL: E2E_DB,
   AUTH_MODE: "dev",
   ALLOW_MOCK_PROVIDER: "1",
+  ALLOW_MOCK_SCORING: "1",
   APP_URL: `http://localhost:${PORT}`,
   NEXT_DIST_DIR: ".next-e2e",
   // CI runs the compiled app (below), and `next start` forces

@@ -112,9 +112,15 @@ describe("outreach channels", () => {
     expect(() => getEmailChannel("gmail")).toThrow(/Unknown outreach channel/);
   });
 
-  it("opt-out helpers: footer carries the instruction; detection is case-insensitive", () => {
-    const footer = optOutFooter("Dana Operator");
+  it("opt-out helpers: footer carries the instruction AND the postal address (spec 052)", () => {
+    const footer = optOutFooter({
+      senderName: "Dana Operator",
+      companyName: "AVOS Agency LLC",
+      postalAddress: "123 Grand St, Jersey City, NJ 07302",
+    });
     expect(hasOptOutMention(footer)).toBe(true);
+    expect(footer).toContain("123 Grand St, Jersey City, NJ 07302");
+    expect(footer).toContain("AVOS Agency LLC");
     expect(hasOptOutMention("Plain pitch text")).toBe(false);
     expect(hasOptOutMention("Reply UNSUBSCRIBE anytime")).toBe(true);
     expect(hasOptOutMention("you can opt out")).toBe(true);

@@ -8,6 +8,8 @@ import {
 import { listActiveProjects } from "@/db/projects";
 import { BriefGenerator } from "@/components/control-tower/brief-generator";
 import { actionRequiredQueue } from "@/lib/control-tower/queue";
+import { listDriftSignals } from "@/lib/drift/detect";
+import { DriftSignals } from "@/components/control-tower/drift-signals";
 import { computeCapacity, automationByWorkflow } from "@/lib/control-tower/capacity";
 import { PRIORITY_FORMULA_VERSION } from "@/lib/workflow/exceptions";
 import { HEALTH_WEIGHTS_VERSION } from "@/lib/control-tower/health";
@@ -68,10 +70,11 @@ function periodOfLastDays(days: number): { start: string; end: string } {
 
 export default async function ControlTowerPage() {
   const period = periodOfLastDays(28);
-  const [metrics, queue, health, capacity, automation, activeProjects, briefs] =
+  const [metrics, queue, driftSignals, health, capacity, automation, activeProjects, briefs] =
     await Promise.all([
       portfolioMetrics(),
       actionRequiredQueue({ limit: 40 }),
+      listDriftSignals("open"),
       latestHealthByClient(),
       computeCapacity(period),
       automationByWorkflow(period),
@@ -160,6 +163,8 @@ export default async function ControlTowerPage() {
       <p className="mb-6 rounded-md border border-dashed p-3 text-xs text-muted-foreground">
         <strong>Capacity note.</strong> {capacity.notes}
       </p>
+
+      <DriftSignals signals={driftSignals} />
 
       <section className="mb-8">
         <h2 className="mb-2 text-lg font-medium">

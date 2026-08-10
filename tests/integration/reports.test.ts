@@ -114,6 +114,25 @@ describe.skipIf(!TEST_URL)("reports (integration)", () => {
     return project.data.id;
   }
 
+  /** A second run on the same frozen version — a comparable prior for deltas. */
+  async function seedSecondRun(projectId: string): Promise<void> {
+    const [version] = await sql`
+      select v.id from prompt_set_versions v
+      join prompt_sets s on s.id = v.prompt_set_id
+      where s.project_id = ${projectId}
+      order by v.frozen_at desc limit 1
+    `;
+    const started = await runSvc.startRun(user, {
+      projectId,
+      promptSetVersionId: version?.id as string,
+      providers: [{ provider: "mock", model: "mock-model", repetitions: 2 }],
+      budgetUsd: 5,
+      label: "report run 2",
+    });
+    if (!started.ok) throw new Error(started.error.message);
+    await drainJobs();
+  }
+
   // Period bounds straddle today generously: JS dates are UTC-based while
   // Postgres compares timestamptz against date in server-local time, so an
   // exact "today" breaks for a few hours around UTC midnight.
@@ -186,6 +205,88 @@ describe.skipIf(!TEST_URL)("reports (integration)", () => {
     const published = await reports.publishReport(user, { reportId: draft.data.id });
     expect(published.ok).toBe(false);
     if (!published.ok) expect(published.error.message).toMatch(/Evidence gate/);
+  });
+
+  it("causal-language gate: numberless causal prose is blocked at publish (spec 051)", async () => {
+    const projectId = await seedScoredRun();
+    const draft = await reports.generateReportDraft(user, {
+      projectId,
+      title: "Causal gate",
+      periodStart,
+      periodEnd,
+    });
+    if (!draft.ok) throw new Error(draft.error.message);
+
+    // No digits — the old evidence gate let this through clean (audit F19).
+    await reports.updateReportNarrative(user, {
+      reportId: draft.data.id,
+      sectionKey: "summary",
+      markdown: "Our work drove the visibility gains you saw this quarter.",
+    });
+    const published = await reports.publishReport(user, { reportId: draft.data.id });
+    expect(published.ok).toBe(false);
+    if (!published.ok) {
+      expect(published.error.message).toMatch(/causal claim/);
+      expect(published.error.message).toContain("drove the");
+    }
+  });
+
+  it("delta rows carry sample sizes and headline rates get real verdicts (spec 051)", async () => {
+    const projectId = await seedScoredRun();
+    // A second scored run in-period gives the snapshot a comparable prior.
+    await seedSecondRun(projectId);
+    const draft = await reports.generateReportDraft(user, {
+      projectId,
+      title: "Deltas",
+      periodStart,
+      periodEnd,
+    });
+    if (!draft.ok) throw new Error(draft.error.message);
+    const [row] = await sql`select body from reports where id = ${draft.data.id}`;
+    const body = row?.body as import("@/lib/reports/types").ReportBody;
+    if (body.deltas.length > 0) {
+      expect(body.deltas.every((d) => typeof d.nCurrent === "number")).toBe(true);
+      const firstPos = body.deltas.find((d) => d.metric === "first_position_rate");
+      // Headline metric now yields a verdict instead of null (audit F21)
+      if (firstPos) expect(firstPos.verdict).not.toBeNull();
+    }
+  });
+
+  it("delivery ledger: published-only, insert-only, audited (spec 051)", async () => {
+    const projectId = await seedScoredRun();
+    const draft = await reports.generateReportDraft(user, {
+      projectId,
+      title: "Delivery",
+      periodStart,
+      periodEnd,
+    });
+    if (!draft.ok) throw new Error(draft.error.message);
+
+    const early = await reports.recordReportDelivery(user, {
+      reportId: draft.data.id,
+      channel: "manual_email",
+      recipient: "maria@rivera-team.com",
+    });
+    expect(early.ok).toBe(false);
+    if (!early.ok) expect(early.error.message).toMatch(/published/);
+
+    const published = await reports.publishReport(user, { reportId: draft.data.id });
+    if (!published.ok) throw new Error(published.error.message);
+    const recorded = await reports.recordReportDelivery(user, {
+      reportId: draft.data.id,
+      channel: "manual_email",
+      recipient: "maria@rivera-team.com",
+      note: "Quarterly call prep",
+    });
+    expect(recorded.ok).toBe(true);
+
+    const history = await reports.listReportDeliveries(draft.data.id);
+    expect(history).toHaveLength(1);
+    expect(history[0]?.recipient).toBe("maria@rivera-team.com");
+
+    await expect(
+      sql`delete from report_deliveries where report_id = ${draft.data.id}`
+    ).rejects.toThrow(/insert-only/);
   });
 
   it("publish with pending reviews requires explicit acknowledgment (audited)", async () => {

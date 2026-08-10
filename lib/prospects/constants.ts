@@ -299,6 +299,15 @@ export function visibilityThreshold(responseCount: number): number {
 }
 
 /** Sender identity for the audit footer (PR B, P5e) — env-configured so
- * the template never hardcodes a person. Absent values render nothing. */
+ * the template never hardcodes a person. Absent values render nothing.
+ * The OUTBOUND sender of record is outreach_sender_identity (spec 052);
+ * these remain page-display credibility fields only. */
 export const SENDER_COMPANY = process.env.SENDER_COMPANY ?? null;
 export const SENDER_CREDENTIAL = process.env.SENDER_CREDENTIAL ?? null;
+
+// Re-contact guards (spec 052). Per-prospect DNC alone let the same human
+// be contacted under two prospects, and three teams in one brokerage in
+// one week. Windows are deliberate constants, not config — changing them
+// is a policy decision that belongs in a diff.
+export const RECONTACT_PERSON_WINDOW_DAYS = 30;
+export const BROKERAGE_SEND_CAP_30D = 3;

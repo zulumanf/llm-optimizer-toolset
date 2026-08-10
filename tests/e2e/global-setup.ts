@@ -39,6 +39,7 @@ export default function globalSetup(): void {
       DATABASE_URL: E2E_DB,
       AUTH_MODE: "dev",
       ALLOW_MOCK_PROVIDER: "1",
+      ALLOW_MOCK_SCORING: "1",
       PGCONNECT_TIMEOUT: "10",
     },
   });

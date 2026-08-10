@@ -8,6 +8,7 @@
  * resolve inside the snapshot.
  */
 import type { ReportBody, NarrativeSection, SnapshotScore } from "@/lib/reports/types";
+import { CAUSAL_PHRASES } from "@/lib/workflow/gates";
 
 const CITATION_RE = /\[(score|response|finding|accuracy):([0-9a-f-]{36})\]/g;
 // Non-global twin for .test() — the global one is stateful and unsafe there
@@ -19,6 +20,11 @@ export interface ValidationResult {
   ok: boolean;
   uncitedSentences: string[];
   unresolvedCitations: string[];
+  /** Sentences making causal claims (spec 051). Causality belongs to the
+   * attribution system's labeled outcomes, never to narrative prose — and
+   * the digit rule alone let numberless causal prose ("our work drove your
+   * gains") publish clean (audit F19). */
+  causalSentences: string[];
 }
 
 export function validateNarrative(
@@ -37,6 +43,7 @@ export function validateNarrative(
   );
   const uncitedSentences: string[] = [];
   const unresolvedCitations: string[] = [];
+  const causalSentences: string[] = [];
 
   for (const text of Object.values(narrative)) {
     if (!text) continue;
@@ -61,13 +68,21 @@ export function validateNarrative(
       if (/\d/.test(withoutCitations) && !CITATION_TEST.test(sentence)) {
         uncitedSentences.push(sentence);
       }
+      const lower = sentence.toLowerCase();
+      if (CAUSAL_PHRASES.some((phrase) => lower.includes(phrase))) {
+        causalSentences.push(sentence);
+      }
     }
   }
 
   return {
-    ok: uncitedSentences.length === 0 && unresolvedCitations.length === 0,
+    ok:
+      uncitedSentences.length === 0 &&
+      unresolvedCitations.length === 0 &&
+      causalSentences.length === 0,
     uncitedSentences,
     unresolvedCitations,
+    causalSentences,
   };
 }
 

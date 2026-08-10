@@ -64,7 +64,7 @@ export async function runSummary(runId: string): Promise<RunSummary | null> {
  */
 export async function scoredEntities(runId: string): Promise<BenchmarkEntityMetrics[]> {
   const rows = await sql`
-    select s.company_id, c.name, s.metric, s.value, s.sample_size
+    select s.id as score_id, s.company_id, c.name, s.metric, s.value, s.sample_size
     from scores s join companies c on c.id = s.company_id
     where s.run_id = ${runId} and s.provider = 'all'
       and s.scoring_version = ${SCORING_VERSION}
@@ -82,12 +82,14 @@ export async function scoredEntities(runId: string): Promise<BenchmarkEntityMetr
         shareOfVoice: null,
         citationScore: null,
         sampleSize: 0,
+        scoreIds: {},
       };
       byCompany.set(id, entity);
     }
     const value = row.value === null ? null : Number(row.value);
     const n = Number(row.sampleSize ?? 0);
     entity.sampleSize = Math.max(entity.sampleSize, n);
+    entity.scoreIds[row.metric as string] = row.scoreId as string;
     if (row.metric === "mention_rate") entity.mentionRate = value;
     else if (row.metric === "recommendation_rate") entity.recommendationRate = value;
     else if (row.metric === "share_of_voice") entity.shareOfVoice = value;

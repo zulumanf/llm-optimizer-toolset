@@ -69,13 +69,21 @@ export const openaiProvider: AIProvider = {
         tools: [{ type: "web_search" }],
         input: req.promptText,
       });
-      return { rawPayload: response, ...parseResponsesPayload(response) };
+      return {
+        rawPayload: response,
+        ...parseResponsesPayload(response),
+        requestParams: { sampling: "provider_default", tools: ["web_search"] },
+      };
     }
 
     const response = await getClient().chat.completions.create({
       model: req.model,
       messages: [{ role: "user", content: req.promptText }],
     });
-    return { rawPayload: response, ...parseChatCompletion(response) };
+    return {
+      rawPayload: response,
+      ...parseChatCompletion(response),
+      requestParams: { sampling: "provider_default" },
+    };
   },
 };

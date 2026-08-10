@@ -18,8 +18,8 @@ npm run app        # scripts/dev-all.sh: starts Postgres if down, migrates,
 always override, or you will read/migrate production:
 
 ```bash
-DATABASE_URL="postgres://localhost:5433/llm_optimizer_dev" AUTH_MODE=dev ALLOW_MOCK_PROVIDER=1 APP_URL=http://localhost:3000 npm run dev
-DATABASE_URL="postgres://localhost:5433/llm_optimizer_dev" AUTH_MODE=dev ALLOW_MOCK_PROVIDER=1 APP_URL=http://localhost:3000 npm run worker
+DATABASE_URL="postgres://localhost:5433/llm_optimizer_dev" AUTH_MODE=dev ALLOW_MOCK_PROVIDER=1 ALLOW_MOCK_SCORING=1 APP_URL=http://localhost:3000 npm run dev
+DATABASE_URL="postgres://localhost:5433/llm_optimizer_dev" AUTH_MODE=dev ALLOW_MOCK_PROVIDER=1 ALLOW_MOCK_SCORING=1 APP_URL=http://localhost:3000 npm run worker
 ```
 
 - `APP_URL`: share links (audit copy button, draft audit links) are built
@@ -32,6 +32,8 @@ DATABASE_URL="postgres://localhost:5433/llm_optimizer_dev" AUTH_MODE=dev ALLOW_M
 - `ALLOW_MOCK_PROVIDER=1`: enables the mock AI provider + mock prospect
   source (fixture data, clearly fictional). Real runs need `OPENAI_API_KEY`
   (in `.env`) and don't need this flag.
+- `ALLOW_MOCK_SCORING=1`: additionally lets computeScores fold mock captures
+  into scores (spec 050). Dev/demo only — refused whenever AUTH_MODE=supabase.
 - Postgres: postgresql@14 on **:5433** via brew services. After a reboot it
   may not auto-start: `brew services start postgresql@14`.
 

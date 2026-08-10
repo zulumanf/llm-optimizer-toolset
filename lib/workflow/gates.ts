@@ -403,7 +403,9 @@ export interface ExecutiveReportingInput {
   causalStatementsHumanApproved: boolean;
 }
 
-const CAUSAL_PHRASES = ["caused", "because of our", "drove the", "resulted in", "led to"];
+/** The one causal-phrase list (spec 051): shared by the executive brief
+ * gate and the client report narrative gate — never a third copy. */
+export const CAUSAL_PHRASES = ["caused", "because of our", "drove the", "resulted in", "led to"];
 
 export function executiveReportingGate(input: ExecutiveReportingInput): GateResult {
   const materialWithoutEvidence = input.statements.filter(

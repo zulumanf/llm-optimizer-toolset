@@ -34,6 +34,25 @@ export function mockProviderAllowed(): boolean {
   );
 }
 
+/**
+ * May mock captures count as MEASUREMENTS? A stricter question than
+ * mockProviderAllowed — running the mock (seeds, demos) is a development
+ * convenience; folding its canned answers into score rows is fabricated
+ * evidence (spec 050). The two were one flag, so ALLOW_MOCK_PROVIDER=1 in a
+ * deployed process quietly produced fake client metrics. Now scoring needs
+ * the test runner or an explicit ALLOW_MOCK_SCORING=1, and the real-auth
+ * posture (AUTH_MODE=supabase) refuses regardless of flags — no environment
+ * that authenticates real users ever scores fabrications.
+ */
+export function mockScoringAllowed(): boolean {
+  if (process.env.AUTH_MODE === "supabase") return false;
+  return (
+    process.env.NODE_ENV === "test" ||
+    truthyEnv(process.env.VITEST) ||
+    truthyEnv(process.env.ALLOW_MOCK_SCORING)
+  );
+}
+
 export function getProvider(id: ProviderId): AIProvider {
   if (id === "mock" && !mockProviderAllowed()) {
     throw new ClassifiedError(

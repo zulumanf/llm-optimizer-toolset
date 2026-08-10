@@ -46,6 +46,10 @@ export const perplexityProvider: AIProvider = {
     // that parser rather than keeping a second copy of the same logic that
     // could drift. An unrecognised shape is flagged, not read as an empty
     // answer (docs/09).
-    return { rawPayload: response, ...parseChatCompletion(response) };
+    return {
+      rawPayload: response,
+      ...parseChatCompletion(response),
+      requestParams: { sampling: "provider_default" },
+    };
   },
 };

@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/table";
 import { NarrativeEditor } from "@/components/reports/narrative-editor";
 import { PublishControls } from "@/components/reports/publish-controls";
+import { DeliveryDialog } from "@/components/reports/delivery-dialog";
+import { listReportDeliveries } from "@/lib/reports/service";
 import { NARRATIVE_SECTIONS, type ReportBody } from "@/lib/reports/types";
 import { formatDate } from "@/lib/format";
 
@@ -40,6 +42,7 @@ export default async function ReportPage({
   if (!project || !report || report.projectId !== projectId) notFound();
   const body = report.body as ReportBody;
   const isDraft = report.status === "draft";
+  const deliveries = isDraft ? [] : await listReportDeliveries(reportId);
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -73,9 +76,12 @@ export default async function ReportPage({
         </div>
         <div className="flex shrink-0 gap-2">
           {!isDraft && (
-            <Button asChild size="sm" variant="outline">
-              <a href={`/api/reports/${reportId}/csv`}>Export CSV</a>
-            </Button>
+            <>
+              <Button asChild size="sm" variant="outline">
+                <a href={`/api/reports/${reportId}/csv`}>Export CSV</a>
+              </Button>
+              <DeliveryDialog reportId={reportId} />
+            </>
           )}
           {isDraft && (
             <PublishControls
@@ -101,6 +107,33 @@ export default async function ReportPage({
         {body.coverage.failedCells} failed · {body.coverage.refusals} refusals ·{" "}
         {body.coverage.pendingReview} pending review
       </div>
+
+      {!isDraft && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">Deliveries</h2>
+          {deliveries.length === 0 ? (
+            <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+              Not recorded as delivered yet. Send it from your mailbox (or walk
+              the client through the portal), then record it here so the ledger
+              answers &quot;was this ever sent&quot;.
+            </p>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {deliveries.map((d) => (
+                <li key={d.id} className="rounded-md border px-3 py-2">
+                  <span className="font-medium">{d.recipient}</span>
+                  <span className="text-muted-foreground">
+                    {" "}· {d.channel.replace(/_/g, " ")} ·{" "}
+                    {formatDate(d.deliveredAt)}
+                    {d.deliveredBy ? ` · by ${d.deliveredBy}` : ""}
+                    {d.note ? ` · ${d.note}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {(body.categoryOwnership?.length ?? 0) > 0 && (
         <section className="mb-6">
