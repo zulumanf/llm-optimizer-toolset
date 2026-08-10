@@ -338,6 +338,149 @@ describe.skipIf(!TEST_URL)("prospect benchmark projects (integration)", () => {
     expect(dupes?.n).toBe(0);
   });
 
+  it("spec 057: promotion converts the benchmark in place — baseline, competitors, territory", async () => {
+    await seedClient();
+    const { prospectId } = await seedLaunchAndProspect();
+    const created = unwrap(await svc.createBenchmarkProject(operator, { prospectId }));
+    const runId = await runBenchmark(created.projectId, "pre-signing baseline");
+
+    // Wrong stage refuses.
+    const early = await svc.promoteProspectToClient(operator, { prospectId });
+    expect(early.ok).toBe(false);
+    if (!early.ok) expect(early.error.message).toMatch(/contracted/);
+
+    await sql`update prospects set stage = 'contracted' where id = ${prospectId}`;
+    const promoted = unwrap(
+      await svc.promoteProspectToClient(operator, { prospectId })
+    );
+    // Converted in place: same project id, now a client, renamed.
+    expect(promoted.projectId).toBe(created.projectId);
+    expect(promoted.renamed).toBe(true);
+    expect(promoted.agreementId).not.toBeNull();
+    const [project] = await sql`
+      select kind, name from projects where id = ${created.projectId}
+    `;
+    expect(project?.kind).toBe("client");
+    expect(project?.name).toBe("Rivera Team");
+
+    // The pre-signing baseline stays attached — the first client report
+    // has a comparable prior instead of an orphan (audit B5/12.3).
+    const [runs] = await sql`
+      select count(*)::int as n from runs where project_id = ${created.projectId}
+        and id = ${runId}
+    `;
+    expect(runs?.n).toBe(1);
+    const [scored] = await sql`
+      select count(*)::int as n from scores where run_id = ${runId}
+    `;
+    expect(Number(scored?.n)).toBeGreaterThan(0);
+
+    // Territory locked at close: an active agreement scoped to the market.
+    const [agreement] = await sql`
+      select a.status, s.market_id from exclusivity_agreements a
+      join exclusivity_scopes s on s.agreement_id = a.id
+      where a.project_id = ${created.projectId}
+    `;
+    expect(agreement?.status).toBe("active");
+    expect(agreement?.marketId).toBeDefined();
+
+    // Now on client surfaces (the kind filter that excluded it before).
+    const active = await dbProjects.listActiveProjects(null);
+    expect(active.map((p) => p.id)).toContain(created.projectId);
+
+    // Stamped, audited, and re-promotion refuses.
+    const [row] = await sql`
+      select promoted_project_id from prospects where id = ${prospectId}
+    `;
+    expect(row?.promotedProjectId).toBe(created.projectId);
+    const [audit] = await sql`
+      select detail from audit_log where action = 'prospect.promoted'
+    `;
+    expect(
+      (audit?.detail as { convertedBenchmark?: boolean }).convertedBenchmark
+    ).toBe(true);
+    const again = await svc.promoteProspectToClient(operator, { prospectId });
+    expect(again.ok).toBe(false);
+  });
+
+  it("spec 057: no-benchmark prospects get a fresh client project; name collisions keep the benchmark name", async () => {
+    await seedClient();
+    const { launchId } = await seedLaunchAndProspect();
+
+    // Unlinked prospect refuses.
+    const bare = unwrap(
+      await svc.createProspect(operator, {
+        launchId,
+        businessName: "Harborline Property Advisors",
+        prospectType: "team",
+      })
+    );
+    await sql`update prospects set stage = 'contracted' where id = ${bare.prospectId}`;
+    const unlinked = await svc.promoteProspectToClient(operator, {
+      prospectId: bare.prospectId,
+    });
+    expect(unlinked.ok).toBe(false);
+    if (!unlinked.ok) expect(unlinked.error.message).toMatch(/canonical company/);
+
+    // Linked, no benchmark project: a fresh client project with the subject.
+    const company = unwrap(
+      await companySvc.upsertCompany(operator, { name: "Harborline Property Advisors" })
+    );
+    await sql`
+      update prospects set company_id = ${company.id} where id = ${bare.prospectId}
+    `;
+    const promoted = unwrap(
+      await svc.promoteProspectToClient(operator, {
+        prospectId: bare.prospectId,
+        createAgreement: false,
+      })
+    );
+    expect(promoted.agreementId).toBeNull();
+    const [fresh] = await sql`
+      select kind, name, subject_company_id from projects where id = ${promoted.projectId}
+    `;
+    expect(fresh?.kind).toBe("client");
+    expect(fresh?.subjectCompanyId).toBe(company.id);
+    const [agreements] = await sql`
+      select count(*)::int as n from exclusivity_agreements
+      where project_id = ${promoted.projectId}
+    `;
+    expect(agreements?.n).toBe(0);
+
+    // Collision path: a second prospect whose business name is already an
+    // active project's name keeps its benchmark name.
+    const dupe = unwrap(
+      await svc.createProspect(operator, {
+        launchId,
+        businessName: "Client A",
+        prospectType: "team",
+      })
+    );
+    const dupeCompany = unwrap(
+      await companySvc.upsertCompany(operator, { name: "Client A Co" })
+    );
+    await sql`
+      update prospects set company_id = ${dupeCompany.id}, stage = 'contracted'
+      where id = ${dupe.prospectId}
+    `;
+    const bench = unwrap(
+      await svc.createBenchmarkProject(operator, { prospectId: dupe.prospectId })
+    );
+    // "Client A" the project already exists (seedClient) — rename must yield.
+    const collided = unwrap(
+      await svc.promoteProspectToClient(operator, {
+        prospectId: dupe.prospectId,
+        createAgreement: false,
+      })
+    );
+    expect(collided.renamed).toBe(false);
+    const [kept] = await sql`
+      select kind, name from projects where id = ${bench.projectId}
+    `;
+    expect(kept?.kind).toBe("client");
+    expect(kept?.name).toContain("Prospect benchmark");
+  });
+
   it("creates a new company only when resolution is genuinely `none`", async () => {
     await seedClient();
     const { launchId } = await seedLaunchAndProspect();

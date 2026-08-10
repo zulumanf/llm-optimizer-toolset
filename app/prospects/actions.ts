@@ -114,3 +114,7 @@ export async function transitionStage(input: unknown) {
 export async function addActivityNote(input: unknown) {
   return run((u) => svc.addActivityNote(u, input));
 }
+
+export async function promoteProspect(input: unknown) {
+  return run((u) => svc.promoteProspectToClient(u, input));
+}

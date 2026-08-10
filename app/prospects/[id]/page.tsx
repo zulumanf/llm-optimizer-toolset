@@ -1,3 +1,4 @@
+import { PromoteButton } from "@/components/prospects/promote-button";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -184,7 +185,14 @@ export default async function ProspectDetailPage({
             {prospect.doNotContact && <Badge variant="destructive">do not contact</Badge>}
           </>
         }
-        actions={<StageControl prospectId={id} currentStage={prospect.stage} />}
+        actions={
+          <span className="inline-flex items-center gap-2">
+            {prospect.stage === "contracted" && !prospect.promotedProjectId && (
+              <PromoteButton prospectId={id} />
+            )}
+            <StageControl prospectId={id} currentStage={prospect.stage} />
+          </span>
+        }
       />
 
       <div className="rounded-md border border-primary/50 bg-primary/5 px-4 py-2.5 text-sm">
