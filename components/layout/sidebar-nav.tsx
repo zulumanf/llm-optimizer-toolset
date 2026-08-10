@@ -22,6 +22,7 @@ import {
   LayoutDashboard,
   Shield,
   Users,
+  GraduationCap,
   Workflow,
   Zap,
 } from "lucide-react";
@@ -43,6 +44,7 @@ const SYSTEM_LINKS = [
   { href: "/automation", label: "Automation", icon: Zap },
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/companies", label: "Companies", icon: Building2 },
+  { href: "/learnings", label: "Learnings", icon: GraduationCap },
   { href: "/exclusivity", label: "Exclusivity", icon: Shield },
 ] as const;
 

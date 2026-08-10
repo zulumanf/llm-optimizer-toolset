@@ -7,6 +7,7 @@
  * at the finding that selected it and the evidence behind it, and the same
  * inputs always produce the same plan.
  */
+import { findComparableLearnings, type Learning } from "@/lib/learnings/service";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { sql } from "@/db/client";
@@ -147,6 +148,40 @@ const composeSchema = z.object({
  * Compose a plan. Supersedes any existing draft/approved plan for the client —
  * two live plans are two answers to the same question.
  */
+/**
+ * The feedback edge (spec 058, learning-adjust-v1). Confirmed and
+ * strongly-supported learnings about a play move its rank — supports up,
+ * cautions down — deterministically and visibly; weaker labels annotate
+ * nothing and move nothing. Learnings never add or remove plays: the
+ * catalog and its gates stay the authority on what is possible; the loop
+ * only re-orders and explains.
+ */
+export const LEARNING_ADJUSTMENT_VERSION = "learning-adjust-v1";
+export const LEARNING_SUPPORT_BONUS = 10;
+export const LEARNING_CAUTION_PENALTY = 15;
+export const LEARNING_ADJUSTMENT_CAP = 20;
+const STRONG_LABELS = new Set(["confirmed", "strongly_supported"]);
+
+function learningAdjustment(learnings: Learning[]): {
+  delta: number;
+  supports: number;
+  cautions: number;
+} {
+  let supports = 0;
+  let cautions = 0;
+  for (const learning of learnings) {
+    if (!STRONG_LABELS.has(learning.confidenceLabel)) continue;
+    if (learning.direction === "cautions") cautions += 1;
+    else supports += 1;
+  }
+  const raw = supports * LEARNING_SUPPORT_BONUS - cautions * LEARNING_CAUTION_PENALTY;
+  const delta = Math.max(
+    -LEARNING_ADJUSTMENT_CAP,
+    Math.min(LEARNING_ADJUSTMENT_CAP, raw)
+  );
+  return { delta, supports, cautions };
+}
+
 export async function composePlan(
   user: CurrentUser,
   raw: unknown
@@ -198,6 +233,7 @@ export async function composePlan(
 
     const plays = relevantPlays(gapTypes);
     const items: PlanItem[] = [];
+    const adjustmentByPlay = new Map<string, number>();
     for (const play of plays) {
       const blocked = play.requires?.(state) ?? null;
       // The source finding is the highest-scoring one this play answers, so an
@@ -207,12 +243,36 @@ export async function composePlan(
         .filter((x): x is { id: string; score: number } => Boolean(x))
         .sort((a, b) => b.score - a.score)[0];
 
+      // Spec 058: what measured outcomes already said about this play.
+      const comparable = await findComparableLearnings({
+        playKey: play.key,
+        projectId: input.projectId,
+      });
+      const inScope = comparable.filter(
+        (l) =>
+          l.gapType === null ||
+          (play.gapTypes as readonly string[]).includes(l.gapType)
+      );
+      const adjustment = learningAdjustment(inScope);
+      adjustmentByPlay.set(play.key, adjustment.delta);
+      let rationale = play.why(state);
+      if (adjustment.supports > 0) {
+        rationale += ` Measured outcomes from ${adjustment.supports} comparable engagement${
+          adjustment.supports === 1 ? "" : "s"
+        } support prioritising this play.`;
+      }
+      if (adjustment.cautions > 0) {
+        rationale += ` Measured outcomes from ${adjustment.cautions} comparable engagement${
+          adjustment.cautions === 1 ? "" : "s"
+        } caution against repeating it as-is.`;
+      }
+
       items.push({
         phase: play.phase,
         position: 0,
         playKey: play.key,
         title: play.title,
-        rationale: play.why(state),
+        rationale,
         steps: play.steps(state),
         sourceFindingId: source?.id ?? null,
         evidenceIds: [],
@@ -232,12 +292,14 @@ export async function composePlan(
       const inPhase = items.filter((i) => i.phase === phase);
       inPhase.sort((a, b) => {
         if (a.status !== b.status) return a.status === "planned" ? -1 : 1;
-        const aScore = a.sourceFindingId
-          ? [...bestFindingFor.values()].find((v) => v.id === a.sourceFindingId)?.score ?? 0
-          : 0;
-        const bScore = b.sourceFindingId
-          ? [...bestFindingFor.values()].find((v) => v.id === b.sourceFindingId)?.score ?? 0
-          : 0;
+        const findingScore = (item: PlanItem) =>
+          item.sourceFindingId
+            ? [...bestFindingFor.values()].find((v) => v.id === item.sourceFindingId)?.score ?? 0
+            : 0;
+        // learning-adjust-v1 (spec 058): measured outcomes re-order within
+        // the phase — never add or remove work.
+        const aScore = findingScore(a) + (adjustmentByPlay.get(a.playKey) ?? 0);
+        const bScore = findingScore(b) + (adjustmentByPlay.get(b.playKey) ?? 0);
         return bScore - aScore;
       });
       inPhase.forEach((item, index) => {
@@ -247,6 +309,7 @@ export async function composePlan(
 
     const baseline = {
       runId,
+      learningAdjustmentVersion: LEARNING_ADJUSTMENT_VERSION,
       organicMentionRate: state.organicMentionRate,
       topCompetitor: state.topCompetitorName,
       topCompetitorRate: state.topCompetitorRate,

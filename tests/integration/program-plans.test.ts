@@ -372,4 +372,90 @@ describe.skipIf(!TEST_URL)("program plans (integration)", () => {
     const directory = result.data.items.find((i) => i.playKey === "claim_directory_profiles");
     expect(directory?.status).toBe("excluded");
   });
+
+  it("spec 058: confirmed learnings re-order plays — supports up, cautions down, weak labels inert", async () => {
+    await seedFindings();
+    const learnings = await import("@/lib/learnings/service");
+
+    const baselinePlan = await plans.composePlan(user, { projectId });
+    if (!baselinePlan.ok) throw new Error(baselinePlan.error.message);
+    const foundationOrder = (plan: typeof baselinePlan.data) =>
+      plan.items
+        .filter((i) => i.phase === "foundation" && i.status === "planned")
+        .sort((a, b) => a.position - b.position)
+        .map((i) => i.playKey);
+    const before = foundationOrder(baselinePlan.data);
+    expect(before[0]).not.toBe("claim_directory_profiles");
+    const beforeIndex = before.indexOf("claim_directory_profiles");
+    expect(beforeIndex).toBeGreaterThan(0);
+
+    // A weak label moves nothing.
+    await learnings.recordLearning(user, {
+      category: "authority",
+      statement: "Directory work felt promising once.",
+      confidenceLabel: "probable",
+      playKey: "claim_directory_profiles",
+      direction: "supports",
+    });
+    const unchanged = await plans.composePlan(user, { projectId });
+    if (!unchanged.ok) throw new Error(unchanged.error.message);
+    expect(foundationOrder(unchanged.data)).toEqual(before);
+
+    // A confirmed supporting learning (measured source required) lifts it.
+    const [outcome] = await sql`
+      insert into action_outcomes (project_id, action_type, effectiveness, measured_at)
+      values (${projectId}, 'intervention_shipped', 'positive_signal', now())
+      returning id
+    `;
+    await learnings.recordLearning(user, {
+      category: "authority",
+      statement: "Directory cleanup reliably moved citations in comparable engagements.",
+      confidenceLabel: "confirmed",
+      sourceActionOutcomeIds: [outcome!.id as string],
+      playKey: "claim_directory_profiles",
+      direction: "supports",
+    });
+    const lifted = await plans.composePlan(user, { projectId });
+    if (!lifted.ok) throw new Error(lifted.error.message);
+    const after = foundationOrder(lifted.data);
+    expect(after[0]).toBe("claim_directory_profiles");
+    const item = lifted.data.items.find(
+      (i) => i.playKey === "claim_directory_profiles"
+    );
+    expect(item?.rationale).toContain("support prioritising this play");
+    expect(lifted.data.baseline.learningAdjustmentVersion).toBe("learning-adjust-v1");
+
+    // Two confirmed cautions outweigh the support and drop it below peers.
+    for (const statement of [
+      "Directory cleanup underperformed for luxury teams.",
+      "Second engagement showed the same weak result.",
+    ]) {
+      const [cautionOutcome] = await sql`
+        insert into action_outcomes (project_id, action_type, effectiveness, measured_at)
+        values (${projectId}, 'intervention_shipped', 'no_detectable_change', now())
+        returning id
+      `;
+      await learnings.recordLearning(user, {
+        category: "authority",
+        statement,
+        confidenceLabel: "confirmed",
+        sourceActionOutcomeIds: [cautionOutcome!.id as string],
+        playKey: "claim_directory_profiles",
+        direction: "cautions",
+      });
+    }
+    const dropped = await plans.composePlan(user, { projectId });
+    if (!dropped.ok) throw new Error(dropped.error.message);
+    const finalOrder = foundationOrder(dropped.data);
+    // Net -20 (capped): it loses the top spot it had just gained and sorts
+    // behind every un-cautioned peer.
+    expect(finalOrder[0]).not.toBe("claim_directory_profiles");
+    expect(finalOrder.indexOf("claim_directory_profiles")).toBeGreaterThanOrEqual(
+      beforeIndex
+    );
+    const cautioned = dropped.data.items.find(
+      (i) => i.playKey === "claim_directory_profiles"
+    );
+    expect(cautioned?.rationale).toContain("caution against repeating it as-is");
+  });
 });
