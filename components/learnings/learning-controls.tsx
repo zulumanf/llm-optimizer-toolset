@@ -29,7 +29,7 @@ import {
 import {
   LEARNING_CATEGORIES,
   LEARNING_CONFIDENCE_LABELS,
-} from "@/lib/learnings/service";
+} from "@/lib/learnings/constants";
 
 /** Record dialog (spec 058). Strong confidence labels need measured source
  * outcomes — the service refuses otherwise, and that refusal is the
