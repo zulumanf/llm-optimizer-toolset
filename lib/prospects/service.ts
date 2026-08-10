@@ -44,6 +44,8 @@ import {
   type ConflictStatus,
   type ProspectStage,
   type ProspectType,
+  RECONTACT_PERSON_WINDOW_DAYS,
+  BROKERAGE_SEND_CAP_30D,
 } from "@/lib/prospects/constants";
 import { validateTransition } from "@/lib/prospects/stages";
 import {
@@ -1589,6 +1591,11 @@ export interface AuditSnapshot {
     /** Sourced market rank (ranking signal with a numeric value, same
      * launch); null for entities with no ranked record — never guessed. */
     marketRank?: number | null;
+    /** metric → immutable scores row id (spec 052). Optional: snapshots
+     * published before the binding existed render without it; NEW snapshots
+     * are refused at publish unless every rendered rate is bound and
+     * matches its score row (validateAuditEvidence). */
+    scoreIds?: Record<string, string>;
   }[];
   /** Brand-level names (brokerages, out-of-market brands) that filled the
    * answers — kept out of the team table, summarized beneath it. The
@@ -2101,6 +2108,7 @@ export async function publishAudit(
                 recommendationRate: prospectMetrics.recommendationRate,
                 sampleSize: prospectMetrics.sampleSize,
                 marketRank: rankByCompany.get(benchmark.companyId as string) ?? null,
+                scoreIds: prospectMetrics.scoreIds,
               },
             ]
           : []),
@@ -2111,6 +2119,7 @@ export async function publishAudit(
           recommendationRate: r.recommendationRate,
           sampleSize: r.sampleSize,
           marketRank: rankByCompany.get(r.companyId) ?? null,
+          scoreIds: r.scoreIds,
         })),
       ],
       promptEvidence: evidence,
@@ -2127,6 +2136,21 @@ export async function publishAudit(
       ...(exampleChats.length > 0 ? { exampleChats } : {}),
       preparedBy,
     };
+
+    // Evidence gate (spec 052): every rate in the comparison must match its
+    // referenced immutable score row — the prospect-facing equivalent of the
+    // client report's citation gate. Deterministic; refuses on any mismatch.
+    const { validateAuditEvidence } = await import("@/lib/prospects/audit-evidence");
+    const evidenceMismatches = await validateAuditEvidence(snapshot);
+    if (evidenceMismatches.length > 0) {
+      throw new ClassifiedError(
+        "validation",
+        `Audit evidence gate failed — ${evidenceMismatches
+          .slice(0, 3)
+          .map((m) => `${m.row}: ${m.problem}`)
+          .join(" · ")}`
+      );
+    }
 
     // Commit phase (correctness audit 2026-08-04): the snapshot above was
     // assembled on ordinary pooled reads — the transaction below holds row
@@ -2391,6 +2415,26 @@ export async function createOutreachDraft(
             and (expires_at is null or expires_at > now())
         `;
         const { auditUrl } = await import("@/lib/prospects/urls");
+        // Spec 052 (audit F17): a published audit whose link cannot resolve
+        // must refuse, not silently generate the no-link fallback — the
+        // first real outreach email would ship without its entire proof.
+        if (publishedAudit && auditUrl(publishedAudit.accessToken as string) === null) {
+          throw new ClassifiedError(
+            "validation",
+            "APP_URL is not configured — the draft would omit the published audit link that is its proof. Set APP_URL, then generate the draft."
+          );
+        }
+        // Sender identity (spec 052): the compliant footer is embedded at
+        // generation time, so a manual send copied from this draft carries
+        // the postal address and opt-out path too.
+        const { getActiveSenderIdentity } = await import("@/lib/outreach/sender-identity");
+        const draftIdentity = await getActiveSenderIdentity();
+        if (!draftIdentity) {
+          throw new ClassifiedError(
+            "validation",
+            "No sender identity is configured — an admin must set the legal sender (name, company, postal address) before outreach drafts can be generated."
+          );
+        }
         const generated = generateReplyFirstEmail({
           prospectName: prospect.businessName,
           teamLeader: prospect.teamLeader,
@@ -2404,7 +2448,7 @@ export async function createOutreachDraft(
             : null,
         });
         subject = generated.subject;
-        body = generated.body;
+        body = generated.body + optOutFooter(draftIdentity);
         tone = generated.tone;
         cta = generated.cta;
         generatedBy = "system";
@@ -2717,6 +2761,114 @@ export async function sendProspectDraft(
         check("suppression", true, "no identifiers to match");
       }
 
+      // Re-contact guards (spec 052, audit 9.3): DNC was per-prospect only —
+      // the same human under two prospects, or one brokerage's teams in
+      // quick succession, had no guard at all.
+      if (email) {
+        const [personPrior] = await tx`
+          select s.sent_at from prospect_outreach_sends s
+          where s.allowed and s.recipient_email is not null
+            and lower(s.recipient_email) = ${email.toLowerCase()}
+            and s.prospect_id != ${draft.prospectId}
+            and s.sent_at > now() - make_interval(days => ${RECONTACT_PERSON_WINDOW_DAYS})
+          order by s.sent_at desc limit 1
+        `;
+        check(
+          "recontact_person",
+          !personPrior,
+          personPrior
+            ? `This person was already contacted under another prospect on ${(personPrior.sentAt as Date).toISOString().slice(0, 10)} — within the ${RECONTACT_PERSON_WINDOW_DAYS}-day window.`
+            : "no cross-prospect contact in the window"
+        );
+      } else {
+        check("recontact_person", true, "no email to match");
+      }
+      const [brokerageRow] = await tx`
+        select p.brokerage_affiliation from prospects p where p.id = ${draft.prospectId}
+      `;
+      const brokerage = (brokerageRow?.brokerageAffiliation as string | null)?.trim();
+      if (brokerage) {
+        const [{ n } = { n: 0 }] = await tx`
+          select count(*)::int as n from prospect_outreach_sends s
+          join prospects p on p.id = s.prospect_id
+          where s.allowed
+            and lower(trim(p.brokerage_affiliation)) = ${brokerage.toLowerCase()}
+            and s.sent_at > now() - interval '30 days'
+        `;
+        check(
+          "recontact_brokerage",
+          Number(n) < BROKERAGE_SEND_CAP_30D,
+          Number(n) < BROKERAGE_SEND_CAP_30D
+            ? `${n} of ${BROKERAGE_SEND_CAP_30D} brokerage sends used this month`
+            : `${brokerage} already received ${n} sends in 30 days — the cap is ${BROKERAGE_SEND_CAP_30D}.`
+        );
+      } else {
+        check("recontact_brokerage", true, "no brokerage affiliation recorded");
+      }
+
+      // Territory re-check (spec 052, audit 10.7): the exclusivity gate ran
+      // once at outreach_ready and never again — signing a client agreement
+      // did not suppress conflicting in-flight sends. Every send re-checks;
+      // a recorded admin override (conflict_status) is honored.
+      if (prospect.conflictStatus === "override") {
+        check("territory_conflict", true, "admin override recorded at the stage gate");
+      } else {
+        const [launch] = await tx`
+          select market_id, service_category, price_segment
+          from market_launches where id = ${prospect.launchId}
+        `;
+        if (launch) {
+          const markets = await tx<MarketNode[]>`select id, name, parent_id from markets`;
+          const agreements: AgreementInput[] = (await listAgreements()).map((a) => ({
+            agreementId: a.id,
+            projectId: a.projectId,
+            clientName: a.clientName,
+            status: a.status as "active" | "reserved" | "terminated",
+            startsOn: a.startsOn,
+            endsOn: a.endsOn,
+            gracePeriodDays: Number(a.gracePeriodDays),
+            terminatedAt: a.terminatedAt,
+            scopes: a.scopes.map((sc) => ({
+              scopeId: sc.id,
+              marketId: sc.marketId,
+              serviceCategory: sc.serviceCategory,
+              segment: sc.segment,
+            })),
+          }));
+          const detection = detectConflicts(
+            {
+              marketId: launch.marketId as string,
+              serviceCategory: (launch.serviceCategory as string) ?? null,
+              segment: (launch.priceSegment as string) ?? null,
+            },
+            agreements,
+            markets,
+            new Date().toISOString().slice(0, 10)
+          );
+          check(
+            "territory_conflict",
+            detection.worstVerdict === "clear",
+            detection.worstVerdict === "clear"
+              ? "no territory conflict at send time"
+              : `Territory conflict (${detection.worstVerdict}) detected at send time — a client agreement or reservation covers this market. Resolve or record an admin override before sending.`
+          );
+        } else {
+          check("territory_conflict", true, "prospect has no launch market");
+        }
+      }
+
+      // Sender identity (spec 052): cold outreach refuses until an admin has
+      // configured the legal sender — name, company, physical postal address.
+      const { getActiveSenderIdentity } = await import("@/lib/outreach/sender-identity");
+      const identity = await getActiveSenderIdentity();
+      check(
+        "sender_identity",
+        identity !== null,
+        identity
+          ? `sending as ${identity.senderName}, ${identity.companyName}`
+          : "No sender identity is configured — set the legal sender (name, company, postal address) before any outreach."
+      );
+
       let body = (draft.body as string) ?? "";
       if (channel.transmits) {
         check(
@@ -2724,11 +2876,20 @@ export async function sendProspectDraft(
           Boolean(email),
           email ? `recipient ${email}` : "A transmitting channel needs a recipient email."
         );
-        if (!hasOptOutMention(body)) body += optOutFooter(user.name);
+        if (identity && !hasOptOutMention(body)) body += optOutFooter(identity);
         check(
           "opt_out_path",
           hasOptOutMention(body),
           "opt-out instruction present in the outgoing text"
+        );
+        check(
+          "postal_address",
+          identity !== null && body.includes(identity.postalAddress),
+          identity
+            ? body.includes(identity.postalAddress)
+              ? "physical postal address present (CAN-SPAM)"
+              : "The outgoing text does not carry the sender's postal address."
+            : "no sender identity to source the postal address from"
         );
       } else {
         check("recipient_email", true, "manual channel — the human used their own mailbox");
@@ -2985,7 +3146,7 @@ export async function transitionStage(
           agreementId: a.id,
           projectId: a.projectId,
           clientName: a.clientName,
-          status: a.status as "active" | "terminated",
+          status: a.status as "active" | "reserved" | "terminated",
           startsOn: a.startsOn,
           endsOn: a.endsOn,
           gracePeriodDays: Number(a.gracePeriodDays),

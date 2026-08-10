@@ -21,6 +21,7 @@ const entity = (
   shareOfVoice: null,
   citationScore: null,
   sampleSize: 40,
+  scoreIds: {},
   ...overrides,
 });
 

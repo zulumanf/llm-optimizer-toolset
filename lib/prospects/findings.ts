@@ -23,6 +23,9 @@ export interface BenchmarkEntityMetrics {
   shareOfVoice: number | null;
   citationScore: number | null;
   sampleSize: number;
+  /** metric name → immutable scores row id (spec 052): the machine-checkable
+   * provenance behind every rate a prospect is shown. */
+  scoreIds: Record<string, string>;
 }
 
 export interface AuthoritySignalInput {

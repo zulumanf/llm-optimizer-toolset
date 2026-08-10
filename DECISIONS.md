@@ -1560,3 +1560,47 @@ insert-only and published-only; the operator's mail client remains the
 transport — the same honest pattern as the prospect manual channel — so no
 ESP/sender-identity decision (spec 052) is preempted while "was this ever
 sent, to whom, when" becomes answerable.
+
+## 2026-08-09 — Spec 052: manual outbound safety (branch feat/052-outbound-safety)
+
+**Audit numbers are bound to score rows, and publish verifies the binding.**
+Snapshot comparison rows carry the immutable `scores` row id per metric;
+`publishAudit` refuses any rate that is unbound or does not exactly match
+its referenced row. Traceability on the prospect surface was a code-review
+invariant (the assembly happened to read from scores); it is now
+architecture — the prospect-facing twin of the report citation gate.
+
+**The missing sender decision blocks sends instead of producing
+non-compliant ones.** `outreach_sender_identity` (one active row, admin-
+set, append-and-deactivate) is required by draft generation and the send
+gate; the opt-out footer now carries the truthful sender, company, and the
+physical postal address CAN-SPAM §7704(a)(5) requires. A published audit
+whose link cannot resolve (`APP_URL` unset) refuses draft generation — the
+silent no-link fallback was exactly how the first real email would have
+shipped without its proof.
+
+**Re-contact guards are ledger queries, not new state.** The insert-only
+send ledger already knew who was contacted when; the gate now reads it:
+same email under another prospect within 30 days refuses, and a brokerage
+is capped at 3 allowed sends per 30 days. Windows are constants, not
+config — changing them is a policy decision that belongs in a diff.
+
+**Every send re-checks territory.** `exclusivity_agreements` gains
+`reserved` (a pending-proposal hold that occupies the territory exactly
+like active; dates still govern), and the send gate re-runs conflict
+detection per send, honoring a recorded admin override. No sweep needed:
+signing or reserving suppresses conflicting in-flight sends because
+nothing sends without re-checking.
+
+**Erasure and immutability reconciled.** Measurement data (responses,
+mentions, scores) is immutable and contains no contact PII; contact PII is
+deletable on request. What must survive is the never-contact-again
+promise, and it lives in the suppression list as a normalized match key —
+tombstone and erasure commit in ONE transaction, so neither ever exists
+without the other. `stalePiiReport` makes retention visible before a
+retention policy exists.
+
+**Access grants are doors, not records.** `revokeClientAccess` deletes the
+grant (access control is deletable; the users row and audit history stay)
+and `setUserActive` finally gives the product a hand on the `users.active`
+switch auth always honored — never on yourself.
