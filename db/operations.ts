@@ -163,11 +163,17 @@ async function signals(): Promise<SignalRow[]> {
         where j.type = 'start_scheduled_run' and j.status = 'queued'
           and j.run_after < now()
           and j.payload->>'projectId' = p.id::text) as due_scheduled_runs,
+      -- Run spend + project-attributed agent spend (llm_calls, spec 050).
+      -- Unattributed agent calls count only in the global ceiling.
       coalesce((select sum(r.cost_usd) from runs r
         where r.project_id = p.id and r.started_at > now() - interval '7 days'), 0)
+      + coalesce((select sum(lc.cost_micro_usd) / 1e6 from llm_calls lc
+        where lc.project_id = p.id and lc.called_at > now() - interval '7 days'), 0)
         as spend7d,
       coalesce((select sum(r.cost_usd) from runs r
         where r.project_id = p.id and r.started_at > now() - interval '30 days'), 0)
+      + coalesce((select sum(lc.cost_micro_usd) / 1e6 from llm_calls lc
+        where lc.project_id = p.id and lc.called_at > now() - interval '30 days'), 0)
         as spend30d,
       (select count(*)::int from runs r
         where r.project_id = p.id and r.started_at > now() - interval '7 days')

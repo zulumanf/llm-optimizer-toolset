@@ -102,6 +102,7 @@ export async function parseResponse(responseId: string): Promise<void> {
         promptText: (response.promptText as string) ?? "",
         companies: companyInputs,
         identityContext,
+        projectId,
       });
       parserUsed = PARSER_VERSION_LLM;
       classifierModel = CLASSIFIER_MODEL;

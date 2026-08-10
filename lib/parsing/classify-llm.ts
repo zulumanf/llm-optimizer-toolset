@@ -118,6 +118,8 @@ export interface ClassifyLlmArgs {
   companies: CompanyInput[];
   /** Approved-claim lines for the subject (spec 008) — identity ground truth. */
   identityContext: Record<string, string[]>;
+  /** Ledger attribution (spec 050) — which project this classification serves. */
+  projectId?: string | null;
   caller?: AgentCaller;
 }
 
@@ -161,6 +163,8 @@ export async function classifyResponseLlm(
   const classification = await runAgent({
     agentVersion: MENTION_CLASSIFIER_V2,
     model: CLASSIFIER_MODEL,
+    projectId: args.projectId ?? null,
+    purpose: "parse_response",
     system: CLASSIFIER_SYSTEM,
     user: `PROMPT THE ASSISTANT WAS ASKED:
 ${promptText}
@@ -203,6 +207,8 @@ ${candidates.map((c) => identityBlock(c, identityContext)).join("\n")}`,
         const verification = await runAgent({
           agentVersion: MENTION_VERIFIER_V2,
           model: CLASSIFIER_MODEL,
+          projectId: args.projectId ?? null,
+          purpose: "parse_response_verify",
           system: VERIFIER_SYSTEM,
           user: `COMPANY UNDER REVIEW:
 ${identityBlock(company, identityContext)}
