@@ -198,3 +198,54 @@ technical text; (4) ORDER: the brownstone story moves above the scorecard
 — stories before statistics for this audience — and the scorecard lands
 directly before "the good news," whose reframe it now visibly sets up.
 Still one viewport.
+
+## Round 7 (2026-08-07, PR A #23): internal voice out, numbers that survive scrutiny
+
+Prospect-facing text purged of operator vocabulary ("the prospect", "this
+run") — five diagnoses rewritten to second person. The 35-vs-8 apparent
+contradiction fixed at the source: the counted-moments total now splits
+into "N× an individual team · M× a brokerage brand", and brand rows that
+extend another brand's name (Corcoran / Corcoran Sawyer Smith) nest as
+children so one answer crediting both no longer reads as double-counting.
+Dates render as dates, not ISO timestamps.
+
+## Round 8 (2026-08-08, PR B): the revision pass — argument-first structure
+
+The big restructure, from the approved P1–P6 plan plus five amendments:
+
+- **The numeric authority score is gone.** 30/100 authority beside a
+  sourced $18M record contradicted the pitch. The sourced record now
+  stands as itself: a facts-only contrast line ("Track record: #9 by
+  closed volume · $18.32M across 31 sides (sourced below). Visibility in
+  AI answers: 0 of 40.") below the CTA. Fixability score prose removed too.
+- **Two purpose-built heroes, selected by the data.** A dominant named
+  rival (≥ visibilityThreshold recs and > 2× the prospect's) gets "X is
+  recommended in N of M answers. You're in 0." Otherwise the open-space
+  argument leads: "No individual team owns {market}'s AI answers yet."
+  A prospect already recommended at rival level falls back to the
+  generator headline — no manufactured urgency against a winner — and
+  publish warns the operator the pitch doesn't apply.
+- **Rank-vs-visibility, both directions.** When rank demonstrably does
+  not track visibility (≥3 ranked teams, leaders diverge), a callout says
+  so with the counts. When rank DOES track visibility (Spearman rho ≥
+  0.5), publishAudit returns a warning so the operator can disqualify
+  before sending. Warnings surface in the publish toast.
+- **Evidence above the fold**: verbatim excerpt + live chat links + three
+  sample questions moved above the CTA; dollar stake (avg sale ×
+  configurable COMMISSION_RATE_ESTIMATE, labeled estimate, never a loss
+  claim) sits under them.
+- **One CTA.** Mid-page ask removed; both remaining asks are the button.
+- **humanFinding** (operator-recorded observation, with source URL) renders
+  as the first card in the diagnosis; when missing, dev builds show a
+  checklist banner (Zillow reviews/solds, realtor.com, Google Business,
+  brokerage bio) and publish warns.
+- **Provenance line** under the intro; **adoptionStat** slot (sourced
+  third-party stat) when supplied; footer expanded to name · company —
+  credential · reply email · date · report id (SENDER_COMPANY /
+  SENDER_CREDENTIAL env). Bars under 10% drop the sliver and keep the
+  count; zero keeps its empty track.
+
+Verified against the republished Foster Tucker snapshot (stable token) and
+two synthetic pipeline-built edge cases: recommended 2-of-12 + ranked #1
+(open hero, honest copy, warning fired) and dominant-rival 6-of-6 (rival
+hero, humanFinding card).

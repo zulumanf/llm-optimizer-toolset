@@ -756,6 +756,65 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     }
   });
 
+  it("spec 052: operator-text blocks are fenced — sources required, prohibited wording refused", async () => {
+    const { runId, prospectCompanyId } = await seedScoredRun();
+    const { prospectId } = await seedLaunchAndProspect(prospectCompanyId);
+    const { benchmarkId } = unwrap(await svc.linkBenchmark(operator, { prospectId, runId }));
+    unwrap(await svc.generateFindings(operator, { benchmarkId }));
+    const [candidate] = await sql`
+      select id from prospect_findings
+      where prospect_id = ${prospectId} and status = 'candidate' limit 1
+    `;
+    unwrap(
+      await svc.reviewFinding(operator, {
+        findingId: candidate?.id as string,
+        decision: "approved",
+        makePrimary: true,
+      })
+    );
+
+    // Sources are required — spec 045 §2b as written, not as softened.
+    const unsourced = await svc.publishAudit(operator, {
+      prospectId,
+      humanFinding: { text: "Their site has no press page despite 12 press mentions." },
+    });
+    expect(unsourced.ok).toBe(false);
+
+    // Prohibited wording in the highest-persuasion block refuses.
+    const banned = await svc.publishAudit(operator, {
+      prospectId,
+      humanFinding: {
+        text: "You are losing revenue every week this stays unfixed and it costs you deals.",
+        sourceLabel: "The Real Deal",
+        sourceUrl: "https://therealdeal.com/example",
+        sourceDate: "2026-07-01",
+      },
+    });
+    expect(banned.ok).toBe(false);
+    if (!banned.ok) expect(banned.error.message).toMatch(/prohibited wording/i);
+
+    // Fully sourced, clean text publishes and lands in the frozen snapshot.
+    const published = unwrap(
+      await svc.publishAudit(operator, {
+        prospectId,
+        humanFinding: {
+          text: "Their newest neighborhood guide is from 2023 — assistants cite fresher rival pages.",
+          sourceLabel: "riverateam.com/guides",
+          sourceUrl: "https://riverateam.com/guides",
+          sourceDate: "2026-08-01",
+        },
+      })
+    );
+    const [audit] = await sql`
+      select snapshot from prospect_audits where id = ${published.auditId}
+    `;
+    const snapshot = audit?.snapshot as {
+      humanFinding?: { sourceUrl: string; sourceDate: string };
+    };
+    expect(snapshot.humanFinding?.sourceUrl).toBe("https://riverateam.com/guides");
+    expect(snapshot.humanFinding?.sourceDate).toBe("2026-08-01");
+  });
+
   it("expires audit tokens and keeps views/activities insert-only", async () => {
     const { runId, prospectCompanyId } = await seedScoredRun();
     const { prospectId } = await seedLaunchAndProspect(prospectCompanyId);
