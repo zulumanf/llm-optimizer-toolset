@@ -54,6 +54,34 @@ export async function updatePortfolioFields(
   }
 }
 
+export async function revokeClientPortalAccess(
+  input: unknown
+): Promise<ActionResult<{ revoked: boolean }>> {
+  try {
+    const user = await getCurrentUser();
+    const { revokeClientAccess } = await import("@/lib/portal/invite");
+    const result = await revokeClientAccess(user, input);
+    if (result.ok) revalidatePath("/projects", "layout");
+    return result;
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function setClientUserActive(
+  input: unknown
+): Promise<ActionResult<{ userId: string; active: boolean }>> {
+  try {
+    const user = await getCurrentUser();
+    const { setUserActive } = await import("@/lib/portal/invite");
+    const result = await setUserActive(user, input);
+    if (result.ok) revalidatePath("/projects", "layout");
+    return result;
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 export async function inviteClient(
   input: unknown
 ): Promise<ActionResult<{ userId: string; existing: boolean }>> {

@@ -254,5 +254,47 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
         and project_id = ${project.data.id}
     `;
     expect(grant).toBeDefined();
+
+    // ---------------------------------------------------------- spec 052
+    // Revocation: the door closes, audited; the users row stays.
+    const revoked = await invite.revokeClientAccess(admin, {
+      userId: "00000000-0000-4000-8000-00000000f002",
+      projectId: project.data.id,
+    });
+    expect(revoked.ok).toBe(true);
+    const [afterRevoke] = await sql`
+      select 1 from user_project_access
+      where user_id = '00000000-0000-4000-8000-00000000f002'
+        and project_id = ${project.data.id}
+    `;
+    expect(afterRevoke).toBeUndefined();
+    const [auditRow] = await sql`
+      select 1 from audit_log where action = 'portal.access_revoked'
+    `;
+    expect(auditRow).toBeDefined();
+    // Revoking a grant that no longer exists refuses honestly.
+    const again = await invite.revokeClientAccess(admin, {
+      userId: "00000000-0000-4000-8000-00000000f002",
+      projectId: project.data.id,
+    });
+    expect(again.ok).toBe(false);
+
+    // Deactivation flips users.active (auth honors it on the next request);
+    // never self.
+    const deactivated = await invite.setUserActive(admin, {
+      userId: "00000000-0000-4000-8000-00000000f002",
+      active: false,
+    });
+    expect(deactivated.ok).toBe(true);
+    const [inactive] = await sql`
+      select active from users where id = '00000000-0000-4000-8000-00000000f002'
+    `;
+    expect(inactive?.active).toBe(false);
+    const self = await invite.setUserActive(admin, {
+      userId: admin.id,
+      active: false,
+    });
+    expect(self.ok).toBe(false);
+    if (!self.ok) expect(self.error.message).toMatch(/your own login/);
   });
 });

@@ -330,4 +330,213 @@ describe.skipIf(!TEST_URL)("prospect send gate (integration)", () => {
     `;
     expect(ledger).toMatchObject({ channel: "manual", allowed: true });
   });
+
+  // ------------------------------------------------------------- spec 052
+
+  it("spec 052: send refuses without a configured sender identity", async () => {
+    const { draftId } = await seedApprovedDraft();
+    await sql`truncate outreach_sender_identity`;
+    const refused = await svc.sendProspectDraft(operator, {
+      draftId,
+      channel: "mock",
+      businessPurpose: PURPOSE,
+    });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/sender identity/i);
+    const [ledger] = await sql`
+      select allowed, gate_verdict from prospect_outreach_sends order by sent_at desc limit 1
+    `;
+    expect(ledger?.allowed).toBe(false);
+    const checks = (ledger?.gateVerdict as { checks: { name: string; passed: boolean }[] }).checks;
+    expect(checks.find((c) => c.name === "sender_identity")?.passed).toBe(false);
+  });
+
+  it("spec 052: the same person under another prospect refuses within the window", async () => {
+    const { draftId, prospectId } = await seedApprovedDraft();
+    unwrap(
+      await svc.sendProspectDraft(operator, { draftId, channel: "mock", businessPurpose: PURPOSE })
+    );
+    // A second prospect with the same human's email, minimal raw seed.
+    const [first] = await sql`
+      select launch_id from prospects where id = ${prospectId}
+    `;
+    const [finding] = await sql`select id from prospect_findings limit 1`;
+    const [p2] = await sql`
+      insert into prospects (launch_id, business_name, prospect_type, email)
+      values (${first?.launchId}, 'Harbor Team', 'team', 'ana@riverateam.com')
+      returning id
+    `;
+    const [d2] = await sql`
+      insert into outreach_drafts (prospect_id, finding_id, channel, body,
+        generated_by, status)
+      values (${p2?.id}, ${finding?.id}, 'email', 'Hello — quick note. Reply unsubscribe to opt out.',
+        'operator', 'approved')
+      returning id
+    `;
+    const refused = await svc.sendProspectDraft(operator, {
+      draftId: d2?.id as string,
+      channel: "mock",
+      businessPurpose: PURPOSE,
+    });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/already contacted under another prospect/);
+  });
+
+  it("spec 052: the brokerage frequency cap refuses the fourth send", async () => {
+    const { draftId, prospectId } = await seedApprovedDraft();
+    await sql`update prospects set brokerage_affiliation = 'Compass' where id = ${prospectId}`;
+    const [first] = await sql`select launch_id from prospects where id = ${prospectId}`;
+    const [finding] = await sql`select id from prospect_findings limit 1`;
+    for (let i = 0; i < 3; i += 1) {
+      const [p] = await sql`
+        insert into prospects (launch_id, business_name, prospect_type, brokerage_affiliation)
+        values (${first?.launchId}, ${"Compass Team " + i}, 'team', 'Compass')
+        returning id
+      `;
+      const [d] = await sql`
+        insert into outreach_drafts (prospect_id, finding_id, channel, body, generated_by, status)
+        values (${p?.id}, ${finding?.id}, 'email', 'x', 'operator', 'approved')
+        returning id
+      `;
+      await sql`
+        insert into prospect_outreach_sends (draft_id, prospect_id, channel,
+          recipient_email, body_hash, business_purpose, gate_verdict, allowed, sent_by)
+        values (${d?.id}, ${p?.id}, 'manual', ${"agent" + i + "@compass.com"}, 'h',
+          'seeded', '{"checks":[]}', true, ${operator.id})
+      `;
+    }
+    const refused = await svc.sendProspectDraft(operator, {
+      draftId,
+      channel: "mock",
+      businessPurpose: PURPOSE,
+    });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/cap is 3/);
+  });
+
+  it("spec 052: a reserved territory blocks at send time; a recorded override passes", async () => {
+    const { draftId, prospectId } = await seedApprovedDraft();
+    const [market] = await sql`select id from markets limit 1`;
+    const [project] = await sql`select id from projects where name = 'Client A'`;
+    const today = new Date().toISOString().slice(0, 10);
+    unwrap(
+      await exclusivity.createAgreement(operator, {
+        projectId: project?.id as string,
+        startsOn: today,
+        status: "reserved",
+        scopes: [{ marketId: market?.id as string, serviceCategory: null, segment: null }],
+      })
+    );
+    const refused = await svc.sendProspectDraft(operator, {
+      draftId,
+      channel: "mock",
+      businessPurpose: PURPOSE,
+    });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/Territory conflict/);
+
+    // A recorded admin override at the stage gate is honored at send time.
+    await sql`update prospects set conflict_status = 'override' where id = ${prospectId}`;
+    const sent = await svc.sendProspectDraft(operator, {
+      draftId,
+      channel: "mock",
+      businessPurpose: PURPOSE,
+    });
+    expect(sent.ok).toBe(true);
+  });
+
+  it("spec 052: erasure nulls PII, tombstones the suppression list, and is audited", async () => {
+    const { contactId, draftId } = await seedApprovedDraft();
+    const pii = await import("@/lib/prospects/pii");
+    const erased = unwrap(
+      await pii.eraseProspectContactPii(admin, {
+        contactId,
+        reason: "erasure request by email 2026-08-09",
+      })
+    );
+    expect(erased.suppressed).toBe(true);
+
+    const [contact] = await sql`
+      select name, email, phone, pii_erased_at from prospect_contacts where id = ${contactId}
+    `;
+    expect(contact?.name).toBe("[erased]");
+    expect(contact?.email).toBeNull();
+    expect(contact?.piiErasedAt).not.toBeNull();
+
+    const { checkSuppression } = await import("@/lib/outreach/suppression");
+    const suppression = await checkSuppression({
+      email: "ana@riverateam.com",
+      projectId: null,
+    });
+    expect(suppression.suppressed).toBe(true);
+
+    const [audit] = await sql`
+      select 1 from audit_log where action = 'prospect.contact_pii_erased'
+    `;
+    expect(audit).toBeDefined();
+
+    // The draft addressed to the erased contact can never send.
+    const refused = await svc.sendProspectDraft(operator, {
+      draftId,
+      channel: "mock",
+      businessPurpose: PURPOSE,
+    });
+    expect(refused.ok).toBe(false);
+
+    // Double-erasure refuses.
+    const again = await pii.eraseProspectContactPii(admin, {
+      contactId,
+      reason: "duplicate request",
+    });
+    expect(again.ok).toBe(false);
+  });
+
+  it("spec 052: the stale-PII report lists only inactive old contacts", async () => {
+    const { prospectId } = await seedApprovedDraft();
+    const pii = await import("@/lib/prospects/pii");
+    // Fresh contact with recent activity → not stale.
+    expect(await pii.stalePiiReport(365)).toHaveLength(0);
+    // An old, inactive prospect+contact appears.
+    const [first] = await sql`select launch_id from prospects where id = ${prospectId}`;
+    const [old] = await sql`
+      insert into prospects (launch_id, business_name, prospect_type)
+      values (${first?.launchId}, 'Dormant Team', 'team') returning id
+    `;
+    await sql`
+      insert into prospect_contacts (prospect_id, name, email, created_at)
+      values (${old?.id}, 'Old Contact', 'old@dormant.com', now() - interval '400 days')
+    `;
+    const report = await pii.stalePiiReport(365);
+    expect(report).toHaveLength(1);
+    expect(report[0]?.contactName).toBe("Old Contact");
+  });
+
+  it("spec 052: audit snapshot evidence validator matches immutable score rows", async () => {
+    await seedApprovedDraft();
+    const { validateAuditEvidence } = await import("@/lib/prospects/audit-evidence");
+    const [score] = await sql`
+      select id, value, sample_size from scores where metric = 'mention_rate'
+        and provider = 'all' limit 1
+    `;
+    const row = {
+      name: "Rivera Team",
+      isProspect: true,
+      mentionRate: Number(score?.value),
+      recommendationRate: null,
+      sampleSize: Number(score?.sampleSize),
+      scoreIds: { mention_rate: score?.id as string },
+    };
+    expect(await validateAuditEvidence({ comparison: [row] })).toHaveLength(0);
+    // Tampered value refuses.
+    const tampered = await validateAuditEvidence({
+      comparison: [{ ...row, mentionRate: Number(score?.value) + 0.5 }],
+    });
+    expect(tampered.length).toBeGreaterThan(0);
+    expect(tampered[0]?.problem).toMatch(/immutable score/);
+    // An unbound number refuses.
+    const unbound = await validateAuditEvidence({
+      comparison: [{ ...row, scoreIds: {} }],
+    });
+    expect(unbound[0]?.problem).toMatch(/no scores-row reference/);
+  });
 });
