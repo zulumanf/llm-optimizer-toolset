@@ -1,6 +1,6 @@
 # Spec 055 — Model Routing Tiers
 
-**Status:** In progress
+**Status:** Implemented — all acceptance criteria verified 2026-08-10
 **Branch:** `feat/055-model-routing`
 **Source:** Architecture gap audit 2026-08-09 (cost A2/A4/A5): "there is no routing layer — two hardcoded tiers and a default that lands on frontier." 16 of 19 automation agents ran the flagship model, including narrow summarize/repurpose/extract tasks the audit named as cheap-tier work, while the false-economy warning (A5) cuts the other way: client-facing judgment must not silently drift down-tier.
 
@@ -22,9 +22,9 @@ Which model runs a task is a routing decision that was scattered across a defaul
 - Automation `agent_versions` re-registration mechanics — versions carry the model at registration; existing behavior unchanged.
 
 ## Acceptance criteria
-- [ ] `modelForTask` resolves every declared task and throws on unknown tasks (test).
-- [ ] Every routed model is priced — `costMicroUsd` does not throw for any route (test).
-- [ ] The five audit-named downgrades are cheap-tier; mention classification/verification are cheap; content/adversarial/accuracy stay frontier (pinned test — changing a route means changing this test in the same diff).
-- [ ] No automation prompt relies on an implicit model default (compile-time: the default parameter is gone).
-- [ ] Classifier instrument stamps record the routed model (existing 050 tests stay green).
-- [ ] `npm test`, lint, typecheck green.
+- [x] `modelForTask` resolves every declared task and throws on unknown tasks (test).
+- [x] Every routed model is priced — `costMicroUsd` does not throw for any route (test).
+- [x] The five audit-named downgrades are cheap-tier; mention classification/verification are cheap; content/adversarial/accuracy stay frontier (pinned test — changing a route means changing this test in the same diff).
+- [x] No automation prompt relies on an implicit model default (compile-time: the default parameter is gone).
+- [x] Classifier instrument stamps record the routed model (existing 050 tests stay green).
+- [x] `npm test`, lint, typecheck green.
