@@ -1765,3 +1765,36 @@ recommend ML before enough clean outcomes exist. The dimensions and the
 supports/cautions counts make that moment visible; until then the
 adjustment stays a constant-weight rule a reviewer can read in one
 sitting.
+
+## 2026-08-10 — Spec 059: productionization groundwork (branch feat/059-productionization)
+
+**Ship everything the host decision doesn't block.** Dockerfiles, compose,
+health, heartbeat, alerting, encrypted off-box backups, the env contract,
+and truthful docs are host-agnostic; building them now turns the eventual
+host choice into an hour of wiring. The GH-Actions heartbeat is an honest
+stopgap scheduler (5-min granular, best-effort) — acceptable because every
+cron-driven job is windowed and deduped by design; the runbook says to
+move to the host's scheduler when one exists.
+
+**One health route, two audiences.** Platform health checks can't send
+headers, and the full report leaks operational detail. The same GET serves
+minimal {ok, db, worker} unauthenticated and the full report under the
+CRON_SECRET bearer — no second endpoint to drift.
+
+**Alerts dedupe or they don't exist.** One post per alert kind per hour,
+re-armed on acknowledgment-by-time — an alarm that cries on every tick is
+an alarm nobody hears (the same reasoning as the drift-signal open-
+fingerprint dedupe). Alerts still RETURN in the cron response even with no
+webhook: silence must never be silent failure.
+
+**A visible audit report, not a blocking gate.** npm audit fails today on
+transitive advisories with no upstream fix (sharp/libvips via Next); a
+blocking gate would freeze the repo and train people to ignore it.
+Dependabot files the fix PRs; the CI report keeps the state in every run;
+docs/10 now says exactly that instead of claiming a gate that never
+existed.
+
+**The restore drill earned its keep immediately:** it caught the manifest
+hashing itself (shell redirection creates the file before some shells
+expand the glob) — exactly the class of bug a drill exists to find before
+an incident does.

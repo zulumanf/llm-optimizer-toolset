@@ -1,6 +1,6 @@
 # Spec 059 — Productionization Groundwork (host-agnostic)
 
-**Status:** In progress
+**Status:** Implemented — all acceptance criteria verified 2026-08-10 (docker builds prove in CI; encrypted backup/restore round-trip drilled locally)
 **Branch:** `feat/059-productionization`
 **Source:** Architecture gap audit 2026-08-09 (the #1 gap) + `docs/production-readiness-plan.md` Phase 1 — the only phase that never started. The control plane's clock is a laptop lid; backups are unencrypted on the same disk; a dead worker is invisible; `docs/10-security.md` claims three controls that don't exist; and there is no deployment artifact of any kind.
 
@@ -34,9 +34,9 @@ The hosting *platform* is an open operator decision — but almost none of Phase
 - Inbound rate limiting (needs the deployment target's edge story; documented as absent).
 
 ## Acceptance criteria
-- [ ] Worker loop beats; `/api/health` returns minimal shape unauthenticated and the full report with the bearer; a stale heartbeat flips `worker` false and the endpoint 503s (tests).
-- [ ] Alerts fire deterministically at the thresholds, post once per window per kind, and re-arm after the window (tests).
-- [ ] `docker build` succeeds for web and worker images (CI job builds them).
-- [ ] Backup script encrypts when keyed and refuses a keyed restore of an unencrypted artifact (and vice versa); manifest verification still holds (script-level test).
-- [ ] Env schema parses a fully-populated and a minimal `.env`; `.env.example` documents every schema variable (test).
-- [ ] `npm test`, lint, typecheck green; migration 068 reversible.
+- [x] Worker loop beats; `/api/health` returns minimal shape unauthenticated and the full report with the bearer; a stale heartbeat flips `worker` false and the endpoint 503s (tests).
+- [x] Alerts fire deterministically at the thresholds, post once per window per kind, and re-arm after the window (tests).
+- [x] `docker build` succeeds for web and worker images (CI job builds them).
+- [x] Backup script encrypts when keyed and refuses a keyed restore of an unencrypted artifact (and vice versa); manifest verification still holds (script-level test).
+- [x] Env schema parses a fully-populated and a minimal `.env`; `.env.example` documents every schema variable (test).
+- [x] `npm test`, lint, typecheck green; migration 068 reversible.
