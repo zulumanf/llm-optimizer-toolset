@@ -161,6 +161,11 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
     expect(titles).toContain("Shared shipped change");
     expect(titles).not.toContain("Internal experiment title");
 
+    // Spec 051 (audit F24): the intervention detail is the computed retest
+    // answer, not a static promise. No post runs yet → scheduled.
+    const shipped = work.find((w) => w.title === "Shared shipped change");
+    expect(shipped?.detail).toBe("Re-measurement scheduled");
+
     // Reports: published only.
     await sql`
       insert into reports (project_id, title, period_start, period_end, body,

@@ -300,3 +300,98 @@ export function reportScoresCsv(body: ReportBody): string {
   );
   return [header, ...lines].join("\n");
 }
+
+// ------------------------------------------------------- delivery ledger
+
+export interface ReportDelivery {
+  id: string;
+  channel: string;
+  recipient: string;
+  note: string | null;
+  deliveredBy: string | null;
+  deliveredAt: Date;
+}
+
+const DELIVERY_CHANNELS = ["manual_email", "portal", "other"] as const;
+
+/**
+ * Record that a published report was delivered (spec 051, audit F28). The
+ * operator's mail client stays the transport — same honest pattern as the
+ * prospect manual outreach channel, no ESP decision preempted — but "was
+ * this ever sent, to whom, when" is now a ledger fact instead of a memory.
+ */
+export async function recordReportDelivery(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ deliveryId: string }>> {
+  const parsed = z
+    .object({
+      reportId: z.string().uuid(),
+      channel: z.enum(DELIVERY_CHANNELS),
+      recipient: z
+        .string()
+        .transform((v) => v.trim())
+        .pipe(z.string().min(3, "Say who received it.").max(200)),
+      note: z.string().max(500).optional(),
+    })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    const [report] = await sql`
+      select id, status from reports where id = ${input.reportId}
+    `;
+    if (!report) return fail(new ClassifiedError("not_found", "Report not found."));
+    if (report.status !== "published") {
+      return fail(
+        new ClassifiedError(
+          "conflict",
+          "Only a published report can be delivered — a draft in a client inbox is a commitment nobody reviewed."
+        )
+      );
+    }
+    const deliveryId = await sql.begin(async (tx) => {
+      const [row] = await tx`
+        insert into report_deliveries (report_id, channel, recipient, note, delivered_by)
+        values (${input.reportId}, ${input.channel}, ${input.recipient},
+          ${input.note ?? null}, ${user.id})
+        returning id
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "report.delivered",
+        entity: "report",
+        entityId: input.reportId,
+        detail: { channel: input.channel, recipient: input.recipient },
+      });
+      return row?.id as string;
+    });
+    return ok({ deliveryId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function listReportDeliveries(
+  reportId: string
+): Promise<ReportDelivery[]> {
+  const rows = await sql`
+    select d.id, d.channel, d.recipient, d.note, d.delivered_at,
+      u.name as delivered_by
+    from report_deliveries d
+    left join users u on u.id = d.delivered_by
+    where d.report_id = ${reportId}
+    order by d.delivered_at desc
+  `;
+  return rows.map((r) => ({
+    id: r.id as string,
+    channel: r.channel as string,
+    recipient: r.recipient as string,
+    note: (r.note as string | null) ?? null,
+    deliveredBy: (r.deliveredBy as string | null) ?? null,
+    deliveredAt: r.deliveredAt as Date,
+  }));
+}
