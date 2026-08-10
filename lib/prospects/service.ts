@@ -44,6 +44,8 @@ import {
   type ConflictStatus,
   type ProspectStage,
   type ProspectType,
+  RECONTACT_PERSON_WINDOW_DAYS,
+  BROKERAGE_SEND_CAP_30D,
 } from "@/lib/prospects/constants";
 import { validateTransition } from "@/lib/prospects/stages";
 import {
@@ -2759,6 +2761,102 @@ export async function sendProspectDraft(
         check("suppression", true, "no identifiers to match");
       }
 
+      // Re-contact guards (spec 052, audit 9.3): DNC was per-prospect only —
+      // the same human under two prospects, or one brokerage's teams in
+      // quick succession, had no guard at all.
+      if (email) {
+        const [personPrior] = await tx`
+          select s.sent_at from prospect_outreach_sends s
+          where s.allowed and s.recipient_email is not null
+            and lower(s.recipient_email) = ${email.toLowerCase()}
+            and s.prospect_id != ${draft.prospectId}
+            and s.sent_at > now() - make_interval(days => ${RECONTACT_PERSON_WINDOW_DAYS})
+          order by s.sent_at desc limit 1
+        `;
+        check(
+          "recontact_person",
+          !personPrior,
+          personPrior
+            ? `This person was already contacted under another prospect on ${(personPrior.sentAt as Date).toISOString().slice(0, 10)} — within the ${RECONTACT_PERSON_WINDOW_DAYS}-day window.`
+            : "no cross-prospect contact in the window"
+        );
+      } else {
+        check("recontact_person", true, "no email to match");
+      }
+      const [brokerageRow] = await tx`
+        select p.brokerage_affiliation from prospects p where p.id = ${draft.prospectId}
+      `;
+      const brokerage = (brokerageRow?.brokerageAffiliation as string | null)?.trim();
+      if (brokerage) {
+        const [{ n } = { n: 0 }] = await tx`
+          select count(*)::int as n from prospect_outreach_sends s
+          join prospects p on p.id = s.prospect_id
+          where s.allowed
+            and lower(trim(p.brokerage_affiliation)) = ${brokerage.toLowerCase()}
+            and s.sent_at > now() - interval '30 days'
+        `;
+        check(
+          "recontact_brokerage",
+          Number(n) < BROKERAGE_SEND_CAP_30D,
+          Number(n) < BROKERAGE_SEND_CAP_30D
+            ? `${n} of ${BROKERAGE_SEND_CAP_30D} brokerage sends used this month`
+            : `${brokerage} already received ${n} sends in 30 days — the cap is ${BROKERAGE_SEND_CAP_30D}.`
+        );
+      } else {
+        check("recontact_brokerage", true, "no brokerage affiliation recorded");
+      }
+
+      // Territory re-check (spec 052, audit 10.7): the exclusivity gate ran
+      // once at outreach_ready and never again — signing a client agreement
+      // did not suppress conflicting in-flight sends. Every send re-checks;
+      // a recorded admin override (conflict_status) is honored.
+      if (prospect.conflictStatus === "override") {
+        check("territory_conflict", true, "admin override recorded at the stage gate");
+      } else {
+        const [launch] = await tx`
+          select market_id, service_category, price_segment
+          from market_launches where id = ${prospect.launchId}
+        `;
+        if (launch) {
+          const markets = await tx<MarketNode[]>`select id, name, parent_id from markets`;
+          const agreements: AgreementInput[] = (await listAgreements()).map((a) => ({
+            agreementId: a.id,
+            projectId: a.projectId,
+            clientName: a.clientName,
+            status: a.status as "active" | "reserved" | "terminated",
+            startsOn: a.startsOn,
+            endsOn: a.endsOn,
+            gracePeriodDays: Number(a.gracePeriodDays),
+            terminatedAt: a.terminatedAt,
+            scopes: a.scopes.map((sc) => ({
+              scopeId: sc.id,
+              marketId: sc.marketId,
+              serviceCategory: sc.serviceCategory,
+              segment: sc.segment,
+            })),
+          }));
+          const detection = detectConflicts(
+            {
+              marketId: launch.marketId as string,
+              serviceCategory: (launch.serviceCategory as string) ?? null,
+              segment: (launch.priceSegment as string) ?? null,
+            },
+            agreements,
+            markets,
+            new Date().toISOString().slice(0, 10)
+          );
+          check(
+            "territory_conflict",
+            detection.worstVerdict === "clear",
+            detection.worstVerdict === "clear"
+              ? "no territory conflict at send time"
+              : `Territory conflict (${detection.worstVerdict}) detected at send time — a client agreement or reservation covers this market. Resolve or record an admin override before sending.`
+          );
+        } else {
+          check("territory_conflict", true, "prospect has no launch market");
+        }
+      }
+
       // Sender identity (spec 052): cold outreach refuses until an admin has
       // configured the legal sender — name, company, physical postal address.
       const { getActiveSenderIdentity } = await import("@/lib/outreach/sender-identity");
@@ -3048,7 +3146,7 @@ export async function transitionStage(
           agreementId: a.id,
           projectId: a.projectId,
           clientName: a.clientName,
-          status: a.status as "active" | "terminated",
+          status: a.status as "active" | "reserved" | "terminated",
           startsOn: a.startsOn,
           endsOn: a.endsOn,
           gracePeriodDays: Number(a.gracePeriodDays),

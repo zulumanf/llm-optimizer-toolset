@@ -275,3 +275,10 @@ export const AUDIT_TOKEN_BYTES = 32;
  * cycle, and an operator can pass an explicit expiresAt to extend. Immortal
  * links require deliberately unsetting — which the UI does not offer. */
 export const AUDIT_LINK_DEFAULT_EXPIRY_DAYS = 45;
+
+// Re-contact guards (spec 052). Per-prospect DNC alone let the same human
+// be contacted under two prospects, and three teams in one brokerage in
+// one week. Windows are deliberate constants, not config — changing them
+// is a policy decision that belongs in a diff.
+export const RECONTACT_PERSON_WINDOW_DAYS = 30;
+export const BROKERAGE_SEND_CAP_30D = 3;
