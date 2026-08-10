@@ -46,6 +46,17 @@ export async function POST(request: Request): Promise<Response> {
     // the work and every other caller returns that run untouched. A failure
     // here must not fail the heartbeat, because trigger dispatch and event
     // delivery are more time-critical than reconciliation.
+    // Drift detection rides the heartbeat (spec 053): open signals dedupe,
+    // so any cadence is safe, and a detector failure must never fail
+    // trigger dispatch.
+    let drift: Record<string, unknown> = { skipped: true };
+    try {
+      const { detectDriftSignals } = await import("@/lib/drift/detect");
+      drift = { ...(await detectDriftSignals()) };
+    } catch (err) {
+      drift = { error: err instanceof Error ? err.message : "unknown" };
+    }
+
     let maintenance: Record<string, unknown> = { skipped: true };
     try {
       const daily = await runDailyMaintenance();
@@ -118,6 +129,7 @@ export async function POST(request: Request): Promise<Response> {
           }
         : { skipped: true },
       maintenance,
+      drift,
       outcomes,
     });
   } catch (err) {

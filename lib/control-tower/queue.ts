@@ -22,6 +22,7 @@ import type { RiskLevel } from "@/lib/workflow/types";
 export type QueueSource =
   | "workflow_exception"
   | "workflow_approval"
+  | "drift_signal"
   | "gap_finding"
   | "accuracy_finding"
   | "content_approval"
@@ -51,6 +52,8 @@ export interface QueueItem {
 const EFFORT_MINUTES: Record<QueueSource, number> = {
   workflow_exception: 30,
   workflow_approval: 15,
+  // Reading a fleet signal is quick; the decision it forces is the point.
+  drift_signal: 10,
   gap_finding: 60,
   accuracy_finding: 45,
   content_approval: 30,
@@ -103,7 +106,7 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
   // One round-trip wave, not six (perf pass 2026-08-04): the sources are
   // independent reads, and the page's latency was their sum — measured
   // ~420ms warm before, dominated by serial query time.
-  const [exceptions, approvals, gaps, accuracy, content, overdueTasks] =
+  const [exceptions, approvals, gaps, accuracy, content, overdueTasks, drift] =
     await Promise.all([
       sql`
         select e.id, e.project_id, e.kind, e.severity, e.summary, e.recommended_action,
@@ -171,7 +174,43 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
         order by t.due_date asc
         limit ${limit}
       `,
+      // Drift signals are fleet-level: no project filter — a provider
+      // change is every client's problem at once (spec 053).
+      sql`
+        select d.id, d.kind, d.provider, d.metric, d.summary, d.detected_at
+        from drift_signals d
+        where d.status = 'open'
+        order by d.detected_at desc
+        limit ${limit}
+      `,
     ]);
+
+  // 0. Drift signals — fleet-level, always at the front of the mind:
+  // every client's numbers are suspect while one is open (spec 053).
+  for (const row of drift) {
+    items.push({
+      id: row.id as string,
+      source: "drift_signal",
+      kind: row.kind as string,
+      projectId: null,
+      projectName: "Fleet",
+      summary: row.summary as string,
+      severity: "high",
+      recommendedAction:
+        "Investigate the provider before any client-facing narrative uses these deltas; acknowledge when understood.",
+      dueAt: null,
+      createdAt: row.detectedAt as Date,
+      href: "/control-tower",
+      priority: computePriority({
+        severity: "high",
+        hoursUntilDue: null,
+        commercialValue: 1,
+        dependencyImpact: 1,
+        risk: 0.9,
+        effortMinutes: EFFORT_MINUTES.drift_signal,
+      }),
+    });
+  }
 
   // 1. Workflow exceptions -------------------------------------------------
   for (const row of exceptions) {
