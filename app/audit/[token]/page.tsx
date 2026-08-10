@@ -271,9 +271,10 @@ export default async function ProspectAuditPage({
         </h1>
       )}
       <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
-        When buyers and sellers ask ChatGPT who to hire, the answers name names.
-        We asked {snapshot.benchmark.promptCount} real {snapshot.marketName}{" "}
-        questions; every answer is published below.
+        ChatGPT is the AI assistant millions now use the way they used to use
+        Google — and when buyers and sellers ask it who to hire, it answers
+        with specific names. We asked it {snapshot.benchmark.promptCount} real{" "}
+        {snapshot.marketName} questions; every answer is published below.
       </p>
       {/* Provenance up front (PR B, P5d): the trust claim before any number. */}
       <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
@@ -473,8 +474,11 @@ export default async function ProspectAuditPage({
               questions{snapshot.promptEvidence.length > 0 ? " (full list below)" : ""}.
             </li>
             <li>
-              We asked each one {repsLabel} — single answers vary; the pattern
-              across {snapshot.benchmark.responseCount} is the finding.
+              We asked each one {repsLabel}. ChatGPT&apos;s answers change a
+              little on every ask — like asking four different receptionists —
+              so we count the pattern across all{" "}
+              {snapshot.benchmark.responseCount} answers, never one lucky
+              reply.
             </li>
             <li>
               Every answer
@@ -759,6 +763,12 @@ export default async function ProspectAuditPage({
         )}
 
         <Drawer summary="How this was measured">
+          <p className="mb-3 max-w-[65ch] text-sm">
+            In plain terms: we asked the same questions many times, saved every
+            answer untouched, and counted the names. The details below are for
+            the technically minded — the counting recipe above is the whole
+            method.
+          </p>
           <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             <div>
               <dt className="text-xs text-muted-foreground">When</dt>
