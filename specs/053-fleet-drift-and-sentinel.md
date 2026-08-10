@@ -1,6 +1,6 @@
 # Spec 053 — Fleet Drift Detection & Sentinel
 
-**Status:** In progress
+**Status:** Implemented — all acceptance criteria verified 2026-08-09
 **Branch:** `feat/053-fleet-drift` (stacked on `feat/052-outbound-safety`)
 **Source:** Architecture gap audit 2026-08-09 (measurement §8 P0s): provider shape-drift dies in stdout; movement detection is strictly per-project; no sentinel exists. "Did 14 of our 20 clients all drop 8 points this week?" — the single strongest signal distinguishing a provider change from real client movement — is a question nothing can ask.
 
@@ -30,10 +30,10 @@ Every drift instrument today is per-client. When a provider silently changes its
 - Sentinel prompt-content guidance (which stable entities to measure) — operator judgment, documented in runbook later.
 
 ## Acceptance criteria
-- [ ] Fleet: 3 projects moving the same direction on one provider+metric produce exactly one open signal naming all three; a 4th run of the detector adds nothing (test).
-- [ ] Below-threshold movement (2 projects, or <50% share, or delta <0.10) produces no signal (unit tests on the grouping math).
-- [ ] A `shape_recognized=false` capture produces one open provider_shape signal; the executor persists the flag on new captures (test).
-- [ ] A sentinel project with a comparable-pair delta ≥0.10 produces a sentinel_deviation signal; sentinel projects stay off client/portfolio surfaces (test).
-- [ ] Acknowledge flips status with actor + audit row; acknowledged signals stop deduping new ones (test).
-- [ ] Drift signals appear in the control-tower queue (test) and the control tower lists them with an acknowledge action.
-- [ ] Migration 063 reversible; `npm test`, lint, typecheck green.
+- [x] Fleet: 3 projects moving the same direction on one provider+metric produce exactly one open signal naming all three; a 4th run of the detector adds nothing (test).
+- [x] Below-threshold movement (2 projects, or <50% share, or delta <0.10) produces no signal (unit tests on the grouping math).
+- [x] A `shape_recognized=false` capture produces one open provider_shape signal; the executor persists the flag on new captures (test).
+- [x] A sentinel project with a comparable-pair delta ≥0.10 produces a sentinel_deviation signal; sentinel projects stay off client/portfolio surfaces (test).
+- [x] Acknowledge flips status with actor + audit row; acknowledged signals stop deduping new ones (test).
+- [x] Drift signals appear in the control-tower queue (test) and the control tower lists them with an acknowledge action.
+- [x] Migration 063 reversible; `npm test`, lint, typecheck green.
