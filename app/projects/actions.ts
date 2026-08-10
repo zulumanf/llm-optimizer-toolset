@@ -110,3 +110,31 @@ export async function updateBaselineSettings(
     return fail(err);
   }
 }
+
+export async function proposeEntityRelationship(
+  input: unknown
+): Promise<ActionResult<{ relationshipId: string }>> {
+  try {
+    const user = await getCurrentUser();
+    const { proposeRelationship } = await import("@/lib/knowledge/entities/service");
+    const result = await proposeRelationship(user, input);
+    if (result.ok) revalidatePath("/projects", "layout");
+    return result;
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function reviewEntityRelationship(
+  input: unknown
+): Promise<ActionResult<{ relationshipId: string; status: string }>> {
+  try {
+    const user = await getCurrentUser();
+    const { reviewRelationship } = await import("@/lib/knowledge/entities/service");
+    const result = await reviewRelationship(user, input);
+    if (result.ok) revalidatePath("/projects", "layout");
+    return result;
+  } catch (err) {
+    return fail(err);
+  }
+}

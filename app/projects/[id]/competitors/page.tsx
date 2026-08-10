@@ -18,6 +18,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { relationshipGroups } from "@/lib/competitors/groups";
+import { listRelationshipsForProject } from "@/lib/knowledge/entities/service";
+import { RelationshipControls } from "@/components/competitors/relationship-controls";
 import { headToHeadForProject, HEAD_TO_HEAD_VERSION } from "@/lib/competitors/head-to-head";
 import { citationProfilesForProject } from "@/lib/competitors/citation-profiles";
 import { AddCompetitorDialog } from "@/components/competitors/add-competitor-dialog";
@@ -40,6 +42,7 @@ export default async function CompetitorsPage({
   const project = await getProject(id);
   if (!project) notFound();
 
+  const relationships = await listRelationshipsForProject(id);
   const [comparison, scores, candidates, companies, topSources, groups, headToHead, profiles] =
     await Promise.all([
       listComparisonCompanies(id),
@@ -133,6 +136,20 @@ export default async function CompetitorsPage({
         n/a = not measurable or insufficient data (docs/06 — never rendered as
         zero). Trend charts arrive with the specs/006 dashboard.
       </p>
+
+      <section className="mt-8">
+        <h2 className="text-lg font-medium">Entity relationships</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Link teams to their brokerages so grouped visibility can be
+          measured. Proposals need an approval before they group anything —
+          an affiliation is a fact about the market, and facts get reviewed.
+        </p>
+        <RelationshipControls
+          projectId={id}
+          companies={companies.map((c) => ({ id: c.id, name: c.name }))}
+          relationships={relationships}
+        />
+      </section>
 
       {groups.length > 0 && (
         <section className="mt-8">

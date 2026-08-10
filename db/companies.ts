@@ -8,9 +8,12 @@ export interface Company {
   isSelf: boolean;
   createdAt: Date;
   archivedAt: Date | null;
+  marketId: string | null;
+  mergedInto: string | null;
 }
 
-const COLUMNS = sql`id, name, aliases, domain, is_self, created_at, archived_at`;
+const COLUMNS = sql`id, name, aliases, domain, is_self, market_id, merged_into,
+  created_at, archived_at`;
 
 export async function listCompanies(opts?: {
   includeArchived?: boolean;
