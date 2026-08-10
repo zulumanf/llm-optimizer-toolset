@@ -1654,3 +1654,32 @@ and `reused_from` answers "did we pay for this answer or share it?".
 **Mock never participates.** Test and demo behavior is a contract other
 suites rely on; excluding the mock keeps every existing suite's
 call-counting semantics intact and costs nothing (the mock is free).
+
+## 2026-08-10 — Spec 055: model routing tiers (branch feat/055-model-routing)
+
+**Routing is a table in code, fail-closed, with a rationale per row.**
+`lib/ai/routing.ts` maps every recurring LLM task to a tier; an unknown
+task THROWS, so a new LLM task cannot ship without an explicit routing
+decision in a reviewable diff. Routing changes are policy changes — they
+belong in code review, not config (the standing rule). Tiers resolve to
+the existing model constants, so a model bump stays a one-line change and
+the table survives it untouched.
+
+**runAgent's frontier default is gone — model is required.** The audit's
+finding A2 was not that frontier was wrong for everything; it was that
+frontier was the DEFAULT, so 16 of 19 automation agents ran it without
+anyone deciding. Now every caller resolves through the table, and the
+pinned policy tests make a tier change a same-diff test change.
+
+**Downgrades follow A4; the floor follows A5.** Cheap tier: the mention
+classifier/verifier (gold-set gated), narrow extraction that lands in a
+human-approved proposed state, internal summarize/repurpose/followup
+drafts, and the authority-action explainer (the ranking is deterministic;
+the agent only explains it). Frontier stays wherever a wrong answer costs
+more than the tokens saved: everything client-facing, every gate that
+decides whether work ships (content verify, adversarial review, artifact
+verification), accuracy analysis, contradiction detection, outreach.
+
+**Provenance shows the route.** The classifier instrument stamps
+(spec 050) and the llm_calls ledger record the RESOLVED model, so a
+routing change is visible in the data, not just the diff.

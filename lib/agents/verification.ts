@@ -7,6 +7,7 @@
  * reasoning, preferred conclusion, confidence, or self-evaluation cannot leak
  * in even if a caller passes the whole creator output object.
  */
+import { modelForTask } from "@/lib/ai/routing";
 import { runAgent, type AgentCaller } from "@/lib/ai/agent";
 import {
   adversarialOutputSchema,
@@ -91,6 +92,7 @@ export async function verifyArtifact(args: {
 
   const run = await runAgent<VerifierOutput>({
     agentVersion: VERIFIER_AGENT_VERSION,
+    model: modelForTask("artifact_verification"),
     system: VERIFIER_SYSTEM,
     user,
     schema: verifierOutputSchema,
@@ -126,6 +128,7 @@ export async function adversarialReview(args: {
 
   const run = await runAgent({
     agentVersion: ADVERSARIAL_AGENT_VERSION,
+    model: modelForTask("adversarial_review"),
     system: ADVERSARIAL_SYSTEM,
     user,
     schema: adversarialOutputSchema,

@@ -22,7 +22,8 @@ import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import { assertCanWrite, type CurrentUser } from "@/lib/auth";
-import { runAgent, type AgentCaller, AGENT_MODEL } from "@/lib/ai/agent";
+import { runAgent, type AgentCaller } from "@/lib/ai/agent";
+import { modelForTask } from "@/lib/ai/routing";
 import { ClassifiedError } from "@/lib/errors";
 import { publishEvent } from "@/lib/events/bus";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
@@ -171,7 +172,7 @@ export async function extractClaimsFromSource(
         maxClaims: parsed.data.maxClaims,
       }),
       schema: claimExtractionOutputSchema,
-      model: AGENT_MODEL,
+      model: modelForTask("knowledge_claim_extraction"),
       caller: options.caller,
     });
 

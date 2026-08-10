@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import { sql } from "@/db/client";
+import { modelForTask } from "@/lib/ai/routing";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany } from "@/db/companies";
 import { assertCanWrite, type CurrentUser } from "@/lib/auth";
@@ -188,6 +189,7 @@ export async function createBriefFromFinding(
 
     const run = await runAgent({
       agentVersion: CONTENT_BRIEF_V1,
+      model: modelForTask("content_brief"),
       system: BRIEF_SYSTEM,
       user: `Client: ${subject.name}${subject.domain ? ` (${subject.domain})` : ""}
 
@@ -274,6 +276,7 @@ export async function generateDraft(
 
     const run = await runAgent({
       agentVersion: CONTENT_DRAFT_V1,
+      model: modelForTask("content_drafting"),
       system: DRAFT_SYSTEM,
       user: `Client: ${subject.name}${subject.domain ? ` (${subject.domain})` : ""}
 
@@ -394,6 +397,7 @@ export async function verifyDraft(
     // its own work — docs/15)
     const run = await runAgent({
       agentVersion: FACT_VERIFY_V1,
+      model: modelForTask("content_fact_verify"),
       system: VERIFY_SYSTEM,
       user: `Client: ${subject?.name ?? "unknown"}
 

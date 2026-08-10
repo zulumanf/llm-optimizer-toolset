@@ -12,7 +12,8 @@ import { getSubjectCompany } from "@/db/companies";
 import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
-import { runAgent, type AgentCaller, AGENT_MODEL } from "@/lib/ai/agent";
+import { runAgent, type AgentCaller } from "@/lib/ai/agent";
+import { modelForTask } from "@/lib/ai/routing";
 import { suggestTask } from "@/lib/tasks/service";
 import {
   ACCURACY_MONITOR_V1,
@@ -131,7 +132,7 @@ export async function analyzeRunAccuracy(
       const text = response.responseText as string;
       const result = await runAgent({
         agentVersion: ACCURACY_MONITOR_V1,
-        model: AGENT_MODEL,
+        model: modelForTask("accuracy_analysis"),
         system: ACCURACY_SYSTEM,
         user: `COMPANY BEING AUDITED: ${subject.name}${
           subject.domain ? ` (${subject.domain})` : ""

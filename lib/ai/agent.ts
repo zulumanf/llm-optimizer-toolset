@@ -72,8 +72,9 @@ export async function runAgent<T>(args: {
    * JSON.parse, and schemas that apply `.default()` have an input type that
    * differs from their output type (spec 018 agent schemas). */
   schema: z.ZodType<T, z.ZodTypeDef, unknown>;
-  /** Model override — cheap snapshots for narrow, high-volume judgments. */
-  model?: string;
+  /** The routed model (spec 055): every caller resolves via
+   * lib/ai/routing.modelForTask — no frontier default to land on. */
+  model: string;
   /** Ledger attribution (spec 050): which project this spend serves, and a
    * short label for the calling pipeline. Optional — unattributed calls
    * still count in the global ceiling. */
@@ -82,7 +83,7 @@ export async function runAgent<T>(args: {
   caller?: AgentCaller;
 }): Promise<AgentRun<T>> {
   const caller = args.caller ?? openaiCaller;
-  const model = args.model ?? AGENT_MODEL;
+  const model = args.model;
   let cost = 0;
   let tokensIn = 0;
   let tokensOut = 0;
