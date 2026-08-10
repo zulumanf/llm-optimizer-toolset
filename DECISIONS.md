@@ -1473,3 +1473,51 @@ dependency installed, 22 copies of the current-revision SQL predicate, 9
 divergent percent formatters, and the write-only tables. Each needs either
 a product decision or a wide mechanical diff, and none is a correctness
 risk today.
+
+## 2026-08-09 — Spec 050: truth hardening (branch feat/050-truth-hardening)
+
+**Mock scoring is a separate permission from mock running.**
+`ALLOW_MOCK_PROVIDER` was one flag doing two jobs: letting the mock provider
+run (a dev convenience) and letting its fabricated captures fold into score
+rows (fabricated evidence). Split: `mockScoringAllowed()` requires the test
+runner or an explicit `ALLOW_MOCK_SCORING=1`, and returns false under
+`AUTH_MODE=supabase` unconditionally — the real-auth posture never scores
+fiction, whatever the flags say. Seeds/e2e opt in explicitly.
+
+**The instrument is recorded, not inferred.** `responses.request_params`
+stores what each adapter actually sent (provider defaults recorded AS
+"provider_default" — a truthful statement, unlike omission); mentions and
+response_parses carry `classifier_model` + `classifier_prompt_version`.
+A pinned SHA-256 unit test fails CI when a classifier prompt is edited
+without bumping its version constant. Why: parser_version named the family
+but not the instrument, so a model/prompt change altered every future
+client metric with no stamp changing and no CI signal.
+
+**One spend pool.** Insert-only `llm_calls` written from inside `runAgent`
+(success and terminal failure — the spend happened either way);
+`spendLast24hUsd()` and per-client rollups now include agent spend. The
+daily ceiling semantics deliberately changed: classification/content/
+accuracy traffic draws down the same $25/day as benchmark runs, because a
+cap that ignores the highest-volume caller is a receipt, not a cap.
+
+**Team/Group equality is a hypothesis, not a match.** `scoreNameMatch`
+demotes name equality that exists only because `group`/`team` were stripped
+to `probable` (requires review); legal suffixes and "the" still collapse; a
+domain tie still auto-matches. "Rivera Team" vs "Rivera Group" are
+frequently different real-estate firms, and a team is not the agent it is
+named after. Consequence accepted: discovery auto-links less and surfaces
+more `possible` verdicts for a human. `createBenchmarkProject` now resolves
+through the one resolver (match links / possible refuses with candidates
+named / none creates) instead of exact-lower(name)-or-create, which minted
+duplicate companies.
+
+**The production classifier is measured.** Versioned gold corpus
+(`classifier-gold-v1`, real-estate traps: brokerage-vs-team, Team/Group
+collisions, agent-vs-team, same-name-other-industry) runs through
+`classifyResponseLlm` itself; metrics are pure math against exported
+floors; every evaluation persists to insert-only `classifier_evaluations`.
+CI proves the harness with stub callers (an all-positive classifier fails
+the shipped corpus); `scripts/eval-classifier.ts` runs it live and is
+required before any instrument change ships. The review queue's human
+verdicts become `classifierDisagreementRate()` — a continuously-produced
+accuracy signal that was previously discarded.

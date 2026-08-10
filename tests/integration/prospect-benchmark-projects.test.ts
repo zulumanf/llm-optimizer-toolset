@@ -307,4 +307,51 @@ describe.skipIf(!TEST_URL)("prospect benchmark projects (integration)", () => {
     expect(denied.ok).toBe(false);
     if (!denied.ok) expect(denied.error.kind).toBe("forbidden");
   });
+
+  it("refuses an ambiguous company resolution instead of minting a duplicate (spec 050)", async () => {
+    // "Rivera Team" exists in the registry (the client's subject). A prospect
+    // named "Rivera Group" is a near-collision the resolver flags `possible`;
+    // the old exact-name-or-create path would have silently created a second
+    // company. The bootstrap now refuses and names the candidate.
+    await seedClient();
+    const { launchId } = await seedLaunchAndProspect();
+    const near = unwrap(
+      await svc.createProspect(operator, {
+        launchId,
+        businessName: "Rivera Group",
+        prospectType: "team",
+      })
+    );
+    const refused = await svc.createBenchmarkProject(operator, {
+      prospectId: near.prospectId,
+    });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) {
+      expect(refused.error.kind).toBe("conflict");
+      expect(refused.error.message).toContain("Rivera Team");
+    }
+    // No duplicate company was minted
+    const [dupes] = await sql`
+      select count(*)::int as n from companies
+      where lower(name) = 'rivera group' and archived_at is null
+    `;
+    expect(dupes?.n).toBe(0);
+  });
+
+  it("creates a new company only when resolution is genuinely `none`", async () => {
+    await seedClient();
+    const { launchId } = await seedLaunchAndProspect();
+    const fresh = unwrap(
+      await svc.createProspect(operator, {
+        launchId,
+        businessName: "Harborline Property Advisors",
+        prospectType: "team",
+      })
+    );
+    const created = unwrap(
+      await svc.createBenchmarkProject(operator, { prospectId: fresh.prospectId })
+    );
+    const [row] = await sql`select name from companies where id = ${created.companyId}`;
+    expect(row?.name).toBe("Harborline Property Advisors");
+  });
 });

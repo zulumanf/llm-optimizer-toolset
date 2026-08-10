@@ -76,6 +76,14 @@ export const anthropicProvider: AIProvider = {
     // Parsing lives in lib/ai/payloads.ts: testable without a network call,
     // and an unrecognised shape is flagged rather than read as an empty
     // answer. A refusal (stop_reason) stays a valid measurement (docs/12).
-    return { rawPayload: response, ...parseAnthropicMessage(response) };
+    return {
+      rawPayload: response,
+      ...parseAnthropicMessage(response),
+      requestParams: {
+        sampling: "provider_default",
+        maxTokens: MAX_TOKENS,
+        ...(isSearchModel(req.model) ? { tools: [WEB_SEARCH_TOOL] } : {}),
+      },
+    };
   },
 };

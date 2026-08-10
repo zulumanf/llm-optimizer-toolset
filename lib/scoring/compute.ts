@@ -80,10 +80,12 @@ export async function computeScores(runId: string): Promise<void> {
   `;
   // The registry gate stops mock at the door, but a database that once ran
   // with ALLOW_MOCK_PROVIDER can hold mock captures; they must never fold
-  // into real metrics or the cross-provider mean (plan 2.3). Under the test
-  // runner / explicit opt-in the mock provider IS the harness, so it scores.
-  const { mockProviderAllowed } = await import("@/lib/ai/registry");
-  const validResponses = mockProviderAllowed()
+  // into real metrics or the cross-provider mean (plan 2.3). Scoring asks
+  // the stricter question — mockScoringAllowed, not mockProviderAllowed —
+  // because permission to RUN the mock (seeds, demos) is not permission to
+  // count fabrications as measurements (spec 050).
+  const { mockScoringAllowed } = await import("@/lib/ai/registry");
+  const validResponses = mockScoringAllowed()
     ? allValidResponses
     : allValidResponses.filter((r) => r.provider !== "mock");
   if (validResponses.length < allValidResponses.length) {

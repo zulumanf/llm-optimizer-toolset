@@ -74,12 +74,35 @@ export async function runAgent<T>(args: {
   schema: z.ZodType<T, z.ZodTypeDef, unknown>;
   /** Model override — cheap snapshots for narrow, high-volume judgments. */
   model?: string;
+  /** Ledger attribution (spec 050): which project this spend serves, and a
+   * short label for the calling pipeline. Optional — unattributed calls
+   * still count in the global ceiling. */
+  projectId?: string | null;
+  purpose?: string | null;
   caller?: AgentCaller;
 }): Promise<AgentRun<T>> {
   const caller = args.caller ?? openaiCaller;
   const model = args.model ?? AGENT_MODEL;
   let cost = 0;
+  let tokensIn = 0;
+  let tokensOut = 0;
   let lastError = "";
+
+  const record = async (attempts: number, success: boolean) => {
+    // Lazy import keeps lib/ai/agent importable without a DB (pure callers).
+    const { recordLlmCall } = await import("@/lib/ai/ledger");
+    await recordLlmCall({
+      agentVersion: args.agentVersion,
+      model,
+      purpose: args.purpose ?? null,
+      projectId: args.projectId ?? null,
+      tokensIn,
+      tokensOut,
+      costMicroUsd: cost,
+      attempts,
+      success,
+    });
+  };
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const prompt =
@@ -88,6 +111,8 @@ export async function runAgent<T>(args: {
         : `${args.user}\n\nYour previous output was invalid (${lastError.slice(0, 300)}). Return ONLY valid JSON matching the required shape.`;
     const result = await caller({ system: args.system, user: prompt, model });
     cost += costMicroUsd(model, result.tokensIn, result.tokensOut);
+    tokensIn += result.tokensIn;
+    tokensOut += result.tokensOut;
     try {
       const parsed = args.schema.safeParse(JSON.parse(result.text));
       if (parsed.success) {
@@ -96,6 +121,7 @@ export async function runAgent<T>(args: {
           attempts: attempt,
           costMicroUsd: cost,
         });
+        await record(attempt, true);
         return { output: parsed.data, costMicroUsd: cost, attempts: attempt };
       }
       lastError = parsed.error.issues
@@ -105,6 +131,8 @@ export async function runAgent<T>(args: {
       lastError = err instanceof Error ? err.message : "invalid JSON";
     }
   }
+  // The spend happened even though the agent failed — the ledger records it.
+  await record(2, false);
   throw new ClassifiedError(
     "validation",
     `Agent ${args.agentVersion} produced invalid output twice: ${lastError.slice(0, 300)}`

@@ -72,6 +72,10 @@ async function main(): Promise<void> {
   // never fall back to fabricated answers); a seed target is local-or-forced
   // by the guard above, so the opt-in is safe here.
   process.env.ALLOW_MOCK_PROVIDER = "1";
+  // Demo scores are computed over those mock captures — the stricter scoring
+  // fence (spec 050) needs its own explicit opt-in, safe under the same
+  // local-or-forced guard.
+  process.env.ALLOW_MOCK_SCORING = "1";
 
   await resetDemoData();
 

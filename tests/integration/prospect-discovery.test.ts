@@ -79,7 +79,9 @@ describe.skipIf(!TEST_URL)("prospect discovery (integration)", () => {
 
   it("runs discovery, stores enveloped candidates, and approval creates a provenance-labeled prospect", async () => {
     const launchId = await seedLaunch();
-    // A tracked company whose name matches a fixture team → auto-link on approve.
+    // A tracked company that differs from the fixture team only by the
+    // "Team" suffix → `possible`, never auto-linked (spec 050): the agent
+    // and the team named after them are different commercial entities.
     const harborlight = unwrap(
       await companySvc.upsertCompany(operator, { name: "Harborlight Realty" })
     );
@@ -117,9 +119,10 @@ describe.skipIf(!TEST_URL)("prospect discovery (integration)", () => {
       from prospects where id = ${review.prospectId}
     `;
     expect(prospect?.source).toBe("research");
-    // Resolver: "Harborlight Realty Team" ≈ "Harborlight Realty" → auto-link;
-    // "Compass" is a brokerage collision and never the identity.
-    expect(prospect?.companyId).toBe(harborlight.id);
+    // Resolver: "Harborlight Realty Team" vs "Harborlight Realty" is a
+    // Team-suffix near-collision — surfaced as `possible`, NOT auto-linked
+    // (spec 050). The operator links explicitly via confirmCompanyLink.
+    expect(prospect?.companyId).toBeNull();
     const provenance = prospect?.fieldProvenance as Record<string, string>;
     expect(provenance.website).toBe("publicly_sourced");
     expect(provenance.brokerageAffiliation).toBe("publicly_sourced");
@@ -133,8 +136,13 @@ describe.skipIf(!TEST_URL)("prospect discovery (integration)", () => {
       verdict: string;
       brokerageCollisions: { name: string }[];
     };
-    expect(resolution.verdict).toBe("match");
+    expect(resolution.verdict).toBe("possible");
     expect(resolution.brokerageCollisions.map((b) => b.name)).toContain("Compass");
+
+    // The near-collision is the named top candidate, ready for a human link.
+    const candidates = (reviewed?.resolution as { candidates: { companyId: string }[] })
+      .candidates;
+    expect(candidates[0]?.companyId).toBe(harborlight.id);
 
     // A candidate can only be reviewed once.
     const again = await discovery.reviewDiscoveryCandidate(operator, {
@@ -197,8 +205,11 @@ describe.skipIf(!TEST_URL)("prospect discovery (integration)", () => {
     );
 
     const suggestion = await discovery.suggestCompanyForProspect(prospect.prospectId);
-    expect(suggestion?.verdict).toBe("match");
-    expect(suggestion?.companyId).toBe(rivera.id);
+    // "The Rivera Group" vs "Rivera Team": `possible` since spec 050 — the
+    // resolver names the candidate but a human makes the link below.
+    expect(suggestion?.verdict).toBe("possible");
+    expect(suggestion?.companyId).toBeNull();
+    expect(suggestion?.candidates[0]?.companyId).toBe(rivera.id);
     expect(suggestion?.brokerageCollisions.map((b) => b.name)).toContain("Compass");
 
     unwrap(
