@@ -10,24 +10,14 @@
  */
 import type { ReportBody } from "@/lib/reports/types";
 import { NARRATIVE_SECTIONS } from "@/lib/reports/types";
+import { METRIC_LABELS } from "@/lib/format";
+import { verdictLine } from "@/lib/reports/verdict-language";
 
 const SECTION_LABELS: Record<string, string> = {
   summary: "Executive summary",
   competitors: "Competitive picture",
   notable_responses: "Notable AI answers",
   suggested_actions: "Recommended next steps",
-};
-
-const METRIC_LABELS: Record<string, string> = {
-  mention_rate: "Mentioned in answers",
-  recommendation_rate: "Actively recommended",
-  first_position_rate: "Recommended first",
-  top_three_rate: "In the top three",
-  share_of_voice: "Share of AI voice",
-  citation_score: "Own sources cited",
-  authority_score: "Authority score",
-  position_score: "List position",
-  sentiment_index: "Sentiment",
 };
 
 function esc(text: string): string {
@@ -44,6 +34,73 @@ function pct(value: number): string {
 
 function fmt(metric: string, value: number): string {
   return metric === "authority_score" ? value.toFixed(1) : pct(value);
+}
+
+/**
+ * The program section (spec 051, audit F26): what we did and did it work.
+ * The data always sat in the immutable snapshot; it was never rendered —
+ * the retest verdict the platform exists to produce finally reaches the
+ * client. Old bodies without the newer fields render defensively.
+ */
+function programSection(body: ReportBody): string {
+  const program = body.program;
+  if (!program) return "";
+
+  const interventionRows = (program.interventions ?? [])
+    .map((i) => {
+      const line = verdictLine(
+        (i.verdictSummaries ?? []).map((v) => ({
+          metric: v.metric,
+          delta: Number(v.delta),
+          verdict: v.verdict,
+        }))
+      );
+      return `
+      <tr>
+        <td>${esc(i.title)}</td>
+        <td class="muted">${esc(i.shippedAt)}</td>
+        <td>${esc(line)}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const contentRows = (program.contentPublished ?? [])
+    .map(
+      (c) => `
+      <tr>
+        <td>${esc(c.title)}</td>
+        <td class="muted">${c.url ? esc(c.url) : "—"}</td>
+      </tr>`
+    )
+    .join("");
+
+  const tasksDone = (program.tasksCompleted ?? []).length;
+  const gapCount = (program.gapFindings ?? []).length;
+
+  if (!interventionRows && !contentRows && tasksDone === 0 && gapCount === 0) {
+    return "";
+  }
+
+  return `<section>
+  <h2>What we did — and did it work</h2>
+  <p class="muted">${gapCount} finding${gapCount === 1 ? "" : "s"} identified and ${tasksDone} work item${
+    tasksDone === 1 ? "" : "s"
+  } completed this period. Each shipped change below is re-measured on the
+  same instrument that produced its baseline; assessments follow the
+  documented change-detection rules.</p>
+  ${
+    interventionRows
+      ? `<table><thead><tr><th>Shipped change</th><th>Shipped</th><th>Did it work?</th></tr></thead>
+  <tbody>${interventionRows}</tbody></table>`
+      : ""
+  }
+  ${
+    contentRows
+      ? `<table><thead><tr><th>Content published</th><th>Where</th></tr></thead>
+  <tbody>${contentRows}</tbody></table>`
+      : ""
+  }
+</section>`;
 }
 
 export function renderReportHtml(args: {
@@ -88,8 +145,12 @@ export function renderReportHtml(args: {
       (d) => `
       <tr>
         <td>${esc(METRIC_LABELS[d.metric] ?? d.metric)}</td>
-        <td class="num">${fmt(d.metric, Number(d.previous))}</td>
-        <td class="num">${fmt(d.metric, Number(d.current))}</td>
+        <td class="num">${fmt(d.metric, Number(d.previous))}${
+          d.nPrevious != null ? ` <span class="muted">(n=${d.nPrevious})</span>` : ""
+        }</td>
+        <td class="num">${fmt(d.metric, Number(d.current))}${
+          d.nCurrent != null ? ` <span class="muted">(n=${d.nCurrent})</span>` : ""
+        }</td>
         <td class="num">${Number(d.delta) >= 0 ? "+" : ""}${fmt(d.metric, Number(d.delta))}</td>
         <td class="muted">${esc(String(d.verdict ?? ""))}</td>
       </tr>`
@@ -156,6 +217,7 @@ ${
   <th>Leading competitor</th></tr></thead><tbody>${ownershipRows}</tbody></table></section>`
     : ""
 }
+${programSection(body)}
 <footer>
   Methodology ${esc(body.scoringVersion)}. Every value above is an observed
   measurement over repeated AI-assistant runs and carries its sample size;

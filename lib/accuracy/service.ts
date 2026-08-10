@@ -289,12 +289,79 @@ export async function createCorrectionTask(
     });
     if (!result.ok) return result;
 
+    // fix_in_progress, not corrected (spec 051, audit F10): a task being
+    // CREATED proves nothing was fixed. corrected now requires the linked
+    // task done — markFindingCorrected below.
     await sql`
       update accuracy_findings
-      set status = 'corrected', task_id = ${result.data.taskId}
+      set status = 'fix_in_progress', task_id = ${result.data.taskId}
       where id = ${finding.id}
     `;
     return result;
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Mark an accuracy finding corrected (spec 051). Requires the linked
+ * correction task to be done — the status a client report renders must
+ * rest on completed work, not on a task having been created (audit F10:
+ * the old path wrote 'corrected' at task creation).
+ */
+export async function markFindingCorrected(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ findingId: string }>> {
+  const parsed = z.object({ findingId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid finding id."));
+  }
+  try {
+    assertCanWrite(user);
+    const [finding] = await sql`
+      select id, status, task_id from accuracy_findings
+      where id = ${parsed.data.findingId}
+    `;
+    if (!finding) return fail(new ClassifiedError("not_found", "Finding not found."));
+    if (finding.status !== "fix_in_progress") {
+      return fail(
+        new ClassifiedError(
+          "conflict",
+          `Only a finding with a fix in progress can be marked corrected (this one is ${finding.status}).`
+        )
+      );
+    }
+    if (!finding.taskId) {
+      return fail(
+        new ClassifiedError("conflict", "No correction task is linked to this finding.")
+      );
+    }
+    const [task] = await sql`
+      select status from tasks where id = ${finding.taskId}
+    `;
+    if (task?.status !== "done") {
+      return fail(
+        new ClassifiedError(
+          "conflict",
+          "The correction task is not done — corrected means the work happened, not that it was planned."
+        )
+      );
+    }
+    await sql.begin(async (tx) => {
+      await tx`
+        update accuracy_findings set status = 'corrected'
+        where id = ${finding.id}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "accuracy.finding_corrected",
+        entity: "accuracy_finding",
+        entityId: finding.id as string,
+        detail: { taskId: finding.taskId },
+      });
+    });
+    return ok({ findingId: finding.id as string });
   } catch (err) {
     return fail(err);
   }
