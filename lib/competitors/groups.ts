@@ -46,6 +46,8 @@ export async function relationshipGroups(
     join companies cc on cc.id = child.company_id
     join companies pc on pc.id = parent.company_id
     where r.status = 'approved'
+      -- Effective dating (spec 056): an ended affiliation no longer groups.
+      and (r.effective_until is null or r.effective_until >= current_date)
       and r.relationship_type = any(${GROUPING_RELATIONSHIPS})
       and (r.project_id is null or r.project_id = ${projectId})
       and child.company_id is not null and parent.company_id is not null
