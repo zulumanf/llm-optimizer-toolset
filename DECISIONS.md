@@ -1738,3 +1738,30 @@ label.
 transaction before the core promotion commit; a failure between the two
 leaves an audited agreement on an unpromoted project — visible and
 repairable — never a promoted client without its recorded close.
+
+## 2026-08-10 — Spec 058: learning-loop closure (branch feat/058-learning-loop)
+
+**Learnings re-order; they never add or remove.** learning-adjust-v1 is a
+deterministic, versioned, capped rank adjustment inside composePlan:
+confirmed/strongly-supported learnings move a play ±10/−15 opportunity
+points (cap ±20) per their declared direction; weaker labels annotate
+nothing and move nothing. The play catalog and its precondition gates stay
+the sole authority on what work is possible — the loop only re-orders and
+explains, and the plan baseline records the adjustment version.
+
+**Direction is a required field.** A learning about a play must say which
+way it cuts (supports|cautions). Without it, "we learned something about
+directory cleanup" is unusable by any ranking rule, and the audit's
+retrieve-comparable-outcomes vision reduces to full-text search.
+
+**Derivation over data entry.** recordLearning fills intervention, gap
+type, and cost from the cited measured outcomes when the operator doesn't
+— the highest-integrity path (citing real outcomes) is also the
+lowest-effort one. Explicit input always wins; derivation only fills
+blanks.
+
+**No ML yet, deliberately.** The audit's own guidance (§29): don't
+recommend ML before enough clean outcomes exist. The dimensions and the
+supports/cautions counts make that moment visible; until then the
+adjustment stays a constant-weight rule a reviewer can read in one
+sitting.

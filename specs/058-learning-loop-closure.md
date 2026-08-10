@@ -1,6 +1,6 @@
 # Spec 058 — Learning Loop Closure
 
-**Status:** In progress
+**Status:** Implemented — all acceptance criteria verified 2026-08-10
 **Branch:** `feat/058-learning-loop`
 **Source:** Architecture gap audit 2026-08-09 (F35/F36/F38, learning §29): the learnings ledger has excellent integrity constraints and **no feedback edge** — nothing in plan composition ever reads it, it lacks the dimensions to retrieve "what happened last time we ran this play for this kind of gap in this market", and it has no UI at all (MCP-only). The second engagement starts exactly as uninformed as the first.
 
@@ -28,8 +28,8 @@ Spec 051 built the spine (interventions now record `action_outcomes`; learnings 
 - Prospect-scoring feedback (spec 043's cohort analysis already covers it, advisory-only).
 
 ## Acceptance criteria
-- [ ] Dimensions persist; strong-confidence derivation fills intervention/cost/gap type from measured outcomes (test).
-- [ ] `findComparableLearnings` filters by play/gap/market with global fallbacks (test).
-- [ ] A confirmed supporting learning lifts a play above a higher-opportunity rival; a confirmed cautioning learning drops one below a lower-opportunity rival; weak labels change nothing; rationale carries the plain-language sentence; the plan records the adjustment version (tests).
-- [ ] Learnings page lists, records (with dimensions), and retires; MCP tools keep working (existing tests green).
-- [ ] Migration 067 reversible; `npm test`, lint, typecheck green.
+- [x] Dimensions persist; strong-confidence derivation fills intervention/cost/gap type from measured outcomes (test).
+- [x] `findComparableLearnings` filters by play/gap/market with global fallbacks (test).
+- [x] A confirmed supporting learning lifts a play above a higher-opportunity rival; a confirmed cautioning learning drops one below a lower-opportunity rival; weak labels change nothing; rationale carries the plain-language sentence; the plan records the adjustment version (tests).
+- [x] Learnings page lists, records (with dimensions), and retires; MCP tools keep working (existing tests green).
+- [x] Migration 067 reversible; `npm test`, lint, typecheck green.
