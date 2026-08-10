@@ -48,6 +48,16 @@ const recordSchema = z.object({
   confidenceLabel: z.enum(LEARNING_CONFIDENCE_LABELS),
   sourceActionOutcomeIds: z.array(z.string().uuid()).max(20).default([]),
   evidenceNote: z.string().max(1000).optional(),
+  // Situation dimensions (spec 058) — what makes a learning retrievable
+  // when the same shape of problem appears again.
+  gapType: z.string().trim().max(80).nullish(),
+  playKey: z.string().trim().max(80).nullish(),
+  marketId: z.string().uuid().nullish(),
+  interventionId: z.string().uuid().nullish(),
+  costUsd: z.number().nonnegative().nullish(),
+  scoringVersion: z.string().trim().max(40).nullish(),
+  /** Which way this learning cuts for the play it names. */
+  direction: z.enum(["supports", "cautions"]).default("supports"),
 });
 
 export interface Learning {
@@ -61,12 +71,20 @@ export interface Learning {
   evidenceNote: string | null;
   status: "active" | "retired";
   retiredReason: string | null;
+  gapType: string | null;
+  playKey: string | null;
+  marketId: string | null;
+  interventionId: string | null;
+  costUsd: string | null;
+  scoringVersion: string | null;
+  direction: "supports" | "cautions";
   createdAt: Date;
 }
 
 const COLUMNS = sql`id, project_id, category, statement, rationale,
   confidence_label, source_action_outcome_ids, evidence_note, status,
-  retired_reason, created_at`;
+  retired_reason, gap_type, play_key, market_id, intervention_id, cost_usd,
+  scoring_version, direction, created_at`;
 
 export async function recordLearning(
   user: CurrentUser,
@@ -110,15 +128,49 @@ export async function recordLearning(
           }
         }
       }
+      // Auto-derive dimensions from the measured sources (spec 058): the
+      // highest-integrity path is also the lowest-effort one. Explicit
+      // input always wins; derivation only fills blanks.
+      let interventionId = input.interventionId ?? null;
+      let gapType = input.gapType ?? null;
+      let costUsd = input.costUsd ?? null;
+      if (input.sourceActionOutcomeIds.length > 0) {
+        const [derived] = await tx`
+          select
+            (select ao.intervention_id from action_outcomes ao
+              where ao.id = any(${input.sourceActionOutcomeIds}::uuid[])
+                and ao.intervention_id is not null limit 1) as intervention_id,
+            (select gf.gap_type from action_outcomes ao
+              join gap_findings gf on gf.id = ao.gap_finding_id
+              where ao.id = any(${input.sourceActionOutcomeIds}::uuid[])
+              limit 1) as gap_type
+        `;
+        interventionId = interventionId ?? ((derived?.interventionId as string | null) ?? null);
+        gapType = gapType ?? ((derived?.gapType as string | null) ?? null);
+        if (costUsd === null && interventionId) {
+          const [intervention] = await tx`
+            select cost_usd from interventions where id = ${interventionId}
+          `;
+          costUsd =
+            intervention?.costUsd === null || intervention?.costUsd === undefined
+              ? null
+              : Number(intervention.costUsd);
+        }
+      }
       const [row] = await tx<Learning[]>`
         insert into learnings
           (project_id, category, statement, rationale, confidence_label,
-           source_action_outcome_ids, evidence_note, created_by)
+           source_action_outcome_ids, evidence_note, created_by, gap_type,
+           play_key, market_id, intervention_id, cost_usd, scoring_version,
+           direction)
         values
           (${input.projectId ?? null}, ${input.category}, ${input.statement},
            ${input.rationale}, ${input.confidenceLabel},
            ${input.sourceActionOutcomeIds}::uuid[],
-           ${input.evidenceNote ?? null}, ${user.id})
+           ${input.evidenceNote ?? null}, ${user.id}, ${gapType},
+           ${input.playKey ?? null}, ${input.marketId ?? null},
+           ${interventionId}, ${costUsd}, ${input.scoringVersion ?? null},
+           ${input.direction})
         returning ${COLUMNS}
       `;
       await writeAudit(tx, {
@@ -212,4 +264,41 @@ export async function searchLearnings(
     order by created_at desc
     limit 100
   `;
+}
+
+export interface ComparableLearningsQuery {
+  playKey?: string | null;
+  gapType?: string | null;
+  marketId?: string | null;
+  projectId?: string | null;
+}
+
+/**
+ * Retrieval by situation (spec 058): active learnings matching the play
+ * and/or gap, strongest confidence first. Market and project filters keep
+ * global rows — a cross-market pattern is evidence everywhere; a local one
+ * only locally.
+ */
+export async function findComparableLearnings(
+  query: ComparableLearningsQuery
+): Promise<Learning[]> {
+  const rows = await sql<Learning[]>`
+    select ${COLUMNS} from learnings
+    where status = 'active'
+      ${query.playKey ? sql`and play_key = ${query.playKey}` : sql``}
+      ${query.gapType ? sql`and (gap_type = ${query.gapType} or gap_type is null)` : sql``}
+      ${query.marketId ? sql`and (market_id = ${query.marketId} or market_id is null)` : sql``}
+      ${query.projectId ? sql`and (project_id = ${query.projectId} or project_id is null)` : sql``}
+    order by
+      case confidence_label
+        when 'confirmed' then 0
+        when 'strongly_supported' then 1
+        when 'correlated' then 2
+        when 'probable' then 3
+        else 4
+      end,
+      created_at desc
+    limit 50
+  `;
+  return rows;
 }

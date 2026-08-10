@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { unwrap } from "../helpers/result";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -46,7 +47,7 @@ describe.skipIf(!TEST_URL)("learnings (integration)", () => {
 
   beforeEach(async () => {
     await sql.unsafe(
-      "truncate audit_log, learnings, action_outcomes, projects cascade"
+      "truncate audit_log, learnings, action_outcomes, gap_findings, interventions, runs, prompt_set_versions, prompt_sets, projects cascade"
     );
   });
 
@@ -190,5 +191,73 @@ describe.skipIf(!TEST_URL)("learnings (integration)", () => {
     const withRetired = await svc.searchLearnings({ projectId, includeRetired: true });
     expect(withRetired).toHaveLength(1);
     expect(withRetired[0]?.retiredReason).toContain("Q3");
+  });
+
+  it("spec 058: dimensions persist and derive from measured sources", async () => {
+    const projectId = await seedProjectId();
+    // A measured outcome linked to a gap finding and a costed intervention.
+    const [set] = await sql`
+      insert into prompt_sets (project_id, name) values (${projectId}, 's')
+      returning id
+    `;
+    const [version] = await sql`
+      insert into prompt_set_versions (prompt_set_id, version, frozen_prompts)
+      values (${set!.id}, 1, '[]') returning id
+    `;
+    const [run] = await sql`
+      insert into runs (project_id, prompt_set_version_id, label, providers,
+        trigger, budget_usd)
+      values (${projectId}, ${version!.id}, 'r', '[]', 'manual', 1)
+      returning id
+    `;
+    const [gap] = await sql`
+      insert into gap_findings (project_id, run_id, gap_type, finding, detail,
+        severity, opportunity_score, detector_version, status)
+      values (${projectId}, ${run!.id}, 'citation', 'no owned citations',
+        '{}', 0.8, 69, 'gap-detector-v1', 'open')
+      returning id
+    `;
+    const [intervention] = await sql`
+      insert into interventions (project_id, title, shipped_at,
+        prompt_set_version_id, cost_usd)
+      values (${projectId}, 'Directory cleanup', current_date, ${version!.id}, 420)
+      returning id
+    `;
+    const [outcome] = await sql`
+      insert into action_outcomes (project_id, action_type, gap_finding_id,
+        intervention_id, effectiveness, measured_at)
+      values (${projectId}, 'intervention_shipped', ${gap!.id},
+        ${intervention!.id}, 'positive_signal', now())
+      returning id
+    `;
+
+    const learning = unwrap(
+      await svc.recordLearning(user, {
+        projectId,
+        category: "authority",
+        statement: "Directory cleanup moved citations for boutique teams.",
+        confidenceLabel: "confirmed",
+        sourceActionOutcomeIds: [outcome!.id as string],
+        playKey: "claim_directory_profiles",
+        direction: "supports",
+      })
+    );
+    // Derived, not typed: intervention, gap type, and its recorded cost.
+    expect(learning.interventionId).toBe(intervention!.id);
+    expect(learning.gapType).toBe("citation");
+    expect(Number(learning.costUsd)).toBe(420);
+    expect(learning.playKey).toBe("claim_directory_profiles");
+    expect(learning.direction).toBe("supports");
+
+    const comparable = await svc.findComparableLearnings({
+      playKey: "claim_directory_profiles",
+      gapType: "citation",
+      projectId,
+    });
+    expect(comparable.map((l) => l.id)).toContain(learning.id);
+    // A different play retrieves nothing.
+    expect(
+      await svc.findComparableLearnings({ playKey: "press_relationships" })
+    ).toHaveLength(0);
   });
 });
