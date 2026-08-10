@@ -17,6 +17,8 @@ export interface Run {
   costUsd: string;
   startedAt: Date;
   completedAt: Date | null;
+  /** Spec 054: false forces fresh sampling even when a reusable capture exists. */
+  reuseCaptures: boolean;
 }
 
 export interface RunListItem extends Run {
@@ -48,7 +50,7 @@ export interface ResponseDetail extends ResponseCell {
 
 const RUN_COLUMNS = sql`id, project_id, prompt_set_version_id, label, providers,
   status, status_detail, trigger, started_by, budget_usd, cost_usd,
-  started_at, completed_at`;
+  started_at, completed_at, reuse_captures`;
 
 export async function getRun(runId: string): Promise<Run | null> {
   const rows = await sql<Run[]>`select ${RUN_COLUMNS} from runs where id = ${runId}`;
