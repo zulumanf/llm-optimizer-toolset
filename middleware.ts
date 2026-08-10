@@ -23,7 +23,7 @@ import { devAuthRefusalReason } from "@/lib/env";
 
 /** Paths reachable without a session. `/audit` is the prospect audit page —
  * its own security is the high-entropy token (spec 032). */
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/webhooks", "/audit"];
+const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/audit"];
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   if (process.env.AUTH_MODE !== "supabase") {

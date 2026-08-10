@@ -7,36 +7,33 @@ This README covers **only the repository** — setup, stack, structure, commands
 ## Stack
 
 - **Framework:** Next.js (App Router) + React, TypeScript strict
-- **Database:** Supabase (Postgres) — migrations in `db/migrations/`
+- **Database:** Postgres 14 — local dev via Homebrew on **port 5433**, Supabase-hosted in production; migrations in `db/migrations/` (reversibility CI-proven)
 - **UI:** Tailwind CSS + shadcn/ui, dark mode, desktop-first
 - **AI providers:** OpenAI, Anthropic, Google, Perplexity via the abstraction in `lib/ai/`
 - **Background jobs:** worker processes in `workers/` (experiment execution, parsing)
-- **Testing:** Vitest (unit/integration). No E2E suite yet — see `docs/09-testing-strategy.md`
+- **Testing:** Vitest (1,400+ unit/integration) + Playwright e2e — both merge-blocking in CI (`docs/09-testing-strategy.md`, spec 049)
 
 ## Setup
 
 ```bash
 git clone <repo>
-cd LLM_Optimizer_Toolset
+cd llm-optimizer-toolset
 npm install
-cp .env.example .env        # fill in keys — see below
-npm run db:migrate
-npm run dev
+cp .env.example .env        # every variable documented inline
+npm run app                 # Postgres + migrations + WORKER + dev server, one command
 ```
+
+`npm run dev` alone starts only the web server — **runs will queue forever
+without the worker** (`npm run worker`). `npm run app` starts everything.
+Deployment (containers, scheduling, backups, health): `docs/deployment.md`.
 
 ### Environment variables (single `.env`, never committed)
 
-```
-DATABASE_URL=               # Supabase Postgres connection string
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-
-OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
-GOOGLE_API_KEY=
-PERPLEXITY_API_KEY=
-```
+`.env.example` is the authoritative, fully-commented list — copy it and
+fill in. Highlights: `DATABASE_URL` (local: `postgres://localhost:5433/llm_optimizer_dev`),
+`AUTH_MODE` (`dev` locally, `supabase`+keys in production), provider keys,
+`CRON_SECRET`, `APP_URL`, `AUTOMATION_CREDENTIAL_KEY`, backup/alert knobs.
+`lib/env.ts` validates at boot; production refuses to serve dev auth.
 
 ## Commands
 
@@ -156,4 +153,4 @@ npm test -- automation-demos    # prospect outreach, content, reporting, failure
 
 ## Deployment
 
-Internal only. Runs on Vercel (app) + Supabase (database) + a single worker process (Railway/Fly/local cron). No public signup; access restricted to the operating team (see `docs/10-security.md`).
+Operated by one internal team, with scoped client portal access and tokenized prospect audit pages. Ships as two containers (web + worker, `Dockerfile`/`Dockerfile.worker`) plus Postgres — host-agnostic; see `docs/deployment.md`. No public signup; access restricted to the operating team (see `docs/10-security.md`).

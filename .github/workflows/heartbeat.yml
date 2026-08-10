@@ -1,0 +1,34 @@
+# Off-laptop scheduler (spec 059). GitHub's cron is ~5-minute-granular and
+# best-effort — acceptable for a heartbeat whose work is windowed and
+# deduped (trigger dispatch, event delivery, maintenance, drift detection,
+# weekly cycles all tolerate late ticks). Move to the host's own scheduler
+# once one exists; until then this replaces four launchd plists on a laptop.
+#
+# Requires repo secrets APP_URL and CRON_SECRET; exits quietly without them
+# so the workflow can merge before the first deploy.
+name: heartbeat
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  beat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Automation heartbeat
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "APP_URL/CRON_SECRET secrets unset — no deploy yet, exiting."
+            exit 0
+          fi
+          set -e
+          curl -sf -X POST -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/automation" | head -c 2000
+          echo
+          curl -sf -X POST -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/weekly-cycle" | head -c 2000

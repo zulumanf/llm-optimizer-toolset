@@ -12,8 +12,28 @@ SRC="${1:-}"
 TARGET_DB="${2:-llm_optimizer_restore}"
 DB_PORT="${BACKUP_DB_PORT:-5433}"
 
-if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
-  echo "usage: npm run restore -- <backup-dir> [target_db]" >&2
+if [ -z "$SRC" ]; then
+  echo "usage: npm run restore -- <backup-dir | backup.tar.gz.enc> [target_db]" >&2
+  exit 1
+fi
+
+# Encrypted artifact (spec 059): decrypt + unpack into a temp dir first.
+case "$SRC" in
+  *.tar.gz.enc)
+    if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ]; then
+      echo "This backup is encrypted — set BACKUP_ENCRYPTION_KEY to restore." >&2
+      exit 1
+    fi
+    WORK="$(mktemp -d)"
+    echo "▸ decrypting backup…"
+    openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000       -pass env:BACKUP_ENCRYPTION_KEY -in "$SRC" -out "$WORK/backup.tar.gz"
+    tar -xzf "$WORK/backup.tar.gz" -C "$WORK"
+    SRC="$(find "$WORK" -maxdepth 1 -mindepth 1 -type d | head -1)"
+    ;;
+esac
+
+if [ ! -d "$SRC" ]; then
+  echo "Backup directory not found: $SRC" >&2
   exit 1
 fi
 

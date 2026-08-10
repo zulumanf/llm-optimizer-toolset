@@ -1,0 +1,47 @@
+# Self-host / any-VPS topology (spec 059): web + worker + Postgres 14.
+# Managed hosts (Railway/Fly/Render) replace the db service with their own
+# Postgres and run the two Dockerfiles as separate services.
+services:
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: llm_optimizer
+      POSTGRES_USER: avos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avos -d llm_optimizer"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://avos:${POSTGRES_PASSWORD}@db:5432/llm_optimizer
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://avos:${POSTGRES_PASSWORD}@db:5432/llm_optimizer
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
