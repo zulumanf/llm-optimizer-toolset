@@ -1589,6 +1589,11 @@ export interface AuditSnapshot {
     /** Sourced market rank (ranking signal with a numeric value, same
      * launch); null for entities with no ranked record — never guessed. */
     marketRank?: number | null;
+    /** metric → immutable scores row id (spec 052). Optional: snapshots
+     * published before the binding existed render without it; NEW snapshots
+     * are refused at publish unless every rendered rate is bound and
+     * matches its score row (validateAuditEvidence). */
+    scoreIds?: Record<string, string>;
   }[];
   /** Brand-level names (brokerages, out-of-market brands) that filled the
    * answers — kept out of the team table, summarized beneath it. The
@@ -2101,6 +2106,7 @@ export async function publishAudit(
                 recommendationRate: prospectMetrics.recommendationRate,
                 sampleSize: prospectMetrics.sampleSize,
                 marketRank: rankByCompany.get(benchmark.companyId as string) ?? null,
+                scoreIds: prospectMetrics.scoreIds,
               },
             ]
           : []),
@@ -2111,6 +2117,7 @@ export async function publishAudit(
           recommendationRate: r.recommendationRate,
           sampleSize: r.sampleSize,
           marketRank: rankByCompany.get(r.companyId) ?? null,
+          scoreIds: r.scoreIds,
         })),
       ],
       promptEvidence: evidence,
@@ -2127,6 +2134,21 @@ export async function publishAudit(
       ...(exampleChats.length > 0 ? { exampleChats } : {}),
       preparedBy,
     };
+
+    // Evidence gate (spec 052): every rate in the comparison must match its
+    // referenced immutable score row — the prospect-facing equivalent of the
+    // client report's citation gate. Deterministic; refuses on any mismatch.
+    const { validateAuditEvidence } = await import("@/lib/prospects/audit-evidence");
+    const evidenceMismatches = await validateAuditEvidence(snapshot);
+    if (evidenceMismatches.length > 0) {
+      throw new ClassifiedError(
+        "validation",
+        `Audit evidence gate failed — ${evidenceMismatches
+          .slice(0, 3)
+          .map((m) => `${m.row}: ${m.problem}`)
+          .join(" · ")}`
+      );
+    }
 
     // Commit phase (correctness audit 2026-08-04): the snapshot above was
     // assembled on ordinary pooled reads — the transaction below holds row
