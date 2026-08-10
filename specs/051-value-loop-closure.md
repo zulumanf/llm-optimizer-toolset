@@ -1,6 +1,6 @@
 # Spec 051 — Value Loop Closure
 
-**Status:** In progress
+**Status:** Implemented — all acceptance criteria verified 2026-08-09
 **Branch:** `feat/051-value-loop` (stacked on `feat/050-truth-hardening`)
 **Source:** Architecture gap audit 2026-08-09 (F10, F11, F19, F21, F24, F26, F28, F43): the loop intervention → live verification → retest → verdict → evidence → client report computes its answer and never delivers it.
 
@@ -46,13 +46,13 @@ The platform's whole promise to a client is "we changed something, we re-measure
 - Confidence intervals on deltas (statistical layer — scale phase).
 
 ## Acceptance criteria
-- [ ] Published report HTML contains the program section: interventions with frozen verdict summaries, honest "not yet measured" states, tasks, content (test renders both a measured and an unmeasured intervention).
-- [ ] Portal work tab shows a computed verdict line for a measured intervention and "Re-measurement scheduled" for an unmeasured one (test).
-- [ ] `validateNarrative` blocks a numberless causal sentence; publish path refuses with the sentence named (test). The existing digit-citation rule is unchanged (existing tests stay green).
-- [ ] Delta rows carry and render sample sizes; `first_position_rate` yields a real verdict instead of null (test).
-- [ ] `createIntervention` with URLs enqueues `verify_intervention_urls`; the worker records per-URL results via safeFetch (test with stubbed fetch); `interventionView` exposes them.
-- [ ] `createCorrectionTask` sets `fix_in_progress`; `markFindingCorrected` refuses while the task is open and succeeds once done, audited (test).
-- [ ] `createIntervention` writes an `action_outcomes` row with `intervention_id` populated (test) — and the outcome sweep can measure it unchanged.
-- [ ] `owner_id`/`cost_usd` accepted and persisted (test).
-- [ ] `recordReportDelivery` refuses unpublished reports, writes an insert-only row + audit (test); report page shows the history.
-- [ ] Migration 061 reversible; `npm test`, lint, typecheck green.
+- [x] Published report HTML contains the program section: interventions with frozen verdict summaries, honest "not yet measured" states, tasks, content (test renders both a measured and an unmeasured intervention).
+- [x] Portal work tab shows a computed verdict line for a measured intervention and "Re-measurement scheduled" for an unmeasured one (test).
+- [x] `validateNarrative` blocks a numberless causal sentence; publish path refuses with the sentence named (test). The existing digit-citation rule is unchanged (existing tests stay green).
+- [x] Delta rows carry and render sample sizes; `first_position_rate` yields a real verdict instead of null (test).
+- [x] `createIntervention` with URLs enqueues `verify_intervention_urls`; the worker records per-URL results via safeFetch (test with stubbed fetch); `interventionView` exposes them.
+- [x] `createCorrectionTask` sets `fix_in_progress`; `markFindingCorrected` refuses while the task is open and succeeds once done, audited (test).
+- [x] `createIntervention` writes an `action_outcomes` row with `intervention_id` populated (test) — and the outcome sweep can measure it unchanged.
+- [x] `owner_id`/`cost_usd` accepted and persisted (test).
+- [x] `recordReportDelivery` refuses unpublished reports, writes an insert-only row + audit (test); report page shows the history.
+- [x] Migration 061 reversible; `npm test`, lint, typecheck green.

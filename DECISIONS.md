@@ -1521,3 +1521,42 @@ the shipped corpus); `scripts/eval-classifier.ts` runs it live and is
 required before any instrument change ships. The review queue's human
 verdicts become `classifierDisagreementRate()` — a continuously-produced
 accuracy signal that was previously discarded.
+
+## 2026-08-09 — Spec 051: value loop closure (branch feat/051-value-loop)
+
+**Verdicts are frozen into the snapshot, not recomputed for display.**
+`SnapshotIntervention.verdictSummaries` is computed by the existing
+`computeVerdicts` at snapshot-build time and stored in the immutable body:
+the client's report records exactly what was known at publication — later
+post-runs change future reports, never a delivered one. One shared helper
+(`interventionVerdictSummaries`) feeds the snapshot and the portal; one
+translation (`verdictLine`) turns verdicts into client language, and it
+deliberately says "no clear change yet", never "didn't work" — absence of
+a notable delta at one offset is not a negative result.
+
+**The causal gate rides the evidence gate.** `CAUSAL_PHRASES` is exported
+from the workflow gates (one list) and `validateNarrative` blocks causal
+sentences at publish regardless of digits. Why: the digit rule alone let
+"our work drove your gains" publish clean, and that sentence is precisely
+what the attribution system exists to prevent asserting without labels.
+
+**Live verification is a job, not a promise.** `url_verifications` is
+append-only; `createIntervention` enqueues `verify_intervention_urls`
+transactionally with the insert, the worker fetches through `safeFetch`
+(one egress policy), and a failed page is a recorded fact — never an
+exception. Accuracy findings now pass through `fix_in_progress`;
+`corrected` requires the linked task done (`markFindingCorrected`,
+audited) — the old path wrote `corrected` at task creation.
+
+**One outcome spine.** `createIntervention` records an `action_outcomes`
+row with `intervention_id` in the same transaction (+6w horizon matching
+the retest schedule), so the intervention-verdict loop and the
+outcomes→learnings loop finally share a row and a learning can cite a real
+intervention's verdict. Interventions carry `owner_id`/`cost_usd`;
+approval workflow stays deferred (audit F3, P2).
+
+**Delivery is a ledger, not an integration.** `report_deliveries` is
+insert-only and published-only; the operator's mail client remains the
+transport — the same honest pattern as the prospect manual channel — so no
+ESP/sender-identity decision (spec 052) is preempted while "was this ever
+sent, to whom, when" becomes answerable.
