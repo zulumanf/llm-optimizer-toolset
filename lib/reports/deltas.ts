@@ -11,6 +11,10 @@ export const MIN_N_PER_SIDE = 30;
 export const RATE_METRICS = new Set([
   "mention_rate",
   "recommendation_rate",
+  // Headline portal metrics were missing (audit F21): movement in the
+  // client's most prominent numbers had no change-detection rule behind it.
+  "first_position_rate",
+  "top_three_rate",
   "share_of_voice",
   "position_score",
   "citation_score",

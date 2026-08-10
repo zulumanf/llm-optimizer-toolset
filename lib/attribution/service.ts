@@ -296,6 +296,45 @@ export async function startScheduledRun(payload: {
   });
 }
 
+/**
+ * The subject's measured verdicts for one intervention ('all' provider),
+ * in snapshot/portal-friendly shape (spec 051). Shared by the report
+ * snapshot builder and the portal work tab — one derivation, two surfaces.
+ */
+export async function interventionVerdictSummaries(
+  projectId: string,
+  interventionId: string
+): Promise<{ metric: string; postRunId: string; delta: number; verdict: string }[]> {
+  const { getSubjectCompany } = await import("@/db/companies");
+  const subject = await getSubjectCompany(projectId);
+  if (!subject) return [];
+  const scoreRows = await sql`
+    select s.id as score_id, s.run_id, s.metric, s.provider, s.value,
+      s.sample_size, s.scoring_version, ir.role
+    from intervention_runs ir
+    join scores s on s.run_id = ir.run_id
+    where ir.intervention_id = ${interventionId} and s.company_id = ${subject.id}
+  `;
+  const toInput = (r: (typeof scoreRows)[number]): ScoreInput => ({
+    scoreId: r.scoreId as string,
+    runId: r.runId as string,
+    metric: r.metric as string,
+    provider: r.provider as string,
+    value: Number(r.value),
+    sampleSize: r.sampleSize as number,
+    scoringVersion: r.scoringVersion as string,
+  });
+  return computeVerdicts(
+    scoreRows.filter((r) => r.role === "baseline").map(toInput),
+    scoreRows.filter((r) => r.role === "post").map(toInput)
+  ).map((v) => ({
+    metric: v.metric,
+    postRunId: v.postRunId,
+    delta: v.delta,
+    verdict: v.verdict ?? "not_comparable",
+  }));
+}
+
 export interface InterventionView {
   verdicts: MetricVerdict[];
   instrumentChanged: boolean;

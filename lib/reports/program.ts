@@ -12,6 +12,7 @@ import type {
   SnapshotProgram,
   SnapshotCategoryOwnership,
 } from "@/lib/reports/types";
+import { interventionVerdictSummaries } from "@/lib/attribution/service";
 
 export async function buildProgram(args: {
   projectId: string;
@@ -81,16 +82,25 @@ export async function buildProgram(args: {
       quote: (a.quote as string).slice(0, 300),
       status: a.status as string,
     })),
-    interventions: interventionRows.map((i) => ({
-      interventionId: i.id as string,
-      title: i.title as string,
-      shippedAt: i.shippedAt as string,
-      // Verdicts are computed on read (spec 007) — the report records how
-      // many post-runs exist, not a re-derived verdict, to stay honest
-      // about what was measured at publication time.
-      measuredVerdicts: (i.measured as number) ?? 0,
-      notableVerdicts: 0,
-    })),
+    interventions: await Promise.all(
+      interventionRows.map(async (i) => {
+        // Verdicts frozen at snapshot build (spec 051): the client's report
+        // records exactly what was known when it was published — later
+        // post-runs change future reports, never this one.
+        const summaries = await interventionVerdictSummaries(
+          projectId,
+          i.id as string
+        );
+        return {
+          interventionId: i.id as string,
+          title: i.title as string,
+          shippedAt: i.shippedAt as string,
+          measuredVerdicts: (i.measured as number) ?? 0,
+          notableVerdicts: summaries.filter((v) => v.verdict === "notable").length,
+          verdictSummaries: summaries,
+        };
+      })
+    ),
     tasksCompleted: taskRows.map((t) => ({
       taskId: t.id as string,
       title: t.title as string,

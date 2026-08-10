@@ -96,11 +96,21 @@ export async function portalWork(
     where project_id = ${projectId} and status = 'published'
     order by updated_at desc limit 50
   `;
+  // Capped at 20: each verdict line re-derives from stored scores (never
+  // stored — spec 007), and the portal must answer "did it work" without
+  // unbounded per-request work (spec 051).
   const interventions = await sql`
-    select title, shipped_at as at from interventions
+    select id, title, shipped_at as at from interventions
     where project_id = ${projectId} and archived_at is null and client_visible
-    order by shipped_at desc limit 50
+    order by shipped_at desc limit 20
   `;
+  const { interventionVerdictSummaries } = await import("@/lib/attribution/service");
+  const { verdictLine } = await import("@/lib/reports/verdict-language");
+  const interventionDetails = new Map<string, string>();
+  for (const i of interventions) {
+    const summaries = await interventionVerdictSummaries(projectId, i.id as string);
+    interventionDetails.set(i.id as string, verdictLine(summaries));
+  }
   const items: PortalWorkItem[] = [
     ...tasks.map((t) => ({
       kind: "task" as const,
@@ -118,7 +128,9 @@ export async function portalWork(
       kind: "intervention" as const,
       title: i.title as string,
       at: i.at as Date,
-      detail: "Shipped — remeasured on schedule",
+      // The computed retest verdict, in client language — the answer to
+      // "did it work" was derived and never shown (audit F24).
+      detail: interventionDetails.get(i.id as string) ?? "Re-measurement scheduled",
     })),
   ];
   return items

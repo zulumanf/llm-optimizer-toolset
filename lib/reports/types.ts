@@ -24,6 +24,10 @@ export interface SnapshotDelta {
   previous: number;
   delta: number;
   verdict: DeltaVerdict;
+  /** Sample sizes behind each side (spec 051). Optional: older published
+   * bodies predate the fields and render without them. */
+  nCurrent?: number;
+  nPrevious?: number;
 }
 
 export interface SnapshotExcerpt {
@@ -72,12 +76,23 @@ export interface SnapshotAccuracyFinding {
   status: string;
 }
 
+/** One measured metric verdict, frozen at snapshot build (spec 051) —
+ * the report records what was known when it was published. */
+export interface SnapshotVerdictSummary {
+  metric: string;
+  postRunId: string;
+  delta: number;
+  verdict: string;
+}
+
 export interface SnapshotIntervention {
   interventionId: string;
   title: string;
   shippedAt: string;
   notableVerdicts: number;
   measuredVerdicts: number;
+  /** Optional: older published bodies predate the field. */
+  verdictSummaries?: SnapshotVerdictSummary[];
 }
 
 export interface SnapshotProgram {
