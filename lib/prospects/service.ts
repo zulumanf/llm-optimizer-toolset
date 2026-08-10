@@ -64,6 +64,7 @@ import { generateRecordingPlan as buildRecordingPlan } from "@/lib/prospects/rec
 import { parseProspectImport, type ImportRow } from "@/lib/prospects/import";
 import { checkSuppression } from "@/lib/outreach/suppression";
 import { authorityGapForRun } from "@/lib/prospects/gap";
+import { resolveProspectCompany } from "@/lib/prospects/resolve";
 import {
   getEmailChannel,
   hasOptOutMention,
@@ -1191,7 +1192,8 @@ export async function createBenchmarkProject(
     assertCanWrite(user);
     const [prospect] = await sql`
       select p.id, p.launch_id, p.business_name, p.company_id,
-        p.benchmark_project_id, p.archived_at, m.name as market_name
+        p.benchmark_project_id, p.archived_at, p.website,
+        p.brokerage_affiliation, p.team_leader, m.name as market_name
       from prospects p
       join market_launches l on l.id = p.launch_id
       join markets m on m.id = l.market_id
@@ -1206,15 +1208,44 @@ export async function createBenchmarkProject(
       );
     }
 
-    // Resolve the canonical company: linked > existing by name > created.
+    // Resolve the canonical company: linked > resolver verdict > created.
+    // The old exact-lower(name) match-or-create bypassed the resolver and
+    // silently minted duplicate companies ("Hudson Advisory Team" alongside
+    // "Hudson Advisory") — the same pipeline that carefully resolves
+    // discovery candidates then split entities at benchmark time (spec 050).
     let companyId = prospect.companyId as string | null;
     if (!companyId) {
-      const [existing] = await sql`
-        select id from companies
-        where lower(name) = lower(${prospect.businessName}) and archived_at is null
+      const registry = await sql`
+        select id, name, aliases, domain from companies where archived_at is null
       `;
-      if (existing) {
-        companyId = existing.id as string;
+      const resolution = resolveProspectCompany(
+        {
+          businessName: prospect.businessName as string,
+          website: prospect.website as string | null,
+          brokerageAffiliation: prospect.brokerageAffiliation as string | null,
+          teamLeader: prospect.teamLeader as string | null,
+        },
+        registry.map((c) => ({
+          id: c.id as string,
+          name: c.name as string,
+          aliases: (c.aliases as string[]) ?? [],
+          domain: (c.domain as string | null) ?? null,
+        }))
+      );
+      if (resolution.verdict === "match" && resolution.companyId !== null) {
+        companyId = resolution.companyId;
+      } else if (resolution.verdict !== "none") {
+        const names = resolution.candidates
+          .slice(0, 3)
+          .map((c) => c.name)
+          .join(", ");
+        return fail(
+          new ClassifiedError(
+            "conflict",
+            `Company resolution is ambiguous (${names ? `candidates: ${names}` : resolution.reasons[0] ?? "no clear match"}). ` +
+              "Link the prospect to the right company (or confirm it is new) before creating a benchmark — an ambiguous link here poisons every downstream metric."
+          )
+        );
       } else {
         const created = await upsertCompany(user, { name: prospect.businessName, aliases: [] });
         if (!created.ok) return created;

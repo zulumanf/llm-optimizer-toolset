@@ -22,16 +22,50 @@ const company = (name: string, over: Partial<CompanyRef> = {}): CompanyRef => ({
 });
 
 describe("resolveProspectCompany", () => {
-  it("matches an exact normalized name — The/Team/Group noise stripped", () => {
-    const rivera = company("Rivera Team");
+  it("matches an exact normalized name — legal suffixes and 'the' stripped", () => {
+    const rivera = company("Rivera Team LLC");
     const result = resolveProspectCompany(
-      { businessName: "The Rivera Group" },
+      { businessName: "The Rivera Team" },
       [rivera, company("Acme")]
     );
     expect(result.verdict).toBe("match");
     expect(result.companyId).toBe(rivera.id);
     expect(result.confidence).toBeGreaterThanOrEqual(MATCH_THRESHOLD);
     expect(result.reasons.join(" ")).toContain("Business name matches");
+  });
+
+  it("Team/Group collapse is never an auto-match — a human decides (spec 050)", () => {
+    // "Rivera Group" and "Rivera Team" are frequently DIFFERENT real-estate
+    // firms; before spec 050 this scored exact (0.90) and auto-linked — a
+    // designed-in false merge. Now it is `possible`: surfaced, not linked.
+    const rivera = company("Rivera Team");
+    const result = resolveProspectCompany(
+      { businessName: "The Rivera Group" },
+      [rivera, company("Acme")]
+    );
+    expect(result.verdict).toBe("possible");
+    expect(result.companyId).toBeNull();
+    expect(result.confidence).toBeGreaterThanOrEqual(POSSIBLE_THRESHOLD);
+    expect(result.confidence).toBeLessThan(MATCH_THRESHOLD);
+  });
+
+  it("an agent name vs their team name is never an auto-match (spec 050)", () => {
+    const team = company("Hudson Advisory Team");
+    const result = resolveProspectCompany({ businessName: "Hudson Advisory" }, [team]);
+    expect(result.verdict).toBe("possible");
+    expect(result.companyId).toBeNull();
+  });
+
+  it("a domain tie still auto-matches across a Team/Group difference", () => {
+    // The demotion is about name-only evidence; a shared website is the
+    // strongest identity signal the resolver has and keeps working.
+    const rivera = company("Rivera Team", { domain: "riverateam.com" });
+    const result = resolveProspectCompany(
+      { businessName: "Rivera Group", website: "https://riverateam.com" },
+      [rivera]
+    );
+    expect(result.verdict).toBe("match");
+    expect(result.companyId).toBe(rivera.id);
   });
 
   it("matches via alias and via website domain", () => {

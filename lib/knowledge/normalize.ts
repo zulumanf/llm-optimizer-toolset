@@ -159,6 +159,26 @@ export function normalizeEntityName(raw: string): string {
     .replace(/\s+/g, " ");
 }
 
+/**
+ * Like normalizeEntityName, but keeps `group`/`team`. Legal suffixes (LLC,
+ * Inc, \u2026) and the article "the" genuinely don't distinguish firms; in real
+ * estate, "Rivera Team" and "Rivera Group" frequently DO name different
+ * firms, and a team is not the agent it is named after (spec 050). Used to
+ * detect when two names are equal ONLY because those tokens were stripped \u2014
+ * that equality is a hypothesis for a human, never an exact match.
+ */
+function normalizeKeepingDistinguishers(raw: string): string {
+  return raw
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.,'\u2019"()]/g, "")
+    .replace(/\b(llc|inc|ltd|corp|corporation|co|the)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 export function slugify(raw: string): string {
   return raw
     .toLowerCase()
@@ -183,6 +203,21 @@ export function scoreNameMatch(candidate: string, known: string): NormalizedValu
     return unmatched(candidate, a);
   }
   if (a === b) {
+    // Equality that exists only because `group`/`team` were stripped is a
+    // designed-in false merge for real estate ("Hudson Advisory" vs "Hudson
+    // Advisory Team" may be the agent vs the team, or two firms). Demote to
+    // probable — a human decides, nothing auto-links (spec 050).
+    const strictA = normalizeKeepingDistinguishers(candidate);
+    const strictB = normalizeKeepingDistinguishers(known);
+    if (strictA !== strictB) {
+      return {
+        originalValue: candidate,
+        normalizedValue: a,
+        matchStatus: "probable",
+        matchConfidence: MATCH_CONFIDENCE_PROBABLE,
+        requiresReview: true,
+      };
+    }
     return {
       originalValue: candidate,
       normalizedValue: a,
