@@ -1627,10 +1627,11 @@ export interface AuditSnapshot {
    * sourced average sale, at a labeled estimate rate. Arithmetic, never a
    * loss claim. */
   commissionEstimate?: { ratePct: number; amountUsd: number };
-  /** One manually-researched, verifiable observation (PR B, P5c). */
-  humanFinding?: { text: string; sourceUrl?: string };
+  /** One manually-researched, verifiable observation (PR B, P5c). Sources
+   * required per spec 045 §2b (spec 052 fencing). */
+  humanFinding?: { text: string; sourceLabel: string; sourceUrl: string; sourceDate: string };
   /** Objection pre-empt (PR B, P5b) — renders only when supplied. */
-  adoptionStat?: { text: string; sourceLabel: string; sourceUrl?: string };
+  adoptionStat?: { text: string; sourceLabel: string; sourceUrl: string; sourceDate: string };
   /** Live consumer-app share links (spec 045): operator-created exhibits on
    * the assistant vendor's own domain. Demos, never measurements. */
   exampleChats?: {
@@ -1725,7 +1726,13 @@ export async function publishAudit(
       humanFinding: z
         .object({
           text: z.string().trim().min(20).max(600),
-          sourceUrl: z.string().trim().url().max(1000).optional(),
+          // Spec 045 §2b as written (spec 052 fencing): every prospect-
+          // visible entry REQUIRES its source — publisher, URL, and date.
+          // These render on the page; an unsourced observation is exactly
+          // the artifact a skeptical team owner discredits first.
+          sourceLabel: z.string().trim().min(2).max(120),
+          sourceUrl: z.string().trim().url().max(1000),
+          sourceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         })
         .optional(),
       /** PR B, P5b: adoption-stat objection pre-empt. Renders only when
@@ -1735,8 +1742,14 @@ export async function publishAudit(
         .object({
           text: z.string().trim().min(10).max(300),
           sourceLabel: z.string().trim().min(2).max(120),
-          sourceUrl: z.string().trim().url().max(1000).optional(),
+          sourceUrl: z.string().trim().url().max(1000),
+          sourceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         })
+        .optional(),
+      /** Spec 052: warnings are advisories with teeth — publishing over
+       * them requires an explicit acknowledgment with a recorded reason. */
+      acknowledgeWarnings: z
+        .object({ reason: z.string().trim().min(10).max(500) })
         .optional(),
     })
     .safeParse(raw);
@@ -1746,6 +1759,23 @@ export async function publishAudit(
   const input = parsed.data;
   try {
     assertCanWrite(user);
+    // Spec 052 fencing: the two operator-typed blocks are the highest-
+    // persuasion text on the page and were the only prospect-visible
+    // strings that skipped the prohibited-phrase check.
+    for (const [label, text] of [
+      ["humanFinding", input.humanFinding?.text],
+      ["adoptionStat", input.adoptionStat?.text],
+    ] as const) {
+      const banned = text ? findProhibitedPhrase(text) : null;
+      if (banned) {
+        return fail(
+          new ClassifiedError(
+            "validation",
+            `The ${label} contains prohibited wording ("${banned}") — revenue/causality claims never ship to a prospect.`
+          )
+        );
+      }
+    }
     // Assembly phase: every read below is a plain pooled query — no
     // transaction, no locks. The data is point-in-time-close rather than
     // snapshot-perfect, which publishing always was; what matters is that
@@ -2174,6 +2204,10 @@ export async function publishAudit(
     // rank" pitch is weak and the prospect may deserve disqualifying, not
     // a soft audit.
     const publishWarnings: string[] = [];
+    // Disqualification signals (spec 052): warnings that say "this pitch is
+    // wrong for this prospect" block publish without an explicit
+    // acknowledgment. Quality nudges (missing humanFinding) stay advisory.
+    const disqualifyingWarnings: string[] = [];
     {
       const ranked = snapshot.comparison.filter(
         (r) => r.marketRank != null && r.recommendationRate != null
@@ -2193,7 +2227,7 @@ export async function publishAudit(
         const n = ranked.length;
         const rho = 1 - (6 * d2) / (n * (n * n - 1));
         if (rho >= 0.5) {
-          publishWarnings.push(
+          disqualifyingWarnings.push(
             `Rank tracks AI visibility in this market (rho=${rho.toFixed(2)} over ${n} ranked teams) — the "visibility doesn't follow rank" argument is weak for this prospect. Consider disqualifying rather than sending a soft audit.`
           );
         }
@@ -2210,11 +2244,24 @@ export async function publishAudit(
         const recs = snapshot.stakes.yourRecommendations;
         const responses = snapshot.benchmark.responseCount;
         if (recs >= visibilityThreshold(responses)) {
-          publishWarnings.push(
+          disqualifyingWarnings.push(
             `Prospect is already recommended in ${recs} of ${responses} answers — the visibility-gap pitch does not apply. Consider disqualifying or reframing before sending.`
           );
         }
       }
+    }
+
+    // Spec 052: warnings that say "consider disqualifying" are not
+    // decorations. Publishing over them requires an explicit
+    // acknowledgment with a written reason, recorded in the audit log —
+    // the operator can still ship, but never without deciding to.
+    if (disqualifyingWarnings.length > 0 && !input.acknowledgeWarnings) {
+      throw new ClassifiedError(
+        "validation",
+        `Publish blocked by ${disqualifyingWarnings.length} disqualification signal(s): ${disqualifyingWarnings
+          .map((w) => `"${w}"`)
+          .join(" · ")} — acknowledge with a reason to publish anyway.`
+      );
     }
 
     // Commit phase (correctness audit 2026-08-04): the snapshot above was
@@ -2272,6 +2319,12 @@ export async function publishAudit(
           ...(benchmarkAge.stale
             ? { staleBenchmarkAcknowledged: true, benchmarkAgeDays: benchmarkAge.ageDays }
             : {}),
+          ...(disqualifyingWarnings.length > 0 && input.acknowledgeWarnings
+            ? {
+                warningsAcknowledged: disqualifyingWarnings,
+                warningsAcknowledgedReason: input.acknowledgeWarnings.reason,
+              }
+            : {}),
         },
       });
       await logActivity(
@@ -2285,7 +2338,7 @@ export async function publishAudit(
         auditId: row?.id as string,
         accessToken,
         replaced: Boolean(existing),
-        warnings: publishWarnings,
+        warnings: [...disqualifyingWarnings, ...publishWarnings],
       };
     });
     return ok(result);

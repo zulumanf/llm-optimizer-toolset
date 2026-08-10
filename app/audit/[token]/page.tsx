@@ -291,7 +291,8 @@ export default async function ProspectAuditPage({
               rel="noreferrer"
               className="underline underline-offset-2"
             >
-              ({snapshot.adoptionStat.sourceLabel})
+              ({snapshot.adoptionStat.sourceLabel}
+              {snapshot.adoptionStat.sourceDate ? `, ${snapshot.adoptionStat.sourceDate}` : ""})
             </a>
           ) : (
             <>({snapshot.adoptionStat.sourceLabel})</>
