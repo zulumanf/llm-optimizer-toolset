@@ -209,12 +209,13 @@ export async function publishReport(
         const detail = [
           ...validation.uncitedSentences.map((s) => `uncited: "${s}"`),
           ...validation.unresolvedCitations.map((c) => `unresolved: ${c}`),
+          ...validation.causalSentences.map((s) => `causal claim: "${s}"`),
         ]
           .slice(0, 5)
           .join(" · ");
         throw new ClassifiedError(
           "validation",
-          `Evidence gate failed — every sentence with a number needs a resolvable citation. ${detail}`
+          `Evidence gate failed — every sentence with a number needs a resolvable citation, and causal claims ("drove", "resulted in", …) are never narrative prose: attribution has its own labeled system. ${detail}`
         );
       }
 
