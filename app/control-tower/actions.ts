@@ -69,3 +69,13 @@ export async function generateBrief(input: {
     return fail(err);
   }
 }
+
+export async function acknowledgeDrift(input: unknown) {
+  const { getCurrentUser } = await import("@/lib/auth");
+  const { acknowledgeDriftSignal } = await import("@/lib/drift/detect");
+  const { revalidatePath } = await import("next/cache");
+  const user = await getCurrentUser();
+  const result = await acknowledgeDriftSignal(user, input);
+  if (result.ok) revalidatePath("/control-tower");
+  return result;
+}

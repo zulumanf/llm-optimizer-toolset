@@ -1604,3 +1604,29 @@ retention policy exists.
 grant (access control is deletable; the users row and audit history stay)
 and `setUserActive` finally gives the product a hand on the `users.active`
 switch auth always honored — never on yourself.
+
+## 2026-08-09 — Spec 053: fleet drift & sentinel (branch feat/053-fleet-drift)
+
+**One signal, not N client stories.** The fleet detector groups
+comparable-pair subject deltas across all client projects and opens ONE
+drift signal per (provider, metric, direction) fingerprint naming every
+affected project — the floor is ≥3 projects AND ≥50% of the *measurable*
+fleet (projects without a comparable pair are unknown, not stable, and
+leave the denominator). Pure math, known-answer tested; no model near it.
+
+**Open-fingerprint dedupe instead of a scheduler contract.** The detector
+is safe on any cadence because a partial unique index allows one OPEN
+signal per fingerprint; acknowledging (audited, with a note) re-arms
+detection for a recurrence. This is what lets it ride the existing cron
+heartbeat with zero new scheduling machinery.
+
+**Shape drift is now data.** `responses.shape_recognized` persists the
+adapter's verdict that previously died in an error log; a week's window of
+false flags per provider is a standing signal until acknowledged.
+
+**Sentinels are ordinary projects.** `kind='sentinel'` reuses the entire
+measurement stack (prompt sets, runs, scoring, scheduling) and inherits
+exclusion from client/portfolio surfaces from the existing kind='client'
+filters. On a sentinel, ANY comparable-pair movement is the anomaly —
+that inversion is the whole design. Weekly-cycle inclusion for sentinels
+is a deliberate follow-up, not an accident.
