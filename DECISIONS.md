@@ -1710,3 +1710,31 @@ Refusals: self, chains at write time, double-merge, and merging two
 active client subjects (that would merge two clients). Unmerge is possible
 precisely because nothing was destroyed: the audit row records the exact
 alias set that moved, and unmergeCompany restores it.
+
+## 2026-08-10 — Spec 057: prospect→client promotion (branch feat/057-prospect-promotion)
+
+**Convert, don't copy — and never as a stage side effect.** Promotion is an
+explicit, audited action available at `contracted`, not a hidden
+consequence of a stage click: creating a client is a deliberate act. The
+benchmark project flips kind in place, so the pre-signing baseline —
+captures, mentions, scores, competitor set — IS the client's first
+baseline, and the first client report gets a comparable prior for free
+(same frozen prompt-set version, same scoring version; the comparability
+rules work unchanged). Copying rows into a new project would have broken
+immutability; re-running the research would have paid twice (audit B5).
+
+**Territory locks at close.** Unless declined, promotion creates an ACTIVE
+exclusivity agreement scoped to the launch's market + service category +
+segment starting today — closing audit 12.2's "signing creates no
+agreement" hole. Reserved pre-close holds are not project-parented and
+stay the operator's to terminate via the existing surface.
+
+**Rename yields to collisions.** The promoted project takes the business
+name unless an active project already owns it; then the benchmark name
+survives and the audit detail says so. A promotion must never fail over a
+label.
+
+**Agreement-before-core ordering.** createAgreement runs its own
+transaction before the core promotion commit; a failure between the two
+leaves an audited agreement on an unpromoted project — visible and
+repairable — never a promoted client without its recorded close.

@@ -1,6 +1,6 @@
 # Spec 057 — Prospect → Client Promotion
 
-**Status:** In progress
+**Status:** Implemented — all acceptance criteria verified 2026-08-10
 **Branch:** `feat/057-prospect-promotion`
 **Source:** Architecture gap audit 2026-08-09 (growth 12.1–12.3 P0, cost B5): `contracted` is a terminal stage label with **zero side effects** — no project creation, no exclusivity agreement, no baseline continuity. The prospect's benchmark project (its captures, classified mentions, scores, competitor set) is orphaned at close, and the new client pays twice for research the platform already did.
 
@@ -29,9 +29,9 @@ Onboarding intake (vertical pack claims, prompt-universe review, kickoff) contin
 - Prospect-audit unpublishing at close — the published audit follows its own expiry/revoke lifecycle.
 
 ## Acceptance criteria
-- [ ] Promotion flips the benchmark project to `kind='client'`, renames it, keeps all runs/scores/competitors attached, and the project appears in active-client listings (test).
-- [ ] An active exclusivity agreement scoped to the launch market is created; `createAgreement: false` skips it (test).
-- [ ] `promoted_project_id` set; audit + activity rows written; re-promotion refuses; wrong stage refuses; unlinked prospect refuses (tests).
-- [ ] No-benchmark prospects get a fresh client project with the subject set (test).
-- [ ] A project-name collision keeps the benchmark name and records that in the audit detail (test).
-- [ ] Migration 066 reversible; `npm test`, lint, typecheck green.
+- [x] Promotion flips the benchmark project to `kind='client'`, renames it, keeps all runs/scores/competitors attached, and the project appears in active-client listings (test).
+- [x] An active exclusivity agreement scoped to the launch market is created; `createAgreement: false` skips it (test).
+- [x] `promoted_project_id` set; audit + activity rows written; re-promotion refuses; wrong stage refuses; unlinked prospect refuses (tests).
+- [x] No-benchmark prospects get a fresh client project with the subject set (test).
+- [x] A project-name collision keeps the benchmark name and records that in the audit detail (test).
+- [x] Migration 066 reversible; `npm test`, lint, typecheck green.
