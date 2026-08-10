@@ -1,6 +1,6 @@
 # Spec 050 — Truth Hardening
 
-**Status:** In progress
+**Status:** Implemented — all acceptance criteria verified 2026-08-09
 **Branch:** `feat/050-truth-hardening`
 **Source:** Architecture gap audit 2026-08-09 (P0 findings: mock-scoring bypass, unversioned classification instrument, unrecorded sampling config, invisible agent spend, designed-in entity false-merge, no accuracy measurement of the production classifier).
 
@@ -50,16 +50,16 @@ The platform's promise is "every number is reproducible from stored raw records.
 - Fleet drift/sentinel, shared market captures, model routing tiers (scale phase).
 
 ## Acceptance criteria
-- [ ] With `ALLOW_MOCK_PROVIDER=1` and `AUTH_MODE=supabase`, `computeScores` excludes mock captures (test).
-- [ ] `ALLOW_MOCK_SCORING=1` without supabase auth scores mock (seed/e2e path still works); with supabase auth it does not (test).
-- [ ] New successful responses carry `request_params`; all five adapters return `requestParams` (compile-time required field).
-- [ ] v2 parses stamp `classifier_model` + `classifier_prompt_version` on mentions and `response_parses`; heuristic parses stamp null (test).
-- [ ] Editing `CLASSIFIER_SYSTEM` without bumping `MENTION_CLASSIFIER_V2` fails a unit test.
-- [ ] Every `runAgent` call writes an `llm_calls` row, including terminal failures (test); `llm_calls` is insert-only (test).
-- [ ] `spendLast24hUsd()` includes agent spend (test).
-- [ ] "Hudson Advisory Team" vs "Hudson Advisory" → `probable`/`possible`, never auto-match (test); "The Hudson Advisory" vs "Hudson Advisory" stays `exact` (test).
-- [ ] `createBenchmarkProject` refuses with candidates named when resolution is `possible`; links on `match`; creates on `none` (tests).
-- [ ] `evaluateClassifier` computes correct metrics for a known stub caller and persists a row (tests); floors exported; script exits non-zero below floors.
-- [ ] `classifierDisagreementRate` returns correct rate over seeded reviewed revisions (test).
-- [ ] Migrations 058–060 reversible (CI walks up/down/up).
-- [ ] `npm test`, lint, typecheck green.
+- [x] With `ALLOW_MOCK_PROVIDER=1` and `AUTH_MODE=supabase`, `computeScores` excludes mock captures (test).
+- [x] `ALLOW_MOCK_SCORING=1` without supabase auth scores mock (seed/e2e path still works); with supabase auth it does not (test).
+- [x] New successful responses carry `request_params`; all five adapters return `requestParams` (compile-time required field).
+- [x] v2 parses stamp `classifier_model` + `classifier_prompt_version` on mentions and `response_parses`; heuristic parses stamp null (test).
+- [x] Editing `CLASSIFIER_SYSTEM` without bumping `MENTION_CLASSIFIER_V2` fails a unit test.
+- [x] Every `runAgent` call writes an `llm_calls` row, including terminal failures (test); `llm_calls` is insert-only (test).
+- [x] `spendLast24hUsd()` includes agent spend (test).
+- [x] "Hudson Advisory Team" vs "Hudson Advisory" → `probable`/`possible`, never auto-match (test); "The Hudson Advisory" vs "Hudson Advisory" stays `exact` (test).
+- [x] `createBenchmarkProject` refuses with candidates named when resolution is `possible`; links on `match`; creates on `none` (tests).
+- [x] `evaluateClassifier` computes correct metrics for a known stub caller and persists a row (tests); floors exported; script exits non-zero below floors.
+- [x] `classifierDisagreementRate` returns correct rate over seeded reviewed revisions (test).
+- [x] Migrations 058–060 reversible (CI walks up/down/up).
+- [x] `npm test`, lint, typecheck green.
