@@ -1128,10 +1128,10 @@ export async function linkBenchmark(
         );
       }
       // A benchmark is prospect-facing evidence; fabricated captures must
-      // never back it (plan 2.3). Outside the test harness, any mock
-      // response poisons the whole run for this purpose.
-      const { mockProviderAllowed } = await import("@/lib/ai/registry");
-      if (!mockProviderAllowed()) {
+      // never back it (plan 2.3). Same bar as scoring (spec 050): permission
+      // to run the mock is not permission to present its output as evidence.
+      const { mockScoringAllowed } = await import("@/lib/ai/registry");
+      if (!mockScoringAllowed()) {
         const [mockRow] = await tx`
           select 1 from responses
           where run_id = ${input.runId} and provider = 'mock' limit 1
