@@ -1,6 +1,6 @@
 # Spec 052 — Manual Outbound Safety
 
-**Status:** In progress
+**Status:** Implemented — all acceptance criteria verified 2026-08-09 (operator-text fencing delivered on PR #24's branch)
 **Branch:** `feat/052-outbound-safety` (stacked on `feat/051-value-loop`)
 **Source:** Architecture gap audit 2026-08-09 (growth 7.5–7.7, 8.5, 8.7, 9.3, 10.5/10.7; security F17, F26–F29). Goal: make *manual* outbound truthful and safe without waiting for the automated acquisition engine — and without preempting the ESP decision.
 
@@ -43,11 +43,11 @@ The prospect audit page is the highest-persuasion surface the company ships, and
 - Prospect-side claims-ledger unification (bigger refactor; the score-binding validator covers the numbers now).
 
 ## Acceptance criteria
-- [ ] Snapshot comparison rows carry `scoreIds`; a tampered snapshot value refuses publication (test).
-- [ ] With no active sender identity, cold sends and draft generation refuse with a clear message (test); configuring one (admin, audited) unblocks; the footer contains the postal address (test).
-- [ ] Draft generation refuses when a published audit's link cannot resolve (APP_URL unset) instead of silently omitting it (test).
-- [ ] Same-email cross-prospect send within 30 days refuses; 4th brokerage send in 30 days refuses (tests).
-- [ ] Erasure: contact PII nulled + globally suppressed + audited; a post-erasure send to that email refuses on suppression (test). Stale report lists old contacts (test).
-- [ ] A `reserved` agreement produces a send-time refusal for a conflicting prospect; a recorded override passes; terminated does not conflict (tests).
-- [ ] Revoked portal grant loses access on next read; deactivated user refused by auth; self-deactivation refused (tests).
-- [ ] Migration 062 reversible; `npm test`, lint, typecheck green.
+- [x] Snapshot comparison rows carry `scoreIds`; a tampered snapshot value refuses publication (test).
+- [x] With no active sender identity, cold sends and draft generation refuse with a clear message (test); configuring one (admin, audited) unblocks; the footer contains the postal address (test).
+- [x] Draft generation refuses when a published audit's link cannot resolve (APP_URL unset) instead of silently omitting it (test).
+- [x] Same-email cross-prospect send within 30 days refuses; 4th brokerage send in 30 days refuses (tests).
+- [x] Erasure: contact PII nulled + globally suppressed + audited; a post-erasure send to that email refuses on suppression (test). Stale report lists old contacts (test).
+- [x] A `reserved` agreement produces a send-time refusal for a conflicting prospect; a recorded override passes; terminated does not conflict (tests).
+- [x] Revoked portal grant loses access on next read; deactivated user refused by auth; self-deactivation refused (tests).
+- [x] Migration 062 reversible; `npm test`, lint, typecheck green.
