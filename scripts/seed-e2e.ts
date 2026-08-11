@@ -183,6 +183,16 @@ async function main(): Promise<void> {
 
   // --------------------------------------------------------------- prospect
   console.log("▸ seeding prospect + published audit…");
+  // Spec 052: draft generation fails closed without a configured legal
+  // sender. Same seed the vitest suites use.
+  const { setSenderIdentity } = await import("@/lib/outreach/sender-identity");
+  const identity = await setSenderIdentity(operator, {
+    senderName: "Dana Operator",
+    companyName: "AVOS Agency LLC",
+    postalAddress: "123 Grand St, Jersey City, NJ 07302",
+    replyToEmail: "dana@avos.agency",
+  });
+  if (!identity.ok) throw new Error(identity.error.message);
   const market = unwrap(
     await exclusivitySvc.createMarket(operator, {
       name: "Manhattan",

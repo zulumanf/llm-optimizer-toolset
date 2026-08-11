@@ -14,25 +14,16 @@ import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
 
-export const LEARNING_CATEGORIES = [
-  "content",
-  "authority",
-  "entity",
-  "technical",
-  "distribution",
-  "process",
-  "other",
-] as const;
-export type LearningCategory = (typeof LEARNING_CATEGORIES)[number];
-
-export const LEARNING_CONFIDENCE_LABELS = [
-  "confirmed",
-  "strongly_supported",
-  "correlated",
-  "probable",
-  "unknown",
-] as const;
-export type LearningConfidence = (typeof LEARNING_CONFIDENCE_LABELS)[number];
+// Vocabulary lives in lib/learnings/constants.ts (client-importable);
+// re-exported here so existing server-side imports stay valid.
+export {
+  LEARNING_CATEGORIES,
+  LEARNING_CONFIDENCE_LABELS,
+  type LearningCategory,
+  type LearningConfidence,
+} from "@/lib/learnings/constants";
+import type { LearningCategory, LearningConfidence } from "@/lib/learnings/constants";
+import { LEARNING_CATEGORIES, LEARNING_CONFIDENCE_LABELS } from "@/lib/learnings/constants";
 
 /** Labels that assert evidence and therefore must point at measured outcomes. */
 const EVIDENCE_REQUIRED: LearningConfidence[] = ["confirmed", "strongly_supported"];
