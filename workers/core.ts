@@ -53,6 +53,19 @@ export const handlers: Record<
     const { verifyInterventionUrls } = await import("@/lib/attribution/verify-urls");
     await verifyInterventionUrls(payload.interventionId as string);
   },
+  // Spec 060: fetch a citation source page and record whether the client and
+  // competitors appear on it — presence becomes a measured, append-only fact.
+  check_source_presence: async (payload) => {
+    const { runPresenceCheck } = await import("@/lib/citations/service");
+    await runPresenceCheck(
+      payload as {
+        projectId: string;
+        domain: string;
+        url: string;
+        checkedBy?: string | null;
+      }
+    );
+  },
   // Derived from the live attention feed — safe to run on any schedule
   sync_notifications: async () => {
     await syncNotifications();

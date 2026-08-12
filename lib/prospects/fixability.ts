@@ -62,6 +62,9 @@ export interface FixabilityInputs {
   citedDomains: { domain: string; citations: number }[] | null;
   /** Benchmark recommendation rates of rival companies; null = no benchmark. */
   rivalRecommendationRates: number[] | null;
+  /** Spec 060: counts from the citation-opportunity pipeline, evidence only —
+   * the point formula is fixability-v1 and changes only with a version bump. */
+  citationOpportunities?: { identified: number; obtainable: number } | null;
   assessments: Partial<Record<AssessmentItem, AssessmentValue>>;
   hasPrimaryContactWithEmail: boolean;
 }
@@ -212,6 +215,12 @@ export function fixabilityProfile(inputs: FixabilityInputs): FixabilityProfile {
       evidence.push(
         `${attainable} of ${total} citations point at attainable surfaces (portals, directories, reviews, social, video).`
       );
+      const opps = inputs.citationOpportunities;
+      if (opps && opps.identified > 0) {
+        evidence.push(
+          `${opps.identified} citation source(s) identified in the acquisition pipeline, ${opps.obtainable} qualified as realistically obtainable.`
+        );
+      }
     } else {
       evidence.push(
         inputs.citedDomains === null

@@ -1798,3 +1798,46 @@ existed.
 hashing itself (shell redirection creates the file before some shells
 expand the glob) — exactly the class of bug a drill exists to find before
 an incident does.
+
+## 2026-08-12 — Spec 060: citation acquisition engine
+
+**One opportunity row per (project, domain), not per URL.** The ledger
+(response_citations, migration 033) already keeps every URL-level fact
+immutably; the opportunity is the operator's unit of work, and operators
+pursue "get onto hobokengirl.com", not "get onto /best-agents-2026?utm=x".
+URL-level opportunities can arrive later without a schema break (the
+ledger has the data); domain-level dedup by construction kills the
+www/query-param duplicate class outright.
+
+**ACVS carries no backlink-authority inputs — by omission, enforced by
+shape.** The DomainStats interface has no DA/DR/traffic field to misuse.
+A source scores highly only because AI answers in this project actually
+cite it (frequency, prompt intent, cross-engine spread, recommendation
+co-occurrence, persistence), plus operator-recorded feasibility and the
+deterministic source-type classifier. Weights live in the existing
+scoring_weight_sets mechanism ('citation-acvs' v1); every stored score
+carries components + explanation + scorer and weight-set versions.
+
+**Unknown is null, never zero.** Unchecked client presence, untiered
+prompt sets, and unclassified sources redistribute their weight (the
+authority-score convention) instead of silently penalizing. clientGap only
+becomes 1 after a presence check verifiably finds the client absent —
+"we didn't look" must never rank a source as if we had.
+
+**A placement IS an intervention.** linkPlacement calls createIntervention
+(spec 007/051) rather than growing a parallel measurement path: baselines,
+live URL verification, +2/+6/+12w retests on the same instrument, verdict
+math, and the action_outcomes spine all come from the one existing system.
+successful vs inconclusive is a human reading measured verdicts — the
+lifecycle refuses outcome statuses from anywhere but `measuring`.
+
+**Guarantee language joined the causal-phrase gate rather than a fourth
+list.** "guaranteed / will improve / ranks because / directly resulted /
+proven to / ensures" extend CAUSAL_PHRASES (spec 051's single list), so
+executive briefs and client narratives are hardened everywhere at once;
+ACVS explanation templates are unit-tested against the same list.
+
+**Fixability points unchanged.** The citation pipeline feeds
+third_party_opportunity as evidence lines only — changing the point
+formula is a fixability-v2 version bump with a recompute story, deliberately
+deferred, because stored prospect scores reference the rubric version.
