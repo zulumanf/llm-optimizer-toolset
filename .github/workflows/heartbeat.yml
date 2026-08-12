@@ -32,3 +32,19 @@ jobs:
           echo
           curl -sf -X POST -H "Authorization: Bearer $CRON_SECRET" \
             "$APP_URL/api/cron/weekly-cycle" | head -c 2000
+      # Uptime (spec 059 follow-up): a dead domain should email the operator
+      # within one tick, not wait to be noticed by a prospect. The app check
+      # FAILS the workflow (GitHub notifies on failure); the marketing root
+      # is report-only until its host is connected — flip it to strict by
+      # removing the "|| true" once recommendedfirst.com serves.
+      - name: Uptime checks
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then exit 0; fi
+          echo "app health:"
+          curl -sf --max-time 20 "$APP_URL/api/health" > /dev/null \
+            && echo "  OK" || { echo "  DOWN"; exit 1; }
+          echo "marketing root (report-only):"
+          curl -s -o /dev/null --max-time 20 -w "  https://recommendedfirst.com -> %{http_code}\n" \
+            https://recommendedfirst.com || true
