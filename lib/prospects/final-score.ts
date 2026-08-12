@@ -134,6 +134,28 @@ export async function computeProspectScoreView(prospectId: string): Promise<Pros
     sourceUrl: (r.sourceUrl as string | null) ?? null,
   }));
 
+  // Spec 060 QA fix: the citation-pipeline evidence line was unreachable —
+  // this is its one production feed. Counts come from the benchmark run's
+  // project; no linked run (or an empty pipeline) stays null, never zero.
+  let citationOpportunities: { identified: number; obtainable: number } | null = null;
+  if (gapView.benchmarkRunId) {
+    const { OBTAINABLE_STATUSES } = await import("@/lib/citations/constants");
+    const [oppCounts] = await sql`
+      select count(*)::int as identified,
+        count(*) filter (where o.status = any(${[...OBTAINABLE_STATUSES]}))::int
+          as obtainable
+      from citation_opportunities o
+      join runs r on r.project_id = o.project_id
+      where r.id = ${gapView.benchmarkRunId}
+    `;
+    if (oppCounts && (oppCounts.identified as number) > 0) {
+      citationOpportunities = {
+        identified: oppCounts.identified as number,
+        obtainable: oppCounts.obtainable as number,
+      };
+    }
+  }
+
   const fixability = fixabilityProfile({
     authorityScore: gapView.authority.score,
     visibilityScore: gapView.visibility?.score ?? null,
@@ -143,6 +165,7 @@ export async function computeProspectScoreView(prospectId: string): Promise<Pros
     rivalRecommendationRates: rivalRates,
     assessments,
     hasPrimaryContactWithEmail,
+    citationOpportunities,
   });
 
   const contact = contactability({

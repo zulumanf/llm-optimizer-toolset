@@ -39,6 +39,15 @@ export const OPPORTUNITY_STATUSES = [
 ] as const;
 export type OpportunityStatus = (typeof OPPORTUNITY_STATUSES)[number];
 
+/** "Realistically obtainable or further": qualified and every later pipeline
+ * stage — derived from the one pipeline order, never re-listed. */
+export const OBTAINABLE_STATUSES = PIPELINE_STATUSES.slice(
+  PIPELINE_STATUSES.indexOf("qualified")
+);
+
+export const ACQUISITION_DIFFICULTIES = ["easy", "moderate", "hard", "unknown"] as const;
+export type AcquisitionDifficulty = (typeof ACQUISITION_DIFFICULTIES)[number];
+
 export const ACQUISITION_PATHS = [
   "editorial_pitch",
   "guest_contribution",

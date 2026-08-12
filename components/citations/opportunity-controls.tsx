@@ -24,13 +24,19 @@ import {
 } from "@/components/ui/select";
 import {
   discoverOpportunitiesAction,
+  linkPlacementAction,
   requestPresenceCheckAction,
   updateOpportunityAction,
 } from "@/app/projects/[id]/citations/actions";
 import {
+  ACQUISITION_DIFFICULTIES,
   ACQUISITION_PATHS,
   OPPORTUNITY_STATUSES,
 } from "@/lib/citations/constants";
+
+/** `measuring` is entered by linking a placement, never picked by hand —
+ * the server refuses it, so the dialog doesn't offer it. */
+const SELECTABLE_STATUSES = OPPORTUNITY_STATUSES.filter((s) => s !== "measuring");
 
 export function DiscoverButton({ projectId }: { projectId: string }) {
   const [pending, startTransition] = useTransition();
@@ -152,7 +158,7 @@ export function ManageOpportunityDialog(props: ManageProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {OPPORTUNITY_STATUSES.map((s) => (
+                  {SELECTABLE_STATUSES.map((s) => (
                     <SelectItem key={s} value={s}>
                       {s.replace(/_/g, " ")}
                     </SelectItem>
@@ -167,7 +173,7 @@ export function ManageOpportunityDialog(props: ManageProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {["easy", "moderate", "hard", "unknown"].map((d) => (
+                  {ACQUISITION_DIFFICULTIES.map((d) => (
                     <SelectItem key={d} value={d}>
                       {d}
                     </SelectItem>
@@ -213,6 +219,126 @@ export function ManageOpportunityDialog(props: ManageProps) {
         <DialogFooter>
           <Button onClick={submit} disabled={pending}>
             {pending ? "Saving…" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export interface VersionOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * A won placement becomes an intervention (spec 060): baselines, live URL
+ * verification, and retests come from the experiment machinery — this dialog
+ * is the only door into `measuring`.
+ */
+export function LinkPlacementDialog({
+  opportunityId,
+  domain,
+  versions,
+}: {
+  opportunityId: string;
+  domain: string;
+  versions: VersionOption[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [urls, setUrls] = useState("");
+  const [shippedAt, setShippedAt] = useState(new Date().toISOString().slice(0, 10));
+  const [versionId, setVersionId] = useState(versions[0]?.id ?? "");
+  const [cost, setCost] = useState("");
+
+  const submit = () =>
+    startTransition(async () => {
+      const result = await linkPlacementAction({
+        opportunityId,
+        urls: urls
+          .split(/\s+/)
+          .map((u) => u.trim())
+          .filter(Boolean),
+        promptSetVersionId: versionId,
+        shippedAt,
+        costUsd: cost.trim() === "" ? undefined : Number(cost),
+      });
+      if (result.ok) {
+        toast.success(`Placement linked — ${domain} is now measuring.`);
+        setOpen(false);
+      } else {
+        toast.error(result.error.message);
+      }
+    });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm">Link placement</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Link placement — {domain}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="placement-urls">Live placement URL(s)</Label>
+            <Textarea
+              id="placement-urls"
+              value={urls}
+              onChange={(e) => setUrls(e.target.value)}
+              placeholder={`https://${domain}/your-feature (one per line)`}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="placement-shipped">Went live on</Label>
+              <Input
+                id="placement-shipped"
+                type="date"
+                value={shippedAt}
+                onChange={(e) => setShippedAt(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="placement-cost">Cost USD (optional)</Label>
+              <Input
+                id="placement-cost"
+                inputMode="decimal"
+                value={cost}
+                onChange={(e) => setCost(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="placement-version">Measure against prompt version</Label>
+            <Select value={versionId} onValueChange={setVersionId}>
+              <SelectTrigger id="placement-version">
+                <SelectValue placeholder="Pick the instrument" />
+              </SelectTrigger>
+              <SelectContent>
+                {versions.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Creates an intervention: URLs get verified live, and the same
+            prompt version re-runs at +2, +6, and +12 weeks. The outcome is
+            whatever those verdicts show.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button
+            onClick={submit}
+            disabled={pending || urls.trim() === "" || versionId === ""}
+          >
+            {pending ? "Linking…" : "Link & start measuring"}
           </Button>
         </DialogFooter>
       </DialogContent>

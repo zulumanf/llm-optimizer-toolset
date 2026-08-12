@@ -28,6 +28,8 @@ import {
   HIGH_INTENT_MAX_TIER,
   ACQUISITION_PATHS,
   OPPORTUNITY_STATUSES,
+  OUTCOME_STATUSES,
+  OBTAINABLE_STATUSES,
   type AcquisitionFacts,
   type DomainStats,
   type OpportunityStatus,
@@ -41,82 +43,108 @@ const PRESENCE_FETCH_MAX_BYTES = 2_000_000;
 
 // ---------------------------------------------------------------- stats
 
+interface ProjectCitationData {
+  stats: Map<string, DomainStats>;
+  /** Domains the ledger attributed to a tracked company (owner by suffix). */
+  ownerAttributedDomains: Set<string>;
+  /** Normalized apex domains of every tracked company + owned/competitor
+   * registry rows — matched by suffix, so subdomains are excluded too. */
+  excludedApexes: string[];
+}
+
+const normalizeApex = (d: string): string =>
+  d.replace(/^www\./, "").toLowerCase().trim();
+
+/** Suffix-aware ownership test: blog.client.com matches client.com — the
+ * same convention the parser uses to stamp response_citations.company_id. */
+export function domainIsExcluded(domain: string, apexes: string[]): boolean {
+  return apexes.some((apex) => domain === apex || domain.endsWith(`.${apex}`));
+}
+
 /**
  * Everything ACVS needs about every cited domain in one project, from the
  * ledger + mentions + prompts + presence checks. Mock responses are excluded
  * everywhere — mock fixtures must never mint acquisition targets.
  */
-export async function projectDomainStats(
+async function gatherProjectCitationData(
   projectId: string
-): Promise<Map<string, DomainStats>> {
-  const [totals] = await sql`
-    select count(*)::int as total_responses,
-      count(distinct r.prompt_id)::int as total_prompts,
-      count(distinct r.provider)::int as total_providers,
-      count(distinct r.run_id)::int as total_runs
-    from responses r join runs on runs.id = r.run_id
-    where runs.project_id = ${projectId}
-      and runs.status in ('completed', 'partial') and r.provider != 'mock'
-  `;
+): Promise<ProjectCitationData> {
+  // Subject first (the co-occurrence split needs it); the rest is independent.
   const subject = await getSubjectCompany(projectId);
-  const tracked = (await listCompaniesForProject(projectId)).filter(
-    (c) => c.id !== subject?.id
-  );
-  const perDomain = await sql`
-    select c.domain,
-      count(distinct c.response_id)::int as citing_responses,
-      count(distinct r.prompt_id)::int as citing_prompts,
-      count(distinct r.provider)::int as providers_citing,
-      count(distinct r.run_id)::int as runs_citing,
-      count(distinct c.response_id)
-        filter (where p.tier is not null)::int as tiered_citing,
-      count(distinct c.response_id)
-        filter (where p.tier <= ${HIGH_INTENT_MAX_TIER})::int as high_intent_citing
-    from response_citations c
-    join responses r on r.id = c.response_id
-    join runs on runs.id = r.run_id
-    left join prompts p on p.id = r.prompt_id
-    where runs.project_id = ${projectId}
-      and runs.status in ('completed', 'partial') and r.provider != 'mock'
-    group by c.domain
-  `;
-  // Recommendation co-occurrence: current-revision mentions only (the
-  // recommendedCitationDomains convention — same answer, nothing more).
-  const coOccurrence = await sql`
-    select c.domain,
-      count(distinct m.response_id)
-        filter (where m.company_id != ${subject?.id ?? null}
-          or ${subject === null})::int as competitor_rec_responses,
-      count(distinct m.company_id)
-        filter (where m.company_id != ${subject?.id ?? null}
-          or ${subject === null})::int as competitors_recommended,
-      count(distinct m.response_id)
-        filter (where m.company_id = ${subject?.id ?? null})::int as client_rec_responses
-    from response_citations c
-    join responses r on r.id = c.response_id
-    join runs on runs.id = r.run_id
-    join mentions m on m.response_id = r.id and m.recommended
-    where runs.project_id = ${projectId}
-      and runs.status in ('completed', 'partial') and r.provider != 'mock'
-      and not exists (select 1 from mentions n
-        where n.response_id = m.response_id and n.company_id = m.company_id
-          and n.revision > m.revision)
-    group by c.domain
-  `;
-  const presence = await sql`
-    select distinct on (domain) domain, client_present, checked_at
-    from source_presence_checks
-    where project_id = ${projectId} and ok
-    order by domain, checked_at desc
-  `;
-  const labels = await domainLabelsForProject(projectId);
+  const [totalsRows, companies, perDomain, coOccurrence, presence, labels] =
+    await Promise.all([
+      sql`
+        select count(*)::int as total_responses,
+          count(distinct r.prompt_id)::int as total_prompts,
+          count(distinct r.provider)::int as total_providers,
+          count(distinct r.run_id)::int as total_runs
+        from responses r join runs on runs.id = r.run_id
+        where runs.project_id = ${projectId}
+          and runs.status in ('completed', 'partial') and r.provider != 'mock'
+      `,
+      listCompaniesForProject(projectId),
+      sql`
+        select c.domain,
+          count(distinct c.response_id)::int as citing_responses,
+          count(distinct r.prompt_id)::int as citing_prompts,
+          count(distinct r.provider)::int as providers_citing,
+          count(distinct r.run_id)::int as runs_citing,
+          bool_or(c.company_id is not null) as owner_attributed,
+          count(distinct c.response_id)
+            filter (where p.tier is not null)::int as tiered_citing,
+          count(distinct c.response_id)
+            filter (where p.tier <= ${HIGH_INTENT_MAX_TIER})::int as high_intent_citing
+        from response_citations c
+        join responses r on r.id = c.response_id
+        join runs on runs.id = r.run_id
+        left join prompts p on p.id = r.prompt_id
+        where runs.project_id = ${projectId}
+          and runs.status in ('completed', 'partial') and r.provider != 'mock'
+        group by c.domain
+      `,
+      // Recommendation co-occurrence: current-revision mentions only (the
+      // recommendedCitationDomains convention — same answer, nothing more).
+      // ONE distinct count over all recommended mentions: an answer that
+      // recommends both the client and a rival is one answer, not two.
+      sql`
+        select c.domain,
+          count(distinct m.response_id)::int as answers_with_recommendation,
+          count(distinct m.company_id)
+            filter (where m.company_id != ${subject?.id ?? null}
+              or ${subject === null})::int as competitors_recommended
+        from response_citations c
+        join responses r on r.id = c.response_id
+        join runs on runs.id = r.run_id
+        join mentions m on m.response_id = r.id and m.recommended
+        where runs.project_id = ${projectId}
+          and runs.status in ('completed', 'partial') and r.provider != 'mock'
+          and not exists (select 1 from mentions n
+            where n.response_id = m.response_id and n.company_id = m.company_id
+              and n.revision > m.revision)
+        group by c.domain
+      `,
+      // Presence is page-scoped: present anywhere = present; absent means
+      // "not found on the pages checked", so keep the count for honest copy.
+      sql`
+        select domain, bool_or(client_present) as client_present,
+          count(*)::int as checks, max(checked_at) as checked_at
+        from source_presence_checks
+        where project_id = ${projectId} and ok and client_present is not null
+        group by domain
+      `,
+      domainLabelsForProject(projectId),
+    ]);
+  const totals = totalsRows[0];
+  const tracked = companies.filter((c) => c.id !== subject?.id);
 
   const co = new Map(coOccurrence.map((r) => [r.domain as string, r]));
   const pres = new Map(presence.map((r) => [r.domain as string, r]));
   const typeByDomain = new Map(labels.map((l) => [l.domain, l.sourceType]));
   const stats = new Map<string, DomainStats>();
+  const ownerAttributedDomains = new Set<string>();
   for (const row of perDomain) {
     const domain = row.domain as string;
+    if (row.ownerAttributed) ownerAttributedDomains.add(domain);
     const c = co.get(domain);
     const p = pres.get(domain);
     stats.set(domain, {
@@ -131,32 +159,32 @@ export async function projectDomainStats(
       providersCiting: row.providersCiting as number,
       totalRuns: totals?.totalRuns ?? 0,
       runsCiting: row.runsCiting as number,
-      competitorRecommendedCoOccurrence: (c?.competitorRecResponses as number) ?? 0,
+      answersWithRecommendation: (c?.answersWithRecommendation as number) ?? 0,
       competitorsRecommendedDistinct: (c?.competitorsRecommended as number) ?? 0,
       trackedCompetitors: tracked.length,
-      clientRecommendedCoOccurrence: (c?.clientRecResponses as number) ?? 0,
       clientPresent: p ? (p.clientPresent as boolean | null) : null,
+      presenceChecksCount: p ? (p.checks as number) : 0,
       presenceCheckedAt: p ? (p.checkedAt as Date) : null,
       sourceType: typeByDomain.get(domain) ?? null,
     });
   }
-  return stats;
+
+  const excludedApexes = [
+    ...new Set([
+      ...companies.flatMap((c) => (c.domain ? [normalizeApex(c.domain)] : [])),
+      ...labels
+        .filter((l) => l.relationship === "owned" || l.relationship === "competitor")
+        .map((l) => normalizeApex(l.domain)),
+    ]),
+  ];
+  return { stats, ownerAttributedDomains, excludedApexes };
 }
 
-/** Domains that are not acquisition targets: the subject's and every tracked
- * company's own domains, plus registry rows labeled owned/competitor. */
-async function excludedDomains(projectId: string): Promise<Set<string>> {
-  const companies = await listCompaniesForProject(projectId);
-  const excluded = new Set<string>();
-  for (const c of companies) {
-    if (c.domain) excluded.add(c.domain.replace(/^www\./, "").toLowerCase());
-  }
-  for (const label of await domainLabelsForProject(projectId)) {
-    if (label.relationship === "owned" || label.relationship === "competitor") {
-      excluded.add(label.domain);
-    }
-  }
-  return excluded;
+/** Public stats view (rescoring, tests). */
+export async function projectDomainStats(
+  projectId: string
+): Promise<Map<string, DomainStats>> {
+  return (await gatherProjectCitationData(projectId)).stats;
 }
 
 // ------------------------------------------------------------- discovery
@@ -184,11 +212,17 @@ export async function discoverOpportunities(
   const { projectId } = parsed.data;
   try {
     assertCanWrite(user);
-    const stats = await projectDomainStats(projectId);
-    const excluded = await excludedDomains(projectId);
-    const candidates = [...stats.values()]
-      .filter((s) => !excluded.has(s.domain))
+    const { stats, ownerAttributedDomains, excludedApexes } =
+      await gatherProjectCitationData(projectId);
+    const allCandidates = [...stats.values()];
+    const candidates = allCandidates
+      .filter(
+        (s) =>
+          !ownerAttributedDomains.has(s.domain) &&
+          !domainIsExcluded(s.domain, excludedApexes)
+      )
       .sort((a, b) => b.citingResponses - a.citingResponses);
+    const skippedExcluded = allCandidates.length - candidates.length;
     const kept = candidates.slice(0, DISCOVERY_DOMAIN_CAP);
     if (candidates.length > DISCOVERY_DOMAIN_CAP) {
       log("info", "citations.discovery_capped", {
@@ -217,7 +251,7 @@ export async function discoverOpportunities(
         detail: {
           domains: kept.length,
           discovered,
-          excluded: excluded.size,
+          excluded: skippedExcluded,
           capped: candidates.length > DISCOVERY_DOMAIN_CAP,
         },
       });
@@ -226,7 +260,7 @@ export async function discoverOpportunities(
     return ok({
       discovered,
       rescored,
-      skippedExcluded: excluded.size,
+      skippedExcluded,
       cappedAt: candidates.length > DISCOVERY_DOMAIN_CAP ? DISCOVERY_DOMAIN_CAP : null,
     });
   } catch (err) {
@@ -234,31 +268,43 @@ export async function discoverOpportunities(
   }
 }
 
-/** Score every opportunity in a project against fresh stats. Returns count. */
+/** Score every opportunity in a project (or just `onlyOpportunityIds`)
+ * against fresh stats. A domain no longer observed in the ledger has its
+ * score CLEARED, not kept — a stale number presented as current is exactly
+ * the fabrication the platform forbids. Returns the rows written. */
 export async function rescoreProject(
   projectId: string,
-  preloadedStats?: Map<string, DomainStats>
+  preloadedStats?: Map<string, DomainStats>,
+  onlyOpportunityIds?: string[]
 ): Promise<number> {
   const stats = preloadedStats ?? (await projectDomainStats(projectId));
   const weightSet = await getActiveWeightSet(ACVS_WEIGHT_SET_NAME);
   const opportunities = await sql`
     select id, domain, acquisition_path, acquisition_difficulty
     from citation_opportunities where project_id = ${projectId}
+    ${onlyOpportunityIds ? sql`and id = any(${onlyOpportunityIds})` : sql``}
   `;
   let scored = 0;
   for (const opp of opportunities) {
     const domainStats = stats.get(opp.domain as string);
-    if (!domainStats) continue;
     const facts: AcquisitionFacts = {
       acquisitionPath: opp.acquisitionPath as string,
       acquisitionDifficulty:
         opp.acquisitionDifficulty as AcquisitionFacts["acquisitionDifficulty"],
     };
-    const result = computeAcvs(domainStats, facts, weightSet);
+    const result = domainStats
+      ? computeAcvs(domainStats, facts, weightSet)
+      : {
+          acvs: null,
+          components: null,
+          explanation: [
+            "No longer observed in the current citation ledger — previous score cleared.",
+          ],
+        };
     await sql`
       update citation_opportunities set
         acvs = ${result.acvs},
-        acvs_components = ${sql.json(result.components as never)},
+        acvs_components = ${result.components === null ? null : sql.json(result.components as never)},
         acvs_explanation = ${result.explanation},
         acvs_version = ${ACVS_VERSION},
         acvs_weight_set_version = ${weightSet.version},
@@ -303,9 +349,9 @@ export async function updateOpportunity(
   const input = parsed.data;
   try {
     assertCanWrite(user);
-    await sql.begin(async (tx) => {
+    const projectIdForRescore = await sql.begin(async (tx) => {
       const [current] = await tx`
-        select id, project_id, status from citation_opportunities
+        select id, project_id, status, intervention_id from citation_opportunities
         where id = ${input.opportunityId} for update
       `;
       if (!current) throw new ClassifiedError("not_found", "Opportunity not found.");
@@ -314,6 +360,25 @@ export async function updateOpportunity(
         throw new ClassifiedError(
           "validation",
           `Cannot move a citation opportunity from "${from}" to "${input.status}".`
+        );
+      }
+      // `measuring` is not an operator label — it is the state linkPlacement
+      // enters when a real intervention exists, and outcomes are what that
+      // intervention's measured verdicts justify. Both refuse without one.
+      if (input.status === "measuring") {
+        throw new ClassifiedError(
+          "validation",
+          "Use “Link placement” to start measuring — it creates the intervention that does the measuring."
+        );
+      }
+      if (
+        input.status &&
+        (OUTCOME_STATUSES as readonly string[]).includes(input.status) &&
+        !current.interventionId
+      ) {
+        throw new ClassifiedError(
+          "validation",
+          "An outcome needs a measured placement behind it — link the placement first."
         );
       }
       await tx`
@@ -356,7 +421,13 @@ export async function updateOpportunity(
         projectId: current.projectId as string,
         detail: { from, ...input },
       });
+      return current.projectId as string;
     });
+    // Path/difficulty are ACVS inputs — a row whose score contradicts its own
+    // displayed fields is a stale fact, so rescore this opportunity now.
+    if (input.acquisitionPath !== undefined || input.acquisitionDifficulty !== undefined) {
+      await rescoreProject(projectIdForRescore, undefined, [input.opportunityId]);
+    }
     return ok({ opportunityId: input.opportunityId });
   } catch (err) {
     return fail(err);
@@ -383,7 +454,22 @@ export async function requestPresenceCheck(
       where id = ${parsed.data.opportunityId}
     `;
     if (!opp) return fail(new ClassifiedError("not_found", "Opportunity not found."));
-    const url = parsed.data.url ?? `https://${opp.domain as string}/`;
+    // Default to the page the engines actually cited, not the homepage — a
+    // client featured on an article is invisible from the domain root, and a
+    // presence verdict must be about a page we had reason to check.
+    let url = parsed.data.url;
+    if (!url) {
+      const [topCited] = await sql`
+        select c.url, count(*)::int as n
+        from response_citations c
+        join responses r on r.id = c.response_id
+        join runs on runs.id = r.run_id
+        where runs.project_id = ${opp.projectId as string}
+          and c.domain = ${opp.domain as string} and r.provider != 'mock'
+        group by c.url order by n desc, c.url asc limit 1
+      `;
+      url = (topCited?.url as string | undefined) ?? `https://${opp.domain as string}/`;
+    }
     await sql`
       insert into jobs (type, payload)
       values ('check_source_presence', ${sql.json({
@@ -397,16 +483,6 @@ export async function requestPresenceCheck(
   } catch (err) {
     return fail(err);
   }
-}
-
-/** Crude tag strip for alias scanning — enough for "does the name appear". */
-function htmlToText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ");
 }
 
 /**
@@ -444,7 +520,13 @@ export async function runPresenceCheck(
     httpStatus = result.status;
     okFlag = result.ok;
     if (result.ok) {
-      const text = htmlToText(result.bytes.toString("utf8"));
+      // The registered html-v1 extractor, not a local strip: it decodes
+      // entities, so "Smith &amp; Co" still matches — a name lost to encoding
+      // must never become an immutable "client absent" fact.
+      const { htmlExtractor } = await import(
+        "@/lib/knowledge/sources/extractors/text"
+      );
+      const { text } = await htmlExtractor.extract(result.bytes);
       const hits = scanAliases(
         text,
         companies.map((c) => ({ id: c.id, name: c.name, aliases: c.aliases }))
@@ -525,6 +607,24 @@ export async function linkPlacement(
         )
       );
     }
+    // Claim-first: flip to `measuring` in a guarded UPDATE before creating
+    // the intervention, so a double submit loses the claim instead of
+    // minting a second intervention with its own scheduled retest runs.
+    const claimed = await sql`
+      update citation_opportunities
+      set status = 'measuring', updated_at = now()
+      where id = ${input.opportunityId}
+        and status = ${opp.status as string} and intervention_id is null
+      returning id
+    `;
+    if (claimed.length === 0) {
+      return fail(
+        new ClassifiedError(
+          "conflict",
+          "This opportunity changed while you were editing — reload and retry."
+        )
+      );
+    }
     const created = await createIntervention(user, {
       projectId: opp.projectId,
       title: input.title ?? `Citation placement: ${opp.domain as string}`,
@@ -534,12 +634,19 @@ export async function linkPlacement(
       promptSetVersionId: input.promptSetVersionId,
       costUsd: input.costUsd,
     });
-    if (!created.ok) return fail(created.error);
+    if (!created.ok) {
+      // Release the claim — the placement was not recorded.
+      await sql`
+        update citation_opportunities
+        set status = ${opp.status as string}, updated_at = now()
+        where id = ${input.opportunityId} and intervention_id is null
+      `;
+      return fail(created.error);
+    }
     await sql.begin(async (tx) => {
       await tx`
         update citation_opportunities
-        set status = 'measuring', intervention_id = ${created.data.interventionId},
-          updated_at = now()
+        set intervention_id = ${created.data.interventionId}, updated_at = now()
         where id = ${input.opportunityId}
       `;
       await writeAudit(tx, {
@@ -652,29 +759,40 @@ export interface RunCitationMetrics {
   obtainableGaps: number;
 }
 
-/** Prospecting/report counts for one run — observation language only. */
+/** Prospecting/report counts for one run — observation language only.
+ * "The client" is the run's project SUBJECT (never the global is_self flag:
+ * on a prospect benchmark the subject is the prospect, and the exact bug
+ * this fixes reported the subject's cited sources as a competitor's). */
 export async function citationMetricsForRun(
   runId: string
 ): Promise<RunCitationMetrics> {
   const [run] = await sql`select project_id from runs where id = ${runId}`;
+  const subject = run ? await getSubjectCompany(run.projectId as string) : null;
   const [counts] = await sql`
     select count(distinct c.domain)::int as unique_domains,
-      count(distinct c.response_id) filter (where comp.is_self)::int as client_cited,
       count(distinct c.response_id)
-        filter (where comp.id is not null and not comp.is_self)::int as competitor_cited,
+        filter (where c.company_id = ${subject?.id ?? null})::int as client_cited,
+      count(distinct c.response_id)
+        filter (where c.company_id is not null
+          and (c.company_id != ${subject?.id ?? null} or ${subject === null}))::int
+        as competitor_cited,
       count(distinct c.domain) filter (where c.company_id is null)::int as third_party
     from response_citations c
     join responses r on r.id = c.response_id
-    left join companies comp on comp.id = c.company_id
     where r.run_id = ${runId} and r.provider != 'mock'
   `;
+  // Obtainable gaps are scoped to THIS run's cited domains — a project-wide
+  // pipeline count is not a statement about this run's answers.
   const [obtainable] = run
     ? await sql`
-        select count(*)::int as n from citation_opportunities
-        where project_id = ${run.projectId}
-          and status in ('qualified', 'prioritized', 'outreach_ready',
-            'outreach_in_progress', 'negotiation', 'submitted', 'won', 'live',
-            'verified', 'measuring')
+        select count(*)::int as n from citation_opportunities o
+        where o.project_id = ${run.projectId}
+          and o.status = any(${[...OBTAINABLE_STATUSES]})
+          and o.domain in (
+            select distinct c.domain from response_citations c
+            join responses r on r.id = c.response_id
+            where r.run_id = ${runId} and r.provider != 'mock'
+          )
       `
     : [{ n: 0 }];
   return {
