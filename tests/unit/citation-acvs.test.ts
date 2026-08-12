@@ -17,7 +17,7 @@ import {
   OUTCOME_STATUSES,
   PIPELINE_STATUSES,
 } from "@/lib/citations/constants";
-import { CAUSAL_PHRASES } from "@/lib/workflow/gates";
+import { CAUSAL_PHRASES, findCausalPhrase } from "@/lib/workflow/gates";
 import type { WeightSet } from "@/lib/scoring/weights";
 
 const stats = (over: Partial<DomainStats> = {}): DomainStats => ({
@@ -32,11 +32,11 @@ const stats = (over: Partial<DomainStats> = {}): DomainStats => ({
   providersCiting: 2,
   totalRuns: 5,
   runsCiting: 4,
-  competitorRecommendedCoOccurrence: 8,
+  answersWithRecommendation: 10,
   competitorsRecommendedDistinct: 3,
   trackedCompetitors: 6,
-  clientRecommendedCoOccurrence: 2,
   clientPresent: false,
+  presenceChecksCount: 1,
   presenceCheckedAt: new Date("2026-08-01"),
   sourceType: "news",
   ...over,
@@ -74,7 +74,7 @@ describe("componentsFromStats (acvs-v1)", () => {
     expect(c.promptRelevance).toBeCloseTo(0.5);
     expect(c.commercialIntent).toBeCloseTo(0.6);
     expect(c.crossEngine).toBeCloseTo(0.5);
-    expect(c.recommendationInfluence).toBeCloseTo(0.5); // (8+2)/20
+    expect(c.recommendationInfluence).toBeCloseTo(0.5); // 10 of 20 citing answers
     expect(c.competitorDensity).toBeCloseTo(0.5);
     expect(c.clientGap).toBe(1); // verified absent = the gap is real
     expect(c.feasibility).toBeCloseTo(0.6);
@@ -97,6 +97,30 @@ describe("componentsFromStats (acvs-v1)", () => {
     expect(c.feasibility).toBe(0.5);
   });
 
+  it("QA fix: recommendation influence is one count — answers recommending both client and rival can never exceed the citing total", () => {
+    // Regression for the double-count: the stats contract now carries a single
+    // distinct-answer count, so the impossible '12 of 10 answers' cannot occur.
+    const c = componentsFromStats(
+      stats({ citingResponses: 10, answersWithRecommendation: 10 }),
+      facts()
+    );
+    expect(c.recommendationInfluence).toBe(1);
+    const line = explainComponents(
+      stats({ citingResponses: 10, answersWithRecommendation: 6 }),
+      facts(),
+      c
+    ).find((l) => l.includes("co-occurred"));
+    expect(line).toContain("6 of its 10 citing answers");
+  });
+
+  it("QA fix: a source type the quality table doesn't know scores null, not a fabricated 0.5", () => {
+    const c = componentsFromStats(
+      stats({ sourceType: "podcast" as never }),
+      facts()
+    );
+    expect(c.sourceQuality).toBeNull();
+  });
+
   it("untiered prompt sets leave commercial intent unmeasured, never zero", () => {
     const c = componentsFromStats(
       stats({ tieredCitingResponses: 0, highIntentCitingResponses: 0 }),
@@ -114,8 +138,7 @@ describe("componentsFromStats (acvs-v1)", () => {
         runsCiting: 1,
         tieredCitingResponses: 1,
         highIntentCitingResponses: 1,
-        competitorRecommendedCoOccurrence: 0,
-        clientRecommendedCoOccurrence: 0,
+        answersWithRecommendation: 0,
         competitorsRecommendedDistinct: 0,
       }),
       facts()
@@ -164,9 +187,8 @@ describe("computeAcvs", () => {
       totalRuns: 0,
       runsCiting: 0,
       trackedCompetitors: 0,
-      competitorRecommendedCoOccurrence: 0,
+      answersWithRecommendation: 0,
       competitorsRecommendedDistinct: 0,
-      clientRecommendedCoOccurrence: 0,
       clientPresent: null,
       sourceType: null,
     });
@@ -214,6 +236,14 @@ describe("explanation guardrails (spec 060 §9)", () => {
     ]) {
       expect(CAUSAL_PHRASES).toContain(phrase);
     }
+  });
+
+  it("QA fix: phrase matching respects word boundaries", () => {
+    expect(findCausalPhrase("The board censures the proposal.")).toBeNull();
+    expect(findCausalPhrase("They travelled to the office.")).toBeNull();
+    expect(findCausalPhrase("Our process ensures every claim is cited.")).toBe("ensures");
+    expect(findCausalPhrase("This GUARANTEED placement")).toBe("guaranteed");
+    expect(findCausalPhrase("the change led to a lift")).toBe("led to");
   });
 
   it("co-occurrence is labelled as such in the explanation", () => {

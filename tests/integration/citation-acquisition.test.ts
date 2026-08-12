@@ -44,9 +44,12 @@ describe.skipIf(!TEST_URL)("citation acquisition (integration)", () => {
       insert into projects (name) values ('Citation Test') returning id
     `;
     projectId = project!.id as string;
+    // Deliberately NOT is_self: the subject must come from the project's
+    // subject_company_id (the prospect-benchmark shape) — regression for the
+    // metrics bug that resolved "the client" via the global flag.
     const [subject] = await sql`
       insert into companies (name, aliases, domain, is_self)
-      values ('Lumina Group', '{Lumina}', 'lumina.example', true) returning id
+      values ('Lumina Group', '{Lumina}', 'lumina.example', false) returning id
     `;
     subjectId = subject!.id as string;
     const [rival] = await sql`
@@ -112,10 +115,13 @@ describe.skipIf(!TEST_URL)("citation acquisition (integration)", () => {
       (${responseIds[3]!}, 'https://mockonly.example/x', 'mockonly.example', 'in_text')
     `;
     // Owned + competitor domains in the ledger — never acquisition targets.
+    // blog.lumina.example is the subdomain regression: owner by suffix, not
+    // stamped with company_id, and it must still never be minted.
     await sql`
       insert into response_citations (response_id, url, domain, kind, company_id) values
       (${responseIds[0]!}, 'https://lumina.example/about', 'lumina.example', 'in_text', ${subjectId}),
-      (${responseIds[2]!}, 'https://rival.example/team', 'rival.example', 'in_text', ${rivalId})
+      (${responseIds[2]!}, 'https://rival.example/team', 'rival.example', 'in_text', ${rivalId}),
+      (${responseIds[2]!}, 'https://blog.lumina.example/post', 'blog.lumina.example', 'in_text', null)
     `;
     // Current-revision mention: the rival is recommended in a citing answer.
     await sql`
@@ -134,6 +140,9 @@ describe.skipIf(!TEST_URL)("citation acquisition (integration)", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.data.discovered).toBe(1);
+    // lumina.example + rival.example (owner-attributed) and
+    // blog.lumina.example (suffix match) were cited but filtered.
+    expect(result.data.skippedExcluded).toBe(3);
 
     const rows = await sql`
       select * from citation_opportunities where project_id = ${projectId}
@@ -167,6 +176,15 @@ describe.skipIf(!TEST_URL)("citation acquisition (integration)", () => {
     });
     expect(updated.ok).toBe(true);
 
+    // QA fix: the edit itself rescores — no Discover click needed for the
+    // score to agree with the row's own displayed path/difficulty.
+    const [freshlyScored] = await sql`
+      select acvs_components from citation_opportunities where project_id = ${projectId}
+    `;
+    expect(
+      (freshlyScored!.acvsComponents as Record<string, number>).feasibility
+    ).toBe(1);
+
     const again = await svc.discoverOpportunities(user, { projectId });
     expect(again.ok).toBe(true);
     if (!again.ok) return;
@@ -191,6 +209,17 @@ describe.skipIf(!TEST_URL)("citation acquisition (integration)", () => {
     });
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.error.message).toContain("Cannot move");
+
+    // QA fix: `measuring` is linkPlacement's state, never a manual label —
+    // reaching it by hand would strand the opportunity with no intervention.
+    const manualMeasuring = await svc.updateOpportunity(user, {
+      opportunityId: opp!.id as string,
+      status: "measuring",
+    });
+    expect(manualMeasuring.ok).toBe(false);
+    if (!manualMeasuring.ok) {
+      expect(manualMeasuring.error.message).toContain("Link placement");
+    }
 
     const audits = await sql`
       select count(*)::int as n from audit_log
@@ -329,10 +358,12 @@ describe.skipIf(!TEST_URL)("citation acquisition (integration)", () => {
 
   it("citationMetricsForRun counts sources by owner without causal framing", async () => {
     const metrics = await svc.citationMetricsForRun(runId);
-    expect(metrics.uniqueSourceDomains).toBe(3); // localnews, lumina, rival (mock excluded)
+    // localnews, lumina, rival, blog.lumina (mock-provider citation excluded)
+    expect(metrics.uniqueSourceDomains).toBe(4);
+    // The subject is NOT is_self here — these counts prove subject resolution.
     expect(metrics.clientCitedResponses).toBe(1);
     expect(metrics.competitorCitedResponses).toBe(1);
-    expect(metrics.thirdPartyDomains).toBe(1);
-    expect(metrics.obtainableGaps).toBe(1); // the measuring opportunity
+    expect(metrics.thirdPartyDomains).toBe(2); // localnews + blog.lumina (no owner stamp)
+    expect(metrics.obtainableGaps).toBe(1); // the measuring opportunity, cited by this run
   });
 });

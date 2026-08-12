@@ -1841,3 +1841,39 @@ ACVS explanation templates are unit-tested against the same list.
 third_party_opportunity as evidence lines only — changing the point
 formula is a fixability-v2 version bump with a recompute story, deliberately
 deferred, because stored prospect scores reference the rubric version.
+
+## 2026-08-12 — Spec 060 QA fixes (post-merge review)
+
+A six-angle review of PR #42 found nine correctness bugs; all fixed same
+day. The decisions worth keeping:
+
+**Presence verdicts are page-scoped, and the default page is the cited
+one.** A homepage fetch says nothing about the article the engines cited,
+so checks now default to the domain's most-cited ledger URL, presence
+aggregates as "found on ANY successfully checked page" (bool_or), and the
+stored explanation says "not found on the N page(s) checked", never "does
+not appear on this source". HTML is stripped by the registered html-v1
+extractor (entity decoding) — an encoded name must not become an immutable
+false absence.
+
+**`measuring` belongs to linkPlacement.** Operators cannot select it, and
+outcomes refuse without an intervention_id — otherwise "successful" was
+reachable with zero measurement behind it. linkPlacement claims the row
+(guarded UPDATE) before creating the intervention, so a double submit
+loses the claim instead of minting a duplicate experiment.
+
+**One count for recommendation influence.** Competitor + client
+co-occurrence counted the same answer twice and could exceed the
+denominator; the stats contract now carries a single distinct-answer
+count, making the impossible fraction unrepresentable.
+
+**Subject over is_self, suffix over string-equality, null over stale.**
+Run metrics resolve the client via the project's subject (prospect
+benchmarks were misreporting); discovery exclusion matches by domain
+suffix plus ledger owner-attribution; a domain that vanishes from the
+ledger has its ACVS cleared, and path/difficulty edits rescore
+immediately — a stored score may never contradict its own row.
+
+**Causal-phrase gates match word boundaries.** "ensures" no longer fires
+inside "censures"; hedged sentences containing a listed phrase still
+block by design — reword the sentence, not the gate.

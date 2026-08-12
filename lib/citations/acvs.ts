@@ -9,6 +9,7 @@
  * input shape, not by a comment.
  */
 import { weightedComposite, type WeightSet } from "@/lib/scoring/weights";
+import type { SourceType } from "@/lib/sources/classify";
 
 export const ACVS_VERSION = "acvs-v1";
 export const ACVS_WEIGHT_SET_NAME = "citation-acvs";
@@ -31,16 +32,18 @@ export interface DomainStats {
   providersCiting: number;
   totalRuns: number;
   runsCiting: number;
-  /** Citing answers whose current mentions recommend a non-subject company. */
-  competitorRecommendedCoOccurrence: number;
+  /** Distinct citing answers whose current mentions recommend ANY tracked
+   * company — one count, so an answer recommending both the client and a
+   * rival is never counted twice. */
+  answersWithRecommendation: number;
   /** Distinct non-subject companies recommended in citing answers. */
   competitorsRecommendedDistinct: number;
   /** Active non-subject companies measured for this project. */
   trackedCompetitors: number;
-  /** Citing answers whose current mention recommends the subject. */
-  clientRecommendedCoOccurrence: number;
-  /** Latest presence check verdict; null = never checked. */
+  /** Client found on at least one successfully checked page; null = no OK
+   * check yet. Scoped to the pages actually fetched, never the whole site. */
   clientPresent: boolean | null;
+  presenceChecksCount: number;
   presenceCheckedAt: Date | null;
   /** source-classifier-v1 labels, when the sources registry has the domain. */
   sourceType: string | null;
@@ -75,9 +78,10 @@ const FEASIBILITY_BY_DIFFICULTY: Record<AcquisitionFacts["acquisitionDifficulty"
 const UNKNOWN_PATH_CAP = 0.5;
 
 /** Established third-party types score high; low-trust types score low.
- * Types the classifier marks as owned surfaces never reach scoring —
- * discovery excludes owned/competitor relationships upstream. */
-const QUALITY_BY_SOURCE_TYPE: Record<string, number> = {
+ * Keyed by the SourceType union so a new classifier label fails typecheck
+ * here instead of silently scoring a fabricated middle value; a stored
+ * label the table doesn't know scores null (unmeasured), never 0.5. */
+const QUALITY_BY_SOURCE_TYPE: Record<SourceType, number> = {
   news: 1,
   government: 1,
   review: 0.9,
@@ -107,7 +111,7 @@ export function componentsFromStats(
     ),
     crossEngine: ratio(stats.providersCiting, stats.totalProviders),
     recommendationInfluence: ratio(
-      stats.competitorRecommendedCoOccurrence + stats.clientRecommendedCoOccurrence,
+      stats.answersWithRecommendation,
       stats.citingResponses
     ),
     competitorDensity: ratio(
@@ -122,9 +126,9 @@ export function componentsFromStats(
         ? Math.min(feasibilityBase, UNKNOWN_PATH_CAP)
         : feasibilityBase,
     sourceQuality:
-      stats.sourceType === null
-        ? null
-        : (QUALITY_BY_SOURCE_TYPE[stats.sourceType] ?? 0.5),
+      stats.sourceType !== null && stats.sourceType in QUALITY_BY_SOURCE_TYPE
+        ? QUALITY_BY_SOURCE_TYPE[stats.sourceType as SourceType]
+        : null,
     persistence: ratio(stats.runsCiting, stats.totalRuns),
   };
 }
@@ -166,7 +170,7 @@ export function explainComponents(
   );
   lines.push(
     `A recommendation co-occurred with this source in ` +
-      `${stats.competitorRecommendedCoOccurrence + stats.clientRecommendedCoOccurrence} ` +
+      `${stats.answersWithRecommendation} ` +
       `of its ${stats.citingResponses} citing answers ` +
       `(co-occurrence in the same answer, not attribution); ` +
       `${stats.competitorsRecommendedDistinct} of ${stats.trackedCompetitors} tracked ` +
@@ -175,9 +179,15 @@ export function explainComponents(
   if (stats.clientPresent === null) {
     lines.push("Client presence on this source is unchecked — run a presence check.");
   } else if (stats.clientPresent) {
-    lines.push("The client already appears on this source (verified by presence check).");
+    lines.push(
+      "The client appears on at least one checked page of this source " +
+        `(${stats.presenceChecksCount} page check(s) recorded).`
+    );
   } else {
-    lines.push("The client does not appear on this source (verified by presence check).");
+    lines.push(
+      `The client was not found on the ${stats.presenceChecksCount} page(s) ` +
+        `checked so far — checked pages only, not the whole site.`
+    );
   }
   lines.push(
     facts.acquisitionPath === "unknown"
@@ -226,8 +236,11 @@ export {
   OUTCOME_STATUSES,
   EXIT_STATUSES,
   OPPORTUNITY_STATUSES,
+  OBTAINABLE_STATUSES,
   ACQUISITION_PATHS,
+  ACQUISITION_DIFFICULTIES,
   canTransition,
   type OpportunityStatus,
   type AcquisitionPath,
+  type AcquisitionDifficulty,
 } from "@/lib/citations/constants";

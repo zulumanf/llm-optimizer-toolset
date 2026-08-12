@@ -421,6 +421,21 @@ export const CAUSAL_PHRASES = [
   "ensures",
 ];
 
+// Word-boundary matching, not bare substrings: "ensures" must not fire
+// inside "censures" nor "led to" inside "travelled to" — this gate hard-
+// blocks publishing, so a false positive costs an operator a reword of
+// innocent prose.
+const CAUSAL_PHRASE_RES = CAUSAL_PHRASES.map(
+  (phrase) =>
+    new RegExp(`\\b${phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i")
+);
+
+/** The phrase the text trips on, or null. The one matcher for both gates. */
+export function findCausalPhrase(text: string): string | null {
+  const index = CAUSAL_PHRASE_RES.findIndex((re) => re.test(text));
+  return index === -1 ? null : CAUSAL_PHRASES[index]!;
+}
+
 export function executiveReportingGate(input: ExecutiveReportingInput): GateResult {
   const materialWithoutEvidence = input.statements.filter(
     (s) => s.material && s.evidenceIds.length === 0
@@ -432,9 +447,7 @@ export function executiveReportingGate(input: ExecutiveReportingInput): GateResu
   // A statement labelled "correlation" that reads causally is the failure mode
   // this check exists for — the label is not enough, the wording must match.
   const mislabelledCausal = input.statements.filter(
-    (s) =>
-      s.kind === "correlation" &&
-      CAUSAL_PHRASES.some((phrase) => s.text.toLowerCase().includes(phrase))
+    (s) => s.kind === "correlation" && findCausalPhrase(s.text) !== null
   );
   const kinds = new Set(input.statements.map((s) => s.kind));
 

@@ -5,14 +5,17 @@ import { Badge } from "@/components/ui/badge";
 import { PageShell, PageHeader, EmptyState } from "@/components/layout/page";
 import { ProjectTabs } from "@/components/layout/project-tabs";
 import { citationGapView, type GapFilters } from "@/lib/citations/service";
+import { sql } from "@/db/client";
 import {
   OPPORTUNITY_STATUSES,
   ACQUISITION_PATHS,
+  canTransition,
   type OpportunityStatus,
 } from "@/lib/citations/constants";
 import {
   DiscoverButton,
   ExplanationToggle,
+  LinkPlacementDialog,
   ManageOpportunityDialog,
   PresenceCheckButton,
 } from "@/components/citations/opportunity-controls";
@@ -74,7 +77,19 @@ export default async function CitationsPage({
   if (!project) notFound();
 
   const filters = parseFilters(rawParams);
-  const rows = await citationGapView(id, filters);
+  const [rows, versionRows] = await Promise.all([
+    citationGapView(id, filters),
+    sql`
+      select v.id, s.name, v.version from prompt_set_versions v
+      join prompt_sets s on s.id = v.prompt_set_id
+      where s.project_id = ${id} and s.archived_at is null
+      order by v.frozen_at desc limit 20
+    `,
+  ]);
+  const versions = versionRows.map((v) => ({
+    id: v.id as string,
+    label: `${v.name as string} v${v.version as number}`,
+  }));
   const base = `/projects/${id}/citations`;
   const query = (over: Record<string, string | null>): string => {
     const next = new URLSearchParams();
@@ -168,6 +183,15 @@ export default async function CitationsPage({
                     <div className="text-xs text-muted-foreground">ACVS</div>
                   </div>
                   <PresenceCheckButton opportunityId={row.id} />
+                  {!row.interventionId &&
+                    versions.length > 0 &&
+                    canTransition(row.status, "measuring") && (
+                      <LinkPlacementDialog
+                        opportunityId={row.id}
+                        domain={row.domain}
+                        versions={versions}
+                      />
+                    )}
                   <ManageOpportunityDialog
                     opportunityId={row.id}
                     domain={row.domain}
