@@ -44,7 +44,7 @@ Seeds the `citation-acvs` v1 weight set.
 ## Deferred (named, not forgotten)
 - Audit-page "Where AI gets its information" visual section (needs audit-page-design + prospect-voice pass on the PR-B page; metrics land now via `citationMetricsForRun`).
 - Fixability point-formula integration (`fixability-v2` bump).
-- Provider UI + any marketplace integration; automated contact discovery/outreach/purchasing (052's gates are the rails when they come).
+- Provider UI + any marketplace integration; automated contact discovery/outreach/purchasing (052's gates are the rails when they come). The registry table ships (069); its write service and UI land together when provider tracking is used — a mutation endpoint nothing calls was removed in the QA chore pass.
 - Syndicated-content detection across domains; URL-level (vs domain-level) opportunity rows.
 - Historical trend dashboards (the ledger is immutable — trends are derivable when a UI earns its place).
 
