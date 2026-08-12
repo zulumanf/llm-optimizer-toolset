@@ -1,0 +1,233 @@
+/**
+ * AI Citation Value Score (spec 060, acvs-v1). Pure functions: observed
+ * citation behavior in → components, composite, and a template-generated
+ * explanation out. Nothing here talks to the database or a model.
+ *
+ * Deliberate absence: no domain authority, no backlink counts, no SEO
+ * metrics. A source matters here only because AI answers actually cite it —
+ * "AI citation value ≠ backlink authority" is enforced by this module's
+ * input shape, not by a comment.
+ */
+import { weightedComposite, type WeightSet } from "@/lib/scoring/weights";
+
+export const ACVS_VERSION = "acvs-v1";
+export const ACVS_WEIGHT_SET_NAME = "citation-acvs";
+
+/** High-intent = prompt tiers 1–2 (migration 030 semantics). */
+export const HIGH_INTENT_MAX_TIER = 2;
+
+/** Everything observable about one third-party domain in one project. */
+export interface DomainStats {
+  domain: string;
+  /** Non-mock responses in completed/partial runs of this project. */
+  totalResponses: number;
+  citingResponses: number;
+  totalPrompts: number;
+  citingPrompts: number;
+  /** Citing responses whose prompt has a tier at all / a tier ≤ 2. */
+  tieredCitingResponses: number;
+  highIntentCitingResponses: number;
+  totalProviders: number;
+  providersCiting: number;
+  totalRuns: number;
+  runsCiting: number;
+  /** Citing answers whose current mentions recommend a non-subject company. */
+  competitorRecommendedCoOccurrence: number;
+  /** Distinct non-subject companies recommended in citing answers. */
+  competitorsRecommendedDistinct: number;
+  /** Active non-subject companies measured for this project. */
+  trackedCompetitors: number;
+  /** Citing answers whose current mention recommends the subject. */
+  clientRecommendedCoOccurrence: number;
+  /** Latest presence check verdict; null = never checked. */
+  clientPresent: boolean | null;
+  presenceCheckedAt: Date | null;
+  /** source-classifier-v1 labels, when the sources registry has the domain. */
+  sourceType: string | null;
+}
+
+/** Operator-recorded acquisition facts, from the opportunity row. */
+export interface AcquisitionFacts {
+  acquisitionPath: string;
+  acquisitionDifficulty: "easy" | "moderate" | "hard" | "unknown";
+}
+
+export interface AcvsComponents {
+  citationFrequency: number | null;
+  promptRelevance: number | null;
+  commercialIntent: number | null;
+  crossEngine: number | null;
+  recommendationInfluence: number | null;
+  competitorDensity: number | null;
+  clientGap: number | null;
+  feasibility: number | null;
+  sourceQuality: number | null;
+  persistence: number | null;
+}
+
+const FEASIBILITY_BY_DIFFICULTY: Record<AcquisitionFacts["acquisitionDifficulty"], number> = {
+  easy: 1,
+  moderate: 0.6,
+  hard: 0.3,
+  unknown: 0.5,
+};
+/** An unknown path caps feasibility — you cannot be "easy" with no plan. */
+const UNKNOWN_PATH_CAP = 0.5;
+
+/** Established third-party types score high; low-trust types score low.
+ * Types the classifier marks as owned surfaces never reach scoring —
+ * discovery excludes owned/competitor relationships upstream. */
+const QUALITY_BY_SOURCE_TYPE: Record<string, number> = {
+  news: 1,
+  government: 1,
+  review: 0.9,
+  portal: 0.8,
+  directory: 0.6,
+  video: 0.6,
+  brokerage: 0.5,
+  other: 0.5,
+  social: 0.4,
+  client_site: 0.2,
+};
+
+const ratio = (num: number, den: number): number | null =>
+  den > 0 ? Math.min(1, num / den) : null;
+
+export function componentsFromStats(
+  stats: DomainStats,
+  facts: AcquisitionFacts
+): AcvsComponents {
+  const feasibilityBase = FEASIBILITY_BY_DIFFICULTY[facts.acquisitionDifficulty];
+  return {
+    citationFrequency: ratio(stats.citingResponses, stats.totalResponses),
+    promptRelevance: ratio(stats.citingPrompts, stats.totalPrompts),
+    commercialIntent: ratio(
+      stats.highIntentCitingResponses,
+      stats.tieredCitingResponses
+    ),
+    crossEngine: ratio(stats.providersCiting, stats.totalProviders),
+    recommendationInfluence: ratio(
+      stats.competitorRecommendedCoOccurrence + stats.clientRecommendedCoOccurrence,
+      stats.citingResponses
+    ),
+    competitorDensity: ratio(
+      stats.competitorsRecommendedDistinct,
+      stats.trackedCompetitors
+    ),
+    // 1 = client verifiably absent (the gap is real), 0 = already present,
+    // null = never checked — unknown redistributes, it never counts as a gap.
+    clientGap: stats.clientPresent === null ? null : stats.clientPresent ? 0 : 1,
+    feasibility:
+      facts.acquisitionPath === "unknown"
+        ? Math.min(feasibilityBase, UNKNOWN_PATH_CAP)
+        : feasibilityBase,
+    sourceQuality:
+      stats.sourceType === null
+        ? null
+        : (QUALITY_BY_SOURCE_TYPE[stats.sourceType] ?? 0.5),
+    persistence: ratio(stats.runsCiting, stats.totalRuns),
+  };
+}
+
+export interface AcvsResult {
+  /** 0–100, one decimal; null when nothing was measurable. */
+  acvs: number | null;
+  components: AcvsComponents;
+  /** Component names that were null and had their weight redistributed. */
+  missing: string[];
+  explanation: string[];
+}
+
+const pct = (n: number, d: number): string =>
+  d > 0 ? `${Math.round((n / d) * 100)}%` : "n/a";
+
+/**
+ * Explanation lines are TEMPLATES over stored numbers — never model-written,
+ * and worded as observation ("cited alongside", "appears") rather than
+ * causation. Tested against the workflow-gate phrase lists.
+ */
+export function explainComponents(
+  stats: DomainStats,
+  facts: AcquisitionFacts,
+  components: AcvsComponents
+): string[] {
+  const lines: string[] = [
+    `Cited in ${stats.citingResponses} of ${stats.totalResponses} answers ` +
+      `(${pct(stats.citingResponses, stats.totalResponses)}) across this project's runs.`,
+    `Appears for ${stats.citingPrompts} of ${stats.totalPrompts} tracked prompts, ` +
+      `on ${stats.providersCiting} of ${stats.totalProviders} engines, ` +
+      `in ${stats.runsCiting} of ${stats.totalRuns} runs.`,
+  ];
+  lines.push(
+    components.commercialIntent === null
+      ? "Commercial intent unmeasured: no citing answer came from a tiered prompt."
+      : `${pct(stats.highIntentCitingResponses, stats.tieredCitingResponses)} of its ` +
+          `tier-labeled citing answers came from high-intent prompts (tiers 1–2).`
+  );
+  lines.push(
+    `A recommendation co-occurred with this source in ` +
+      `${stats.competitorRecommendedCoOccurrence + stats.clientRecommendedCoOccurrence} ` +
+      `of its ${stats.citingResponses} citing answers ` +
+      `(co-occurrence in the same answer, not attribution); ` +
+      `${stats.competitorsRecommendedDistinct} of ${stats.trackedCompetitors} tracked ` +
+      `competitors were recommended alongside it.`
+  );
+  if (stats.clientPresent === null) {
+    lines.push("Client presence on this source is unchecked — run a presence check.");
+  } else if (stats.clientPresent) {
+    lines.push("The client already appears on this source (verified by presence check).");
+  } else {
+    lines.push("The client does not appear on this source (verified by presence check).");
+  }
+  lines.push(
+    facts.acquisitionPath === "unknown"
+      ? "No acquisition path recorded yet — feasibility capped until one is chosen."
+      : `Acquisition path: ${facts.acquisitionPath.replace(/_/g, " ")}, ` +
+          `assessed ${facts.acquisitionDifficulty}.`
+  );
+  lines.push(
+    stats.sourceType === null
+      ? "Source type unclassified — quality unmeasured for now."
+      : `Source classified as ${stats.sourceType.replace(/_/g, " ")} (source-classifier).`
+  );
+  return lines;
+}
+
+/** Composite + explanation, weights from the active citation-acvs set. */
+export function computeAcvs(
+  stats: DomainStats,
+  facts: AcquisitionFacts,
+  weightSet: WeightSet
+): AcvsResult {
+  const components = componentsFromStats(stats, facts);
+  const { score, missing } = weightedComposite(
+    components as unknown as Record<string, number | null>,
+    weightSet.weights
+  );
+  const explanation = explainComponents(stats, facts, components);
+  if (missing.length > 0) {
+    explanation.push(
+      `Unmeasured components (${missing.join(", ")}) drop out; ` +
+        `their weight spreads over the measured ones.`
+    );
+  }
+  return {
+    acvs: score === null ? null : Math.round(score * 1000) / 10,
+    components,
+    missing,
+    explanation,
+  };
+}
+
+// Lifecycle/taxonomy constants live in lib/citations/constants.ts (pure,
+// client-safe); re-exported here so server code has one import surface.
+export {
+  PIPELINE_STATUSES,
+  OUTCOME_STATUSES,
+  EXIT_STATUSES,
+  OPPORTUNITY_STATUSES,
+  ACQUISITION_PATHS,
+  canTransition,
+  type OpportunityStatus,
+  type AcquisitionPath,
+} from "@/lib/citations/constants";

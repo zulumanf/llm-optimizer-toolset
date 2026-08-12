@@ -403,9 +403,23 @@ export interface ExecutiveReportingInput {
   causalStatementsHumanApproved: boolean;
 }
 
-/** The one causal-phrase list (spec 051): shared by the executive brief
- * gate and the client report narrative gate — never a third copy. */
-export const CAUSAL_PHRASES = ["caused", "because of our", "drove the", "resulted in", "led to"];
+/** The one causal-phrase list (spec 051, extended spec 060): shared by the
+ * executive brief gate and the client report narrative gate — never a third
+ * copy. The 060 additions cover guarantee-language a citation-acquisition
+ * narrative is most tempted to slip into. */
+export const CAUSAL_PHRASES = [
+  "caused",
+  "because of our",
+  "drove the",
+  "resulted in",
+  "led to",
+  "guaranteed",
+  "will improve",
+  "ranks because",
+  "directly resulted",
+  "proven to",
+  "ensures",
+];
 
 export function executiveReportingGate(input: ExecutiveReportingInput): GateResult {
   const materialWithoutEvidence = input.statements.filter(

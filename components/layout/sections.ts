@@ -21,6 +21,7 @@ import {
   FlaskConical,
   History,
   LayoutDashboard,
+  Link2,
   ListTodo,
   Map as MapIcon,
   MessageSquareText,
@@ -49,6 +50,7 @@ export const PROJECT_SECTIONS: ProjectSection[] = [
   { path: "/review", label: "Review", icon: CheckCheck },
   { path: "/gaps", label: "Gaps", icon: Crosshair },
   { path: "/accuracy", label: "Accuracy", icon: ShieldAlert },
+  { path: "/citations", label: "Citations", icon: Link2 },
   { path: "/content", label: "Content", icon: FileEdit },
   { path: "/competitors", label: "Competitors", icon: Swords },
   { path: "/campaigns", label: "Campaigns", icon: Flag },
@@ -77,7 +79,7 @@ export interface TabSet {
 
 export const TAB_SETS: TabSet[] = [
   { key: "measure", label: null, paths: ["/runs", "/review"] },
-  { key: "findings", label: "Findings", paths: ["/gaps", "/accuracy"] },
+  { key: "findings", label: "Findings", paths: ["/gaps", "/accuracy", "/citations"] },
   { key: "work", label: "Work", paths: ["/tasks", "/campaigns", "/interventions"] },
   { key: "reports", label: null, paths: ["/reports", "/validation"] },
 ];
