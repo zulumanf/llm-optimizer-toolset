@@ -9,6 +9,7 @@ import { sql } from "@/db/client";
 import {
   OPPORTUNITY_STATUSES,
   ACQUISITION_PATHS,
+  ACVS_STRONG_THRESHOLD,
   canTransition,
   type OpportunityStatus,
 } from "@/lib/citations/constants";
@@ -129,9 +130,10 @@ export default async function CitationsPage({
           active={filters.highIntentOnly === true}>
           High intent
         </FilterLink>
-        <FilterLink href={query({ minAcvs: filters.minAcvs ? null : "50" })}
+        <FilterLink
+          href={query({ minAcvs: filters.minAcvs ? null : String(ACVS_STRONG_THRESHOLD) })}
           active={filters.minAcvs !== undefined}>
-          ACVS ≥ 50
+          ACVS ≥ {ACVS_STRONG_THRESHOLD}
         </FilterLink>
         <FilterLink href={query({ status: filters.statuses ? null : "measuring" })}
           active={filters.statuses?.[0] === "measuring"}>

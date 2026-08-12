@@ -239,6 +239,8 @@ export {
   OBTAINABLE_STATUSES,
   ACQUISITION_PATHS,
   ACQUISITION_DIFFICULTIES,
+  HIGH_INTENT_COMPONENT_THRESHOLD,
+  ACVS_STRONG_THRESHOLD,
   canTransition,
   type OpportunityStatus,
   type AcquisitionPath,

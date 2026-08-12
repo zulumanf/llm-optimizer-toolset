@@ -48,6 +48,15 @@ export const OBTAINABLE_STATUSES = PIPELINE_STATUSES.slice(
 export const ACQUISITION_DIFFICULTIES = ["easy", "moderate", "hard", "unknown"] as const;
 export type AcquisitionDifficulty = (typeof ACQUISITION_DIFFICULTIES)[number];
 
+/** "High intent" in the gap view = commercialIntent component at or above
+ * this share of high-tier citing answers. One definition, used by the SQL
+ * filter and stated next to the UI chip that applies it. */
+export const HIGH_INTENT_COMPONENT_THRESHOLD = 0.5;
+
+/** Default ACVS floor for the gap view's "strong sources" quick filter —
+ * the chip's label and its query derive from the same number. */
+export const ACVS_STRONG_THRESHOLD = 50;
+
 export const ACQUISITION_PATHS = [
   "editorial_pitch",
   "guest_contribution",

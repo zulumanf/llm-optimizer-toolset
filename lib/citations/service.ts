@@ -30,6 +30,7 @@ import {
   OPPORTUNITY_STATUSES,
   OUTCOME_STATUSES,
   OBTAINABLE_STATUSES,
+  HIGH_INTENT_COMPONENT_THRESHOLD,
   type AcquisitionFacts,
   type DomainStats,
   type OpportunityStatus,
@@ -232,15 +233,19 @@ export async function discoverOpportunities(
     }
     let discovered = 0;
     await sql.begin(async (tx) => {
-      for (const s of kept) {
-        const [row] = await tx`
+      // One statement for the whole batch — the per-row loop cost up to 200
+      // round-trips inside an open transaction. Same idempotency: existing
+      // rows only touch updated_at, operator fields and status never move.
+      if (kept.length > 0) {
+        const rows = await tx`
           insert into citation_opportunities (project_id, domain, created_by)
-          values (${projectId}, ${s.domain}, ${user.id})
+          select ${projectId}, d.domain, ${user.id}
+          from unnest(${kept.map((s) => s.domain)}::text[]) as d(domain)
           on conflict (project_id, domain)
             do update set updated_at = now()
           returning (xmax = 0) as inserted
         `;
-        if (row?.inserted) discovered += 1;
+        discovered = rows.filter((r) => r.inserted).length;
       }
       await writeAudit(tx, {
         userId: user.id,
@@ -284,37 +289,53 @@ export async function rescoreProject(
     from citation_opportunities where project_id = ${projectId}
     ${onlyOpportunityIds ? sql`and id = any(${onlyOpportunityIds})` : sql``}
   `;
-  let scored = 0;
-  for (const opp of opportunities) {
+  if (opportunities.length === 0) return 0;
+  // Scores are computed in memory, then written in ONE statement — the
+  // per-row loop cost another ~200 serial round-trips per Discover click.
+  const results = opportunities.map((opp) => {
     const domainStats = stats.get(opp.domain as string);
     const facts: AcquisitionFacts = {
       acquisitionPath: opp.acquisitionPath as string,
       acquisitionDifficulty:
         opp.acquisitionDifficulty as AcquisitionFacts["acquisitionDifficulty"],
     };
-    const result = domainStats
-      ? computeAcvs(domainStats, facts, weightSet)
-      : {
-          acvs: null,
-          components: null,
-          explanation: [
-            "No longer observed in the current citation ledger — previous score cleared.",
-          ],
-        };
-    await sql`
-      update citation_opportunities set
-        acvs = ${result.acvs},
-        acvs_components = ${result.components === null ? null : sql.json(result.components as never)},
-        acvs_explanation = ${result.explanation},
-        acvs_version = ${ACVS_VERSION},
-        acvs_weight_set_version = ${weightSet.version},
-        acvs_computed_at = now(),
-        updated_at = now()
-      where id = ${opp.id as string}
-    `;
-    scored += 1;
-  }
-  return scored;
+    return {
+      id: opp.id as string,
+      ...(domainStats
+        ? computeAcvs(domainStats, facts, weightSet)
+        : {
+            acvs: null,
+            components: null,
+            explanation: [
+              "No longer observed in the current citation ledger — previous score cleared.",
+            ],
+          }),
+    };
+  });
+  // One jsonb payload keyed by id, not per-column jsonb[] casts — the array
+  // route double-encodes through the driver's array serialization.
+  const payload = Object.fromEntries(
+    results.map((r) => [
+      r.id,
+      { acvs: r.acvs, components: r.components, explanation: r.explanation },
+    ])
+  );
+  await sql`
+    with payload as (select ${sql.json(payload as never)}::jsonb as j)
+    update citation_opportunities o set
+      acvs = (p.j -> o.id::text ->> 'acvs')::numeric,
+      acvs_components = nullif(p.j -> o.id::text -> 'components', 'null'::jsonb),
+      acvs_explanation = array(
+        select jsonb_array_elements_text(p.j -> o.id::text -> 'explanation')
+      ),
+      acvs_version = ${ACVS_VERSION},
+      acvs_weight_set_version = ${weightSet.version},
+      acvs_computed_at = now(),
+      updated_at = now()
+    from payload p
+    where o.id = any(${results.map((r) => r.id)}::uuid[])
+  `;
+  return results.length;
 }
 
 // -------------------------------------------------------------- lifecycle
@@ -717,11 +738,20 @@ export async function citationGapView(
       order by c.checked_at desc limit 1
     ) p on true
     where o.project_id = ${projectId}
+      ${filters.statuses?.length ? sql`and o.status = any(${filters.statuses})` : sql``}
+      ${filters.paths?.length ? sql`and o.acquisition_path = any(${filters.paths})` : sql``}
+      ${filters.clientAbsentOnly ? sql`and p.client_present = false` : sql``}
+      ${
+        filters.highIntentOnly
+          ? sql`and (o.acvs_components->>'commercialIntent')::numeric
+              >= ${HIGH_INTENT_COMPONENT_THRESHOLD}`
+          : sql``
+      }
+      ${filters.minAcvs === undefined ? sql`` : sql`and o.acvs >= ${filters.minAcvs}`}
     order by o.acvs desc nulls last, o.domain asc
   `;
-  return rows
-    .map(
-      (r): GapRow => ({
+  return rows.map(
+    (r): GapRow => ({
         id: r.id as string,
         domain: r.domain as string,
         status: r.status as OpportunityStatus,
@@ -735,19 +765,10 @@ export async function citationGapView(
         acvsComponents: r.acvsComponents as Record<string, number | null> | null,
         acvsExplanation: r.acvsExplanation as string[] | null,
         acvsComputedAt: r.acvsComputedAt as Date | null,
-        clientPresent: r.clientPresent as boolean | null,
-        updatedAt: r.updatedAt as Date,
-      })
-    )
-    .filter((r) => !filters.statuses?.length || filters.statuses.includes(r.status))
-    .filter((r) => !filters.paths?.length || filters.paths.includes(r.acquisitionPath))
-    .filter((r) => !filters.clientAbsentOnly || r.clientPresent === false)
-    .filter(
-      (r) =>
-        !filters.highIntentOnly ||
-        (r.acvsComponents?.commercialIntent ?? 0) >= 0.5
-    )
-    .filter((r) => filters.minAcvs === undefined || (r.acvs ?? -1) >= filters.minAcvs);
+      clientPresent: r.clientPresent as boolean | null,
+      updatedAt: r.updatedAt as Date,
+    })
+  );
 }
 
 export interface RunCitationMetrics {
@@ -805,71 +826,6 @@ export async function citationMetricsForRun(
 }
 
 // -------------------------------------------------------------- providers
-
-const providerSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  providerType: z.enum([
-    "outreach_agency",
-    "citation_marketplace",
-    "pr_platform",
-    "journalist_platform",
-    "directory_network",
-    "manual_outreach",
-    "internal_team",
-    "partner_network",
-  ]),
-  placementTypes: z.array(z.string().max(60)).max(20).default([]),
-  costNotes: z.string().max(1000).nullable().optional(),
-  turnaroundNotes: z.string().max(1000).nullable().optional(),
-  restrictions: z.string().max(1000).nullable().optional(),
-  qualityNotes: z.string().max(1000).nullable().optional(),
-  active: z.boolean().default(true),
-});
-
-/** Declarative provider registry rows — no integration, no spending. */
-export async function upsertProvider(
-  user: CurrentUser,
-  raw: unknown
-): Promise<ActionResult<{ providerId: string }>> {
-  const parsed = providerSchema.safeParse(raw);
-  if (!parsed.success) {
-    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
-  }
-  const p = parsed.data;
-  try {
-    assertCanWrite(user);
-    const result = await sql.begin(async (tx) => {
-      const [row] = await tx`
-        insert into acquisition_providers
-          (name, provider_type, placement_types, cost_notes, turnaround_notes,
-           restrictions, quality_notes, active, created_by)
-        values
-          (${p.name}, ${p.providerType}, ${p.placementTypes},
-           ${p.costNotes ?? null}, ${p.turnaroundNotes ?? null},
-           ${p.restrictions ?? null}, ${p.qualityNotes ?? null}, ${p.active},
-           ${user.id})
-        on conflict (name) do update set
-          provider_type = excluded.provider_type,
-          placement_types = excluded.placement_types,
-          cost_notes = excluded.cost_notes,
-          turnaround_notes = excluded.turnaround_notes,
-          restrictions = excluded.restrictions,
-          quality_notes = excluded.quality_notes,
-          active = excluded.active,
-          updated_at = now()
-        returning id
-      `;
-      await writeAudit(tx, {
-        userId: user.id,
-        action: "acquisition_provider.upsert",
-        entity: "acquisition_provider",
-        entityId: row!.id as string,
-        detail: { name: p.name, providerType: p.providerType },
-      });
-      return row!.id as string;
-    });
-    return ok({ providerId: result });
-  } catch (err) {
-    return fail(err);
-  }
-}
+// The acquisition_providers registry table ships with migration 069; its
+// write service and UI land together when provider tracking is actually
+// used — a mutation endpoint nothing calls is dead surface, not readiness.
