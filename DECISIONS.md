@@ -1877,3 +1877,40 @@ immediately — a stored score may never contradict its own row.
 **Causal-phrase gates match word boundaries.** "ensures" no longer fires
 inside "censures"; hedged sentences containing a listed phrase still
 block by design — reword the sentence, not the gate.
+
+## 2026-08-12 — Spec 061: public marketing site (branch feat/061-marketing-site)
+
+**The marketing site lives in this repo as a third surface class, not a
+separate deploy.** `app/(marketing)/` (`/home`, `/methodology`,
+`/sample-audit`) is public and indexable; middleware rewrites `/` → `/home`
+only when the request host matches `MARKETING_HOST` (unset = nothing
+changes), so the app host keeps `/` as the operator dashboard and one Railway
+service serves both domains. One repo means the site's claims and the
+platform's practice cannot drift apart silently.
+
+**Brand: "Recommended First", by inference from the live domain.** No brand
+asset existed anywhere in the repo; the wordmark is text. If the operator
+picks a different name, it lives in one constant (`lib/marketing/constants.ts`).
+
+**The layout guard learned a surface class instead of growing its debt
+list.** Marketing pages are exempt from the workspace shell/h1/width rules
+and get exactly one extra display size (`text-4xl`); hex/inline-style bans
+still apply. Adding them to LEGACY_SHELLS would have misfiled a deliberate
+surface as migration debt.
+
+**The outreach prohibited-phrases gate now runs on marketing sources in CI.**
+`findProhibitedPhrase` gates outreach approval at runtime; the marketing site
+is the same voice with no approval step, so the same gate runs as a test.
+
+**Demo data is fixture-and-labeled, not fabricated-and-implied.** The
+interactive audit uses hand-written values for "Your team / Competitor A-C"
+with "illustrative, not client data" at the point of every figure, per the
+positioning brief's trust rules; no case studies, testimonials, logos, or
+adoption stats exist until real ones do.
+
+**audit_requests is intake, not a prospect.** The public form inserts into
+its own table (071, insert-only surface, honeypot swallowed silently);
+promotion into the prospects pipeline stays a deliberate operator act.
+Migration 071 was also applied to production during pre-merge verification
+(the .env DATABASE_URL trap); it is an empty, unreferenced table until this
+branch deploys, and the worker's boot-time `migrate up` will simply skip it.
