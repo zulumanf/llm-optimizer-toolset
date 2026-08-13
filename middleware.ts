@@ -20,12 +20,33 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { devAuthRefusalReason } from "@/lib/env";
+import { MARKETING_PREFIXES, marketingRewriteTarget } from "@/lib/marketing/constants";
 
 /** Paths reachable without a session. `/audit` is the prospect audit page —
- * its own security is the high-entropy token (spec 032). */
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/audit"];
+ * its own security is the high-entropy token (spec 032). Marketing pages
+ * (spec 061) are the public site: anonymous by design, no client data. */
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/auth/callback",
+  "/api/cron",
+  "/api/health",
+  "/api/webhooks",
+  "/audit",
+  ...MARKETING_PREFIXES,
+];
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
+  // Apex-host rewrite (spec 061): the marketing domain's `/` is the homepage;
+  // the app host's `/` stays the operator dashboard. Before auth on purpose —
+  // the rewritten path is public either way.
+  const rewriteTo = marketingRewriteTarget(
+    request.headers.get("host"),
+    request.nextUrl.pathname
+  );
+  if (rewriteTo) {
+    return NextResponse.rewrite(new URL(rewriteTo, request.url));
+  }
+
   if (process.env.AUTH_MODE !== "supabase") {
     const refusal = devAuthRefusalReason();
     if (refusal) return new NextResponse(refusal, { status: 503 });

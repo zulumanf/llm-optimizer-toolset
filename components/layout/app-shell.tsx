@@ -1,13 +1,15 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { isMarketingPath } from "@/lib/marketing/constants";
 
 /**
  * One shell, two worlds (spec 048 CRO reassessment): /audit/* is a document
  * a stranger reads — it gets NO workspace chrome, for staff too. An operator
  * previewing the page must see exactly what the prospect sees, and a
- * screenshot must never carry internal client names. Everywhere else keeps
- * the sidebar + assistant frame.
+ * screenshot must never carry internal client names. The marketing site
+ * (spec 061) is the same world: public pages carry their own chrome.
+ * Everywhere else keeps the sidebar + assistant frame.
  */
 export function AppShell({
   sidebar,
@@ -19,7 +21,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  if (pathname.startsWith("/audit")) {
+  if (pathname.startsWith("/audit") || isMarketingPath(pathname)) {
     return <main className="min-h-dvh">{children}</main>;
   }
   return (
