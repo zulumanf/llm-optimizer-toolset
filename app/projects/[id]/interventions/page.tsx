@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/table";
 import { CreateInterventionDialog } from "@/components/attribution/create-intervention-dialog";
 import { InterventionVisibilityToggle } from "@/components/attribution/intervention-visibility";
+import { InterventionStatusBadge } from "@/components/attribution/intervention-status";
+import type { InterventionStatus } from "@/lib/attribution/lifecycle";
 import { ProjectTabs } from "@/components/layout/project-tabs";
 
 export default async function InterventionsPage({
@@ -28,14 +30,20 @@ export default async function InterventionsPage({
   const [interventions, versions] = await Promise.all([
     sql`
       select i.id, i.title, to_char(i.shipped_at, 'YYYY-MM-DD') as shipped,
-        i.baseline_weak, i.client_visible, s.name as set_name, v.version,
+        i.baseline_weak, i.client_visible, i.status, i.blocked_reason,
+        nullif(u.name, '') as owner_name, u.email as owner_email,
+        s.name as set_name, v.version,
         (select count(*)::int from intervention_runs ir
           where ir.intervention_id = i.id and ir.role = 'baseline') as baselines,
         (select count(*)::int from intervention_runs ir
-          where ir.intervention_id = i.id and ir.role = 'post') as posts
+          where ir.intervention_id = i.id and ir.role = 'post') as posts,
+        (select to_char(min(j.run_after), 'YYYY-MM-DD') from jobs j
+          where j.type = 'start_scheduled_run' and j.status = 'queued'
+            and j.payload->>'interventionId' = i.id::text) as next_retest
       from interventions i
       join prompt_set_versions v on v.id = i.prompt_set_version_id
       join prompt_sets s on s.id = v.prompt_set_id
+      left join users u on u.id = i.owner_id
       where i.project_id = ${id} and i.archived_at is null
       order by i.shipped_at desc
     `,
@@ -94,7 +102,10 @@ export default async function InterventionsPage({
             <TableHeader>
               <TableRow>
                 <TableHead>Title</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Owner</TableHead>
                 <TableHead>Shipped</TableHead>
+                <TableHead>Next retest</TableHead>
                 <TableHead>Target</TableHead>
                 <TableHead className="text-right">Baselines</TableHead>
                 <TableHead className="text-right">Post runs</TableHead>
@@ -117,8 +128,21 @@ export default async function InterventionsPage({
                       </Badge>
                     )}
                   </TableCell>
+                  <TableCell>
+                    <InterventionStatusBadge
+                      status={i.status as InterventionStatus}
+                      blockedReason={i.blockedReason as string | null}
+                    />
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {(i.ownerName as string | null) ??
+                      (i.ownerEmail as string | null) ?? "—"}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {i.shipped as string}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground tabular-nums">
+                    {(i.nextRetest as string | null) ?? "—"}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {i.setName as string} v{i.version as number}

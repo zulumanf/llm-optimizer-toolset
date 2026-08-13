@@ -13,7 +13,26 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SuggestTasksButton } from "@/components/attribution/suggest-tasks-button";
+import {
+  InterventionStatusBadge,
+  InterventionStatusControls,
+} from "@/components/attribution/intervention-status";
+import type { InterventionStatus } from "@/lib/attribution/lifecycle";
+import type { ComparabilityGrade } from "@/lib/attribution/comparability";
 import { formatDate } from "@/lib/format";
+
+function comparabilityBadge(grade: ComparabilityGrade) {
+  switch (grade) {
+    case "high":
+      return <Badge>high comparability</Badge>;
+    case "medium":
+      return <Badge variant="outline" className="text-warning">medium comparability</Badge>;
+    case "low":
+      return <Badge variant="outline" className="text-warning">low comparability</Badge>;
+    case "not_comparable":
+      return <Badge variant="destructive">not comparable</Badge>;
+  }
+}
 
 function verdictBadge(verdict: string | null) {
   switch (verdict) {
@@ -90,15 +109,19 @@ export default async function InterventionPage({
               Hypothesis: {intervention.hypothesis as string}
             </p>
           )}
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <InterventionStatusBadge
+              status={intervention.status as InterventionStatus}
+              blockedReason={intervention.blockedReason as string | null}
+            />
+            {intervention.status === "blocked" && (
+              <span className="text-sm text-destructive">
+                {intervention.blockedReason as string}
+              </span>
+            )}
             {intervention.baselineWeak && (
               <Badge variant="outline" className="text-warning">
                 weak baseline — verdicts are indicative only
-              </Badge>
-            )}
-            {view.instrumentChanged && (
-              <Badge variant="outline" className="text-warning">
-                instrument changed — provider config drifted between baseline and post
               </Badge>
             )}
             {view.confoundedWith.map((other) => (
@@ -106,6 +129,12 @@ export default async function InterventionPage({
                 confounded with &ldquo;{other.title}&rdquo;
               </Badge>
             ))}
+          </div>
+          <div className="mt-3">
+            <InterventionStatusControls
+              interventionId={interventionId}
+              status={intervention.status as InterventionStatus}
+            />
           </div>
         </div>
         <SuggestTasksButton
@@ -166,6 +195,38 @@ export default async function InterventionPage({
           </Table>
         </div>
       </section>
+
+      {view.comparability.length > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">
+            Comparability{" "}
+            <span className="text-sm font-normal text-muted-foreground">
+              (instrument drift between baseline and each post run — graded, with
+              reasons)
+            </span>
+          </h2>
+          <ul className="space-y-2">
+            {view.comparability.map((c) => (
+              <li
+                key={c.runId}
+                className="flex flex-wrap items-baseline gap-2 rounded-md border p-3"
+              >
+                <Badge variant="secondary">post {c.offsetLabel ?? "run"}</Badge>
+                {comparabilityBadge(c.grade)}
+                {c.reasons.length > 0 ? (
+                  <span className="text-sm text-muted-foreground">
+                    {c.reasons.join(" · ")}
+                  </span>
+                ) : (
+                  <span className="text-sm text-muted-foreground">
+                    same instrument, same versions, two-run baseline
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section>
         <h2 className="mb-2 text-lg font-medium">

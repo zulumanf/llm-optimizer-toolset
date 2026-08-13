@@ -18,6 +18,16 @@ import {
   type MetricVerdict,
   type ScoreInput,
 } from "@/lib/attribution/verdict";
+import {
+  canTransition,
+  deriveObservedStatus,
+  type InterventionStatus,
+} from "@/lib/attribution/lifecycle";
+import {
+  assessComparability,
+  type ComparabilityGrade,
+  type InstrumentSnapshot,
+} from "@/lib/attribution/comparability";
 import type { ProviderConfig } from "@/lib/runs/cells";
 import { log } from "@/lib/logger";
 
@@ -96,17 +106,24 @@ export async function createIntervention(
         ) >= 6.5 * 24 * 3600 * 1000;
       const baselineWeak = baselines.length < 2 || !weekApart;
 
+      // Initial lifecycle status states what this transaction actually does
+      // (spec 062): with a baseline, post runs get scheduled below, so the
+      // retest is pending; without one, the record merely says "shipped".
+      const initialStatus: InterventionStatus =
+        baselines.length > 0 && input.postOffsets.length > 0
+          ? "retest_pending"
+          : "shipped";
       const [row] = await tx`
         insert into interventions
           (project_id, title, description, hypothesis, shipped_at, urls,
            prompt_set_version_id, task_id, baseline_weak, created_by,
-           owner_id, cost_usd)
+           owner_id, cost_usd, status)
         values
           (${input.projectId}, ${input.title}, ${input.description ?? null},
            ${input.hypothesis || null},
            ${input.shippedAt}, ${input.urls}, ${input.promptSetVersionId},
            ${input.taskId ?? null}, ${baselineWeak}, ${user.id},
-           ${input.ownerId ?? null}, ${input.costUsd ?? null})
+           ${input.ownerId ?? null}, ${input.costUsd ?? null}, ${initialStatus})
         returning id
       `;
       const interventionId = row?.id as string;
@@ -281,6 +298,152 @@ export async function setInterventionVisibility(
   }
 }
 
+const statusActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    interventionId: z.string().uuid(),
+    action: z.literal("block"),
+    reason: z.string().trim().min(1, "A reason is required to block.").max(500),
+  }),
+  z.object({ interventionId: z.string().uuid(), action: z.literal("unblock") }),
+  z.object({
+    interventionId: z.string().uuid(),
+    action: z.literal("cancel"),
+    reason: z.string().trim().max(500).optional(),
+  }),
+]);
+
+/**
+ * Operator lifecycle moves (spec 062): block with a reason, unblock back to
+ * whatever the run history says is true, or cancel the measurement for the
+ * record. Transition-validated and audit-logged; system moves (pending →
+ * retested) belong to the sync, not here.
+ */
+export async function setInterventionStatus(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ interventionId: string; status: InterventionStatus }>> {
+  const parsed = statusActionSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    const result = await sql.begin(async (tx) => {
+      const [row] = await tx`
+        select status from interventions
+        where id = ${input.interventionId} and archived_at is null
+        for update
+      `;
+      if (!row) throw new ClassifiedError("not_found", "Intervention not found.");
+      const from = row.status as InterventionStatus;
+
+      let to: InterventionStatus;
+      if (input.action === "block") to = "blocked";
+      else if (input.action === "cancel") to = "cancelled";
+      else {
+        const [history] = await tx`
+          select
+            exists (
+              select 1 from intervention_runs ir join runs r on r.id = ir.run_id
+              where ir.intervention_id = ${input.interventionId}
+                and ir.role = 'post' and r.status in ('completed', 'partial')
+            ) as has_completed_post,
+            (exists (
+              select 1 from intervention_runs ir
+              where ir.intervention_id = ${input.interventionId} and ir.role = 'post'
+            ) or exists (
+              select 1 from jobs j
+              where j.type = 'start_scheduled_run' and j.status = 'queued'
+                and j.payload->>'interventionId' = ${input.interventionId}
+            )) as has_pending_post
+        `;
+        to = deriveObservedStatus({
+          hasCompletedPost: Boolean(history?.hasCompletedPost),
+          hasPendingPost: Boolean(history?.hasPendingPost),
+        });
+      }
+
+      if (!canTransition(from, to)) {
+        throw new ClassifiedError(
+          "validation",
+          `Cannot move an intervention from ${from} to ${to}.`
+        );
+      }
+      await tx`
+        update interventions
+        set status = ${to},
+            blocked_reason = ${input.action === "block" ? input.reason : null},
+            status_changed_at = now()
+        where id = ${input.interventionId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "intervention.status",
+        entity: "intervention",
+        entityId: input.interventionId,
+        detail: {
+          from,
+          to,
+          reason: "reason" in input ? (input.reason ?? null) : null,
+        },
+      });
+      return { interventionId: input.interventionId, status: to };
+    });
+    return ok(result);
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * System sync (spec 062), ridden by the automation heartbeat next to the
+ * outcome sweep: advance shipped/retest_pending rows to what the run history
+ * already shows. Idempotent; never unblocks and never cancels — those are
+ * human moves.
+ */
+export async function syncInterventionStatuses(): Promise<{ advanced: number }> {
+  const rows = await sql`
+    select i.id, i.status,
+      exists (
+        select 1 from intervention_runs ir join runs r on r.id = ir.run_id
+        where ir.intervention_id = i.id and ir.role = 'post'
+          and r.status in ('completed', 'partial')
+      ) as has_completed_post,
+      (exists (
+        select 1 from intervention_runs ir
+        where ir.intervention_id = i.id and ir.role = 'post'
+      ) or exists (
+        select 1 from jobs j
+        where j.type = 'start_scheduled_run' and j.status = 'queued'
+          and j.payload->>'interventionId' = i.id::text
+      )) as has_pending_post
+    from interventions i
+    where i.archived_at is null and i.status in ('shipped', 'retest_pending')
+  `;
+  let advanced = 0;
+  for (const row of rows) {
+    const from = row.status as InterventionStatus;
+    const observed = deriveObservedStatus({
+      hasCompletedPost: Boolean(row.hasCompletedPost),
+      hasPendingPost: Boolean(row.hasPendingPost),
+    });
+    if (observed === from || !canTransition(from, observed)) continue;
+    await sql`
+      update interventions
+      set status = ${observed}, status_changed_at = now()
+      where id = ${row.id} and status = ${from}
+    `;
+    advanced += 1;
+    log("info", "attribution.status_synced", {
+      interventionId: row.id,
+      from,
+      to: observed,
+    });
+  }
+  return { advanced };
+}
+
 /** Worker handler: start the post run on the intervention's instrument. */
 export async function startScheduledRun(payload: {
   interventionId: string;
@@ -302,6 +465,20 @@ export async function startScheduledRun(payload: {
     order by r.started_at desc limit 1
   `;
   if (!latestBaseline) {
+    // A silently skipped retest is exactly the failure the attention queue
+    // must see (spec 062): block with the reason instead of only logging.
+    const from = (
+      await sql`select status from interventions where id = ${interventionId}`
+    )[0]?.status as InterventionStatus | undefined;
+    if (from && canTransition(from, "blocked")) {
+      await sql`
+        update interventions
+        set status = 'blocked',
+            blocked_reason = 'Retest skipped: no baseline run to copy the instrument configuration from.',
+            status_changed_at = now()
+        where id = ${interventionId}
+      `;
+    }
     log("warn", "attribution.no_baseline_config", { interventionId });
     return;
   }
@@ -369,9 +546,18 @@ export async function interventionVerdictSummaries(
   }));
 }
 
+export interface PostRunComparability {
+  runId: string;
+  offsetLabel: string | null;
+  grade: ComparabilityGrade;
+  reasons: string[];
+}
+
 export interface InterventionView {
   verdicts: MetricVerdict[];
-  instrumentChanged: boolean;
+  /** Graded instrument comparability per post run (spec 062) — replaces the
+   * old boolean instrumentChanged flag with an explainable read. */
+  comparability: PostRunComparability[];
   confoundedWith: { id: string; title: string }[];
   /** Latest live-verification result per shipped URL (spec 051). */
   urlChecks: import("@/lib/attribution/verify-urls").UrlCheck[];
@@ -415,20 +601,44 @@ export async function interventionView(
     scoreRows.filter((r) => r.role === "post").map(toInput)
   );
 
-  // Instrument change: any post run whose provider config differs from the
-  // latest baseline's (model retired mid-experiment, config drift)
-  const configs = await sql`
-    select ir.role, r.providers from intervention_runs ir
+  // Graded comparability (spec 062): compose the instrument facts the runs
+  // already carry — provider set, models, repetitions, prompt version,
+  // scoring versions — into an explainable grade per post run.
+  const instruments = await sql`
+    select ir.role, ir.offset_label, r.id, r.providers, r.prompt_set_version_id,
+      coalesce(
+        array_agg(distinct s.scoring_version)
+          filter (where s.scoring_version is not null),
+        '{}'
+      ) as scoring_versions
+    from intervention_runs ir
     join runs r on r.id = ir.run_id
+    left join scores s on s.run_id = r.id
     where ir.intervention_id = ${interventionId}
+    group by ir.role, ir.offset_label, r.id, r.providers,
+      r.prompt_set_version_id, r.started_at
     order by r.started_at desc
   `;
-  const baselineConfig = JSON.stringify(
-    configs.find((c) => c.role === "baseline")?.providers ?? null
-  );
-  const instrumentChanged = configs
-    .filter((c) => c.role === "post")
-    .some((c) => JSON.stringify(c.providers) !== baselineConfig);
+  const toSnapshot = (r: (typeof instruments)[number]): InstrumentSnapshot => ({
+    runId: r.id as string,
+    promptSetVersionId: r.promptSetVersionId as string,
+    providers: r.providers as ProviderConfig[],
+    scoringVersions: r.scoringVersions as string[],
+  });
+  const baselineSnapshots = instruments
+    .filter((r) => r.role === "baseline")
+    .map(toSnapshot);
+  const comparability: PostRunComparability[] = instruments
+    .filter((r) => r.role === "post")
+    .map((r) => {
+      const assessment = assessComparability(baselineSnapshots, toSnapshot(r));
+      return {
+        runId: r.id as string,
+        offsetLabel: (r.offsetLabel as string | null) ?? null,
+        grade: assessment.grade,
+        reasons: assessment.reasons,
+      };
+    });
 
   const others = await sql`
     select id, title, shipped_at from interventions
@@ -447,5 +657,5 @@ export async function interventionView(
   const { latestUrlChecks } = await import("@/lib/attribution/verify-urls");
   const urlChecks = await latestUrlChecks(interventionId);
 
-  return { verdicts, instrumentChanged, confoundedWith, urlChecks };
+  return { verdicts, comparability, confoundedWith, urlChecks };
 }
