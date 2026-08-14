@@ -1984,3 +1984,26 @@ insufficient_evidence theater. The real publication controls are
 publishReport's narrative gate + QA preflight, publishAudit's
 evidence/warning flow, and lib/content/validate.ts. No quality_gate_results
 rows carry the deleted types.
+## 2026-08-14 — Spec 066: model agreement read model (branch feat/066-model-agreement)
+
+**Agreement describes, never explains.** model-agreement-v1 turns
+per-provider mention/recommendation counts into one labeled read per company
+("consensus: recommended", "one assistant only", "assistants disagree") on
+the competitors page. Every summary is counted with denominators, and no
+causal language leaves the module — whether a pattern is systemic or
+platform-shaped is the finding; why is not claimable from this data.
+
+**Precedence is pinned, not vibes.** insufficient → absent →
+consensus_recommended → single_provider → divergent (mention-rate spread
+≥ 0.35) → consensus_mentioned → majority; first match wins, every edge
+unit-tested. The two judgment calls: a consensus recommendation outranks
+divergence (the stronger claim carries the row), and a single-provider
+presence outranks divergence (one assistant IS maximal spread; the crisper
+label wins).
+
+**One-model runs refuse to read as consensus.** Providers with N < 10 (the
+docs/06 reporting rule) render their counts but are excluded from the
+verdict, and fewer than two sufficient providers labels the row
+insufficient — the UI states plainly that a cross-model read needs at least
+two providers instead of drawing a one-column table. Derived on read like
+head-to-head (spec 036); nothing stored.
