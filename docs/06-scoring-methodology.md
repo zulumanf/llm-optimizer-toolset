@@ -117,6 +117,30 @@ confidence = 0.5 × extraction_certainty      (parser model's self-reported cert
 
 Thresholds: `≥ 0.9` auto-accept · `0.7–0.9` accept, spot-check sample · `< 0.7` human review required.
 
+## Prompt coverage (coverage-v1 — derived on read, never stored)
+
+Coverage answers "in WHICH questions does the subject appear?", per segment
+(spec 063). For one run and the subject company:
+
+- A prompt is **covered (brought up)** when at least one of its captured
+  responses carries a latest-revision mention with `mentioned = true`;
+  **covered (recommended)** when at least one of those also has
+  `recommended = true`. Same revision rule and holdout exclusion as scores.
+- Dimensions: prompt `category`; intent band (high vs standard, from the
+  single intent model in `lib/scoring/intent.ts` at `HIGH_INTENT_THRESHOLD`);
+  `audience`; `price_tier` — the latter two from the attributes frozen into
+  `frozen_prompts` at freeze time (absent on pre-063 versions, so those runs
+  segment by category and intent only). A dimension with zero tagged prompts
+  is omitted.
+- Coverage is reported as counts (`x of y prompts`), never bare percentages,
+  and is computed on read like verdicts — parser re-runs and review
+  revisions are always reflected, which is exactly why it is never stored.
+
+**KPI naming**: the externally-named **AI Recommendation Share** is
+`recommendation_rate` (this document, Metrics) — the share of valid
+responses recommending the subject. No separate quantity exists or should
+be invented for the public name.
+
 ## Change detection (v1.0 — deliberately simple)
 
 A week-over-week delta is **notable** when `|Δ| ≥ 0.10` on a rate metric with `N ≥ 30` per side, and consistent in direction across ≥ 2 providers. Everything else is reported as "within noise". No p-values in v1.0 — repetitions and honesty about noise first; proper inference is a future version.

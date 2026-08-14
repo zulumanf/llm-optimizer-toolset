@@ -65,6 +65,21 @@ describe("isSameContent (freeze identity)", () => {
     expect(isSameContent(base, tiered)).toBe(true);
     expect(isSameContent(tiered, retiered)).toBe(true);
   });
+
+  it("treats audience and price tier as metadata, not identity (spec 063)", () => {
+    // Same rule as tier: segment lineage labels the prompt for coverage,
+    // changes nothing a provider sees, and must never force a new version.
+    const tagged = [
+      { ...base[0]!, audience: "sellers", priceTier: "$5M+" },
+      { ...base[1]!, audience: null, priceTier: null },
+    ];
+    const retagged = [
+      { ...base[0]!, audience: "buyers", priceTier: "$1-5M" },
+      { ...base[1]!, audience: "sellers", priceTier: null },
+    ];
+    expect(isSameContent(base, tagged)).toBe(true);
+    expect(isSameContent(tagged, retagged)).toBe(true);
+  });
 });
 
 describe("frozen snapshots carry tier", () => {

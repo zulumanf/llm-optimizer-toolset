@@ -1905,3 +1905,25 @@ rule wins. It replaces the boolean `instrumentChanged` and contextualizes
 verdicts without ever editing them — the same derived-on-read discipline as
 verdicts themselves. Report-snapshot period comparability is a separate
 read path, deliberately untouched.
+## 2026-08-13 — Spec 063: prompt attribute freeze + coverage (branch feat/063-prompt-attribute-freeze)
+
+**Audience and price tier freeze as metadata, not identity.** Same rule as
+tier (migration 030): `isSameContent` still compares only text/category/
+language, so retagging segments never forces a new version, and no
+scoring-version bump is needed because scores don't consume the fields.
+Forward-only: pre-063 frozen versions simply lack the attributes and
+coverage degrades to category+intent dimensions for those runs. This was
+the audit's most time-sensitive gap — every run frozen before this landed
+is permanently unsegmentable.
+
+**Coverage is derived on read, counted, and omission-honest.** coverage-v1
+reuses the single intent model (commercialIntentWeight at
+HIGH_INTENT_THRESHOLD — no second high-intent definition), excludes
+holdouts like scoring, respects the latest-mention-revision rule including
+reviewed-away mentions (`mentioned = false`), reports counts never bare
+percentages, and omits a dimension entirely when nothing is tagged rather
+than rendering "unspecified: 100%".
+
+**KPI naming settled in docs/06**: the externally-named "AI Recommendation
+Share" is `recommendation_rate`; no separate quantity is to be invented for
+the public name.
