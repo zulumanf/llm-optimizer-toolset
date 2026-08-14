@@ -235,6 +235,12 @@ export default async function InterventionPage({
             (subject, pooled baseline vs each post run — computed, never edited)
           </span>
         </h2>
+        {view.postRunAgreement && (
+          <p className="mb-2 text-sm text-muted-foreground">
+            After the {view.postRunAgreement.offsetLabel ?? "latest"} retest:{" "}
+            {view.postRunAgreement.summary}
+          </p>
+        )}
         {view.verdicts.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No verdicts yet — they appear once a post run completes and scores.
@@ -249,29 +255,62 @@ export default async function InterventionPage({
                   <TableHead className="text-right">Post</TableHead>
                   <TableHead className="text-right">Δ</TableHead>
                   <TableHead>Verdict</TableHead>
+                  <TableHead>Providers</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {view.verdicts.map((verdict) => (
-                  <TableRow key={`${verdict.postRunId}-${verdict.metric}`}>
-                    <TableCell className="text-sm">{verdict.metric}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {verdict.baselineValue.toFixed(3)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {verdict.postValue.toFixed(3)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {verdict.delta >= 0 ? "+" : ""}
-                      {verdict.delta.toFixed(3)}
-                    </TableCell>
-                    <TableCell>{verdictBadge(verdict.verdict)}</TableCell>
-                  </TableRow>
-                ))}
+                {view.verdicts.map((verdict) => {
+                  const grade = view.comparability.find(
+                    (c) => c.runId === verdict.postRunId
+                  )?.grade;
+                  return (
+                    <TableRow key={`${verdict.postRunId}-${verdict.metric}`}>
+                      <TableCell className="text-sm">{verdict.metric}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {verdict.baselineValue.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {verdict.postValue.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {verdict.delta >= 0 ? "+" : ""}
+                        {verdict.delta.toFixed(3)}
+                      </TableCell>
+                      <TableCell>
+                        {verdictBadge(verdict.verdict)}
+                        {grade && grade !== "high" && (
+                          <span className="ml-2 text-xs text-warning">
+                            {grade === "not_comparable" ? "not comparable" : `${grade} comparability`}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell
+                        className="max-w-56 text-xs text-muted-foreground"
+                        title={verdict.providers
+                          .map(
+                            (p) =>
+                              `${p.provider}: ${p.delta >= 0 ? "+" : ""}${p.delta.toFixed(3)} (${p.movement.replace(/_/g, " ")})`
+                          )
+                          .join(" · ")}
+                      >
+                        {verdict.providerSummary ?? "—"}
+                        {verdict.consistent === false && (
+                          <span className="block text-warning">
+                            providers moved in opposite directions
+                          </span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
         )}
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Provider movement uses the same thresholds as the verdict (docs/06)
+          and describes where the change happened — never why.
+        </p>
       </section>
     </div>
   );

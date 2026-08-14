@@ -265,6 +265,20 @@ describe.skipIf(!TEST_URL)("attribution (integration)", () => {
     expect(view.comparability[0]?.grade).toBe("medium");
     expect(view.comparability[0]?.reasons.join(" ")).toContain("single baseline run");
 
+    // Retest context (spec 067): the subject's model-agreement read on the
+    // completed post run travels with the verdicts. One mock provider with
+    // N=2 → the honest insufficient label, never a one-model consensus.
+    expect(view.postRunAgreement).not.toBeNull();
+    expect(view.postRunAgreement?.offsetLabel).toBe("+2w");
+    expect(view.postRunAgreement?.label).toBe("insufficient");
+    expect(view.postRunAgreement?.summary).toContain("at least two providers");
+    // Aggregate-insufficient verdicts carry no per-provider read (N=2 per
+    // side is below every threshold) — empty, never fabricated movement.
+    for (const verdict of view.verdicts) {
+      expect(verdict.providers).toEqual([]);
+      expect(verdict.providerSummary).toBeNull();
+    }
+
     // Lifecycle (spec 062): scheduling made it retest_pending at creation;
     // the completed post run advances it to retested via the heartbeat sync.
     const [beforeSync] = await sql`

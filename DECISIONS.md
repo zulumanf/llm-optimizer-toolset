@@ -2007,3 +2007,21 @@ verdict, and fewer than two sufficient providers labels the row
 insufficient — the UI states plainly that a cross-model read needs at least
 two providers instead of drawing a one-column table. Derived on read like
 head-to-head (spec 036); nothing stored.
+
+## 2026-08-14 — Spec 067: retest context (branch feat/067-retest-context)
+
+**The per-provider read is exposed, not recomputed.** computeVerdicts always
+consumed per-provider deltas to decide the noise verdict and then threw them
+away; retest-context-v1 keeps them on MetricVerdict (rate metrics only, the
+docs/06 change-detection scope) using the SAME constants as the aggregate
+(NOTABLE_DELTA, MIN_N_PER_SIDE) — a lift carried by one provider while two
+declined now reads differently from a lift consistent across all of them.
+Consistency is judged only among providers that moved notably; null when
+nothing did, and always counted, never causal.
+
+**One view, three merged instruments.** The verdicts table now shows the
+062 comparability grade inline when it is below high, the provider-movement
+summary per row, and the subject's 066 agreement read on the latest
+completed post run above the table — "high-comparability and consistent
+across 3/4 assistants" (or its unhappy inverse) is one glance instead of
+three pages.
