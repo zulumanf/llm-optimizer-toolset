@@ -115,6 +115,18 @@ export async function POST(request: Request): Promise<Response> {
       outcomes = { error: "outcome measurement failed; dispatch was unaffected" };
     }
 
+    // Intervention status sync rides the same heartbeat (spec 062):
+    // idempotent forward-only moves to what the run history already shows.
+    try {
+      const { syncInterventionStatuses } = await import("@/lib/attribution/service");
+      const sync = await syncInterventionStatuses();
+      outcomes = { ...outcomes, interventionStatusesAdvanced: sync.advanced };
+    } catch (err) {
+      log("error", "cron.intervention_status_sync_failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+
     if (events.deadLettered > 0 || triggers.failed > 0 || health.failing > 0) {
       log("warn", "cron.automation.degraded", {
         deadLettered: events.deadLettered,
