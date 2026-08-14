@@ -4,6 +4,7 @@ import { getProject } from "@/db/projects";
 import { getRun, listRunCells } from "@/db/runs";
 import { listScoresForRun } from "@/db/scores";
 import { pendingReviewCount } from "@/db/mentions";
+import { runCoverage } from "@/lib/scoring/coverage";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -30,6 +31,15 @@ export default async function RunDetailPage({
     listScoresForRun(runId),
     pendingReviewCount(runId),
   ]);
+  // Coverage reads the same mentions scoring reads — only meaningful once
+  // the run has scored (spec 063).
+  const coverage = scores.length > 0 ? await runCoverage(runId) : null;
+  const DIMENSION_LABELS: Record<string, string> = {
+    category: "Category",
+    intent: "Intent",
+    audience: "Audience",
+    price_tier: "Price tier",
+  };
 
   const successes = cells.filter((c) => c.error === null).length;
   const failures = cells.filter((c) => c.error !== null).length;
@@ -149,6 +159,57 @@ export default async function RunDetailPage({
           </p>
         )}
       </section>
+
+      {coverage && coverage.length > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">
+            Coverage{" "}
+            <span className="text-sm font-normal text-muted-foreground">
+              (own brand, prompts where it appears — counted, holdouts excluded)
+            </span>
+          </h2>
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Dimension</TableHead>
+                  <TableHead>Segment</TableHead>
+                  <TableHead className="text-right">Prompts</TableHead>
+                  <TableHead className="text-right">Brought up</TableHead>
+                  <TableHead className="text-right">Recommended</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {coverage.map((row) => (
+                  <TableRow key={`${row.dimension}-${row.segment}`}>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {DIMENSION_LABELS[row.dimension] ?? row.dimension}
+                    </TableCell>
+                    <TableCell className="text-sm font-medium">{row.segment}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {row.promptCount}
+                    </TableCell>
+                    <TableCell
+                      className={`text-right tabular-nums ${
+                        row.mentionedPrompts === 0 ? "text-destructive" : ""
+                      }`}
+                    >
+                      {row.mentionedPrompts}/{row.promptCount}
+                    </TableCell>
+                    <TableCell
+                      className={`text-right tabular-nums ${
+                        row.recommendedPrompts === 0 ? "text-destructive" : ""
+                      }`}
+                    >
+                      {row.recommendedPrompts}/{row.promptCount}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+      )}
 
       {cells.length === 0 ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
