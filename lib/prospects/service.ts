@@ -1581,6 +1581,11 @@ export interface AuditSnapshot {
     responseCount: number;
     limitations: string;
   };
+  /** Instrument versions frozen at publish (spec 065): the scoring and
+   * parser versions the numbers were computed with, so a snapshot can be
+   * re-verified against exactly the methodology that produced it. Optional:
+   * pre-065 snapshots render without it (presentation-only rule). */
+  instrumentVersions?: { scoring: string[]; parser: string[] };
   keyFinding: {
     title: string;
     explanation: string;
@@ -1828,6 +1833,27 @@ export async function publishAudit(
 
     const run = await runSummary(benchmark.runId as string);
     if (!run) throw new ClassifiedError("not_found", "Run not found.");
+
+    // QA preflight blocker (spec 065): defense in depth behind the scoring
+    // guard — a mock-fed audit must be unpublishable at every layer.
+    {
+      const providerRows = await sql`
+        select distinct provider from responses where run_id = ${benchmark.runId}
+      `;
+      const { mockScoringAllowed } = await import("@/lib/ai/registry");
+      const { checkNoMockResponses } = await import("@/lib/qa/preflight");
+      const mockCheck = checkNoMockResponses(
+        providerRows.map((r) => r.provider as string),
+        mockScoringAllowed()
+      );
+      if (!mockCheck.ok) {
+        throw new ClassifiedError(
+          "validation",
+          `QA preflight blocked publish: ${mockCheck.detail}`
+        );
+      }
+    }
+
     const benchmarkAge = staleness(run.startedAt, FRESHNESS_WINDOWS_DAYS.benchmark);
     if (benchmarkAge.stale && !input.acknowledgeStale) {
       throw new ClassifiedError(
@@ -2238,6 +2264,24 @@ export async function publishAudit(
       preparedBy,
     };
 
+    // Instrument stamp (spec 065): the snapshot froze numbers with no record
+    // of the methodology that produced them — stamp the scoring and parser
+    // versions so the artifact can be re-verified against exactly them.
+    {
+      const [versions] = await sql`
+        select
+          (select coalesce(array_agg(distinct s.scoring_version), '{}')
+             from scores s where s.run_id = ${benchmark.runId}) as scoring,
+          (select coalesce(array_agg(distinct m.parser_version), '{}')
+             from mentions m join responses r on r.id = m.response_id
+             where r.run_id = ${benchmark.runId}) as parser
+      `;
+      snapshot.instrumentVersions = {
+        scoring: (versions?.scoring as string[]) ?? [],
+        parser: (versions?.parser as string[]) ?? [],
+      };
+    }
+
     // Publish-time quality flags for the OPERATOR (PR B amendment 4) —
     // returned, logged, never placed in the snapshot. The big one: if rank
     // TRACKS visibility in this market, the "visibility doesn't follow
@@ -2288,6 +2332,25 @@ export async function publishAudit(
             `Prospect is already recommended in ${recs} of ${responses} answers — the visibility-gap pitch does not apply. Consider disqualifying or reframing before sending.`
           );
         }
+      }
+    }
+
+    // Source-link liveness (spec 065): every receipt the prospect can click
+    // gets fetched through the platform's one egress policy. A dead link is
+    // an ack-required warning, not a hard block — a transiently-down site
+    // must not stop an operator who verified it by hand.
+    {
+      const { deadSourceLinks } = await import("@/lib/qa/preflight");
+      const sourceUrls = [
+        input.humanFinding?.sourceUrl,
+        input.adoptionStat?.sourceUrl,
+        ...exampleChats.map((c) => c.url),
+        ...(authorityGap?.signals ?? []).map((s) => s.sourceUrl),
+      ].filter((u): u is string => Boolean(u));
+      for (const link of await deadSourceLinks(sourceUrls)) {
+        disqualifyingWarnings.push(
+          `Dead source link: ${link.url} (${link.note}) — a receipt the prospect cannot open. Fix it, or acknowledge with a reason.`
+        );
       }
     }
 

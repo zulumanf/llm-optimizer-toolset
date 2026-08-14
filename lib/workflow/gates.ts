@@ -1,5 +1,5 @@
 /**
- * Quality gates (spec 018 Part 8). Six reusable, fully deterministic gates.
+ * Quality gates (spec 018 Part 8). Four reusable, fully deterministic gates.
  *
  * A gate returns `pass`, `fail`, or `insufficient_evidence` — never a score to
  * be interpreted. `insufficient_evidence` is a distinct outcome on purpose: the
@@ -8,6 +8,13 @@
  *
  * Every gate is a pure function of its input so the whole set is unit-testable
  * without a database. The engine fetches the inputs; the gate judges them.
+ *
+ * Two gates were deleted (spec 065): content_quality and publication shipped
+ * with spec 018 but were never invoked — they assumed a publication pipeline
+ * (canonical URLs, analytics tagging, compliance sign-off fields) the
+ * platform does not track. The real publication controls are publishReport's
+ * narrative gate + QA preflight (lib/qa/preflight.ts), publishAudit's
+ * evidence/warning flow, and lib/content/validate.ts.
  */
 
 export const GATE_VERSION = "v1.0";
@@ -34,8 +41,6 @@ export interface GateResult {
 export const GATE_TYPES = [
   "evidence_completeness",
   "claim_verification",
-  "content_quality",
-  "publication",
   "attribution_confidence",
   "executive_reporting",
 ] as const;
@@ -214,109 +219,6 @@ export function claimVerificationGate(input: ClaimVerificationInput): GateResult
     );
   }
   return settle("claim_verification", checks);
-}
-
-// -------------------------------------------------------- C. content quality
-
-export interface ContentQualityInput {
-  claimsVerified: boolean;
-  primaryIntentAnswered: boolean;
-  requiredSections: string[];
-  presentSections: string[];
-  methodologyRequired: boolean;
-  methodologyPresent: boolean;
-  claimsWithLinkedSources: number;
-  totalClaims: number;
-  unsupportedSuperlatives: string[];
-  prohibitedPrivateTerms: string[];
-  brandRequirementsMet: boolean;
-  complianceReviewRequired: boolean;
-  complianceReviewCompleted: boolean;
-}
-
-export function contentQualityGate(input: ContentQualityInput): GateResult {
-  const missingSections = input.requiredSections.filter((s) => !input.presentSections.includes(s));
-  return settle("content_quality", [
-    check("claims_verified", input.claimsVerified, input.claimsVerified ? "claim gate passed upstream" : "claims not verified"),
-    check("primary_intent_answered", input.primaryIntentAnswered, "the piece answers the question it targets"),
-    check(
-      "structure_complete",
-      missingSections.length === 0,
-      missingSections.length === 0 ? "all required sections present" : `missing: ${missingSections.join(", ")}`
-    ),
-    check(
-      "methodology_included",
-      !input.methodologyRequired || input.methodologyPresent,
-      input.methodologyRequired ? (input.methodologyPresent ? "methodology included" : "methodology required but absent") : "methodology not required"
-    ),
-    check(
-      "sources_linked_to_claims",
-      input.totalClaims === 0 || input.claimsWithLinkedSources >= input.totalClaims,
-      `${input.claimsWithLinkedSources}/${input.totalClaims} claims link to a source`
-    ),
-    check(
-      "no_unsupported_superlatives",
-      input.unsupportedSuperlatives.length === 0,
-      input.unsupportedSuperlatives.length === 0 ? "no unsupported superlatives" : `found: ${input.unsupportedSuperlatives.join(", ")}`
-    ),
-    check(
-      "no_prohibited_private_information",
-      input.prohibitedPrivateTerms.length === 0,
-      input.prohibitedPrivateTerms.length === 0 ? "no private information" : `found: ${input.prohibitedPrivateTerms.join(", ")}`
-    ),
-    check("brand_requirements_met", input.brandRequirementsMet, "brand requirements"),
-    check(
-      "compliance_review_completed",
-      !input.complianceReviewRequired || input.complianceReviewCompleted,
-      input.complianceReviewRequired
-        ? input.complianceReviewCompleted
-          ? "compliance review completed"
-          : "compliance review required but not completed"
-        : "compliance review not required"
-    ),
-  ]);
-}
-
-// ------------------------------------------------------------ D. publication
-
-export interface PublicationInput {
-  clientApproved: boolean;
-  complianceApprovalRequired: boolean;
-  complianceApproved: boolean;
-  previewUrl: string | null;
-  canonicalUrl: string | null;
-  indexable: boolean | null;
-  structuredDataPresent: boolean;
-  internalLinkCount: number;
-  minimumInternalLinks: number;
-  metadataComplete: boolean;
-  analyticsTagged: boolean;
-  artifactHash: string | null;
-}
-
-export function publicationGate(input: PublicationInput): GateResult {
-  return settle("publication", [
-    check("client_approval", input.clientApproved, "client approval recorded"),
-    check(
-      "compliance_approval",
-      !input.complianceApprovalRequired || input.complianceApproved,
-      input.complianceApprovalRequired ? (input.complianceApproved ? "approved" : "required but missing") : "not required"
-    ),
-    check("production_preview", Boolean(input.previewUrl), input.previewUrl ?? "no preview URL"),
-    check("canonical_url", Boolean(input.canonicalUrl), input.canonicalUrl ?? "no canonical URL"),
-    input.indexable === null
-      ? unknown("indexability", "indexability was not checked")
-      : check("indexability", input.indexable, input.indexable ? "indexable" : "blocked from indexing"),
-    check("structured_data", input.structuredDataPresent, "structured data"),
-    check(
-      "internal_links",
-      input.internalLinkCount >= input.minimumInternalLinks,
-      `${input.internalLinkCount}/${input.minimumInternalLinks} internal links`
-    ),
-    check("metadata", input.metadataComplete, "title/description/OG metadata"),
-    check("analytics_tagging", input.analyticsTagged, "analytics tagging"),
-    check("final_artifact_hash", Boolean(input.artifactHash), input.artifactHash ?? "no artifact hash recorded"),
-  ]);
 }
 
 // ------------------------------------------------- E. attribution confidence

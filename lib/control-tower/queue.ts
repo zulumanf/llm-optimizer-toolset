@@ -26,7 +26,8 @@ export type QueueSource =
   | "gap_finding"
   | "accuracy_finding"
   | "content_approval"
-  | "task_overdue";
+  | "task_overdue"
+  | "intervention_blocked";
 
 export interface QueueItem {
   id: string;
@@ -58,6 +59,9 @@ const EFFORT_MINUTES: Record<QueueSource, number> = {
   accuracy_finding: 45,
   content_approval: 30,
   task_overdue: 30,
+  // Unblocking usually means a decision (reschedule, re-baseline, cancel),
+  // not a build — but a stalled experiment stalls the client's proof.
+  intervention_blocked: 20,
 };
 
 /** Risk exposure by exception kind — legal/privacy/publication weight. */
@@ -106,7 +110,7 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
   // One round-trip wave, not six (perf pass 2026-08-04): the sources are
   // independent reads, and the page's latency was their sum — measured
   // ~420ms warm before, dominated by serial query time.
-  const [exceptions, approvals, gaps, accuracy, content, overdueTasks, drift] =
+  const [exceptions, approvals, gaps, accuracy, content, overdueTasks, drift, blockedInterventions] =
     await Promise.all([
       sql`
         select e.id, e.project_id, e.kind, e.severity, e.summary, e.recommended_action,
@@ -181,6 +185,18 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
         from drift_signals d
         where d.status = 'open'
         order by d.detected_at desc
+        limit ${limit}
+      `,
+      // Blocked interventions (spec 062): a stalled retest is a stalled
+      // client proof — invisible until the lifecycle made it representable.
+      sql`
+        select i.id, i.project_id, i.title, i.blocked_reason,
+          i.status_changed_at, p.name as project_name
+        from interventions i
+        join projects p on p.id = i.project_id
+        where i.status = 'blocked' and i.archived_at is null
+          ${projectFilter ? sql`and i.project_id = ${projectFilter}` : sql``}
+        order by i.status_changed_at asc
         limit ${limit}
       `,
     ]);
@@ -383,6 +399,35 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
         dependencyImpact: 0.3,
         risk: 0.2,
         effortMinutes: EFFORT_MINUTES.task_overdue,
+      }),
+    });
+  }
+
+  // 7. Blocked interventions — a stalled retest, invisible before spec 062 --
+  for (const row of blockedInterventions) {
+    const projectId = row.projectId as string;
+    items.push({
+      id: row.id as string,
+      source: "intervention_blocked",
+      kind: "intervention",
+      projectId,
+      projectName: row.projectName as string,
+      summary: `Blocked: "${row.title}" — ${row.blockedReason as string}`,
+      recommendedAction:
+        "Resolve the blocker and unblock, or cancel the measurement explicitly.",
+      severity: "high",
+      dueAt: null,
+      createdAt: row.statusChangedAt as Date,
+      href: `/projects/${projectId}/interventions/${row.id}`,
+      priority: computePriority({
+        severity: "high",
+        hoursUntilDue: null,
+        commercialValue: clientValue.get(projectId) ?? 0.3,
+        // A blocked retest holds up the verdict every downstream narrative
+        // depends on.
+        dependencyImpact: 0.7,
+        risk: 0.4,
+        effortMinutes: EFFORT_MINUTES.intervention_blocked,
       }),
     });
   }

@@ -154,7 +154,8 @@ export async function freezePromptSet(
       }
 
       const prompts = await tx`
-        select id, text, category, language, position, is_holdout, tier
+        select id, text, category, language, position, is_holdout, tier,
+          audience, price_tier
         from prompts
         where prompt_set_id = ${setId} and archived_at is null
         order by position asc, created_at asc
@@ -170,8 +171,10 @@ export async function freezePromptSet(
         position: i + 1,
         isHoldout: Boolean(p.isHoldout),
         // Metadata, not identity (lib/prompts/freeze.ts) — carried so
-        // historical runs can be segmented by tier.
+        // historical runs can be segmented by tier and segment (spec 063).
         tier: (p.tier as number | null) ?? null,
+        audience: (p.audience as string | null) ?? null,
+        priceTier: (p.priceTier as string | null) ?? null,
       }));
 
       const [latest] = await tx`
