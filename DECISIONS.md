@@ -1877,3 +1877,37 @@ immediately — a stored score may never contradict its own row.
 **Causal-phrase gates match word boundaries.** "ensures" no longer fires
 inside "censures"; hedged sentences containing a listed phrase still
 block by design — reword the sentence, not the gate.
+
+## 2026-08-13 — Spec 065: QA preflight + dead gates deleted (branch feat/065-qa-preflight)
+
+**One preflight vocabulary, two publish paths.** lib/qa/preflight.ts
+(qa-preflight-v1) owns the block/warn check shapes; publishReport and
+publishAudit both consume it. Blockers can never be acknowledged away
+(missing scoring version, mock responses where policy forbids); warnings
+always can, with the acknowledgment recorded in the audit log. The report
+page computes the same preflight the action runs, so the operator sees
+what they would be acknowledging before clicking publish, not in a
+failed-submit toast.
+
+**Source-link liveness is a warning, not a block.** Every prospect-visible
+receipt URL is fetched through safeFetch at audit publish; dead links join
+the spec-052 acknowledge-with-reason flow. A 404 receipt undermines the
+evidence posture, but a transiently-down site must not hard-block an
+operator who verified it by hand. The suite never touches the network:
+tests/setup.ts sets QA_SOURCE_LINK_CHECKS=off, and tests that exercise the
+check inject a stub fetch through an explicit test seam.
+
+**Audit snapshots now stamp their instrument.** instrumentVersions
+(scoring + parser versions from the benchmark's own rows) freezes into the
+snapshot at publish — the audit found numbers frozen with no record of the
+methodology that produced them. Optional field; pre-065 snapshots render
+unchanged (presentation-only rule).
+
+**contentQualityGate and publicationGate deleted, not wired.** They shipped
+with spec 018 and were never invoked: they assume a publication pipeline
+(canonical URLs, analytics tagging, compliance sign-off fields) the
+platform does not track, so wiring them would mean permanent
+insufficient_evidence theater. The real publication controls are
+publishReport's narrative gate + QA preflight, publishAudit's
+evidence/warning flow, and lib/content/validate.ts. No quality_gate_results
+rows carry the deleted types.
