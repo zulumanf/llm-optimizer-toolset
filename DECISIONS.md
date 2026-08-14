@@ -1927,3 +1927,27 @@ than rendering "unspecified: 100%".
 **KPI naming settled in docs/06**: the externally-named "AI Recommendation
 Share" is `recommendation_rate`; no separate quantity is to be invented for
 the public name.
+## 2026-08-13 — Spec 064: gap-finding epistemics (branch feat/064-gap-finding-evidence)
+
+**Epistemic labels became data, not prose.** gap_findings now carries the
+platform's four-level classification and a confidence value; deterministic
+detectors label counted facts (citation, source_target) as observations and
+counted comparisons as supported findings, with working_hypothesis reserved
+in the enum for the future LLM enrichment detector. Confidence is one pure
+banding over the finding's own denominator (n≥30→0.9, n≥10→0.7, else 0.5):
+deterministic arithmetic is certain, sample size is what varies. Legacy
+detector-v1 rows stay honestly unlabeled — no backfill invents confidence
+that was never computed.
+
+**Evidence refs point at what was actually counted.** Detector v1.1 (scores
+byte-identical to v1) emits typed refs: stored score-row ids for the rates a
+finding compares, sampled immutable response ids for payload-derived
+findings. analyzeRun resolves them into the evidence registry inside the
+existing transaction, so a deduped re-analysis creates no orphan rows.
+
+**The placeholder task evidence is gone.** Task promotion previously
+attached the run's first score row of any company as "evidence" — it now
+reuses the finding's own evidence rows verbatim (suggestTask gained
+evidenceIds, existence-verified in-project) and records task_id on the
+finding, closing the evidence → finding → task walk in both directions.
+The first-score fallback survives only for pre-064 findings.

@@ -22,16 +22,23 @@ const evidenceSchema = z.object({
   note: z.string().min(1).max(500),
 });
 
-const suggestSchema = z.object({
-  projectId: z.string().uuid(),
-  title: z
-    .string()
-    .transform((s) => s.trim())
-    .pipe(z.string().min(1, "Title is required.").max(120)),
-  description: z.string().max(2000).optional(),
-  priority: z.enum(["p1", "p2", "p3"]).default("p2"),
-  evidence: z.array(evidenceSchema).min(1, "A suggested task needs evidence."),
-});
+const suggestSchema = z
+  .object({
+    projectId: z.string().uuid(),
+    title: z
+      .string()
+      .transform((s) => s.trim())
+      .pipe(z.string().min(1, "Title is required.").max(120)),
+    description: z.string().max(2000).optional(),
+    priority: z.enum(["p1", "p2", "p3"]).default("p2"),
+    evidence: z.array(evidenceSchema).default([]),
+    /** Existing evidence registry rows to attach as-is (spec 064) — the gap
+     * promotion path reuses the finding's rows instead of minting copies. */
+    evidenceIds: z.array(z.string().uuid()).default([]),
+  })
+  .refine((v) => v.evidence.length + v.evidenceIds.length > 0, {
+    message: "A suggested task needs evidence.",
+  });
 
 export async function suggestTask(
   user: CurrentUser,
@@ -45,7 +52,23 @@ export async function suggestTask(
   const input = parsed.data;
   try {
     const taskId = await sql.begin(async (tx) => {
-      const evidenceIds: string[] = [];
+      // Attached existing rows must actually exist in this project — a task
+      // whose evidence ids point nowhere would satisfy the CHECK constraint
+      // while evidencing nothing.
+      if (input.evidenceIds.length > 0) {
+        const found = await tx`
+          select id from evidence
+          where id = any(${input.evidenceIds}::uuid[])
+            and project_id = ${input.projectId}
+        `;
+        if (found.length !== new Set(input.evidenceIds).size) {
+          throw new ClassifiedError(
+            "validation",
+            "One or more attached evidence rows do not exist in this project."
+          );
+        }
+      }
+      const evidenceIds: string[] = [...new Set(input.evidenceIds)];
       for (const item of input.evidence) {
         const [row] = await tx`
           insert into evidence (project_id, kind, ref_id, note, created_by)

@@ -133,7 +133,9 @@ describe.skipIf(!TEST_URL)("evidence gaps (integration)", () => {
     expect(analyzed.data.findings).toBeGreaterThan(0);
 
     const rows = await sql`
-      select gap_type, severity, opportunity_score from gap_findings
+      select gap_type, severity, opportunity_score, classification, confidence,
+        evidence_ids, detector_version
+      from gap_findings
       where project_id = ${projectId} order by opportunity_score desc
     `;
     const types = rows.map((r) => r.gapType);
@@ -142,14 +144,42 @@ describe.skipIf(!TEST_URL)("evidence gaps (integration)", () => {
     for (const row of rows) {
       expect(Number(row.opportunityScore)).toBeGreaterThan(0);
       expect(Number(row.severity)).toBeGreaterThanOrEqual(0);
+      // Epistemics (spec 064): every v1.1 finding is classified, confident,
+      // and evidence-backed.
+      expect(row.detectorVersion).toBe("gap-detector-v1.1");
+      expect(["observation", "supported_finding"]).toContain(row.classification);
+      expect(Number(row.confidence)).toBeGreaterThanOrEqual(0.5);
+      expect(Number(row.confidence)).toBeLessThanOrEqual(0.9);
+      expect((row.evidenceIds as string[]).length).toBeGreaterThan(0);
     }
 
-    // Idempotent: re-analysis doesn't duplicate findings
+    // Every evidence id resolves to a real registry row in this project,
+    // pointing at a real score or response ref.
+    const allEvidenceIds = rows.flatMap((r) => r.evidenceIds as string[]);
+    const evidenceRows = await sql`
+      select id, kind, ref_id from evidence
+      where id = any(${allEvidenceIds}::uuid[]) and project_id = ${projectId}
+    `;
+    expect(evidenceRows.length).toBe(new Set(allEvidenceIds).size);
+    for (const ev of evidenceRows) {
+      expect(["score", "response"]).toContain(ev.kind);
+      const table = ev.kind === "score" ? "scores" : "responses";
+      const [ref] = await sql.unsafe(
+        `select 1 from ${table} where id = '${ev.refId as string}'`
+      );
+      expect(ref).toBeDefined();
+    }
+
+    // Idempotent: re-analysis duplicates neither findings nor evidence
     await gaps.analyzeRun(user, { runId });
     const [count] = await sql`
       select count(*)::int as n from gap_findings where run_id = ${runId}
     `;
     expect(count?.n).toBe(rows.length);
+    const [evCount] = await sql`
+      select count(*)::int as n from evidence where project_id = ${projectId}
+    `;
+    expect(evCount?.n).toBe(evidenceRows.length);
   });
 
   it("refuses to analyze unscored runs", async () => {
@@ -173,15 +203,22 @@ describe.skipIf(!TEST_URL)("evidence gaps (integration)", () => {
       findingId: findings[0]?.id as string,
     });
     expect(tasked.ok).toBe(true);
+    if (!tasked.ok) return;
     const [task] = await sql`
-      select title, status, evidence_ids from tasks order by created_at desc limit 1
+      select id, title, status, evidence_ids from tasks
+      order by created_at desc limit 1
     `;
     expect(task?.status).toBe("suggested");
     expect((task?.evidenceIds as string[]).length).toBeGreaterThan(0);
     const [f0] = await sql`
-      select status from gap_findings where id = ${findings[0]?.id}
+      select status, task_id, evidence_ids from gap_findings
+      where id = ${findings[0]?.id}
     `;
     expect(f0?.status).toBe("task_created");
+    // Traceability (spec 064): the finding records WHICH task, and the task
+    // carries the finding's own evidence rows verbatim — no minted copies.
+    expect(f0?.taskId).toBe(task?.id);
+    expect(task?.evidenceIds).toEqual(f0?.evidenceIds);
 
     // Double-tasking blocked; dismissal of another finding works
     const again = await gaps.createTaskFromFinding(user, {
