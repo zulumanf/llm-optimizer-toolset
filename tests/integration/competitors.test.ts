@@ -140,6 +140,25 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
     expect(Number(authority?.value)).toBeCloseTo(100);
   });
 
+  it("model agreement (spec 066): honest insufficient read on a single-provider run", async () => {
+    const { projectId } = await seedProjectWithRun();
+    const { modelAgreementForProject } = await import("@/lib/competitors/agreement");
+    const agreement = await modelAgreementForProject(projectId);
+
+    expect(agreement.runId).not.toBeNull();
+    expect(agreement.providers).toEqual(["mock"]);
+    const self = agreement.rows.find((r) => r.isSelf);
+    expect(self).toBeDefined();
+    // One provider with N=2: the reading renders, the verdict refuses —
+    // a one-model run must never present as cross-model consensus.
+    expect(self?.label).toBe("insufficient");
+    expect(self?.eligibleProviders).toBe(0);
+    const reading = self?.readings.find((r) => r.provider === "mock");
+    expect(reading?.responses).toBe(2);
+    expect(reading?.sufficient).toBe(false);
+    expect(reading?.mentioned).toBeGreaterThan(0); // Lumina appears in mock answers
+  });
+
   it("adding a competitor backfills recent runs retroactively", async () => {
     const { projectId } = await seedProjectWithRun();
 

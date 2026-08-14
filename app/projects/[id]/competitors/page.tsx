@@ -21,6 +21,12 @@ import { relationshipGroups } from "@/lib/competitors/groups";
 import { listRelationshipsForProject } from "@/lib/knowledge/entities/service";
 import { RelationshipControls } from "@/components/competitors/relationship-controls";
 import { headToHeadForProject, HEAD_TO_HEAD_VERSION } from "@/lib/competitors/head-to-head";
+import {
+  modelAgreementForProject,
+  MODEL_AGREEMENT_VERSION,
+  MIN_PROVIDER_SAMPLE,
+  type AgreementLabel,
+} from "@/lib/competitors/agreement";
 import { citationProfilesForProject } from "@/lib/competitors/citation-profiles";
 import { AddCompetitorDialog } from "@/components/competitors/add-competitor-dialog";
 import { CompetitorRowControls } from "@/components/competitors/competitor-row-controls";
@@ -33,6 +39,25 @@ function fmt(value: number | undefined, percent = true): string {
   return percent ? `${(value * 100).toFixed(1)}%` : value.toFixed(1);
 }
 
+function agreementBadge(label: AgreementLabel) {
+  switch (label) {
+    case "consensus_recommended":
+      return <Badge>consensus: recommended</Badge>;
+    case "consensus_mentioned":
+      return <Badge variant="secondary">consensus: brought up</Badge>;
+    case "majority":
+      return <Badge variant="secondary">partial agreement</Badge>;
+    case "divergent":
+      return <Badge variant="outline" className="text-warning">assistants disagree</Badge>;
+    case "single_provider":
+      return <Badge variant="outline" className="text-warning">one assistant only</Badge>;
+    case "absent":
+      return <Badge variant="outline">absent everywhere</Badge>;
+    case "insufficient":
+      return <Badge variant="outline" className="text-muted-foreground">insufficient sample</Badge>;
+  }
+}
+
 export default async function CompetitorsPage({
   params,
 }: {
@@ -43,7 +68,7 @@ export default async function CompetitorsPage({
   if (!project) notFound();
 
   const relationships = await listRelationshipsForProject(id);
-  const [comparison, scores, candidates, companies, topSources, groups, headToHead, profiles] =
+  const [comparison, scores, candidates, companies, topSources, groups, headToHead, agreement, profiles] =
     await Promise.all([
       listComparisonCompanies(id),
       latestScoresByCompany(id),
@@ -52,6 +77,7 @@ export default async function CompetitorsPage({
       listTopSources(id),
       relationshipGroups(id),
       headToHeadForProject(id),
+      modelAgreementForProject(id),
       citationProfilesForProject(id),
     ]);
   const untracked = companies.filter(
@@ -292,6 +318,83 @@ export default async function CompetitorsPage({
               </TableBody>
             </Table>
           </div>
+        </section>
+      )}
+
+      {agreement.rows.length > 0 && agreement.runId !== null && (
+        <section className="mt-8">
+          <h2 className="text-lg font-medium">Model agreement</h2>
+          <p className="mb-3 mt-1 text-sm text-muted-foreground">
+            Whether the assistants agree about each company on the latest
+            scored run ({MODEL_AGREEMENT_VERSION}, derived on read). Agreement
+            describes the pattern across assistants — it never explains why
+            any assistant behaves as it does.
+          </p>
+          {agreement.providers.length < 2 ? (
+            <div className="rounded-md border border-dashed px-4 py-3 text-sm text-muted-foreground">
+              This run tested {agreement.providers.length === 1
+                ? `one provider (${agreement.providers[0]})`
+                : "no providers"} — a cross-model read needs at least two.
+              Run the next benchmark with two or more providers to see where
+              they agree and disagree.
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Company</TableHead>
+                      {agreement.providers.map((provider) => (
+                        <TableHead key={provider} className="text-right">
+                          {provider}
+                        </TableHead>
+                      ))}
+                      <TableHead>Read</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {agreement.rows.map((row) => (
+                      <TableRow key={row.companyId}>
+                        <TableCell className="font-medium">
+                          {row.companyName}
+                          {row.isSelf && <Badge className="ml-2">you</Badge>}
+                        </TableCell>
+                        {row.readings.map((reading) => (
+                          <TableCell
+                            key={reading.provider}
+                            className="text-right text-xs tabular-nums"
+                          >
+                            {reading.sufficient ? (
+                              <>
+                                {reading.mentioned}/{reading.responses} brought up
+                                <br />
+                                {reading.recommended}/{reading.responses} recommended
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground">
+                                N={reading.responses} — insufficient
+                              </span>
+                            )}
+                          </TableCell>
+                        ))}
+                        <TableCell className="max-w-sm">
+                          {agreementBadge(row.label)}
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {row.summary}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Providers with fewer than {MIN_PROVIDER_SAMPLE} eligible answers
+                are shown but excluded from the read.
+              </p>
+            </>
+          )}
         </section>
       )}
 
