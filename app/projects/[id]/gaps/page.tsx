@@ -87,6 +87,9 @@ export default async function GapsPage({
                 status: f.status as string,
                 runLabel: f.runLabel as string,
                 createdAt: formatDate(f.createdAt as Date),
+                classification: (f.classification as string | null) ?? null,
+                confidence: f.confidence == null ? null : Number(f.confidence),
+                evidenceCount: ((f.evidenceIds as string[] | null) ?? []).length,
               }}
             />
           ))}
@@ -94,8 +97,9 @@ export default async function GapsPage({
       )}
       <p className="mt-4 text-xs text-muted-foreground">
         <Badge variant="outline" className="mr-1">open</Badge> awaiting your call ·
-        task_created / dismissed kept for the record · detector v1 is
-        deterministic (LLM enrichment lands as a later version)
+        task_created / dismissed kept for the record · the detector is
+        deterministic; v1.1 findings carry classification, confidence, and
+        evidence refs (LLM enrichment lands as a later version)
       </p>
     </div>
   );

@@ -15,4 +15,9 @@ export interface FrozenPrompt {
    * can segment historical runs by funnel stage. Absent on pre-migration-030
    * versions and on untiered prompts = untiered. */
   tier?: number | null;
+  /** Segment lineage (migration 046), locked at freeze so coverage can
+   * segment historical runs (spec 063). Metadata, not identity — like tier.
+   * Absent on pre-063 versions = unspecified. */
+  audience?: string | null;
+  priceTier?: string | null;
 }

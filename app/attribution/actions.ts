@@ -15,6 +15,9 @@ export async function updateInterventionSchedule(input: unknown) {
 export async function setInterventionVisibility(input: unknown) {
   return run((u) => attributionSvc.setInterventionVisibility(u, input));
 }
+export async function setInterventionStatus(input: unknown) {
+  return run((u) => attributionSvc.setInterventionStatus(u, input));
+}
 export async function suggestTask(input: unknown) {
   return run((u) => taskSvc.suggestTask(u, input));
 }

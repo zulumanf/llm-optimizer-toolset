@@ -14,7 +14,46 @@
  */
 import { CATEGORY_INTENT_VALUE } from "@/lib/scoring/intent";
 
-export const DETECTOR_VERSION = "gap-detector-v1";
+// v1.1 (spec 064): identical severity/opportunity math — scores are
+// byte-identical to v1 — plus epistemics: classification, confidence, and
+// typed evidence refs on every finding.
+export const DETECTOR_VERSION = "gap-detector-v1.1";
+
+/** The platform's epistemic labels (docs/12), now emitted as data.
+ * working_hypothesis is reserved for the future LLM enrichment detector. */
+export type FindingClassification =
+  | "observation"
+  | "supported_finding"
+  | "working_hypothesis";
+
+/** Typed pointer the service resolves into an `evidence` registry row. */
+export interface EvidenceRef {
+  kind: "score" | "response";
+  refId: string;
+  note: string;
+}
+
+/**
+ * Deterministic detectors are certain of their arithmetic; what varies is
+ * how much sample stands behind it. One shared banding, stated in spec 064.
+ */
+export function sampleConfidence(n: number): number {
+  if (n >= 30) return 0.9;
+  if (n >= 10) return 0.7;
+  return 0.5;
+}
+
+/** Flatten candidate id lists into a deduped, capped evidence sample. */
+function sampleIds(lists: (readonly string[] | undefined)[], cap = 5): string[] {
+  const seen = new Set<string>();
+  for (const list of lists) {
+    for (const id of list ?? []) {
+      seen.add(id);
+      if (seen.size >= cap) return [...seen];
+    }
+  }
+  return [...seen];
+}
 
 export interface PromptOutcome {
   promptId: string;
@@ -23,6 +62,9 @@ export interface PromptOutcome {
   subjectMentioned: number;
   subjectRecommended: number;
   subjectCited: number;
+  /** Sampled response ids for this prompt (spec 064) — immutable rows the
+   * finding's counts were derived from. Optional: v1 callers omit it. */
+  sampleResponseIds?: string[];
 }
 
 export interface CompanyOutcome {
@@ -49,12 +91,17 @@ export interface CompanyOutcome {
   organicMentionRate: number | null;
   organicRecommendationRate: number | null;
   organicResponses: number;
+  /** Stored score-row ids behind the company's all-provider rates
+   * (spec 064). Optional: v1 callers omit it. */
+  scoreIds?: { mentionRate?: string; recommendationRate?: string };
 }
 
 export interface DomainCitation {
   domain: string;
   citations: number;
   ownedBySubject: boolean;
+  /** Sampled response ids whose payloads cited this domain (spec 064). */
+  sampleResponseIds?: string[];
 }
 
 export interface GapFinding {
@@ -70,6 +117,9 @@ export interface GapFinding {
   detail: Record<string, unknown>;
   severity: number; // 0..1
   opportunityScore: number; // 0..100
+  classification: FindingClassification;
+  confidence: number; // sampleConfidence over the finding's own denominator
+  evidence: EvidenceRef[];
 }
 
 // Commercial value per prompt category now lives in lib/scoring/intent.ts —
@@ -115,6 +165,7 @@ export function detectGaps(input: {
 }): GapFinding[] {
   const { subjectName, prompts, companies, domains } = input;
   const findings: GapFinding[] = [];
+  const subject = companies.find((c) => c.isSubject);
   const competitors = companies.filter((c) => !c.isSubject);
   // Ranked on ORGANIC rate: a competitor that only appears because a prompt
   // named it is not the one out-competing the client for attention. Those
@@ -143,6 +194,29 @@ export function detectGaps(input: {
         },
         severity,
         opportunityScore: score("entity", severity, 1.0),
+        classification: "supported_finding",
+        confidence: sampleConfidence(unbrandedResponses),
+        evidence: [
+          ...(subject?.scoreIds?.mentionRate
+            ? [{
+                kind: "score" as const,
+                refId: subject.scoreIds.mentionRate,
+                note: `${subjectName}'s stored all-provider mention rate; the finding's unbranded rate is re-derived from the run's responses.`,
+              }]
+            : []),
+          ...(topCompetitor.scoreIds?.mentionRate
+            ? [{
+                kind: "score" as const,
+                refId: topCompetitor.scoreIds.mentionRate,
+                note: `${topCompetitor.name}'s stored all-provider mention rate, the comparison side of the gap.`,
+              }]
+            : []),
+          ...sampleIds(unbranded.map((p) => p.sampleResponseIds)).map((id) => ({
+            kind: "response" as const,
+            refId: id,
+            note: `Sampled unbranded answer counted in the ${unbrandedResponses}-response denominator.`,
+          })),
+        ],
       });
     }
   }
@@ -161,11 +235,17 @@ export function detectGaps(input: {
       detail: { brandedMentionRate: rate, brandedResponses },
       severity,
       opportunityScore: score("branded_recognition", severity, CATEGORY_VALUE.branded ?? 0.6),
+      classification: "supported_finding",
+      confidence: sampleConfidence(brandedResponses),
+      evidence: sampleIds(branded.map((p) => p.sampleResponseIds)).map((id) => ({
+        kind: "response" as const,
+        refId: id,
+        note: `Sampled branded-prompt answer counted in the ${brandedResponses}-response denominator.`,
+      })),
     });
   }
 
   // 3. Recommendation gap: mentioned but never endorsed
-  const subject = companies.find((c) => c.isSubject);
   // Organic only. "Mentioned but never recommended" is a real and useful
   // finding — but only when something other than our own question put the
   // name in the answer.
@@ -188,6 +268,24 @@ export function detectGaps(input: {
       },
       severity,
       opportunityScore: score("recommendation", severity, 0.9),
+      classification: "supported_finding",
+      confidence: sampleConfidence(subject.organicResponses),
+      evidence: [
+        ...(subject.scoreIds?.mentionRate
+          ? [{
+              kind: "score" as const,
+              refId: subject.scoreIds.mentionRate,
+              note: `${subjectName}'s stored all-provider mention rate; the organic split is re-derived from the run.`,
+            }]
+          : []),
+        ...(subject.scoreIds?.recommendationRate
+          ? [{
+              kind: "score" as const,
+              refId: subject.scoreIds.recommendationRate,
+              note: `${subjectName}'s stored all-provider recommendation rate — the endorsement side of the gap.`,
+            }]
+          : []),
+      ],
     });
   }
 
@@ -204,6 +302,15 @@ export function detectGaps(input: {
       detail: { totalCitations: anyCitations, ownCitations: 0 },
       severity: 0.8,
       opportunityScore: score("citation", 0.8, 0.7),
+      // A counted fact about the run — zero own-domain citations — not an
+      // interpretation: an observation.
+      classification: "observation",
+      confidence: sampleConfidence(anyCitations),
+      evidence: sampleIds(domains.map((d) => d.sampleResponseIds)).map((id) => ({
+        kind: "response" as const,
+        refId: id,
+        note: `Sampled answer whose payload carried citations counted in the ${anyCitations}-citation total.`,
+      })),
     });
   }
 
@@ -223,6 +330,22 @@ export function detectGaps(input: {
         detail: { category, subjectRate: rate, leader: topCompetitor.name },
         severity,
         opportunityScore: score("category_share", severity, CATEGORY_VALUE[category] ?? 0.5),
+        classification: "supported_finding",
+        confidence: sampleConfidence(responses),
+        evidence: [
+          ...(topCompetitor.scoreIds?.mentionRate
+            ? [{
+                kind: "score" as const,
+                refId: topCompetitor.scoreIds.mentionRate,
+                note: `${topCompetitor.name}'s stored all-provider mention rate, the category leader side.`,
+              }]
+            : []),
+          ...sampleIds(inCategory.map((p) => p.sampleResponseIds)).map((id) => ({
+            kind: "response" as const,
+            refId: id,
+            note: `Sampled "${category}" answer counted in the ${responses}-response denominator.`,
+          })),
+        ],
       });
     }
   }
@@ -238,9 +361,23 @@ export function detectGaps(input: {
       gapType: "source_target",
       promptCategory: null,
       finding: `The retrieval path runs through: ${targets.map((t) => `${t.domain} (${t.citations}×)`).join(", ")} — presence on these surfaces feeds future answers.`,
-      detail: { targets: targets as unknown as Record<string, unknown>[] },
+      detail: {
+        targets: targets.map((t) => ({
+          domain: t.domain,
+          citations: t.citations,
+          ownedBySubject: t.ownedBySubject,
+        })) as unknown as Record<string, unknown>[],
+      },
       severity: 0.6,
       opportunityScore: score("source_target", 0.6, 0.8),
+      // Which domains the answers cited is directly counted: an observation.
+      classification: "observation",
+      confidence: sampleConfidence(targets.reduce((a, t) => a + t.citations, 0)),
+      evidence: sampleIds(targets.map((t) => t.sampleResponseIds)).map((id) => ({
+        kind: "response" as const,
+        refId: id,
+        note: "Sampled answer citing one of the top third-party domains listed in the finding.",
+      })),
     });
   }
 
