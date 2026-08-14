@@ -7,6 +7,7 @@
  */
 import { sql } from "@/db/client";
 import { SCORING_VERSION } from "@/lib/constants";
+import { PROMPT_NAMES_COMPANY } from "@/lib/scoring/prompt-echo";
 import type { BenchmarkEntityMetrics, AbsenceEvidence } from "@/lib/prospects/findings";
 import {
   valuableVisibilityFromCells,
@@ -16,8 +17,11 @@ import {
 /** Cap evidence lists — enough to prove a pattern, small enough to render. */
 const EVIDENCE_RESPONSE_LIMIT = 100;
 
-/** Current revision = highest revision per (response, company). */
-const CURRENT = sql`not exists (
+/** Current revision = highest revision per (response, company). Exported
+ * (simplify pass 2026-08-14): publishAudit's stakes and excerpt queries
+ * inlined verbatim copies of this safety-critical idiom. Correlates on a
+ * `mentions m` alias in the consuming query. */
+export const CURRENT = sql`not exists (
   select 1 from mentions newer
   where newer.response_id = m.response_id
     and newer.company_id = m.company_id
@@ -28,20 +32,30 @@ export interface RunSummary {
   id: string;
   label: string;
   status: string;
+  statusDetail: string | null;
   providers: string[];
   startedAt: Date;
   completedAt: Date | null;
   responseCount: number;
+  /** Prompts with at least one VALID capture (launch fix 2026-08-14): the
+   * audit page claims "we asked N questions", so a prompt whose every cell
+   * errored must not be counted as asked-and-answered. */
   promptCount: number;
+  /** Cells that errored — the run-health gate's evidence. */
+  failedCount: number;
 }
 
 export async function runSummary(runId: string): Promise<RunSummary | null> {
   const rows = await sql`
-    select r.id, r.label, r.status, r.providers, r.started_at, r.completed_at,
+    select r.id, r.label, r.status, r.status_detail, r.providers,
+      r.started_at, r.completed_at,
       (select count(*)::int from responses x where x.run_id = r.id and x.error is null)
         as response_count,
-      (select count(distinct x.prompt_id)::int from responses x where x.run_id = r.id)
-        as prompt_count
+      (select count(distinct x.prompt_id)::int from responses x
+        where x.run_id = r.id and x.error is null)
+        as prompt_count,
+      (select count(*)::int from responses x where x.run_id = r.id and x.error is not null)
+        as failed_count
     from runs r where r.id = ${runId}
   `;
   const row = rows[0];
@@ -50,11 +64,13 @@ export async function runSummary(runId: string): Promise<RunSummary | null> {
     id: row.id as string,
     label: row.label as string,
     status: row.status as string,
+    statusDetail: (row.statusDetail as string | null) ?? null,
     providers: (row.providers as { provider: string }[]).map((p) => p.provider),
     startedAt: row.startedAt as Date,
     completedAt: (row.completedAt as Date) ?? null,
     responseCount: row.responseCount as number,
     promptCount: row.promptCount as number,
+    failedCount: row.failedCount as number,
   };
 }
 
@@ -119,16 +135,11 @@ export async function valuableVisibility(
       jsonb_to_recordset(v.frozen_prompts)
         as p("promptId" uuid, category text, tier int, "isHoldout" boolean)
       where r2.id = ${runId}
-    ),
-    tokens as (
-      select trim(t) as token
-      from companies c, unnest(c.aliases || array[c.name]) as t
-      where c.id = ${companyId}
     )
     select fp.category, fp.tier,
-      exists (
-        select 1 from tokens t
-        where t.token != '' and r.prompt_text ilike '%' || t.token || '%'
+      coalesce(
+        (select ${PROMPT_NAMES_COMPANY} from companies c where c.id = ${companyId}),
+        false
       ) as prompt_named_company,
       coalesce(m.mentioned, false) as mentioned,
       coalesce(m.recommended, false) as recommended,

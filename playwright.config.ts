@@ -17,6 +17,10 @@ const env = {
   ALLOW_MOCK_SCORING: "1",
   APP_URL: `http://localhost:${PORT}`,
   NEXT_DIST_DIR: ".next-e2e",
+  // E2E never touches the network (docs/09): without this, any publish
+  // exercised through the UI would fetch receipt URLs at spec-065's
+  // dead-link gate and fail on the seed's example.com fixtures.
+  QA_SOURCE_LINK_CHECKS: "off",
   // CI runs the compiled app (below), and `next start` forces
   // NODE_ENV=production — where dev auth deliberately fails closed
   // (lib/env.ts). This is the explicit, visible override that rule
