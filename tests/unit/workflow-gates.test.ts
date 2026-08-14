@@ -1,5 +1,6 @@
 /**
- * Unit tests for the six quality gates (spec 018 Part 8).
+ * Unit tests for the quality gates (spec 018 Part 8; two dead gates deleted
+ * by spec 065 — content_quality and publication were never invoked).
  *
  * The property that matters most below: `insufficient_evidence` is a distinct
  * outcome from `fail`. "I cannot tell" and "this is wrong" lead to different
@@ -10,8 +11,6 @@ import { describe, expect, it } from "vitest";
 import {
   evidenceCompletenessGate,
   claimVerificationGate,
-  contentQualityGate,
-  publicationGate,
   attributionConfidenceGate,
   executiveReportingGate,
   type EvidenceCompletenessInput,
@@ -184,87 +183,6 @@ describe("claimVerificationGate", () => {
       materialClaims: [{ ...goodClaim, evidenceQuality: null }],
     });
     expect(result.outcome).toBe("insufficient_evidence");
-  });
-});
-
-describe("contentQualityGate", () => {
-  const base = {
-    claimsVerified: true,
-    primaryIntentAnswered: true,
-    requiredSections: ["intro", "body", "sources"],
-    presentSections: ["intro", "body", "sources"],
-    methodologyRequired: false,
-    methodologyPresent: false,
-    claimsWithLinkedSources: 3,
-    totalClaims: 3,
-    unsupportedSuperlatives: [],
-    prohibitedPrivateTerms: [],
-    brandRequirementsMet: true,
-    complianceReviewRequired: false,
-    complianceReviewCompleted: false,
-  };
-
-  it("passes a clean asset", () => {
-    expect(contentQualityGate(base).outcome).toBe("pass");
-  });
-
-  it("fails on an unsupported superlative", () => {
-    const result = contentQualityGate({ ...base, unsupportedSuperlatives: ["#1 agent"] });
-    expect(result.outcome).toBe("fail");
-  });
-
-  it("fails when private information leaked in", () => {
-    expect(
-      contentQualityGate({ ...base, prohibitedPrivateTerms: ["client SSN"] }).outcome
-    ).toBe("fail");
-  });
-
-  it("fails a regulated asset with no compliance review", () => {
-    expect(
-      contentQualityGate({
-        ...base,
-        complianceReviewRequired: true,
-        complianceReviewCompleted: false,
-      }).outcome
-    ).toBe("fail");
-  });
-
-  it("names the missing sections", () => {
-    const result = contentQualityGate({ ...base, presentSections: ["intro"] });
-    expect(result.checks.find((c) => c.name === "structure_complete")?.detail).toContain("body");
-  });
-});
-
-describe("publicationGate", () => {
-  const ready = {
-    clientApproved: true,
-    complianceApprovalRequired: false,
-    complianceApproved: false,
-    previewUrl: "https://preview.example/x",
-    canonicalUrl: "https://example.com/x",
-    indexable: true,
-    structuredDataPresent: true,
-    internalLinkCount: 3,
-    minimumInternalLinks: 2,
-    metadataComplete: true,
-    analyticsTagged: true,
-    artifactHash: "abc123",
-  };
-
-  it("passes a fully prepared publication", () => {
-    expect(publicationGate(ready).outcome).toBe("pass");
-  });
-
-  it("fails without client approval", () => {
-    expect(publicationGate({ ...ready, clientApproved: false }).outcome).toBe("fail");
-  });
-
-  it("returns insufficient_evidence when indexability was never checked", () => {
-    expect(publicationGate({ ...ready, indexable: null }).outcome).toBe("insufficient_evidence");
-  });
-
-  it("fails without a final artifact hash", () => {
-    expect(publicationGate({ ...ready, artifactHash: null }).outcome).toBe("fail");
   });
 });
 

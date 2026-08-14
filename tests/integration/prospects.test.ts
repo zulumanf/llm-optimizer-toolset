@@ -269,10 +269,48 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     expect(snapshot?.benchmark.responseCount).toBeGreaterThanOrEqual(6);
     // Snapshot carries no internal fields
     expect(JSON.stringify(snapshot)).not.toContain("qualification");
+    // Instrument stamp (spec 065): the snapshot records the methodology
+    // versions its numbers were computed with.
+    expect(snapshot?.instrumentVersions?.scoring.length).toBeGreaterThan(0);
+    expect(snapshot?.instrumentVersions?.parser.length).toBeGreaterThan(0);
     const [viewCount] = await sql`
       select count(*)::int as n from prospect_audit_views where audit_id = ${auditId}
     `;
     expect(viewCount?.n).toBe(1);
+
+    // Source-link liveness (spec 065): a dead receipt is an ack-required
+    // warning — publish refuses, then publishes with a recorded reason.
+    const { setSourceLinkFetchDeps } = await import("@/lib/qa/preflight");
+    const linkStub = ((url: RequestInfo | URL) =>
+      Promise.resolve(
+        new Response(String(url).includes("dead") ? "gone" : "ok", {
+          status: String(url).includes("dead") ? 404 : 200,
+        })
+      )) as typeof fetch;
+    setSourceLinkFetchDeps({ fetchImpl: linkStub, lookupImpl: null });
+    try {
+      const deadFinding = {
+        text: "Zillow profile lists only 4 of their 31 closed sides this year.",
+        sourceLabel: "Zillow",
+        sourceUrl: "https://example.com/dead-profile",
+        sourceDate: "2026-08-01",
+      };
+      const refused = await svc.publishAudit(operator, {
+        prospectId,
+        humanFinding: deadFinding,
+      });
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) expect(refused.error.message).toMatch(/Dead source link/);
+
+      const ackPublish = await svc.publishAudit(operator, {
+        prospectId,
+        humanFinding: deadFinding,
+        acknowledgeWarnings: { reason: "verified by hand in a browser; site blocks bots" },
+      });
+      expect(ackPublish.ok).toBe(true);
+    } finally {
+      setSourceLinkFetchDeps(null);
+    }
 
     // A second publish supersedes in place and keeps the link (057) — the
     // dedicated stable-link test covers the full semantics.

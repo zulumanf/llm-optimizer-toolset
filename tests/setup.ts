@@ -15,6 +15,11 @@ if (process.env.TEST_DATABASE_URL) {
 // explicitly; local .env files should not be able to contradict it.
 process.env.AUTH_MODE = "dev";
 
+// Publish-time source-link liveness (spec 065) must never touch the network
+// from the suite; tests that exercise it inject a stub fetch, which takes
+// precedence over this kill-switch.
+process.env.QA_SOURCE_LINK_CHECKS = "off";
+
 // Tests must never spend tokens or depend on a provider being reachable
 // (docs/09). Stripping the keys also pins the parse pipeline to the
 // deterministic heuristic classifier; LLM paths are exercised by injecting

@@ -362,6 +362,72 @@ describe.skipIf(!TEST_URL)("reports (integration)", () => {
     expect((audit?.detail as { acknowledgedPendingReviews: boolean }).acknowledgedPendingReviews).toBe(true);
   });
 
+  it("QA preflight (spec 065): failed run in the window warns, ack publishes, audited", async () => {
+    const projectId = await seedScoredRun();
+    // A failed run inside the reporting window that the report won't include —
+    // the silent hole the preflight exists to name.
+    await sql`
+      insert into runs (project_id, prompt_set_version_id, providers, budget_usd,
+        label, status, trigger, started_at)
+      select project_id, prompt_set_version_id, providers, budget_usd,
+        'doomed run', 'failed', trigger, now()
+      from runs where project_id = ${projectId} limit 1
+    `;
+    const draft = await reports.generateReportDraft(user, {
+      projectId,
+      title: "Preflight",
+      periodStart,
+      periodEnd,
+    });
+    expect(draft.ok).toBe(true);
+    if (!draft.ok) return;
+
+    const unacked = await reports.publishReport(user, { reportId: draft.data.id });
+    expect(unacked.ok).toBe(false);
+    if (!unacked.ok) {
+      expect(unacked.error.message).toMatch(/QA preflight/);
+      expect(unacked.error.message).toContain("doomed run");
+    }
+
+    const acked = await reports.publishReport(user, {
+      reportId: draft.data.id,
+      acknowledgeWarnings: true,
+    });
+    expect(acked.ok).toBe(true);
+
+    const [audit] = await sql`
+      select detail from audit_log
+      where action = 'report.publish' and entity_id = ${draft.data.id}
+    `;
+    const detail = audit?.detail as Record<string, unknown>;
+    expect(detail.preflightVersion).toBe("qa-preflight-v1");
+    expect(detail.warningsAcknowledged).toContain("no_unexamined_failed_runs");
+  });
+
+  it("QA preflight blocks a body with no scoring version — no acknowledgment path", async () => {
+    const projectId = await seedScoredRun();
+    const draft = await reports.generateReportDraft(user, {
+      projectId,
+      title: "Versionless",
+      periodStart,
+      periodEnd,
+    });
+    expect(draft.ok).toBe(true);
+    if (!draft.ok) return;
+    // Simulate a corrupted/legacy draft body missing its methodology stamp.
+    await sql`
+      update reports
+      set body = body - 'scoringVersion'
+      where id = ${draft.data.id}
+    `;
+    const blocked = await reports.publishReport(user, {
+      reportId: draft.data.id,
+      acknowledgeWarnings: true,
+    });
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.error.message).toMatch(/scoring version/);
+  });
+
   it("one draft per period; regenerate refreshes; discard deletes drafts only", async () => {
     const projectId = await seedScoredRun();
     const first = await reports.generateReportDraft(user, {

@@ -16,6 +16,7 @@ import { NarrativeEditor } from "@/components/reports/narrative-editor";
 import { PublishControls } from "@/components/reports/publish-controls";
 import { DeliveryDialog } from "@/components/reports/delivery-dialog";
 import { listReportDeliveries } from "@/lib/reports/service";
+import { reportPreflight } from "@/lib/qa/preflight";
 import { NARRATIVE_SECTIONS, type ReportBody } from "@/lib/reports/types";
 import { formatDate } from "@/lib/format";
 
@@ -43,6 +44,14 @@ export default async function ReportPage({
   const body = report.body as ReportBody;
   const isDraft = report.status === "draft";
   const deliveries = isDraft ? [] : await listReportDeliveries(reportId);
+  // QA preflight (spec 065): the operator sees what they would be
+  // acknowledging BEFORE clicking publish, not in a failed-submit toast.
+  const preflight: Pick<
+    Awaited<ReturnType<typeof reportPreflight>>,
+    "blockers" | "warnings"
+  > = isDraft
+    ? await reportPreflight(projectId, body)
+    : { blockers: [], warnings: [] };
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -87,6 +96,8 @@ export default async function ReportPage({
             <PublishControls
               reportId={reportId}
               pendingReview={body.coverage.pendingReview}
+              preflightWarnings={preflight.warnings.map((c) => c.detail)}
+              preflightBlockers={preflight.blockers.map((c) => c.detail)}
             />
           )}
         </div>
