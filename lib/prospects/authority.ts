@@ -22,6 +22,10 @@ export interface AuthoritySignalInput {
   scope: "local" | "global";
   /** Optional operator-recorded 0–1 confidence on the fact itself. */
   confidence: number | null;
+  /** Evidence classification (migration 074). 'derived' rows are excluded
+   * from scoring: arithmetic over already-counted signals (volume ÷ sides)
+   * must not earn a second helping of points. Null = legacy/unclassified. */
+  sourceType?: "independent" | "self_reported" | "derived" | null;
 }
 
 export interface AuthorityComponent {
@@ -111,6 +115,12 @@ export function authorityProfile(signals: AuthoritySignalInput[]): AuthorityProf
       excluded.push({
         signalId: signal.id,
         reason: "Unclassified evidence earns display, not points.",
+      });
+    } else if (signal.sourceType === "derived") {
+      excluded.push({
+        signalId: signal.id,
+        reason:
+          "Derived from already-counted signals — shown for context, never scored twice.",
       });
     } else {
       counted.push(signal);
