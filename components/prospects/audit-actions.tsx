@@ -5,10 +5,33 @@ import { toast } from "sonner";
 import { Copy, Globe, ShieldOff, TimerOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { expireAudit, publishAudit, revokeAudit } from "@/app/prospects/actions";
+
+/** Server-side reason minimum (publishAudit's acknowledgeWarnings schema) —
+ * mirrored here so the button disables instead of round-tripping a 400. */
+const ACK_REASON_MIN = 10;
 
 export function PublishAuditButton({ prospectId }: { prospectId: string }) {
   const [pending, startTransition] = useTransition();
+  // Ack-with-reason gate (spec 052, wired 2026-08-14): the server refuses
+  // disqualification signals — weak pitch, dead source link, partial run —
+  // until the operator supplies a written reason, recorded in the audit
+  // log. This dialog is that path; hard blockers (mock data, evidence gate,
+  // unfinished run) never offer it and stay plain errors.
+  const [ackGate, setAckGate] = useState<{
+    message: string;
+    ackStale: boolean;
+  } | null>(null);
+  const [reason, setReason] = useState("");
   // Publish-time quality flags (PR B): the audit went out, but the operator
   // should reconsider sending it — e.g. rank tracks visibility here (weak
   // pitch, consider disqualifying) or no human finding was recorded. Long
@@ -18,10 +41,20 @@ export function PublishAuditButton({ prospectId }: { prospectId: string }) {
       toast.warning(warning, { duration: 15000 });
     }
   };
-  const publish = () => {
+  const closeAckGate = () => {
+    setAckGate(null);
+    setReason("");
+  };
+  const publish = (opts: { ackStale?: boolean; reason?: string } = {}) => {
     startTransition(async () => {
-      const result = await publishAudit({ prospectId });
+      const payload = {
+        prospectId,
+        ...(opts.ackStale ? { acknowledgeStale: true } : {}),
+        ...(opts.reason ? { acknowledgeWarnings: { reason: opts.reason } } : {}),
+      };
+      const result = await publishAudit(payload);
       if (result.ok) {
+        closeAckGate();
         toast.success(
           result.data.replaced
             ? "Republished — same link, updated content."
@@ -30,28 +63,77 @@ export function PublishAuditButton({ prospectId }: { prospectId: string }) {
         surfaceWarnings(result.data.warnings);
         return;
       }
+      const message = result.error.message;
       // Stale-benchmark gate (spec 042): surface the age and let the
-      // operator explicitly acknowledge before publishing anyway.
-      if (result.error.message.includes("freshness window")) {
+      // operator explicitly acknowledge before publishing anyway. The retry
+      // keeps any warning acknowledgment already typed — the server checks
+      // staleness first, so this can precede the warnings dialog.
+      if (message.includes("freshness window")) {
         const proceed = window.confirm(
-          `${result.error.message}\n\nPublish anyway? The acknowledgment is recorded.`
+          `${message}\n\nPublish anyway? The acknowledgment is recorded.`
         );
         if (proceed) {
-          const retried = await publishAudit({ prospectId, acknowledgeStale: true });
+          const retried = await publishAudit({ ...payload, acknowledgeStale: true });
           if (retried.ok) {
+            closeAckGate();
             toast.success("Audit published with a stale-benchmark acknowledgment.");
             surfaceWarnings(retried.data.warnings);
+          } else if (retried.error.message.includes("acknowledge with a reason")) {
+            setAckGate({ message: retried.error.message, ackStale: true });
           } else toast.error(retried.error.message);
         }
         return;
       }
-      toast.error(result.error.message);
+      if (message.includes("acknowledge with a reason")) {
+        setAckGate({ message, ackStale: Boolean(opts.ackStale) });
+        return;
+      }
+      toast.error(message);
     });
   };
   return (
-    <Button size="sm" onClick={publish} disabled={pending}>
-      <Globe className="size-4" /> {pending ? "Publishing…" : "Publish audit page"}
-    </Button>
+    <>
+      <Button size="sm" onClick={() => publish()} disabled={pending}>
+        <Globe className="size-4" /> {pending ? "Publishing…" : "Publish audit page"}
+      </Button>
+      <AlertDialog
+        open={ackGate !== null}
+        onOpenChange={(open) => {
+          if (!open) closeAckGate();
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Publish over disqualification signals?</AlertDialogTitle>
+            <AlertDialogDescription>{ackGate?.message}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="ack-warnings-reason">
+              Reason for publishing anyway (recorded in the audit log)
+            </Label>
+            <Input
+              id="ack-warnings-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. verified the source by hand in a browser"
+            />
+          </div>
+          <AlertDialogFooter>
+            <Button variant="ghost" onClick={closeAckGate} disabled={pending}>
+              Cancel
+            </Button>
+            <Button
+              disabled={pending || reason.trim().length < ACK_REASON_MIN}
+              onClick={() =>
+                publish({ ackStale: ackGate?.ackStale, reason: reason.trim() })
+              }
+            >
+              {pending ? "Publishing…" : "Publish anyway"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

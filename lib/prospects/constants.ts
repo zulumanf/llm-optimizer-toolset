@@ -177,6 +177,19 @@ export interface Staleness {
   stale: boolean;
 }
 
+/** Page-weight bound on the audit's verbatim appendix (launch fix
+ * 2026-08-14). Sized so any realistic benchmark run fits whole — the page
+ * claims "every answer is published" ONLY when the snapshot actually holds
+ * every qualifying capture; past the cap it states shown-of-total instead
+ * (snapshot.transcriptTotal). Never a silent truncation. */
+export const AUDIT_TRANSCRIPT_CAP = 400;
+
+/** Today as YYYY-MM-DD (UTC) — the ledger/date-column idiom, previously
+ * hand-rolled at four call sites (simplify pass 2026-08-14). */
+export function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 /** Pure staleness check; `now` injectable for tests. */
 export function staleness(
   observedAt: Date | string,

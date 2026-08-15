@@ -40,6 +40,10 @@ export default function globalSetup(): void {
       AUTH_MODE: "dev",
       ALLOW_MOCK_PROVIDER: "1",
       ALLOW_MOCK_SCORING: "1",
+      // The test environment never touches the network (docs/09) — the
+      // spec-065 dead-link gate would otherwise fetch the seed's
+      // example.com receipt URLs and block publishAudit on their 404s.
+      QA_SOURCE_LINK_CHECKS: "off",
       PGCONNECT_TIMEOUT: "10",
     },
   });

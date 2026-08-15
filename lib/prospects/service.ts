@@ -16,8 +16,8 @@ import { assertCanWrite, assertRole, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage, duplicateNameConflict } from "@/lib/service-helpers";
-import { detectConflicts, type AgreementInput, type MarketNode } from "@/lib/exclusivity/detect";
-import { listAgreements, createAgreement } from "@/lib/exclusivity/service";
+import { detectConflicts, type MarketNode } from "@/lib/exclusivity/detect";
+import { createAgreement, loadAgreementInputs } from "@/lib/exclusivity/service";
 import { createProject } from "@/lib/projects/service";
 import { upsertCompany } from "@/lib/companies/service";
 import { addCompetitor } from "@/lib/competitors/service";
@@ -35,6 +35,7 @@ import {
   CONTACT_CHANNELS,
   FRESHNESS_WINDOWS_DAYS,
   staleness,
+  todayIso,
   FINDING_GENERATOR_VERSION,
   LAUNCH_STATUSES,
   OUTREACH_CHANNELS,
@@ -50,14 +51,17 @@ import {
   type ProspectType,
   RECONTACT_PERSON_WINDOW_DAYS,
   BROKERAGE_SEND_CAP_30D,
+  AUDIT_TRANSCRIPT_CAP,
 } from "@/lib/prospects/constants";
 import { validateTransition } from "@/lib/prospects/stages";
 import {
   generateFindingCandidates,
   type BenchmarkEntityMetrics,
 } from "@/lib/prospects/findings";
+import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
 import {
   absenceEvidence,
+  CURRENT,
   promptEvidenceForResponses,
   prospectAbsentResponses,
   runSummary,
@@ -81,6 +85,15 @@ import {
   PROSPECT_SCORE_VERSION,
 } from "@/lib/prospects/final-score";
 import { diagnoseProspect } from "@/lib/prospects/diagnose";
+// Statically imported on purpose (simplify pass 2026-08-14): none of these
+// modules import this service back (audit-evidence's import is type-only),
+// so the mid-function `await import()` ceremony read as "cycle here" where
+// there was none.
+import { mockScoringAllowed } from "@/lib/ai/registry";
+import { checkNoMockResponses, deadSourceLinks } from "@/lib/qa/preflight";
+import { validateAuditEvidence } from "@/lib/prospects/audit-evidence";
+import { auditUrl } from "@/lib/prospects/urls";
+import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
 
 /** Diagnoses a prospect may read about themselves — retitled for them.
  * Research-gap keys (about OUR evidence base) and internal-QA keys never
@@ -195,22 +208,31 @@ interface ProspectRow {
   stage: ProspectStage;
   conflictStatus: ConflictStatus;
   doNotContact: boolean;
+  brokerageAffiliation: string | null;
   email: string | null;
   phone: string | null;
   archivedAt: Date | null;
 }
 
-async function lockProspect(tx: TransactionSql, prospectId: string): Promise<ProspectRow> {
-  const rows = await tx`
-    select id, launch_id, business_name, company_id, team_leader, stage,
-      conflict_status, do_not_contact, email, phone, archived_at
-    from prospects where id = ${prospectId} for update
-  `;
-  const row = rows[0] as ProspectRow | undefined;
+/** One column list and one not-found/archived rule for the two prospect
+ * readers below — a column added to one but not the other is a latent
+ * drift bug (simplify pass 2026-08-14). */
+const PROSPECT_COLUMNS = sql`id, launch_id, business_name, company_id,
+  team_leader, stage, conflict_status, do_not_contact, brokerage_affiliation,
+  email, phone, archived_at`;
+
+function requireProspect(row: ProspectRow | undefined): ProspectRow {
   if (!row || row.archivedAt) {
     throw new ClassifiedError("not_found", "Prospect not found.");
   }
   return row;
+}
+
+async function lockProspect(tx: TransactionSql, prospectId: string): Promise<ProspectRow> {
+  const rows = await tx`
+    select ${PROSPECT_COLUMNS} from prospects where id = ${prospectId} for update
+  `;
+  return requireProspect(rows[0] as ProspectRow | undefined);
 }
 
 /** Non-locking twin of lockProspect for read-only assembly phases that run
@@ -218,15 +240,49 @@ async function lockProspect(tx: TransactionSql, prospectId: string): Promise<Pro
  * locks must not pretend to). */
 async function readProspect(prospectId: string): Promise<ProspectRow> {
   const rows = await sql`
-    select id, launch_id, business_name, company_id, team_leader, stage,
-      conflict_status, do_not_contact, email, phone, archived_at
-    from prospects where id = ${prospectId}
+    select ${PROSPECT_COLUMNS} from prospects where id = ${prospectId}
   `;
-  const row = rows[0] as ProspectRow | undefined;
-  if (!row || row.archivedAt) {
-    throw new ClassifiedError("not_found", "Prospect not found.");
-  }
-  return row;
+  return requireProspect(rows[0] as ProspectRow | undefined);
+}
+
+/**
+ * Territory detection for a launch (spec 052, audit 10.7): the stage gate
+ * and the send-time re-check are deliberately the SAME policy — this
+ * helper is what keeps them from drifting. Agreements load through the
+ * exclusivity service's one AgreementInput adapter.
+ */
+async function detectLaunchConflicts(
+  tx: TransactionSql,
+  launch: { marketId: string; serviceCategory: string | null; priceSegment: string | null }
+) {
+  const markets = await tx<MarketNode[]>`select id, name, parent_id from markets`;
+  const agreements = await loadAgreementInputs();
+  return detectConflicts(
+    {
+      marketId: launch.marketId,
+      serviceCategory: launch.serviceCategory ?? null,
+      segment: launch.priceSegment ?? null,
+    },
+    agreements,
+    markets,
+    todayIso()
+  );
+}
+
+/** The launch's market display name — this join was previously inlined
+ * three times. Fallback is caller-supplied because the audit page says
+ * "your market" while operator surfaces say "the market". */
+async function launchMarketName(
+  db: TransactionSql | typeof sql,
+  launchId: string,
+  fallback = "the market"
+): Promise<string> {
+  const [row] = await db`
+    select m.name as market_name from market_launches l
+    join markets m on m.id = l.market_id
+    where l.id = ${launchId}
+  `;
+  return (row?.marketName as string | undefined) ?? fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -1135,20 +1191,20 @@ export async function linkBenchmark(
         );
       }
       // A benchmark is prospect-facing evidence; fabricated captures must
-      // never back it (plan 2.3). Same bar as scoring (spec 050): permission
-      // to run the mock is not permission to present its output as evidence.
-      const { mockScoringAllowed } = await import("@/lib/ai/registry");
-      if (!mockScoringAllowed()) {
-        const [mockRow] = await tx`
-          select 1 from responses
-          where run_id = ${input.runId} and provider = 'mock' limit 1
-        `;
-        if (mockRow) {
-          throw new ClassifiedError(
-            "validation",
-            "That run contains mock-provider responses and cannot back a prospect benchmark."
-          );
-        }
+      // never back it (plan 2.3). Same encoding as the publish gate — one
+      // mock rule (lib/qa/preflight), not two that can drift.
+      const providerRows = await tx`
+        select distinct provider from responses where run_id = ${input.runId}
+      `;
+      const mockCheck = checkNoMockResponses(
+        providerRows.map((r) => r.provider as string),
+        mockScoringAllowed()
+      );
+      if (!mockCheck.ok) {
+        throw new ClassifiedError(
+          "validation",
+          "That run contains mock-provider responses and cannot back a prospect benchmark."
+        );
       }
       const [row] = await tx`
         insert into prospect_benchmarks (prospect_id, run_id, company_id, note, created_by)
@@ -1348,9 +1404,13 @@ export interface BenchmarkMetricsView {
 /** Read-only metrics for the detail page — straight from `scores`. */
 export async function benchmarkMetrics(benchmarkId: string): Promise<BenchmarkMetricsView> {
   const benchmark = await getBenchmark(benchmarkId);
-  const run = await runSummary(benchmark.runId);
+  // Independent runId-keyed reads — no reason to serialize them on every
+  // benchmark detail render.
+  const [run, entities] = await Promise.all([
+    runSummary(benchmark.runId),
+    scoredEntities(benchmark.runId),
+  ]);
   if (!run) throw new ClassifiedError("not_found", "Run not found.");
-  const entities = await scoredEntities(benchmark.runId);
   return {
     benchmarkId,
     run,
@@ -1570,6 +1630,52 @@ async function getPrimaryFinding(
 // ---------------------------------------------------------------------------
 // Prospect audit pages
 
+/**
+ * A prospect-visible observation with its receipt. Spec 045 §2b as written
+ * (spec 052 fencing): every prospect-visible entry REQUIRES its source —
+ * publisher, URL, and date — because an unsourced observation is exactly
+ * the artifact a skeptical team owner discredits first. One shape, one
+ * schema factory; previously written four times.
+ */
+export interface SourcedObservation {
+  text: string;
+  sourceLabel: string;
+  sourceUrl: string;
+  sourceDate: string;
+}
+
+function sourcedObservationSchema(textMin: number, textMax: number) {
+  return z.object({
+    text: z.string().trim().min(textMin).max(textMax),
+    sourceLabel: z.string().trim().min(2).max(120),
+    sourceUrl: z.string().trim().url().max(1000),
+    sourceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  });
+}
+
+/** One comparison-row shape for the prospect and rival branches. */
+function toComparisonRow(
+  entity: {
+    mentionRate: number | null;
+    recommendationRate: number | null;
+    sampleSize: number;
+    scoreIds?: Record<string, string>;
+  },
+  name: string,
+  isProspect: boolean,
+  marketRank: number | null
+): AuditSnapshot["comparison"][number] {
+  return {
+    name,
+    isProspect,
+    mentionRate: entity.mentionRate,
+    recommendationRate: entity.recommendationRate,
+    sampleSize: entity.sampleSize,
+    marketRank,
+    scoreIds: entity.scoreIds,
+  };
+}
+
 export interface AuditSnapshot {
   headline: string;
   prospectName: string;
@@ -1636,6 +1742,12 @@ export interface AuditSnapshot {
     capturedAt: string;
     answer: string;
   }[];
+  /** How many qualifying answers the run captured in total (launch fix
+   * 2026-08-14). The pages claim "every answer is published" ONLY when
+   * transcripts.length equals this; when AUDIT_TRANSCRIPT_CAP truncated the
+   * list they state shown-of-total instead. Additive: legacy snapshots lack
+   * it and never claim completeness. */
+  transcriptTotal?: number;
   /** Short verbatim moments where an assistant recommended a rival —
    * the machine in its own words, stamped. */
   evidenceExcerpts?: {
@@ -1672,9 +1784,9 @@ export interface AuditSnapshot {
   commissionEstimate?: { ratePct: number; amountUsd: number };
   /** One manually-researched, verifiable observation (PR B, P5c). Sources
    * required per spec 045 §2b (spec 052 fencing). */
-  humanFinding?: { text: string; sourceLabel: string; sourceUrl: string; sourceDate: string };
+  humanFinding?: SourcedObservation;
   /** Objection pre-empt (PR B, P5b) — renders only when supplied. */
-  adoptionStat?: { text: string; sourceLabel: string; sourceUrl: string; sourceDate: string };
+  adoptionStat?: SourcedObservation;
   /** Live consumer-app share links (spec 045): operator-created exhibits on
    * the assistant vendor's own domain. Demos, never measurements. */
   exampleChats?: {
@@ -1766,29 +1878,11 @@ export async function publishAudit(
        * page — it proves a human looked. Dev mode renders a loud warning
        * when absent; production renders nothing rather than something
        * generic. */
-      humanFinding: z
-        .object({
-          text: z.string().trim().min(20).max(600),
-          // Spec 045 §2b as written (spec 052 fencing): every prospect-
-          // visible entry REQUIRES its source — publisher, URL, and date.
-          // These render on the page; an unsourced observation is exactly
-          // the artifact a skeptical team owner discredits first.
-          sourceLabel: z.string().trim().min(2).max(120),
-          sourceUrl: z.string().trim().url().max(1000),
-          sourceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        })
-        .optional(),
+      humanFinding: sourcedObservationSchema(20, 600).optional(),
       /** PR B, P5b: adoption-stat objection pre-empt. Renders only when
        * both the stat and its source are supplied — never a placeholder in
        * front of a prospect. */
-      adoptionStat: z
-        .object({
-          text: z.string().trim().min(10).max(300),
-          sourceLabel: z.string().trim().min(2).max(120),
-          sourceUrl: z.string().trim().url().max(1000),
-          sourceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        })
-        .optional(),
+      adoptionStat: sourcedObservationSchema(10, 300).optional(),
       /** Spec 052: warnings are advisories with teeth — publishing over
        * them requires an explicit acknowledgment with a recorded reason. */
       acknowledgeWarnings: z
@@ -1834,14 +1928,32 @@ export async function publishAudit(
     const run = await runSummary(benchmark.runId as string);
     if (!run) throw new ClassifiedError("not_found", "Run not found.");
 
+    // Run-health gate (launch fix 2026-08-14): an audit assembled from a run
+    // that is still executing — or one that captured nothing — would state
+    // coverage that was never achieved. Hard block, never acknowledgeable.
+    // A PARTIAL run goes through the disqualifying-warning path below
+    // instead: publishable, but only with a recorded reason.
+    if (run.status !== "completed" && run.status !== "partial") {
+      throw new ClassifiedError(
+        "validation",
+        `The benchmark run is ${run.status}${
+          run.statusDetail ? ` (${run.statusDetail})` : ""
+        } — only a finished run with captured answers can be published.`
+      );
+    }
+    if (run.responseCount === 0) {
+      throw new ClassifiedError(
+        "validation",
+        "The benchmark run has no valid captured answers — there is nothing to publish."
+      );
+    }
+
     // QA preflight blocker (spec 065): defense in depth behind the scoring
     // guard — a mock-fed audit must be unpublishable at every layer.
     {
       const providerRows = await sql`
         select distinct provider from responses where run_id = ${benchmark.runId}
       `;
-      const { mockScoringAllowed } = await import("@/lib/ai/registry");
-      const { checkNoMockResponses } = await import("@/lib/qa/preflight");
       const mockCheck = checkNoMockResponses(
         providerRows.map((r) => r.provider as string),
         mockScoringAllowed()
@@ -1932,11 +2044,7 @@ export async function publishAudit(
       PROMPT_EVIDENCE_LIMIT
     );
 
-    const [launchRow] = await sql`
-      select m.name as market_name from market_launches l
-      join markets m on m.id = l.market_id
-      where l.id = ${prospect.launchId}
-    `;
+    const marketName = await launchMarketName(sql, prospect.launchId, "your market");
 
     // Authority vs valuable visibility (spec 038) — included only when
     // both sides are measurable; a one-sided "gap" would be a fabrication.
@@ -2008,15 +2116,8 @@ export async function publishAudit(
       join companies c on c.id = m.company_id
       join responses r on r.id = m.response_id
       where r.run_id = ${benchmark.runId} and r.error is null and m.recommended
-        and not exists (
-          select 1 from mentions newer
-          where newer.response_id = m.response_id
-            and newer.company_id = m.company_id and newer.revision > m.revision
-        )
-        and not exists (
-          select 1 from unnest(c.aliases || array[c.name]) as t
-          where trim(t) != '' and r.prompt_text ilike '%' || trim(t) || '%'
-        )
+        and ${CURRENT}
+        and ${PROMPT_ECHO_EXCLUDED}
       group by m.company_id, c.name
       order by recs desc
     `;
@@ -2073,15 +2174,22 @@ export async function publishAudit(
 
     // THE PROOF: every valid answer, complete and verbatim. An absence can
     // only be proven by publishing everything — a reader can search these
-    // for their own name. Capped defensively; the cap is stated on the page.
-    const TRANSCRIPT_CAP = 60;
+    // for their own name. transcriptTotal is stored alongside so the page
+    // claims completeness ONLY when the cap did not truncate; a capped list
+    // is disclosed as shown-of-total, never silently (launch fix 2026-08-14).
+    const [transcriptCount] = await sql`
+      select count(*)::int as total from responses
+      where run_id = ${benchmark.runId} and error is null
+        and response_text is not null
+    `;
+    const transcriptTotal = Number(transcriptCount?.total ?? 0);
     const transcriptRows = await sql`
       select prompt_text, provider, model, requested_at, response_text
       from responses
       where run_id = ${benchmark.runId} and error is null
         and response_text is not null
       order by prompt_text, provider, repetition
-      limit ${TRANSCRIPT_CAP}
+      limit ${AUDIT_TRANSCRIPT_CAP}
     `;
     const transcripts = transcriptRows.map((r) => ({
       prompt: r.promptText as string,
@@ -2102,15 +2210,8 @@ export async function publishAudit(
       where r.run_id = ${benchmark.runId} and r.error is null
         and m.recommended and m.excerpt is not null
         and m.company_id != ${benchmark.companyId}
-        and not exists (
-          select 1 from mentions newer
-          where newer.response_id = m.response_id
-            and newer.company_id = m.company_id and newer.revision > m.revision
-        )
-        and not exists (
-          select 1 from unnest(c.aliases || array[c.name]) as t
-          where trim(t) != '' and r.prompt_text ilike '%' || trim(t) || '%'
-        )
+        and ${CURRENT}
+        and ${PROMPT_ECHO_EXCLUDED}
       order by m.company_id, r.requested_at asc
     `;
     const evidenceExcerpts = excerptRows.slice(0, 3).map((r) => ({
@@ -2126,7 +2227,6 @@ export async function publishAudit(
     // Fixability (spec 039) — the emotion changes from "we are losing" to
     // "this is winnable". Embedded only when actually computed (adjusted
     // non-null); strengths are its top measured categories, counted facts.
-    const { computeProspectScoreView } = await import("@/lib/prospects/final-score");
     const scoreView = await computeProspectScoreView(input.prospectId);
     const fixabilityProfileView = scoreView.fixability;
     const fixability =
@@ -2146,7 +2246,7 @@ export async function publishAudit(
     const preparedBy = {
       name: user.name,
       email: user.email,
-      date: new Date().toISOString().slice(0, 10),
+      date: todayIso(),
       reportId: randomBytes(4).toString("hex"),
       // Sender credibility (PR B, P5e) — env-configured template fields,
       // never hardcoded prose; absent values render nothing.
@@ -2195,7 +2295,7 @@ export async function publishAudit(
 
     // Fallback reads correctly inside "questions about {marketName}" —
     // "the monitored market" produced a broken sentence on the page.
-    const marketName = (launchRow?.marketName as string) ?? "your market";
+    // marketName resolved above via launchMarketName (fallback "your market").
     const headline =
       authorityGap && authorityGap.gap >= 20
         ? `${prospect.businessName} is one of ${marketName}'s strongest teams — and AI assistants almost never say so.`
@@ -2222,29 +2322,16 @@ export async function publishAudit(
         explanation: finding.explanation,
         metrics: finding.metrics,
       },
+      // One row shape for both branches — the field wiring (scoreIds,
+      // marketRank) must evolve in exactly one place.
       comparison: [
         ...(prospectMetrics
-          ? [
-              {
-                name: prospect.businessName,
-                isProspect: true,
-                mentionRate: prospectMetrics.mentionRate,
-                recommendationRate: prospectMetrics.recommendationRate,
-                sampleSize: prospectMetrics.sampleSize,
-                marketRank: rankByCompany.get(benchmark.companyId as string) ?? null,
-                scoreIds: prospectMetrics.scoreIds,
-              },
-            ]
+          ? [toComparisonRow(prospectMetrics, prospect.businessName, true,
+              rankByCompany.get(benchmark.companyId as string) ?? null)]
           : []),
-        ...rivals.map((r) => ({
-          name: r.name,
-          isProspect: false,
-          mentionRate: r.mentionRate,
-          recommendationRate: r.recommendationRate,
-          sampleSize: r.sampleSize,
-          marketRank: rankByCompany.get(r.companyId) ?? null,
-          scoreIds: r.scoreIds,
-        })),
+        ...rivals.map((r) =>
+          toComparisonRow(r, r.name, false, rankByCompany.get(r.companyId) ?? null)
+        ),
       ],
       promptEvidence: evidence,
       methodology: METHODOLOGY_TEXT,
@@ -2254,7 +2341,7 @@ export async function publishAudit(
       ...(recommendationMomentsTotal > 0 ? { stakes } : {}),
       ...(whyItHappens.length > 0 ? { whyItHappens } : {}),
       ...(topSources.length > 0 ? { topSources } : {}),
-      ...(transcripts.length > 0 ? { transcripts } : {}),
+      ...(transcripts.length > 0 ? { transcripts, transcriptTotal } : {}),
       ...(evidenceExcerpts.length > 0 ? { evidenceExcerpts } : {}),
       ...(fixability ? { fixability } : {}),
       ...(commissionEstimate ? { commissionEstimate } : {}),
@@ -2292,6 +2379,18 @@ export async function publishAudit(
     // wrong for this prospect" block publish without an explicit
     // acknowledgment. Quality nudges (missing humanFinding) stay advisory.
     const disqualifyingWarnings: string[] = [];
+    // Partial-run integrity (launch fix 2026-08-14): failed cells never
+    // reach the numbers (every query filters `error is null`), but shipping
+    // an audit over a run with holes is a decision, not a default — the
+    // operator publishes it only with a recorded reason.
+    if (run.status === "partial" || run.failedCount > 0) {
+      const attempted = run.responseCount + run.failedCount;
+      disqualifyingWarnings.push(
+        `The benchmark run is incomplete${
+          run.statusDetail ? ` (${run.statusDetail})` : ""
+        }: ${run.responseCount} of ${attempted} attempted answers were captured, and the audit's numbers cover only those. Re-run for full coverage, or acknowledge with a reason.`
+      );
+    }
     {
       const ranked = snapshot.comparison.filter(
         (r) => r.marketRank != null && r.recommendationRate != null
@@ -2340,7 +2439,6 @@ export async function publishAudit(
     // an ack-required warning, not a hard block — a transiently-down site
     // must not stop an operator who verified it by hand.
     {
-      const { deadSourceLinks } = await import("@/lib/qa/preflight");
       const sourceUrls = [
         input.humanFinding?.sourceUrl,
         input.adoptionStat?.sourceUrl,
@@ -2370,7 +2468,6 @@ export async function publishAudit(
     // Evidence gate (spec 052): every rate in the comparison must match its
     // referenced immutable score row — the prospect-facing equivalent of the
     // client report's citation gate. Deterministic; refuses on any mismatch.
-    const { validateAuditEvidence } = await import("@/lib/prospects/audit-evidence");
     const evidenceMismatches = await validateAuditEvidence(snapshot);
     if (evidenceMismatches.length > 0) {
       throw new ClassifiedError(
@@ -2642,10 +2739,7 @@ export async function createOutreachDraft(
           select run_id from prospect_benchmarks where id = ${finding.benchmarkId}
         `;
         const run = benchmark ? await runSummary(benchmark.runId as string) : null;
-        const [launchRow] = await tx`
-          select m.name as market_name from market_launches l
-          join markets m on m.id = l.market_id where l.id = ${prospect.launchId}
-        `;
+        const draftMarketName = await launchMarketName(tx, prospect.launchId);
         // The email's proof is the published audit page (plan 3.1) — the
         // page CTA says "reply to the email that brought you here", so the
         // email must actually carry the link. Unpublished or no APP_URL →
@@ -2655,7 +2749,6 @@ export async function createOutreachDraft(
           where prospect_id = ${input.prospectId} and status = 'published'
             and (expires_at is null or expires_at > now())
         `;
-        const { auditUrl } = await import("@/lib/prospects/urls");
         // Spec 052 (audit F17): a published audit whose link cannot resolve
         // must refuse, not silently generate the no-link fallback — the
         // first real outreach email would ship without its entire proof.
@@ -2668,7 +2761,6 @@ export async function createOutreachDraft(
         // Sender identity (spec 052): the compliant footer is embedded at
         // generation time, so a manual send copied from this draft carries
         // the postal address and opt-out path too.
-        const { getActiveSenderIdentity } = await import("@/lib/outreach/sender-identity");
         const draftIdentity = await getActiveSenderIdentity();
         if (!draftIdentity) {
           throw new ClassifiedError(
@@ -2679,7 +2771,7 @@ export async function createOutreachDraft(
         const generated = generateReplyFirstEmail({
           prospectName: prospect.businessName,
           teamLeader: prospect.teamLeader,
-          marketName: (launchRow?.marketName as string) ?? "the market",
+          marketName: draftMarketName,
           findingTitle: finding.title,
           findingExplanation: finding.explanation,
           providers: run?.providers ?? [],
@@ -2907,7 +2999,8 @@ export async function recordDraftSent(
   }
 }
 
-export const SEND_GATE_VERSION = "prospect-send-gate-v1";
+// Not exported: stamped into ledger rows, no external consumer.
+const SEND_GATE_VERSION = "prospect-send-gate-v1";
 
 /**
  * The bridge between the two outreach stacks (spec 043): every dispatch —
@@ -3024,10 +3117,9 @@ export async function sendProspectDraft(
       } else {
         check("recontact_person", true, "no email to match");
       }
-      const [brokerageRow] = await tx`
-        select p.brokerage_affiliation from prospects p where p.id = ${draft.prospectId}
-      `;
-      const brokerage = (brokerageRow?.brokerageAffiliation as string | null)?.trim();
+      // brokerage_affiliation rides the lockProspect column list now — the
+      // row was already locked above, so re-selecting it was pure waste.
+      const brokerage = prospect.brokerageAffiliation?.trim();
       if (brokerage) {
         const [{ n } = { n: 0 }] = await tx`
           select count(*)::int as n from prospect_outreach_sends s
@@ -3059,33 +3151,11 @@ export async function sendProspectDraft(
           from market_launches where id = ${prospect.launchId}
         `;
         if (launch) {
-          const markets = await tx<MarketNode[]>`select id, name, parent_id from markets`;
-          const agreements: AgreementInput[] = (await listAgreements()).map((a) => ({
-            agreementId: a.id,
-            projectId: a.projectId,
-            clientName: a.clientName,
-            status: a.status as "active" | "reserved" | "terminated",
-            startsOn: a.startsOn,
-            endsOn: a.endsOn,
-            gracePeriodDays: Number(a.gracePeriodDays),
-            terminatedAt: a.terminatedAt,
-            scopes: a.scopes.map((sc) => ({
-              scopeId: sc.id,
-              marketId: sc.marketId,
-              serviceCategory: sc.serviceCategory,
-              segment: sc.segment,
-            })),
-          }));
-          const detection = detectConflicts(
-            {
-              marketId: launch.marketId as string,
-              serviceCategory: (launch.serviceCategory as string) ?? null,
-              segment: (launch.priceSegment as string) ?? null,
-            },
-            agreements,
-            markets,
-            new Date().toISOString().slice(0, 10)
-          );
+          const detection = await detectLaunchConflicts(tx, {
+            marketId: launch.marketId as string,
+            serviceCategory: (launch.serviceCategory as string) ?? null,
+            priceSegment: (launch.priceSegment as string) ?? null,
+          });
           check(
             "territory_conflict",
             detection.worstVerdict === "clear",
@@ -3100,7 +3170,6 @@ export async function sendProspectDraft(
 
       // Sender identity (spec 052): cold outreach refuses until an admin has
       // configured the legal sender — name, company, physical postal address.
-      const { getActiveSenderIdentity } = await import("@/lib/outreach/sender-identity");
       const identity = await getActiveSenderIdentity();
       check(
         "sender_identity",
@@ -3237,10 +3306,7 @@ export async function generateRecordingPlan(
         select run_id from prospect_benchmarks where id = ${finding.benchmarkId}
       `;
       const run = benchmark ? await runSummary(benchmark.runId as string) : null;
-      const [launchRow] = await tx`
-        select m.name as market_name from market_launches l
-        join markets m on m.id = l.market_id where l.id = ${prospect.launchId}
-      `;
+      const planMarketName = await launchMarketName(tx, prospect.launchId);
       const rivalNames = finding.competitorCompanyIds.length
         ? (
             await tx`
@@ -3254,7 +3320,7 @@ export async function generateRecordingPlan(
 
       const plan = buildRecordingPlan({
         prospectName: prospect.businessName,
-        marketName: (launchRow?.marketName as string) ?? "the market",
+        marketName: planMarketName,
         findingTitle: finding.title,
         findingExplanation: finding.explanation,
         competitorNames: rivalNames,
@@ -3382,34 +3448,11 @@ export async function transitionStage(
           from market_launches where id = ${prospect.launchId}
         `;
         if (!launch) throw new ClassifiedError("not_found", "Launch not found.");
-        const markets = await tx<MarketNode[]>`select id, name, parent_id from markets`;
-        const agreements: AgreementInput[] = (await listAgreements()).map((a) => ({
-          agreementId: a.id,
-          projectId: a.projectId,
-          clientName: a.clientName,
-          status: a.status as "active" | "reserved" | "terminated",
-          startsOn: a.startsOn,
-          endsOn: a.endsOn,
-          gracePeriodDays: Number(a.gracePeriodDays),
-          terminatedAt: a.terminatedAt,
-          scopes: a.scopes.map((s) => ({
-            scopeId: s.id,
-            marketId: s.marketId,
-            serviceCategory: s.serviceCategory,
-            segment: s.segment,
-          })),
-        }));
-        const today = new Date().toISOString().slice(0, 10);
-        const detection = detectConflicts(
-          {
-            marketId: launch.marketId as string,
-            serviceCategory: (launch.serviceCategory as string) ?? null,
-            segment: (launch.priceSegment as string) ?? null,
-          },
-          agreements,
-          markets,
-          today
-        );
+        const detection = await detectLaunchConflicts(tx, {
+          marketId: launch.marketId as string,
+          serviceCategory: (launch.serviceCategory as string) ?? null,
+          priceSegment: (launch.priceSegment as string) ?? null,
+        });
 
         let decision: "clear" | "blocked" | "override";
         if (detection.worstVerdict === "clear") {
@@ -3620,7 +3663,7 @@ export async function promoteProspectToClient(
     if (input.createAgreement) {
       const agreement = await createAgreement(user, {
         projectId,
-        startsOn: new Date().toISOString().slice(0, 10),
+        startsOn: todayIso(),
         endsOn: input.agreementEndsOn ?? null,
         gracePeriodDays: input.gracePeriodDays,
         status: "active",

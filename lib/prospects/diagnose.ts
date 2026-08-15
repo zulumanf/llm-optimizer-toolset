@@ -10,6 +10,7 @@
  * actions are a static, reviewable map — no LLM.
  */
 import { sql } from "@/db/client";
+import { PROMPT_NAMES_COMPANY } from "@/lib/scoring/prompt-echo";
 import { classifySource } from "@/lib/sources/classify";
 import { normalizeEntityName, normalizeDomain } from "@/lib/knowledge/normalize";
 import type { AssessmentItem, AssessmentValue } from "@/lib/prospects/constants";
@@ -310,11 +311,6 @@ export async function diagnoseProspect(prospectId: string): Promise<DiagnosisRep
         jsonb_to_recordset(v.frozen_prompts)
           as p("promptId" uuid, category text, tier int, "isHoldout" boolean)
         where r2.id = ${runId}
-      ),
-      tokens as (
-        select trim(t) as token
-        from companies c, unnest(c.aliases || array[c.name]) as t
-        where c.id = ${companyId}
       )
       select r.prompt_text, fp.tier, fp.category,
         count(*)::int as responses,
@@ -329,9 +325,9 @@ export async function diagnoseProspect(prospectId: string): Promise<DiagnosisRep
             and newer.company_id = m.company_id and newer.revision > m.revision
         )
       where r.run_id = ${runId} and r.error is null and not fp.is_holdout
-        and not exists (
-          select 1 from tokens t
-          where t.token != '' and r.prompt_text ilike '%' || t.token || '%'
+        and not coalesce(
+          (select ${PROMPT_NAMES_COMPANY} from companies c where c.id = ${companyId}),
+          false
         )
       group by r.prompt_text, fp.tier, fp.category
       order by r.prompt_text

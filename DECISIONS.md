@@ -2007,3 +2007,39 @@ verdict, and fewer than two sufficient providers labels the row
 insufficient — the UI states plainly that a cross-model read needs at least
 two providers instead of drawing a one-column table. Derived on read like
 head-to-head (spec 036); nothing stored.
+
+## 2026-08-14 — Pre-outreach launch fixes (branch chore/prospects-service-simplify)
+
+**Prompt-echo is one predicate, whole-word.** Four surfaces (prospect
+stakes/excerpts, valuable visibility, prospect diagnosis, gap organic rates)
+each carried their own copy of "the prompt named this company", all built on
+unbounded `ilike '%name%'` — which silently suppressed common-word brands
+("Compass" matched "encompassing") and disagreed with the parser's own
+word-boundary rule. All four now import `lib/scoring/prompt-echo.ts`:
+case-insensitive ARE whole-word/phrase match with metacharacters escaped
+(so "RE/MAX (NJ)" matches literally). The gap module's old "skip tokens
+≤ 3 chars" mitigation is retired — it existed to blunt substring matching
+and made short-named brands classify differently across surfaces.
+
+**The audit page claims completeness only when it is provable.** The
+transcript appendix is capped (AUDIT_TRANSCRIPT_CAP = 400, page-weight
+bound) and the snapshot now stamps `transcriptTotal`; "every answer is
+published" renders only when shown == total, otherwise the pages state
+shown-of-total. Legacy snapshots lack the total and never claim
+completeness. A falsifiable "all answers" line was one ⌘F away from
+destroying the page's trust device.
+
+**Run health gates prospect publishing.** `publishAudit` hard-blocks runs
+that are not finished (`running`/`failed`/zero valid captures — never
+acknowledgeable) and routes `partial` runs through the existing
+disqualifying-warning path: publishable only with a written reason,
+recorded in the audit log. `runSummary.promptCount` now counts prompts
+with ≥ 1 valid capture (`error is null`), so "we asked N questions" can
+never include questions that produced no answer.
+
+**Warning acknowledgment is an operator action, not an env var.** The
+publish button now opens a reason dialog when the server refuses with
+disqualification signals (dead source link, weak pitch, partial run),
+mirroring the report publish controls — previously the only escape was
+`QA_SOURCE_LINK_CHECKS=off`, which is not an operator control and skips
+the record.

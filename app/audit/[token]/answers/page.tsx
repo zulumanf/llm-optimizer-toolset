@@ -33,6 +33,14 @@ export default async function AuditAnswersPage({
   });
   if (!snapshot?.transcripts || snapshot.transcripts.length === 0) notFound();
 
+  // Completeness is claimed only when provable (launch fix 2026-08-14):
+  // "all N answers" appears solely when the snapshot holds every qualifying
+  // capture; a capped list is disclosed as shown-of-total. Legacy snapshots
+  // lack transcriptTotal and never claim completeness.
+  const shown = snapshot.transcripts.length;
+  const total = snapshot.transcriptTotal ?? null;
+  const complete = total === shown;
+
   // Group the flat capture list by question (legibility pass, spec 048
   // round 4): ten questions read as ten chapters, not forty look-alike
   // cards. Capture order within each question is preserved; nothing is
@@ -47,17 +55,21 @@ export default async function AuditAnswersPage({
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Appendix · every captured answer, verbatim · prepared for {snapshot.prospectName}
+        Appendix · {complete ? "every captured answer" : "captured answers"}, verbatim
+        · prepared for {snapshot.prospectName}
       </p>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-        The complete transcripts
+        {complete ? "The complete transcripts" : "The transcripts"}
       </h1>
       <p className="mt-2 max-w-[65ch] text-sm text-muted-foreground">
-        All {snapshot.transcripts.length} answers behind the report — unedited and
-        unselected, content-hashed at capture. Bold, lists, and links are the
-        assistants&apos; own formatting, shown the way their apps display it; the
-        words are untouched. Use your browser&apos;s search (⌘F) to look for any
-        name, including your own.
+        {complete
+          ? `All ${shown} answers behind the report — unedited and unselected, content-hashed at capture.`
+          : total !== null
+            ? `${shown} of the ${total} answers behind the report, published here in capture order — unedited, content-hashed at capture.`
+            : `${shown} captured answers behind the report — unedited, content-hashed at capture.`}{" "}
+        Bold, lists, and links are the assistants&apos; own formatting, shown
+        the way their apps display it; the words are untouched. Use your
+        browser&apos;s search (⌘F) to look for any name, including your own.
       </p>
       <p className="mt-2 text-sm">
         <Link href={`/audit/${token}`} className="underline underline-offset-2">

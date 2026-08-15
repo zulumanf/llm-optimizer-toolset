@@ -203,6 +203,15 @@ export default async function ProspectAuditPage({
       ].map((e) => e.promptText)
     ),
   ].slice(0, 3);
+  // Completeness is claimed only when provable (launch fix 2026-08-14):
+  // "every answer" appears solely when the snapshot holds every qualifying
+  // capture (transcriptTotal, stamped at publish); a capped appendix states
+  // shown-of-total instead. Legacy snapshots lack the total and never claim
+  // completeness.
+  const transcriptsShown = snapshot.transcripts?.length ?? 0;
+  const transcriptTotal = snapshot.transcriptTotal ?? null;
+  const transcriptsComplete =
+    transcriptsShown > 0 && transcriptTotal === transcriptsShown;
   // Plain-words repetition count for the visible recipe: exact when the
   // arithmetic is clean, honest-vague when partial failures made it ragged.
   const repsLabel =
@@ -274,7 +283,14 @@ export default async function ProspectAuditPage({
         ChatGPT is the AI assistant millions now use the way they used to use
         Google — and when buyers and sellers ask it who to hire, it answers
         with specific names. We asked it {snapshot.benchmark.promptCount} real{" "}
-        {snapshot.marketName} questions; every answer is published below.
+        {snapshot.marketName} questions;{" "}
+        {transcriptsComplete
+          ? "every answer is published below."
+          : transcriptsShown > 0 && transcriptTotal !== null
+            ? `${transcriptsShown} of the ${transcriptTotal} captured answers are published below.`
+            : transcriptsShown > 0
+              ? "captured answers are published below."
+              : "every answer was captured word-for-word."}
       </p>
       {/* Provenance up front (PR B, P5d): the trust claim before any number. */}
       <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
@@ -482,11 +498,13 @@ export default async function ProspectAuditPage({
               reply.
             </li>
             <li>
-              Every answer
-              {snapshot.transcripts && snapshot.transcripts.length > 0
-                ? " is published below,"
-                : " was saved"}{" "}
-              word-for-word.
+              {transcriptsComplete
+                ? "Every answer is published below, word-for-word."
+                : transcriptsShown > 0 && transcriptTotal !== null
+                  ? `Every answer was saved word-for-word; ${transcriptsShown} of the ${transcriptTotal} are published below.`
+                  : transcriptsShown > 0
+                    ? "Captured answers are published below, word-for-word."
+                    : "Every answer was saved word-for-word."}
             </li>
             <li>
               We counted who was named and who was recommended. The table is those
@@ -625,7 +643,13 @@ export default async function ProspectAuditPage({
                 href={`/audit/${token}/answers`}
                 className="underline underline-offset-2 transition-colors hover:text-foreground"
               >
-                read all {snapshot.transcripts.length} answers verbatim
+                read{" "}
+                {transcriptsComplete
+                  ? `all ${transcriptsShown}`
+                  : transcriptTotal !== null
+                    ? `${transcriptsShown} of the ${transcriptTotal}`
+                    : `${transcriptsShown}`}{" "}
+                answers verbatim
               </Link>{" "}
               and search any name, including your own.
             </p>

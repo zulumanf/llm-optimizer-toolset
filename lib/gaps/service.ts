@@ -19,6 +19,7 @@ import {
   type DomainCitation,
 } from "@/lib/gaps/detect";
 import { extractUrls, urlDomain } from "@/lib/parsing/prepass";
+import { PROMPT_NAMES_COMPANY } from "@/lib/scoring/prompt-echo";
 import { extractCitations } from "@/lib/ai/citations";
 import { log } from "@/lib/logger";
 
@@ -129,17 +130,14 @@ export async function analyzeRun(
      * SERHANT-anchored prompt still counts as organic evidence for Compass.
      *
      * Matching uses name plus aliases, the same vocabulary the classifier uses
-     * to detect a mention in the first place. Tokens of 3 characters or fewer
-     * are skipped: a two-letter alias matches half the English language.
+     * to detect a mention in the first place — whole words only, via the
+     * shared prompt-echo predicate (launch fix 2026-08-14; the old
+     * "skip tokens ≤ 3 chars" mitigation existed for substring matching).
      */
     const organicRows = await sql`
       with named as (
         select c.id as company_id, r.id as response_id,
-          exists (
-            select 1 from unnest(array[c.name] || coalesce(c.aliases, '{}')) as token
-            where length(trim(token)) > 3
-              and r.prompt_text ilike '%' || trim(token) || '%'
-          ) as prompt_named_company
+          ${PROMPT_NAMES_COMPANY} as prompt_named_company
         from responses r
         cross join companies c
         where r.run_id = ${runId} and r.error is null
