@@ -2043,3 +2043,35 @@ disqualification signals (dead source link, weak pitch, partial run),
 mirroring the report publish controls — previously the only escape was
 `QA_SOURCE_LINK_CHECKS=off`, which is not an operator control and skips
 the record.
+
+## 2026-08-15 — RealTrends verified-production evidence (branch feat/074-realtrends-authority)
+
+**One signal system, classified — not a parallel ranking database.** RealTrends
+records land in `prospect_authority_signals` via `lib/prospects/realtrends.ts`:
+migration 074 adds `source_type` ('independent' | 'self_reported' | 'derived')
+and a `metadata` jsonb payload (rank, mandatory rank_scope, scope_comparable,
+volume, sides, geography, capture date). Independent evidence uses the existing
+provenance='verified' factor (1.0 > publicly_sourced 0.85), so "independently
+verified outranks self-reported" required no new weights.
+
+**Scope is load-bearing.** A rank never travels without its exact scope:
+`formatVerifiedProduction` renders "#N — <scope>" atomically, category pages
+carry scope_comparable=false and are excluded from publishAudit's cross-company
+rank math (rho, rank callout, comparison column), and mixed scopes filter to
+the prospect's own. The Sutherlin/VIP team-size categories could not be
+verified from the JS-gated category pages — their records carry no rank claim
+until an operator confirms the exact category.
+
+**Derived is displayed, never scored.** avg_deal_value = volume ÷ sides is
+stored with source_type='derived' and excluded from the authority profile with
+a reason ("never scored twice"); copy calls it "average closed volume per
+side", never an average sale/home price. RealTrends labels may not contain the
+word "commission" (tested); the page's commission line is now an explicitly
+"illustrative estimate at an assumed rate… production volume, not commission
+income", demoted below the verified-production block.
+
+**Archetype, not a new score.** prospect-score-v2 adds a named, inspectable
+priority archetype (verified_authority_underrepresented: independent
+production + rec share ≤5% + a rival ≥15% + fixability ≥30) applied as a
+visible ×1.15 multiplier after the composite — weight set untouched, breakdown
+still self-explanatory.

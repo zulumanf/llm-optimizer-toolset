@@ -19,6 +19,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getAuditByToken } from "@/lib/prospects/service";
 import { visibilityThreshold } from "@/lib/prospects/constants";
+import { formatVerifiedProduction } from "@/lib/prospects/realtrends";
 import { getCurrentUserOrNull, isStaff } from "@/lib/auth";
 
 const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500"], style: ["normal", "italic"] });
@@ -420,22 +421,6 @@ export default async function ProspectAuditPage({
         </p>
       )}
 
-      {/* Dollar stake (PR B, P5a): arithmetic on THEIR sourced numbers at a
-          labeled, configurable estimate rate — never a loss claim. */}
-      {stakes?.avgDealUsd != null && snapshot.commissionEstimate && (
-        <p className="mt-6 max-w-[65ch] text-sm">
-          One seller who asks an assistant instead of a neighbor:{" "}
-          <span className="font-semibold tabular-nums">
-            ~${snapshot.commissionEstimate.amountUsd.toLocaleString()}
-          </span>{" "}
-          in commission at your average sale of ~$
-          {Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K ({stakes.avgDealBasis};
-          commission estimated at {snapshot.commissionEstimate.ratePct}%).
-          {stakes.competitorsNamed.length > 0 &&
-            ` Today that introduction goes to ${stakes.competitorsNamed[0]}.`}
-        </p>
-      )}
-
       <div className="mt-6">
         {ctaButton ?? (
           <p className="max-w-[65ch] text-sm">
@@ -449,29 +434,70 @@ export default async function ProspectAuditPage({
         </p>
       </div>
 
-      {/* Below the fold: the record-vs-visibility contrast in FACTS — the
-          numeric authority score is gone (PR B amendment 1); the sourced
-          record is the strong side, stated as itself. */}
-      {stakes && (stakes.volumeUsd != null || prospectRank != null) && (
+      {/* Below the fold: the record-vs-visibility contrast in FACTS.
+          Independently verified production (RealTrends) leads when present —
+          rank ONLY ever renders with its exact scope; otherwise the legacy
+          sourced-record line. */}
+      {snapshot.verifiedProduction ? (
         <p className="mt-10 max-w-[65ch] text-sm">
-          <span className="font-medium">Track record:</span>{" "}
-          {[
-            prospectRank != null ? `#${prospectRank} by closed volume` : null,
-            stakes.volumeUsd != null
-              ? `$${(stakes.volumeUsd / 1_000_000).toFixed(2)}M${
-                  stakes.sides != null ? ` across ${stakes.sides} sides` : ""
-                }`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}{" "}
-          (sourced below).{" "}
-          <span className="font-medium">Visibility in AI answers:</span>{" "}
+          <span className="font-medium">Verified market performance:</span>{" "}
+          {formatVerifiedProduction(snapshot.verifiedProduction).headline} ·{" "}
+          {formatVerifiedProduction(snapshot.verifiedProduction).detail}{" "}
+          <a
+            href={snapshot.verifiedProduction.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2"
+          >
+            (source, retrieved {snapshot.verifiedProduction.retrievedOn})
+          </a>
+          . <span className="font-medium">AI recommendation visibility:</span>{" "}
           <span className="tabular-nums text-destructive">
-            {stakes.yourRecommendations} of {snapshot.benchmark.responseCount}
-          </span>
-          . <span className="font-medium">The good news:</span> the record
+            {stakes?.yourRecommendations ?? 0} of {snapshot.benchmark.responseCount}
+          </span>{" "}
+          answers. <span className="font-medium">The good news:</span> the record
           isn&apos;t the problem — its visibility is, and that part is workable.
+        </p>
+      ) : (
+        stakes &&
+        (stakes.volumeUsd != null || prospectRank != null) && (
+          <p className="mt-10 max-w-[65ch] text-sm">
+            <span className="font-medium">Track record:</span>{" "}
+            {[
+              prospectRank != null ? `#${prospectRank} by closed volume` : null,
+              stakes.volumeUsd != null
+                ? `$${(stakes.volumeUsd / 1_000_000).toFixed(2)}M${
+                    stakes.sides != null ? ` across ${stakes.sides} sides` : ""
+                  }`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}{" "}
+            (sourced below).{" "}
+            <span className="font-medium">Visibility in AI answers:</span>{" "}
+            <span className="tabular-nums text-destructive">
+              {stakes.yourRecommendations} of {snapshot.benchmark.responseCount}
+            </span>
+            . <span className="font-medium">The good news:</span> the record
+            isn&apos;t the problem — its visibility is, and that part is workable.
+          </p>
+        )
+      )}
+
+      {/* Business significance LAST in the authority stack (RealTrends
+          upgrade): an illustrative estimate, never a verified claim —
+          production volume is not commission income. */}
+      {stakes?.avgDealUsd != null && snapshot.commissionEstimate && (
+        <p className="mt-4 max-w-[65ch] text-xs text-muted-foreground">
+          For scale: at ≈ $
+          {Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K average closed
+          volume per side ({stakes.avgDealBasis}), one referred sale represents
+          roughly ${snapshot.commissionEstimate.amountUsd.toLocaleString()} in
+          gross commission — an illustrative estimate at an assumed{" "}
+          {snapshot.commissionEstimate.ratePct}% commission rate. The sourced
+          record reports production volume, not commission income.
+          {stakes.competitorsNamed.length > 0 &&
+            ` Today that introduction goes to ${stakes.competitorsNamed[0]}.`}
         </p>
       )}
 

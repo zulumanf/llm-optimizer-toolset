@@ -59,6 +59,7 @@ import {
   type BenchmarkEntityMetrics,
 } from "@/lib/prospects/findings";
 import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
+import { latestVerifiedProduction } from "@/lib/prospects/realtrends";
 import {
   absenceEvidence,
   CURRENT,
@@ -1758,6 +1759,22 @@ export interface AuditSnapshot {
     /** The question that produced the answer (additive, spec 048). */
     promptText?: string;
   }[];
+  /** Independently verified production (RealTrends upgrade 2026-08-15):
+   * rendered as "Verified market performance" with its EXACT ranking scope —
+   * a category-specific #1 never reads as an overall-market #1. Additive:
+   * older snapshots render the legacy track-record line. */
+  verifiedProduction?: {
+    source: string;
+    rank: number | null;
+    rankScope: string;
+    scopeComparable: boolean;
+    volumeUsd: number;
+    sides: number;
+    avgPerSideUsd: number | null;
+    productionYear: number | null;
+    sourceUrl: string;
+    retrievedOn: string;
+  };
   /** Spec 039's computed fixability, embedded only when measured — turns
    * "we are losing" into "this is winnable" without inventing a number.
    * Strengths are its top measured categories: counted facts, not promises. */
@@ -2093,17 +2110,31 @@ export async function publishAudit(
     // Sourced market ranks for every company in this launch (ranking
     // signals with a numeric value, most recent per prospect) — lets the
     // comparison show "#9 in the market → 0% in the answers" per row.
+    // Scope guard (migration 074): ranks are only comparable within ONE
+    // ranking scope — a category-specific #1 (scope_comparable=false) never
+    // enters cross-company rank math, and mixed scopes are filtered to the
+    // prospect's own scope (legacy unscoped rows compare only to each other).
     const rankRows = await sql`
-      select distinct on (p.company_id) p.company_id, s.value_number
+      select distinct on (p.company_id) p.company_id, s.value_number,
+        s.metadata->>'rank_scope' as rank_scope
       from prospects p
       join prospect_authority_signals s on s.prospect_id = p.id
         and s.kind = 'ranking' and s.value_number is not null
+        and coalesce(s.metadata->>'scope_comparable', 'true') != 'false'
       where p.launch_id = ${prospect.launchId}
         and p.company_id is not null and p.archived_at is null
       order by p.company_id, s.created_at desc
     `;
+    const prospectRankScope =
+      (rankRows.find((r) => r.companyId === benchmark.companyId)?.rankScope as
+        | string
+        | null) ?? null;
     const rankByCompany = new Map<string, number>(
-      rankRows.map((r) => [r.companyId as string, Number(r.valueNumber)])
+      rankRows
+        .filter(
+          (r) => ((r.rankScope as string | null) ?? null) === prospectRankScope
+        )
+        .map((r) => [r.companyId as string, Number(r.valueNumber)])
     );
 
     // Stakes: every "recommended" mention is a real moment an assistant
@@ -2243,6 +2274,10 @@ export async function publishAudit(
           }
         : null;
 
+    // Verified market performance (RealTrends upgrade): the strongest
+    // authority statement the page can make, with its exact ranking scope.
+    const verifiedProduction = await latestVerifiedProduction(input.prospectId);
+
     const preparedBy = {
       name: user.name,
       email: user.email,
@@ -2344,6 +2379,7 @@ export async function publishAudit(
       ...(transcripts.length > 0 ? { transcripts, transcriptTotal } : {}),
       ...(evidenceExcerpts.length > 0 ? { evidenceExcerpts } : {}),
       ...(fixability ? { fixability } : {}),
+      ...(verifiedProduction ? { verifiedProduction } : {}),
       ...(commissionEstimate ? { commissionEstimate } : {}),
       ...(input.humanFinding ? { humanFinding: input.humanFinding } : {}),
       ...(input.adoptionStat ? { adoptionStat: input.adoptionStat } : {}),
