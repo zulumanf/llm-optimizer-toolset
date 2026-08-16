@@ -19,7 +19,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { devAuthRefusalReason } from "@/lib/env";
+import { devAuthRefusalReason, publicOrigin } from "@/lib/env";
 
 /** Paths reachable without a session. `/audit` is the prospect audit page —
  * its own security is the high-entropy token (spec 032). */
@@ -63,7 +63,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const isPublic = PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix));
 
   if (!data.user && !isPublic) {
-    const login = new URL("/login", request.url);
+    const login = new URL("/login", publicOrigin(request.nextUrl.origin));
     if (path !== "/") login.searchParams.set("next", path);
     return NextResponse.redirect(login);
   }

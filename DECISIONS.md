@@ -2075,3 +2075,15 @@ priority archetype (verified_authority_underrepresented: independent
 production + rec share ≤5% + a rival ≥15% + fixability ≥30) applied as a
 visible ×1.15 multiplier after the composite — weight set untouched, breakdown
 still self-explanatory.
+
+## 2026-08-16 — Self-referential URLs come from APP_URL, never the request
+
+The first real login attempt on Railway surfaced it: every redirect the app
+issued about itself — magic-link callback landings, the middleware's bounce to
+/login — was built from `url.origin` / `request.url`, and behind Railway's
+proxy that origin is the container's internal hostname
+(`https://98d71eb6ee29:8080`), unreachable from any browser. The operator was
+redirected into the void on every sign-in. `publicOrigin()` in lib/env.ts now
+prefers APP_URL (already required for outbound audit links) and falls back to
+the request origin only for dev, where APP_URL is unset by design. Rule going
+forward: any absolute URL the app emits about itself goes through APP_URL.
