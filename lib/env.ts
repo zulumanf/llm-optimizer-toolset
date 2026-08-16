@@ -104,6 +104,20 @@ export function devAuthRefusalReason(
   );
 }
 
+/**
+ * Base for absolute URLs the app issues about itself — auth redirects and the
+ * magic-link callback. Behind Railway's proxy the request's own origin is the
+ * container's internal hostname (e.g. https://98d71eb6ee29:8080), so anything
+ * built from it is unreachable from outside. APP_URL wins whenever set; the
+ * request-derived origin is only a dev fallback.
+ */
+export function publicOrigin(
+  requestOrigin: string,
+  appUrl: string | undefined = process.env.APP_URL
+): string {
+  return appUrl ?? requestOrigin;
+}
+
 let cached: Env | undefined;
 
 export function getEnv(): Env {
