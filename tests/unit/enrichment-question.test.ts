@@ -24,6 +24,7 @@ describe("buildEnrichmentQuestion", () => {
         needVolume: false,
         needSides: false,
         needRank: false,
+        needSignals: false,
       })
     ).toBeNull();
   });
@@ -34,6 +35,7 @@ describe("buildEnrichmentQuestion", () => {
       needVolume: false,
       needSides: false,
       needRank: false,
+      needSignals: false,
     })!;
     expect(emailOnly).toContain("email");
     expect(emailOnly).not.toContain("closed sales volume");
@@ -43,6 +45,7 @@ describe("buildEnrichmentQuestion", () => {
       needVolume: true,
       needSides: true,
       needRank: false,
+      needSignals: false,
     })!;
     expect(productionOnly).toContain("closed sales volume");
     expect(productionOnly).toContain("transaction sides");
@@ -56,6 +59,7 @@ describe("buildEnrichmentQuestion", () => {
       needVolume: true,
       needSides: true,
       needRank: true,
+      needSignals: true,
     })!;
     for (const anchor of ["Rivera Team", "Ana Rivera", "Compass", "Jersey City"]) {
       expect(question).toContain(anchor);

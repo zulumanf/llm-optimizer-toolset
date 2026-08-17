@@ -2204,3 +2204,14 @@ sweep, and means approving a candidate is a cheap decision that never
 smuggles unverified facts in with the name. Provenance is ai_inferred at
 the envelope level: a search answer that lists a team is a lead about the
 team's existence, not a verified fact about anything.
+
+## 2026-08-17 — Timing research rides the same call (spec 081)
+
+Buying-signal research could have been a second Perplexity query per
+prospect. It is a SECTION of spec 079's single call instead, appearing
+only when signal research is stale — so the one-call-per-prospect
+invariant survives, and "fully known" honestly includes knowing what
+happened lately. Two smaller judgments: an unsourced development is never
+staged (a rumor is not a signal), and the daily tick's sweep needs no
+cadence bookkeeping because per-prospect freshness windows already make
+it self-limiting — cadence as a property of the data, not a scheduler.

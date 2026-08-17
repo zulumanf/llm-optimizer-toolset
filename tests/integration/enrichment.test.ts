@@ -75,7 +75,7 @@ describe.skipIf(!TEST_URL)("perplexity enrichment (integration)", () => {
 
   beforeEach(async () => {
     await sql.unsafe(
-      `truncate audit_log, llm_calls, enrichment_proposals,
+      `truncate audit_log, llm_calls, enrichment_proposals, prospect_buying_signals,
        prospect_activities, prospect_stage_history, prospect_contacts,
        prospect_authority_signals, prospects, market_launches,
        exclusivity_checks, exclusivity_scopes, exclusivity_agreements, markets
@@ -171,10 +171,66 @@ describe.skipIf(!TEST_URL)("perplexity enrichment (integration)", () => {
     expect(seenQuestion).not.toContain('"email"');
     expect(seenQuestion).toContain("closed sales volume");
 
-    // Approve the production signals → nothing is missing anymore.
+    // Approve the production signals → only TIMING research remains
+    // (spec 081: buying-signal freshness is part of "known").
     for (const proposal of await enrichment.listEnrichmentProposals(prospectId)) {
       unwrap(await enrichment.approveEnrichmentProposal(operator, { proposalId: proposal.id }));
     }
+    let signalQuestion = "";
+    const signalsCaller: PerplexityResearchCaller = async (args) => {
+      signalQuestion = args.user;
+      return {
+        text: JSON.stringify({
+          email: null,
+          production: null,
+          recentDevelopments: [
+            {
+              kind: "brokerage_move",
+              headline: "Rivera Team moved from Compass to Serhant",
+              date: "2026-08-01",
+              sourceUrl: "https://therealdeal.com/rivera-moves",
+            },
+            {
+              kind: "won_big_award",
+              headline: "Unknown-kind development maps to other",
+              date: null,
+              sourceUrl: null,
+            },
+          ],
+          confidence: 0.7,
+          notes: "",
+        }),
+        citations: ["https://therealdeal.com/rivera-moves"],
+        tokensIn: 200,
+        tokensOut: 100,
+      };
+    };
+    const timing = unwrap(
+      await enrichment.enrichProspect(operator, { prospectId, force: true }, signalsCaller)
+    );
+    expect(timing.outcome).toBe("enriched");
+    expect(timing.proposals).toBe(2);
+    expect(signalQuestion).toContain("recentDevelopments");
+    expect(signalQuestion).not.toContain("closed sales volume");
+
+    const staged = await enrichment.listEnrichmentProposals(prospectId);
+    const signals = staged.filter((p) => p.kind === "buying_signal");
+    expect(signals).toHaveLength(2);
+    expect(signals.map((p) => p.payload.kind).sort()).toEqual(["brokerage_move", "other"]);
+
+    // Approve one → real buying signal with honest provenance; the score
+    // component wakes up.
+    const move = signals.find((p) => p.payload.kind === "brokerage_move")!;
+    unwrap(await enrichment.approveEnrichmentProposal(operator, { proposalId: move.id }));
+    const [row] = await sql`
+      select kind, provenance, observed_on::text as observed_on
+      from prospect_buying_signals where prospect_id = ${prospectId}
+    `;
+    expect(row?.kind).toBe("brokerage_move");
+    expect(row?.provenance).toBe("publicly_sourced");
+    expect(row?.observedOn).toBe("2026-08-01");
+
+    // Now signals are fresh AND facts are known: truly zero-cost.
     let called = false;
     const neverCaller: PerplexityResearchCaller = async (args) => {
       called = true;
