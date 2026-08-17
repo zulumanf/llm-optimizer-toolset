@@ -541,6 +541,8 @@ export interface ProspectListRow {
   nextActionOn: string | null;
   qualificationScore: number | null;
   qualificationOverride: number | null;
+  /** Stored score breakdown (spec 045) — rendered as the table blurb. */
+  qualificationBreakdown: Record<string, unknown> | null;
 }
 
 export async function listProspects(
@@ -558,7 +560,7 @@ export async function listProspects(
     select p.id, p.business_name, p.launch_id, l.name as launch_name,
       p.prospect_type, p.stage, p.conflict_status, p.do_not_contact,
       u.name as owner_name, p.next_action, p.next_action_on::text,
-      p.qualification_score, p.qualification_override
+      p.qualification_score, p.qualification_override, p.qualification_breakdown
     from prospects p
     join market_launches l on l.id = p.launch_id
     left join users u on u.id = p.owner_id
