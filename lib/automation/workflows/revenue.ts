@@ -226,6 +226,76 @@ export const prospectOutreachWorkflow = defineWorkflow({
   ],
 });
 
+// ------------------------------------- 1b. Audit refresh preparation (spec 075)
+
+export const AUDIT_REFRESH_KEY = "audit_refresh_v1";
+
+/**
+ * The weekly baseline's consumer: when a SCHEDULED run finishes on a
+ * prospect-kind project, prepare one refresh candidate per published audit
+ * fed by that project — new run linked, findings generated, delta computed,
+ * preflight pre-run. Level-2 by construction: this workflow contains no act
+ * or human node because the approval lives in the refresh queue UI
+ * (`approveAuditRefresh`), where the operator's click publishes through the
+ * unchanged publishAudit gates. Nothing prospect-visible changes here.
+ */
+export const auditRefreshWorkflow = defineWorkflow({
+  key: AUDIT_REFRESH_KEY,
+  name: "Audit refresh preparation",
+  description:
+    "After each scheduled prospect-market benchmark run, prepare a refreshed audit candidate per published audit — linked run, generated findings, week-over-week delta, dry-run preflight — for one-click human approval in the refresh queue.",
+  domain: "revenue",
+  clientScope: "platform_only",
+  owner: "founder / sales",
+  actionType: "audit_refresh_preparation",
+  autonomyLevel: 2,
+  riskClassification: "high",
+  maxCostMicroUsd: 200_000,
+  maxDurationMinutes: 30,
+  triggers: [
+    {
+      kind: "domain_event",
+      eventType: "benchmark.completed",
+      autonomyNote:
+        "Preparation is internal and reversible: candidates are queue rows, not publications. Nothing a prospect can see changes without approveAuditRefresh — a named staff click through the full publishAudit gates.",
+      idempotencyTemplate: "audit-refresh:{{payload.runId}}",
+      description: "A benchmark run finished completely",
+    },
+    {
+      kind: "domain_event",
+      eventType: "benchmark.partially_failed",
+      autonomyNote:
+        "A partial run still prepares candidates; the coverage hole is carried as a stored preflight warning the operator sees before approving.",
+      idempotencyTemplate: "audit-refresh:{{payload.runId}}",
+      description: "A benchmark run finished with failures",
+    },
+    { kind: "manual", description: "An operator backfills candidates for a named run" },
+  ],
+  inputSchema: {
+    "payload.runId": "string — the finished benchmark run's id",
+  },
+  outputSchema: {
+    prepared: "number — candidates ready for one-click approval",
+    needsAttention: "number — candidates whose preparation hit a problem",
+    skipped: "array — prospects skipped, each with its reason",
+  },
+  acceptanceCriteria: [
+    "Only published, unrevoked, unpromoted prospects' audits get candidates.",
+    "A preparation failure yields a needs_attention card, never a silent skip.",
+    "Manual runs and non-prospect projects safe-stop instead of preparing.",
+    "Re-delivery of the same run event prepares nothing twice.",
+    "No node in this workflow publishes, sends, or changes anything a prospect can see.",
+  ],
+  nodes: [
+    trigger("entry", "domain_event", "Scheduled benchmark run finished"),
+    step("prepare", "dom.prepare_audit_refresh", "Prepare refresh candidates", {
+      runIdPath: "payload.runId",
+    }),
+    success("done", "Candidates prepared for the refresh queue"),
+  ],
+  edges: [edge("entry", "prepare"), edge("prepare", "done")],
+});
+
 // ------------------------------------- 2. Inbound lead qualification
 
 export const INBOUND_LEAD_KEY = "inbound_lead_qualification_v1";
@@ -530,6 +600,7 @@ export const meetingFollowupWorkflow = defineWorkflow({
 
 export const revenueWorkflows = [
   prospectOutreachWorkflow,
+  auditRefreshWorkflow,
   inboundLeadWorkflow,
   meetingPrepWorkflow,
   meetingFollowupWorkflow,

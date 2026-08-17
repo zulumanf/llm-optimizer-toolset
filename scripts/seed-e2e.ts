@@ -274,10 +274,125 @@ async function main(): Promise<void> {
     "publish audit"
   );
 
+  // ------------------------------------------------- refresh queue (spec 075)
+  // A second prospect on its own prospect-kind market project: audit
+  // published from a manual run, then a scheduled run prepares exactly one
+  // pending refresh candidate for the queue page to render.
+  console.log("▸ seeding audit refresh candidate…");
+  const refreshSvc = await import("@/lib/prospects/refresh");
+  const harbor = unwrap(
+    await companySvc.upsertCompany(operator, { name: "Harbor Group" }),
+    "harbor company"
+  );
+  const marketProject = unwrap(
+    await projectSvc.createProject(operator, { name: "Prospect market: Manhattan" }),
+    "market project"
+  );
+  await sql`update projects set kind = 'prospect' where id = ${marketProject.id}`;
+  unwrap(
+    await claimsSvc.setSubjectCompany(operator, {
+      projectId: marketProject.id,
+      companyId: harbor.id,
+    }),
+    "market subject"
+  );
+  const marketSet = unwrap(
+    await setSvc.createPromptSet(operator, { projectId: marketProject.id, name: "Market set" }),
+    "market set"
+  );
+  for (const text of [
+    "best luxury team in manhattan?",
+    "which team should sell my tribeca loft?",
+  ]) {
+    unwrap(
+      await promptSvc.addPrompt(operator, {
+        setId: marketSet.id,
+        text,
+        category: "recommendation",
+      }),
+      "market prompt"
+    );
+  }
+  unwrap(await setSvc.freezePromptSet(operator, { id: marketSet.id }), "market freeze");
+  const [marketVersion] = await sql`
+    select id from prompt_set_versions where prompt_set_id = ${marketSet.id}
+  `;
+  const marketRun = unwrap(
+    await runSvc.startRun(operator, {
+      projectId: marketProject.id,
+      promptSetVersionId: marketVersion?.id as string,
+      providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }],
+      budgetUsd: 5,
+      label: "initial market benchmark",
+    }),
+    "market run"
+  );
+  await drainJobs();
+  const harborProspect = unwrap(
+    await prospectsSvc.createProspect(operator, {
+      launchId: launch.launchId,
+      businessName: "Harbor Group",
+      prospectType: "team",
+      companyId: harbor.id,
+      teamLeader: "Sam Harbor",
+    }),
+    "harbor prospect"
+  );
+  const harborLink = unwrap(
+    await prospectsSvc.linkBenchmark(operator, {
+      prospectId: harborProspect.prospectId,
+      runId: marketRun.id,
+    }),
+    "harbor benchmark"
+  );
+  unwrap(
+    await prospectsSvc.generateFindings(operator, { benchmarkId: harborLink.benchmarkId }),
+    "harbor findings"
+  );
+  const [harborFinding] = await sql`
+    select id from prospect_findings
+    where benchmark_id = ${harborLink.benchmarkId} and status = 'candidate'
+    order by rank_score desc nulls last limit 1
+  `;
+  unwrap(
+    await prospectsSvc.reviewFinding(operator, {
+      findingId: harborFinding?.id as string,
+      decision: "approved",
+      makePrimary: true,
+    }),
+    "harbor primary finding"
+  );
+  unwrap(
+    await prospectsSvc.publishAudit(operator, { prospectId: harborProspect.prospectId }),
+    "harbor audit"
+  );
+  const weeklyRun = unwrap(
+    await runSvc.startRun(
+      null,
+      {
+        projectId: marketProject.id,
+        promptSetVersionId: marketVersion?.id as string,
+        providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }],
+        budgetUsd: 5,
+        label: "weekly baseline",
+      },
+      "scheduled"
+    ),
+    "weekly run"
+  );
+  await drainJobs();
+  const prepared = await refreshSvc.prepareAuditRefreshCandidates({ runId: weeklyRun.id });
+  if (prepared.prepared !== 1) {
+    throw new Error(
+      `refresh seed expected 1 prepared candidate, got ${JSON.stringify(prepared)}`
+    );
+  }
+
   const state = {
     clientProjectId: project.id,
     prospectId: prospect.prospectId,
     auditToken: audit.accessToken,
+    refreshProspectName: "Harbor Group",
     suggestedTaskTitle: "E2E: publish neighborhood guide",
     overdueTaskTitle: "E2E: fix entity record",
   };

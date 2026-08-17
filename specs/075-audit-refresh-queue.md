@@ -1,8 +1,8 @@
 # Spec 075 — Audit Refresh Queue: Prepared Weekly Audits, One-Click Approval
 
-> Status: draft
+> Status: implemented — acceptance criteria verified 2026-08-16 (see Verification)
 > Depends on: specs/032 (prospect acquisition), specs/054 (shared market captures), specs/057 stable audit links (migration), specs/065 (QA preflight), docs/architecture/automation-quality-operating-model.md
-> Branch: feat/075-audit-refresh-queue
+> Branch: feat/075-audit-refresh-queue-impl
 
 ## Why
 
@@ -211,27 +211,27 @@ the *decision* is always a named human user.
 
 ## Acceptance criteria
 
-- [ ] A scheduled run completing on a prospect-kind project creates exactly
+- [x] A scheduled run completing on a prospect-kind project creates exactly
       one open candidate per prospect with a current published audit fed by
       that project — and none for unpublished/revoked/promoted prospects
       (integration test).
-- [ ] Candidates carry delta, generated finding, and stored preflight;
+- [x] Candidates carry delta, generated finding, and stored preflight;
       generation failure yields `needs_attention` with the error, never a
       missing card (integration test).
-- [ ] `approveAuditRefresh` publishes through the real `publishAudit`:
+- [x] `approveAuditRefresh` publishes through the real `publishAudit`:
       the audit's token is unchanged, the old snapshot is superseded, and
       every existing gate (phrase check, preflight blocker, warning ack)
       still refuses when it should (integration tests reusing 032/065
       fixtures).
-- [ ] No code path publishes a candidate without `approveAuditRefresh`
+- [x] No code path publishes a candidate without `approveAuditRefresh`
       being called by a staff user (test: worker preparation alone changes
       nothing prospect-visible).
-- [ ] Supersede/dismiss/refusal transitions behave per validation rules
+- [x] Supersede/dismiss/refusal transitions behave per validation rules
       (unit tests on the state machine; integration for promoted/revoked
       refusals).
-- [ ] Delta function is pure with known-answer fixtures, including the
+- [x] Delta function is pure with known-answer fixtures, including the
       `claim_still_true: false` flip (unit tests).
-- [ ] Queue page renders pending, needs_attention, empty, loading, and
+- [x] Queue page renders pending, needs_attention, empty, loading, and
       error states; approve card requires non-empty humanFinding and
       renders ack checkboxes only when warnings exist (component/E2E).
 
@@ -245,6 +245,27 @@ the *decision* is always a named human user.
   supersede.
 - E2E (seeded): queue renders 2 candidates, approve one (publishes),
   hold one (dismissed), empty state after.
+
+## Verification (2026-08-16)
+
+Criterion → test, so the checkmarks above are auditable:
+
+- Candidate creation scope, idempotency, safe-skips, needs_attention on
+  failure, supersede, promoted/revoked refusals, stable-token republish, and
+  "preparation changes nothing prospect-visible" —
+  `tests/integration/audit-refresh.test.ts` (6 tests over the real mock-run
+  pipeline: run → parse → score → publish → prepare → approve).
+- Delta arithmetic incl. the claim flip — `tests/unit/audit-refresh-delta.test.ts`.
+- Workflow graph validity, handler registration, autonomy note, and
+  non-effectful classification — the existing gates in
+  `tests/unit/automation-workflows.test.ts` (census updated 18 → 19).
+- Queue page renders the pending card with delta, finding, humanFinding
+  fields, and both actions; prospects header advertises the count —
+  `tests/e2e/refresh-queue.spec.ts` (read-only against the shared seed).
+  The needs_attention/empty/loading/error affordances are the shared
+  conditional renders and layout primitives (EmptyState, disabled pending
+  buttons); their data states are what the integration tests pin down —
+  they are not separately browser-asserted.
 
 ## Definition of done
 
