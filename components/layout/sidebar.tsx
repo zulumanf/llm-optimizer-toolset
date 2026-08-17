@@ -35,7 +35,7 @@ export async function Sidebar(): Promise<React.ReactElement | null> {
   ]);
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r bg-card">
+    <aside className="flex h-full w-60 shrink-0 flex-col overflow-y-auto border-r bg-card">
       <CommandPalette
         projects={projects.map((p) => ({ id: p.id, name: p.name }))}
       />

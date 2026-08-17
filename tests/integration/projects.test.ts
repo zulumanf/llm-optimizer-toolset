@@ -192,7 +192,9 @@ describe.skipIf(!TEST_URL)("projects (integration)", () => {
     await expect(sql`delete from audit_log`).rejects.toThrow(/insert-only/);
   });
 
-  it("every migration rolls back and re-applies cleanly", async () => {
+  // Six migrations landed 2026-08-17 (075–080); a full down-and-up cycle
+  // now legitimately exceeds the default 60s on CI's runner.
+  it("every migration rolls back and re-applies cleanly", { timeout: 240_000 }, async () => {
     const counted = await sql`
       select count(*)::int as count from schema_migrations
     `;

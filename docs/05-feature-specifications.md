@@ -143,3 +143,13 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** a draft is never a market until installed; failures store failed drafts; registry packs share the same installer byte-identically; standard prompt templates ride along unchanged.
 
 **Acceptance criteria:** install-through-review is the only path from research to markets.
+
+## Mobile-Responsive Workspace
+
+**Purpose:** the operator's weekly loop works from a phone — sidebar becomes a drawer behind a top bar below lg, same server-rendered nav in both frames (`specs/083-mobile-responsive-workspace.md`).
+
+**User flow:** identical to desktop; at phone width the menu button opens the drawer, navigation closes it, tables scroll horizontally in place.
+
+**Edge cases:** /audit/* keeps zero workspace chrome at every width; desktop layout is pixel-unchanged at lg+.
+
+**Acceptance criteria:** a 390px Playwright fence asserts no horizontal page scroll on the key operator surfaces.

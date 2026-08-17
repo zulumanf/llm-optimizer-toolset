@@ -2226,3 +2226,23 @@ research contributes only what research can know (place names, local
 brands, publications), while the measurement instrument stays uniform
 across hand-built and drafted markets. Zip codes and terminology are
 deliberately left empty: operator refinements, not search results.
+
+## 2026-08-17 — The workspace goes responsive; the sidebar becomes a drawer (spec 083)
+
+"Desktop-first" was policy while the operator worked at a desk; the weekly
+loop (approve refresh cards, review enrichment proposals) now happens
+wherever the operator is. The one structural blocker was the sidebar — a
+fixed 240px panel with no mobile handling. It is now the SAME
+server-rendered content in two frames: static at lg+, a slide-over behind
+a slim top bar below (no second nav to drift out of sync). Tables stay
+tables — horizontally scrollable, not restacked — because dense data is
+the product and phone-usable beats phone-pretty. A 390px Playwright fence
+pins no-horizontal-scroll on the key operator pages so responsiveness
+survives future pages.
+
+Same-day lesson, recorded for the next reader: several "full suite green"
+claims earlier today were false — `npm test | tail` reports the PIPE's
+exit code, and two real 076 regressions (the design-guard ratchet and a
+branded-URL assertion) rode through multiple merges while CI was red.
+Verification now uses pipefail and reads the counts. Trust the numbers
+you actually saw, never the exit code of a pipeline's last command.
