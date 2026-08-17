@@ -2104,3 +2104,21 @@ consequences worth recording: candidates carry their preparation errors as
 when the prospect now leads the rival — the one situation where republishing
 the same pitch would be actively wrong, surfaced before the click instead of
 after the send.
+
+## 2026-08-17 — The worker owns the clock; GitHub only watches the door
+
+The GitHub Actions heartbeat (spec 059's stopgap scheduler) took the whole
+account over the free Actions tier — a 4-second curl every 10 minutes bills
+144 rounded-up minutes a day, and when the quota ran out GitHub silently
+refused ALL jobs, including CI and, worse, the ticks themselves: the platform
+lost its clock for 20 hours and Monday's weekly kick did not fire. The fix
+inverts the dependency: the always-on Railway worker now ticks
+`lib/ops/tick.ts` every 10 minutes itself (automation dispatch, weekly kick,
+daily connector health — plus notification sync, which had NO production
+scheduler at all since launchd retired). The cron routes stay, thinned to
+shared-implementation calls, for manual pokes and any future external
+scheduler; every tick body was already windowed/idempotent, so two clocks
+racing is safe by construction. GitHub's workflow shrinks to the one thing an
+external vantage point genuinely does better — noticing the site is down —
+every 30 minutes, no CRON_SECRET. Billing amounts to ~50 uptime-minutes a
+month instead of ~4,300.
