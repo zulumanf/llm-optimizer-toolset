@@ -12,3 +12,10 @@ export function auditUrl(accessToken: string): string | null {
   if (!base) return null;
   return `${base.replace(/\/$/, "")}/audit/${accessToken}`;
 }
+
+/** Branded audit URL (spec 076): /audit/<slug>/<key>. Same APP_URL rules. */
+export function brandedAuditUrl(slug: string, key: string): string | null {
+  const base = process.env.APP_URL;
+  if (!base) return null;
+  return `${base.replace(/\/$/, "")}/audit/${slug}/${key}`;
+}

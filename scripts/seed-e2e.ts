@@ -274,6 +274,12 @@ async function main(): Promise<void> {
     "publish audit"
   );
 
+  // Branded link (spec 076): publishAudit auto-mints it; the specs assert
+  // both the branded page and the copy control's preference for it.
+  const { auditLinkForProspect } = await import("@/lib/prospects/links");
+  const branded = await auditLinkForProspect(prospect.prospectId);
+  if (!branded) throw new Error("publish did not auto-mint a branded link");
+
   // ------------------------------------------------- refresh queue (spec 075)
   // A second prospect on its own prospect-kind market project: audit
   // published from a manual run, then a scheduled run prepares exactly one
@@ -387,12 +393,13 @@ async function main(): Promise<void> {
       `refresh seed expected 1 prepared candidate, got ${JSON.stringify(prepared)}`
     );
   }
-
   const state = {
     clientProjectId: project.id,
     prospectId: prospect.prospectId,
     auditToken: audit.accessToken,
     refreshProspectName: "Harbor Group",
+    auditSlug: branded.slug,
+    auditKey: branded.key,
     suggestedTaskTitle: "E2E: publish neighborhood guide",
     overdueTaskTitle: "E2E: fix entity record",
   };

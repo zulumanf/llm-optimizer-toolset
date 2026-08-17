@@ -39,7 +39,8 @@ import {
   RecordSentButton,
   type DraftContactOption,
 } from "@/components/prospects/draft-actions";
-import { auditUrl } from "@/lib/prospects/urls";
+import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
+import { auditLinkForProspect } from "@/lib/prospects/links";
 import {
   GenerateRecordingButton,
   RecordingStatusSelect,
@@ -128,6 +129,11 @@ export default async function ProspectDetailPage({
   const latestBenchmark = benchmarks[0];
   const metrics = latestBenchmark ? await benchmarkMetrics(latestBenchmark.id) : null;
   const gapView = await authorityGapForProspect(id);
+  // Branded share link (spec 076) — preferred over the raw token URL.
+  const brandedLink = await auditLinkForProspect(id);
+  const brandedUrl = brandedLink
+    ? brandedAuditUrl(brandedLink.slug, brandedLink.key)
+    : null;
   const signalLabel = new Map(gapView.signals.map((s) => [s.id, s.label]));
   const suggestion = prospect.companyId ? null : await suggestCompanyForProspect(id);
   const [diagnosis, buyingSignals, exhibits] = await Promise.all([
@@ -841,7 +847,7 @@ export default async function ProspectDetailPage({
                   <div className="flex items-center gap-2">
                     {a.status === "published" && a.accessToken && (
                       <>
-                        <CopyAuditLink url={auditUrl(a.accessToken)} />
+                        <CopyAuditLink url={brandedUrl ?? auditUrl(a.accessToken)} />
                         <ExpireAuditButton auditId={a.id} />
                         <RevokeAuditButton auditId={a.id} />
                       </>

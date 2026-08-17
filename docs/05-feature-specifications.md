@@ -83,3 +83,13 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** preparation failure becomes a `needs_attention` card, never a silent skip; a claim that flipped (prospect now leads the rival) is flagged loudly before approval; promoted/revoked prospects are excluded and refuse late approval; a newer run supersedes undecided candidates; duplicate event delivery is idempotent per (prospect, run).
 
 **Acceptance criteria:** nothing prospect-visible changes without `approveAuditRefresh` — a named staff click through the full publish gates (`PRINCIPLES.md` #8).
+
+## Branded Audit Links
+
+**Purpose:** the emailed audit URL leads with the prospect's own name instead of 43 characters of noise, without weakening the token-is-the-lock security model (`specs/076-branded-audit-links.md`).
+
+**User flow:** first publication auto-mints `/audit/<name-slug>/<16-char-key>` → copy-link and outreach drafts prefer it → the link follows the prospect's current published audit through supersedes and refreshes → revocation burns branded and legacy doors together.
+
+**Edge cases:** wrong slug + valid key permanently redirects to the canonical slug; valid slug + wrong key is a 404 indistinguishable from any bad token; a burned key never resurrects across republishes; legacy token URLs work forever.
+
+**Acceptance criteria:** the key alone is the credential (96 bits); the slug grants nothing.
