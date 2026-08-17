@@ -93,3 +93,14 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** wrong slug + valid key permanently redirects to the canonical slug; valid slug + wrong key is a 404 indistinguishable from any bad token; a burned key never resurrects across republishes; legacy token URLs work forever.
 
 **Acceptance criteria:** the key alone is the credential (96 bits); the slug grants nothing.
+**Acceptance criteria:** the key alone is the credential (96 bits); the slug grants nothing.
+
+## Audit Sense-Check
+
+**Purpose:** an LLM second read of the assembled audit — coherence, overreach, numbers, copy, fairness — before a human decides to send it (`specs/077-audit-sense-check.md`).
+
+**User flow:** operator clicks Sense check on the prospect page (or, post-075, it runs during weekly refresh preparation) → concerns render with severity, area, and quoted text → at publish, concern-severity findings on a content-hash-matching check join the acknowledge-with-reason gate; stale or absent checks are advisory only.
+
+**Edge cases:** a failed LLM call stores the failure and fabricates nothing; content changed since the check → advisory "stale check" warning, never a block; quoted assistant answers are data under review, not instructions; polish-severity findings never gate.
+
+**Acceptance criteria:** the agent describes problems and never writes prospect-visible copy; no code path publishes or blocks on its say-so alone (`PRINCIPLES.md` #8).

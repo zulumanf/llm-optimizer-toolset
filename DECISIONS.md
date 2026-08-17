@@ -2137,3 +2137,19 @@ immutability is never touched; and `revokeAudit` burns branded keys in the
 same transaction, because burn-the-link must close every door at once. The
 branded routes delegate to the existing `[token]` pages (one renderer, two
 front doors) rather than duplicating 900 lines of prospect-facing rendering.
+front doors) rather than duplicating 900 lines of prospect-facing rendering.
+
+## 2026-08-17 — The sense-check describes; it never rewrites (spec 077)
+
+The audit QA agent could have been a copy-editor: read the page, return
+better wording. It deliberately is not. An agent that suggests replacement
+copy becomes the author of prospect-visible text — the exact thing
+PRINCIPLES #8 and the prospect-voice rules reserve for humans and the
+deterministic template — and its schema therefore has no field that can
+carry a rewrite. Binding is by content hash: a concern gates publication
+(via the existing acknowledge-with-reason machinery) only when the stored
+check read byte-identical content to what is being published; anything
+else — stale check, absent check, failed call — degrades to an advisory,
+because an assistant that blocks on stale information trains the operator
+to bypass it. Failed calls are stored as failures with empty findings:
+an absent verdict must never masquerade as a clean one.

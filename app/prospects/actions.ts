@@ -7,7 +7,7 @@ import * as buying from "@/lib/prospects/buying-signals";
 import * as quickstart from "@/lib/prospects/quickstart";
 import * as exhibits from "@/lib/prospects/exhibits";
 import * as refresh from "@/lib/prospects/refresh";
-
+import * as senseCheckSvc from "@/lib/prospects/sense-check";
 const run = makeActionRunner(["/prospects", "layout"]);
 
 export async function createLaunch(input: unknown) {
@@ -125,4 +125,7 @@ export async function approveAuditRefresh(input: unknown) {
 }
 export async function dismissAuditRefresh(input: unknown) {
   return run((u) => refresh.dismissAuditRefresh(u, input));
+}
+export async function runAuditSenseCheck(input: unknown) {
+  return run((u) => senseCheckSvc.runSenseCheck(u, input));
 }

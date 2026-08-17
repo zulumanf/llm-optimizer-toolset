@@ -41,6 +41,8 @@ import {
 } from "@/components/prospects/draft-actions";
 import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
 import { auditLinkForProspect } from "@/lib/prospects/links";
+import { latestSenseCheckForProspect } from "@/lib/prospects/sense-check";
+import { SenseCheckPanel } from "@/components/prospects/sense-check-panel";
 import {
   GenerateRecordingButton,
   RecordingStatusSelect,
@@ -129,6 +131,11 @@ export default async function ProspectDetailPage({
   const latestBenchmark = benchmarks[0];
   const metrics = latestBenchmark ? await benchmarkMetrics(latestBenchmark.id) : null;
   const gapView = await authorityGapForProspect(id);
+  // Sense-check (spec 077): latest result for the primary finding, or null
+  // when none has run; undefined = no primary finding yet (panel hidden).
+  const senseCheck = findings.some((f) => f.isPrimary && f.status === "approved")
+    ? await latestSenseCheckForProspect(id)
+    : undefined;
   // Branded share link (spec 076) — preferred over the raw token URL.
   const brandedLink = await auditLinkForProspect(id);
   const brandedUrl = brandedLink
@@ -830,6 +837,11 @@ export default async function ProspectDetailPage({
               </li>
             ))}
           </ul>
+        )}
+        {senseCheck !== undefined && (
+          <div className="mb-3">
+            <SenseCheckPanel prospectId={id} initial={senseCheck} />
+          </div>
         )}
         {audits.length === 0 ? (
           <EmptyState message="No audit page yet. Approve a story above, then Publish — you'll get a private link to send them." />

@@ -274,6 +274,32 @@ async function main(): Promise<void> {
     "publish audit"
   );
 
+  // Sense-check (spec 077): store one canned result AFTER publish so the
+  // panel renders concerns without any network call in e2e.
+  const { runSenseCheck } = await import("@/lib/prospects/sense-check");
+  const senseResult = await runSenseCheck(
+    operator,
+    { prospectId: prospect.prospectId },
+    async () => ({
+      text: JSON.stringify({
+        concerns: [
+          {
+            severity: "concern",
+            area: "overreach",
+            detail: "E2E seeded concern: headline overstates the table.",
+            quote: null,
+          },
+        ],
+        overallReadsFair: false,
+        confidence: 0.82,
+        confidenceNote: "E2E canned output.",
+      }),
+      tokensIn: 1,
+      tokensOut: 1,
+    })
+  );
+  if (!senseResult.ok) throw new Error(`sense-check seed: ${senseResult.error.message}`);
+
   // Branded link (spec 076): publishAudit auto-mints it; the specs assert
   // both the branded page and the copy control's preference for it.
   const { auditLinkForProspect } = await import("@/lib/prospects/links");
