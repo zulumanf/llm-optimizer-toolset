@@ -12,6 +12,7 @@
  * - Hard flags downgrade and explain, never delete. reputation_concern
  *   additionally recommends human review.
  */
+import { AUTHORITY_PROFILE_VERSION } from "@/lib/prospects/authority";
 import { classifySource, type SourceType } from "@/lib/sources/classify";
 import { PROVENANCE_FACTORS } from "@/lib/prospects/authority";
 import type {
@@ -139,7 +140,7 @@ export function fixabilityProfile(inputs: FixabilityInputs): FixabilityProfile {
       measuredMax: measured ? 20 : 0,
       measured,
       evidence: measured
-        ? [`Authority score ${Math.round(inputs.authorityScore as number)}/100 (authority-v1)`]
+        ? [`Authority score ${Math.round(inputs.authorityScore as number)}/100 (${AUTHORITY_PROFILE_VERSION})`]
         : ["No authority signals recorded."],
     });
   }

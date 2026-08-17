@@ -37,7 +37,8 @@ async function loadSignals(
   prospectId: string
 ): Promise<{ inputs: AuthoritySignalInput[]; details: GapSignalDetail[] }> {
   const rows = await sql`
-    select id, kind, label, provenance, scope, confidence, source_url, source_type
+    select id, kind, label, provenance, scope, confidence, source_url, source_type,
+      value_number
     from prospect_authority_signals
     where prospect_id = ${prospectId}
     order by created_at asc
@@ -51,6 +52,7 @@ async function loadSignals(
       confidence: r.confidence === null ? null : Number(r.confidence),
       sourceType:
         (r.sourceType as AuthoritySignalInput["sourceType"]) ?? null,
+      valueNumber: r.valueNumber === null ? null : Number(r.valueNumber),
     })),
     details: rows.map((r) => ({
       id: r.id as string,

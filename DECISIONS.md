@@ -2165,3 +2165,17 @@ have silently never run. The sweep now lives in lib/ops/tick.ts
 tick with the route kept as a thin wrapper. Lesson recorded: when a
 scheduler is replaced, enumerate every route the OLD schedulers called —
 the one nobody lists is the one that dies quietly.
+
+## 2026-08-17 — Authority evidence scales with its magnitude (spec 078)
+
+Twenty prospects clustered at 35–39 because authority-v1 scored kinds of
+receipts at fixed points, magnitude-blind — $219M/#1 and $23M/#3 both
+being volume+count+ranking = 35. v1's shape was honest while values were
+sparse; with 15/17 volumes and 13/14 rankings now quantified, blindness
+became the dishonesty. v2 multiplies kind points by a magnitude factor:
+log curves for volume/count/reviews (production is log-distributed),
+bands for rank (ordinal), floors so a small quantified fact still beats
+no fact — and, deliberately, a MISSING number scores at the floor, never
+above a present one, so the incentive always favors recording the real
+figure. Anti-stuffing (max-per-kind), provenance discounts, and component
+caps are untouched.

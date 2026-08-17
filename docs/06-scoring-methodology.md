@@ -157,3 +157,22 @@ A week-over-week delta is **notable** when `|Δ| ≥ 0.10` on a rate metric with
 |---|---|---|
 | v1.0 | 2026-07-27 | Initial methodology. |
 | v1.1 | 2026-07-31 | Added stored `first_position_rate` and `top_three_rate` (denominator `N`, no minimum-cell rule, outside the Authority composite). Authority weights and every v1.0 formula unchanged. v1.0 and v1.1 scores must never be compared in UI or reports (standing cross-version rule); v1.0 rows are never recomputed. Expected consequence: the first report after the bump shows deltas as not-comparable/insufficient against v1.0 baselines — that is the versioning model working, not a data problem. |
+
+## Authority magnitude factors (authority-v2, spec 078)
+
+Evidence points scale with the magnitude the signal records, inside the
+unchanged per-kind points and component caps:
+
+| Kind | Full points at | Curve | Missing value |
+|---|---|---|---|
+| transaction_volume | ≥ $100M local closed volume | log₁₀ from $1M, floor ⅓ | floor (⅓) |
+| transaction_count | ≥ 200 sides | log₁₀ from 1, floor ⅓ | floor (⅓) |
+| avg_deal_value | ≥ $2M | linear, floor ⅓ | floor (⅓) |
+| review_footprint | ≥ 100 reviews | log₁₀ from 1, floor ⅓ | floor (⅓) |
+| ranking (value = rank) | #1 | bands 1 / ≤3: 0.87 / ≤10: 0.73 / ≤25: 0.6 | 0.5 |
+| all other kinds | — | 1.0 | 1.0 |
+
+Log curves because production is log-distributed; floors because a small
+quantified fact outranks no fact and a missing number must never outscore
+a small one. Composite version prospect-score-v3; old stored scores keep
+their stamped versions and are re-scored forward only.
