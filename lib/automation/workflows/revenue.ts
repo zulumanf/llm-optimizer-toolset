@@ -245,7 +245,11 @@ export const auditRefreshWorkflow = defineWorkflow({
   description:
     "After each scheduled prospect-market benchmark run, prepare a refreshed audit candidate per published audit — linked run, generated findings, week-over-week delta, dry-run preflight — for one-click human approval in the refresh queue.",
   domain: "revenue",
-  clientScope: "platform_only",
+  // "either", not "platform_only": benchmark.completed events carry the
+  // run's projectId, and the engine refuses a projectId on platform-only
+  // workflows — the first production delivery dead-lettered on exactly
+  // that (2026-08-17). The handler itself is project-agnostic.
+  clientScope: "either",
   owner: "founder / sales",
   actionType: "audit_refresh_preparation",
   autonomyLevel: 2,
