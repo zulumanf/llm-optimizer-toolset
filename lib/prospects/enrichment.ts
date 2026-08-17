@@ -228,7 +228,14 @@ export async function enrichProspect(
       if (error) {
         await insert("contact_email", { note: "research call failed" });
       } else if (result) {
-        if (need.needEmail && result.email) {
+        // A found "email" that is not one — Cloudflare's [email protected]
+        // placeholder, or any malformed string — is discarded here, not
+        // staged for a human to reject. The first real sweep returned six.
+        const emailValid =
+          result.email !== null &&
+          z.string().email().safeParse(result.email).success &&
+          !/protected|example\.com/i.test(result.email);
+        if (need.needEmail && result.email && emailValid) {
           await insert("contact_email", {
             email: result.email,
             name: result.emailContactName ?? prospect.teamLeader ?? prospect.businessName,
