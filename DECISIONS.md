@@ -2179,3 +2179,16 @@ no fact — and, deliberately, a MISSING number scores at the floor, never
 above a present one, so the incentive always favors recording the real
 figure. Anti-stuffing (max-per-kind), provenance discounts, and component
 caps are untouched.
+
+## 2026-08-17 — Perplexity finds; the operator verifies (spec 079)
+
+The enrichment adapter could have written what it found straight into
+contacts and signals. It stages instead: found ≠ true (spec 027), so an
+email is `ai_inferred` until a human approves it and a cited production
+figure is `publicly_sourced` — never `verified`, which remains the
+spec-074 flow where the operator confirms the source page. Token
+efficiency is structural, not aspirational: the question builder returns
+null for a fully-known prospect (zero calls), asks only for missing
+fields, the sweep skips anything researched within 30 days, and the base
+sonar model with a capped output is the default with no silent
+escalation. Every call ledgers under prospect-enrichment-v1.

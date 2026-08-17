@@ -104,3 +104,12 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** a failed LLM call stores the failure and fabricates nothing; content changed since the check → advisory "stale check" warning, never a block; quoted assistant answers are data under review, not instructions; polish-severity findings never gate.
 
 **Acceptance criteria:** the agent describes problems and never writes prospect-visible copy; no code path publishes or blocks on its say-so alone (`PRINCIPLES.md` #8).
+## Perplexity Enrichment
+
+**Purpose:** find contact emails and independently published production data for prospects via search-grounded research — cited, staged, and operator-approved, never silently trusted (`specs/079-perplexity-enrichment.md`).
+
+**User flow:** Run research on a prospect (or sweep a launch) → ONE Perplexity call asks only for that prospect's missing fields → findings stage as proposals with citations → operator approves (materializes a contact or a properly-provenanced authority signal feeding magnitude-aware scoring) or rejects.
+
+**Edge cases:** fully-known prospect costs zero calls; freshness window stops re-queries; a failed call stores a failure row; emails are `ai_inferred` and signals `publicly_sourced` — never `verified` from research alone (spec 074 owns that); missing API key fails closed.
+
+**Acceptance criteria:** no auto-approval at any confidence; every call in the LLM ledger under the daily ceiling.

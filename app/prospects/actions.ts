@@ -8,6 +8,7 @@ import * as quickstart from "@/lib/prospects/quickstart";
 import * as exhibits from "@/lib/prospects/exhibits";
 import * as refresh from "@/lib/prospects/refresh";
 import * as senseCheckSvc from "@/lib/prospects/sense-check";
+import * as enrichmentSvc from "@/lib/prospects/enrichment";
 const run = makeActionRunner(["/prospects", "layout"]);
 
 export async function createLaunch(input: unknown) {
@@ -128,4 +129,14 @@ export async function dismissAuditRefresh(input: unknown) {
 }
 export async function runAuditSenseCheck(input: unknown) {
   return run((u) => senseCheckSvc.runSenseCheck(u, input));
+}
+
+export async function enrichProspect(input: unknown) {
+  return run((u) => enrichmentSvc.enrichProspect(u, input));
+}
+export async function approveEnrichmentProposal(input: unknown) {
+  return run((u) => enrichmentSvc.approveEnrichmentProposal(u, input));
+}
+export async function rejectEnrichmentProposal(input: unknown) {
+  return run((u) => enrichmentSvc.rejectEnrichmentProposal(u, input));
 }
