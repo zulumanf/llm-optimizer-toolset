@@ -172,11 +172,102 @@ export async function runAutomationTick(
  * The weekly kickoff (spec 017): start each configured project's weekly
  * cycle and brief. Idempotent per ISO week — a repeat fire is a no-op, so
  * any tick after the week rolls over starts the week's work.
+ *
+ * `startWeeklyCycles` serves CLIENT projects only (a cycle is client
+ * machinery), so the standalone baseline sweep below is what runs enrolled
+ * non-client projects — the prospect market benchmarks (spec 075's feed).
+ * Discovered on the worker clock's first production tick (2026-08-17): the
+ * weekly-baseline route had had NO caller since launchd retired, so an
+ * enrolled prospect project's weekly run silently never started.
  */
 export async function runWeeklyKick(): Promise<Record<string, unknown>> {
   const cycles = await startWeeklyCycles();
   const briefs = await startWeeklyBriefs();
-  return { ...cycles, briefs };
+  const baselines = await runWeeklyBaselines();
+  return { ...cycles, briefs, baselines };
+}
+
+interface BaselineConfig {
+  providers: import("@/lib/runs/cells").ProviderConfig[];
+  budgetUsd: number;
+}
+
+/**
+ * Weekly baseline sweep (docs/07 cadence; formerly only the
+ * /api/cron/weekly-baseline route): for each active project of ANY kind
+ * with a configured baseline set, start a scheduled run of the latest
+ * frozen version — unless one already exists for this ISO week (UTC).
+ * Windowed and idempotent like everything else on the tick.
+ */
+export async function runWeeklyBaselines(): Promise<
+  Array<{ projectId: string; outcome: string }>
+> {
+  const { startRun } = await import("@/lib/runs/service");
+  const { sql } = await import("@/db/client");
+
+  const projects = await sql`
+    select id, name, baseline_prompt_set_id, baseline_config
+    from projects
+    where status = 'active' and baseline_prompt_set_id is not null
+  `;
+
+  const results: Array<{ projectId: string; outcome: string }> = [];
+  for (const project of projects) {
+    const projectId = project.id as string;
+    const config = project.baselineConfig as BaselineConfig | null;
+    if (!config?.providers?.length || !config.budgetUsd) {
+      log("warn", "cron.baseline.misconfigured", { projectId });
+      results.push({ projectId, outcome: "misconfigured" });
+      continue;
+    }
+
+    const [latest] = await sql`
+      select id from prompt_set_versions
+      where prompt_set_id = ${project.baselinePromptSetId as string}
+      order by version desc limit 1
+    `;
+    if (!latest) {
+      log("warn", "cron.baseline.never_frozen", { projectId });
+      results.push({ projectId, outcome: "never_frozen" });
+      continue;
+    }
+
+    // Dedupe key: ISO week (UTC) of started_at for scheduled runs
+    const [existing] = await sql`
+      select id from runs
+      where project_id = ${projectId} and trigger = 'scheduled'
+        and to_char(started_at at time zone 'UTC', 'IYYY-IW')
+          = to_char(now() at time zone 'UTC', 'IYYY-IW')
+    `;
+    if (existing) {
+      results.push({ projectId, outcome: "already_ran_this_week" });
+      continue;
+    }
+
+    const week = new Date().toISOString().slice(0, 10);
+    const started = await startRun(
+      null,
+      {
+        projectId,
+        promptSetVersionId: latest.id as string,
+        providers: config.providers,
+        budgetUsd: config.budgetUsd,
+        label: `Weekly baseline ${week}`,
+      },
+      "scheduled"
+    );
+    if (started.ok) {
+      log("info", "cron.baseline.started", { projectId, runId: started.data.id });
+      results.push({ projectId, outcome: "started" });
+    } else {
+      log("error", "cron.baseline.failed", {
+        projectId,
+        error: started.error.message,
+      });
+      results.push({ projectId, outcome: `failed: ${started.error.kind}` });
+    }
+  }
+  return results;
 }
 
 /** Pure cadence check for the worker loop — known-answer testable. */
