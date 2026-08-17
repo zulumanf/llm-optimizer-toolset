@@ -2192,3 +2192,15 @@ null for a fully-known prospect (zero calls), asks only for missing
 fields, the sweep skips anything researched within 30 days, and the base
 sonar model with a capped output is the default with no silent
 escalation. Every call ledgers under prospect-enrichment-v1.
+
+## 2026-08-17 — Discovery finds names; enrichment digs facts (spec 080)
+
+The Perplexity discovery adapter deliberately asks a market-level question
+and nothing else — no emails, no production figures. Splitting shallow
+discovery (one cheap sweep proposing names into the review queue) from
+per-prospect enrichment (spec 079's missing-fields-only research with its
+email-validity gate) keeps each call small, keeps garbage out of the
+sweep, and means approving a candidate is a cheap decision that never
+smuggles unverified facts in with the name. Provenance is ai_inferred at
+the envelope level: a search answer that lists a team is a lead about the
+team's existence, not a verified fact about anything.
