@@ -2153,3 +2153,15 @@ else — stale check, absent check, failed call — degrades to an advisory,
 because an assistant that blocks on stale information trains the operator
 to bypass it. Failed calls are stored as failures with empty findings:
 an absent verdict must never masquerade as a clean one.
+## 2026-08-17 — The tick runs weekly baselines for ANY project kind
+
+The worker clock's first production tick exposed dead wiring:
+`startWeeklyCycles` serves `kind='client'` only (a cycle is client
+machinery), and the standalone /api/cron/weekly-baseline route — the thing
+that runs enrolled non-client projects — had had NO caller since launchd
+retired on deploy day. The enrolled Jersey City prospect benchmark would
+have silently never run. The sweep now lives in lib/ops/tick.ts
+(`runWeeklyBaselines`, any kind, ISO-week deduped), called by the worker
+tick with the route kept as a thin wrapper. Lesson recorded: when a
+scheduler is replaced, enumerate every route the OLD schedulers called —
+the one nobody lists is the one that dies quietly.
