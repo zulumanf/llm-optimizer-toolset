@@ -2215,3 +2215,14 @@ happened lately. Two smaller judgments: an unsourced development is never
 staged (a rumor is not a signal), and the daily tick's sweep needs no
 cadence bookkeeping because per-prospect freshness windows already make
 it self-limiting — cadence as a property of the data, not a scheduler.
+
+## 2026-08-17 — Drafted packs share the hand-built packs' spine (spec 082)
+
+A researched market pack could have grown its own install path and its own
+prompt templates. It does neither: `installPackDefinition` is extracted so
+registry packs and approved drafts run byte-identical installation, and
+drafts ship the SAME standardTemplates() every hand-built pack uses — the
+research contributes only what research can know (place names, local
+brands, publications), while the measurement instrument stays uniform
+across hand-built and drafted markets. Zip codes and terminology are
+deliberately left empty: operator refinements, not search results.

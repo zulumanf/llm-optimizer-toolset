@@ -11,6 +11,7 @@ import {
 import { EmptyState, PageHeader, PageShell, Section } from "@/components/layout/page";
 import { ImportDialog } from "@/components/prospects/import-dialog";
 import { LaunchDialog } from "@/components/prospects/launch-dialog";
+import { MarketDraftDialog } from "@/components/prospects/market-draft-dialog";
 import { ProspectDialog } from "@/components/prospects/prospect-dialog";
 import { DiscoverDialog } from "@/components/prospects/discover-dialog";
 import { CandidateActions } from "@/components/prospects/candidate-actions";
@@ -57,6 +58,7 @@ export default async function ProspectsPage() {
                 Refresh queue · {refreshCount} pending
               </Link>
             )}
+            <MarketDraftDialog />
             <LaunchDialog markets={markets.map((m) => ({ id: m.id, name: m.name, parentName: m.parentName }))} />
             {/* No source adapter = no Discover button (plan 3.8): a dialog
                 with an empty provider list errors on submit. CSV import and

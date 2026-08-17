@@ -9,6 +9,7 @@ import * as exhibits from "@/lib/prospects/exhibits";
 import * as refresh from "@/lib/prospects/refresh";
 import * as senseCheckSvc from "@/lib/prospects/sense-check";
 import * as enrichmentSvc from "@/lib/prospects/enrichment";
+import * as marketResearch from "@/lib/markets/research";
 const run = makeActionRunner(["/prospects", "layout"]);
 
 export async function createLaunch(input: unknown) {
@@ -139,4 +140,14 @@ export async function approveEnrichmentProposal(input: unknown) {
 }
 export async function rejectEnrichmentProposal(input: unknown) {
   return run((u) => enrichmentSvc.rejectEnrichmentProposal(u, input));
+}
+
+export async function draftMarketPack(input: unknown) {
+  return run((u) => marketResearch.draftMarketPack(u, input));
+}
+export async function installMarketPackDraft(input: unknown) {
+  return run((u) => marketResearch.installMarketPackDraft(u, input));
+}
+export async function rejectMarketPackDraft(input: unknown) {
+  return run((u) => marketResearch.rejectMarketPackDraft(u, input));
 }
