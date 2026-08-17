@@ -21,9 +21,12 @@ export const metadata: Metadata = {
 export default async function AuditAnswersPage({
   params,
 }: {
-  params: Promise<{ token: string }>;
+  // The segment is [handle] so the branded sibling [handle]/[key] can
+  // coexist (Next.js requires one param name per level). For this legacy
+  // route the handle IS the 43-char access token; URLs are unchanged.
+  params: Promise<{ handle: string }>;
 }) {
-  const { token } = await params;
+  const { handle: token } = await params;
   const hdrs = await headers();
   const viewer = await getCurrentUserOrNull();
   const snapshot = await getAuditByToken(token, {

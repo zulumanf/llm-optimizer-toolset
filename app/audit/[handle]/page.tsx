@@ -106,9 +106,12 @@ function Drawer({
 export default async function ProspectAuditPage({
   params,
 }: {
-  params: Promise<{ token: string }>;
+  // The segment is [handle] so the branded sibling [handle]/[key] can
+  // coexist (Next.js requires one param name per level). For this legacy
+  // route the handle IS the 43-char access token; URLs are unchanged.
+  params: Promise<{ handle: string }>;
 }) {
-  const { token } = await params;
+  const { handle: token } = await params;
   const hdrs = await headers();
   // Session read is only to LABEL the view (plan 3.6): an operator's QA
   // open must not count as prospect interest. Content still comes solely

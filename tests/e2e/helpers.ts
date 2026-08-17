@@ -7,6 +7,8 @@ export interface SeedState {
   prospectId: string;
   auditToken: string;
   refreshProspectName: string;
+  auditSlug: string;
+  auditKey: string;
   suggestedTaskTitle: string;
   overdueTaskTitle: string;
 }

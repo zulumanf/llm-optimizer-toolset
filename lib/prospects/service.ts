@@ -93,7 +93,13 @@ import { diagnoseProspect } from "@/lib/prospects/diagnose";
 import { mockScoringAllowed } from "@/lib/ai/registry";
 import { checkNoMockResponses, deadSourceLinks } from "@/lib/qa/preflight";
 import { validateAuditEvidence } from "@/lib/prospects/audit-evidence";
-import { auditUrl } from "@/lib/prospects/urls";
+import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
+import {
+  auditLinkForProspect,
+  ensureAuditLink,
+  revokeAuditLinks,
+} from "@/lib/prospects/links";
+import { log } from "@/lib/logger";
 import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
 
 /** Diagnoses a prospect may read about themselves — retitled for them.
@@ -2592,6 +2598,23 @@ export async function publishAudit(
         warnings: [...disqualifyingWarnings, ...publishWarnings],
       };
     });
+    // Branded link (spec 076): a first publication auto-mints the
+    // /audit/<slug>/<key> front door. AFTER the publish transaction and
+    // isolated — a mint failure must never fail a publish that committed.
+    // Supersedes keep the existing link by construction (it points at the
+    // prospect, not the snapshot).
+    if (!result.replaced) {
+      try {
+        await sql.begin((tx) =>
+          ensureAuditLink(tx, user.id, input.prospectId, prospect.businessName)
+        );
+      } catch (err) {
+        log("warn", "prospect.audit_link_mint_failed", {
+          prospectId: input.prospectId,
+          error: err instanceof Error ? err.message : "unknown",
+        });
+      }
+    }
     return ok(result);
   } catch (err) {
     return fail(err);
@@ -2669,6 +2692,9 @@ export async function revokeAudit(
       if (!row) {
         throw new ClassifiedError("conflict", "Audit not found or not published.");
       }
+      // Burn-the-link burns EVERY door (spec 076): the branded key must die
+      // with the token, and a later republish must not resurrect it.
+      await revokeAuditLinks(tx, row.prospectId as string);
       await writeAudit(tx, {
         userId: user.id,
         action: "prospect.audit_revoke",
@@ -2812,8 +2838,17 @@ export async function createOutreachDraft(
           findingExplanation: finding.explanation,
           providers: run?.providers ?? [],
           sampleSize: run?.responseCount ?? 0,
+          // Branded link preferred (spec 076): the first readable thing in
+          // the emailed URL is the prospect's own name. Legacy token URL is
+          // the fallback for prospects minted before the feature.
           auditUrl: publishedAudit
-            ? auditUrl(publishedAudit.accessToken as string)
+            ? await (async () => {
+                const link = await auditLinkForProspect(input.prospectId, tx);
+                return (
+                  (link ? brandedAuditUrl(link.slug, link.key) : null) ??
+                  auditUrl(publishedAudit.accessToken as string)
+                );
+              })()
             : null,
         });
         subject = generated.subject;

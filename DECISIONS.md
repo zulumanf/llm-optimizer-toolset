@@ -2122,3 +2122,18 @@ racing is safe by construction. GitHub's workflow shrinks to the one thing an
 external vantage point genuinely does better — noticing the site is down —
 every 30 minutes, no CRON_SECRET. Billing amounts to ~50 uptime-minutes a
 month instead of ~4,300.
+
+## 2026-08-17 — Branded audit links: the name is cosmetic, the key is the lock (spec 076)
+
+The operator wanted vanity audit URLs for outreach. A guessable
+`/audit/<team-name>` would let anyone enumerate names and read competitive
+claims about businesses that never consented — the high-entropy token IS the
+access control (spec 032) and that does not bend. The shape that keeps both:
+`/audit/<slug>/<key>` where the slug is kebab-cased branding and a 16-char
+(96-bit) key is the sole credential. Two structural choices worth recording:
+the link row points at the PROSPECT, not the audit — so supersede (057) and
+refresh (075) keep emailed links alive by construction, and published-row
+immutability is never touched; and `revokeAudit` burns branded keys in the
+same transaction, because burn-the-link must close every door at once. The
+branded routes delegate to the existing `[token]` pages (one renderer, two
+front doors) rather than duplicating 900 lines of prospect-facing rendering.
