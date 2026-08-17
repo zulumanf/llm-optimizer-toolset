@@ -18,7 +18,7 @@ const USA: Omit<GeoNode, "children"> = {
 
 /** The eleven target prompt categories as standard templates; every pack
  * gets these, plus its own extras. All are recommendation-intent. */
-function standardTemplates(): MarketPromptTemplate[] {
+export function standardTemplates(): MarketPromptTemplate[] {
   return [
     {
       key: "best-agents-city",

@@ -133,3 +133,13 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** an unsourced development is a rumor — never staged; unknown kinds map to `other`, surfaced not dropped; undated finds record today as the observation date.
 
 **Acceptance criteria:** approval remains the only path to a signal (`PRINCIPLES.md` #8); still one call per prospect, ever.
+
+## Market-Pack Drafts
+
+**Purpose:** open a new city in minutes — one research call drafts the pack (neighborhoods, brokerages, publications) for review; installing creates the market tree and opens the launch (`specs/082-market-pack-drafts.md`).
+
+**User flow:** Prospects → Draft new market → city + state → review the drafted names with citations → Install & open launch (or Reject) → run discovery (spec 080) for teams → enrichment (079/081) per approved prospect.
+
+**Edge cases:** a draft is never a market until installed; failures store failed drafts; registry packs share the same installer byte-identically; standard prompt templates ride along unchanged.
+
+**Acceptance criteria:** install-through-review is the only path from research to markets.
