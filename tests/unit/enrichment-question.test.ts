@@ -98,3 +98,16 @@ describe("enrichmentResultSchema", () => {
     ).toBe(false);
   });
 });
+
+describe("email validity gate (first-sweep lesson)", () => {
+  it("recognizes the Cloudflare placeholder as not-an-email", () => {
+    // The staging filter in enrichProspect: syntactically valid but
+    // placeholder-flavored strings must not become proposals.
+    const valid = (email: string): boolean =>
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !/protected|example\.com/i.test(email);
+    expect(valid("[email protected]")).toBe(false);
+    expect(valid("jill@jillbiggsgroup.com")).toBe(true);
+    expect(valid("test@example.com")).toBe(false);
+    expect(valid("not-an-email")).toBe(false);
+  });
+});
