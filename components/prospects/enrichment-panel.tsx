@@ -104,7 +104,9 @@ export function EnrichmentPanel({
                   <Badge variant="secondary">
                     {proposal.kind === "contact_email"
                       ? "email"
-                      : String(proposal.payload.kind ?? "signal").replaceAll("_", " ")}
+                      : proposal.kind === "buying_signal"
+                        ? `timing · ${String(proposal.payload.kind ?? "signal").replaceAll("_", " ")}`
+                        : String(proposal.payload.kind ?? "signal").replaceAll("_", " ")}
                   </Badge>
                   <span className="min-w-0 flex-1">
                     {proposal.kind === "contact_email"

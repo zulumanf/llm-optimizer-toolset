@@ -17,10 +17,14 @@ import {
   type PerplexityResearchCaller,
 } from "@/lib/ai/perplexity";
 import { addAuthoritySignal, addContact } from "@/lib/prospects/service";
+import { addBuyingSignal } from "@/lib/prospects/buying-signals";
+import { BUYING_SIGNAL_KINDS } from "@/lib/prospects/constants";
 
 export const ENRICHMENT_VERSION = "prospect-enrichment-v1";
 export const ENRICHMENT_MODEL = "sonar";
 export const ENRICHMENT_FRESHNESS_DAYS = 30;
+/** Buying signals are time-sensitive: re-ask after this many days (spec 081). */
+export const SIGNAL_FRESHNESS_DAYS = 30;
 const ENRICHMENT_MAX_TOKENS = 700;
 
 // ------------------------------------------------------------ the question
@@ -30,6 +34,8 @@ export interface KnownState {
   needVolume: boolean;
   needSides: boolean;
   needRank: boolean;
+  /** Buying-signal research stale (> SIGNAL_FRESHNESS_DAYS) — spec 081. */
+  needSignals: boolean;
 }
 
 export interface ProspectIdentity {
@@ -60,6 +66,11 @@ export function buildEnrichmentQuestion(
       `"production": most recent RealTrends America's Best (or comparable independently published) figures: ${production.join(", ")}, with the year and source page`
     );
   }
+  if (need.needSignals) {
+    wants.push(
+      '"recentDevelopments": notable developments from roughly the last 90 days — brokerage change, team hires or expansion, new development listings, awards or press coverage, new leadership — each with a date and source page'
+    );
+  }
   if (wants.length === 0) return null;
 
   const who = [
@@ -78,6 +89,8 @@ Reply with ONLY a JSON object of this exact shape (null for anything not found):
 {"email": string|null, "emailContactName": string|null, "emailSourceUrl": string|null,
  "production": {"volumeUsd": number|null, "sides": number|null, "rank": number|null,
    "rankScope": string|null, "year": number|null, "sourceUrl": string|null} | null,
+ "recentDevelopments": [{"kind": one of ["brokerage_move","team_expansion","hiring_marketing","website_redesign","new_market_launch","new_development_listings","media_activity","new_leadership","other"],
+   "headline": string, "date": "YYYY-MM-DD"|null, "sourceUrl": string|null}] | null,
  "confidence": number between 0 and 1,
  "notes": string}
 Never invent an email, figure, URL, or rank. A null is the correct answer for
@@ -99,6 +112,17 @@ export const enrichmentResultSchema = z.object({
     })
     .nullable()
     .default(null),
+  recentDevelopments: z
+    .array(
+      z.object({
+        kind: z.string(),
+        headline: z.string().min(1),
+        date: z.string().nullable().default(null),
+        sourceUrl: z.string().nullable().default(null),
+      })
+    )
+    .nullable()
+    .default(null),
   confidence: z.number().min(0).max(1),
   notes: z.string().default(""),
 });
@@ -118,11 +142,18 @@ async function knownState(prospectId: string): Promise<KnownState> {
       and kind in ('transaction_volume', 'transaction_count', 'ranking')
   `;
   const have = new Set(kinds.map((k) => k.kind as string));
+  const [freshSignals] = await sql`
+    select 1 from enrichment_proposals
+    where prospect_id = ${prospectId} and kind = 'buying_signal'
+      and created_at > now() - make_interval(days => ${SIGNAL_FRESHNESS_DAYS})
+    limit 1
+  `;
   return {
     needEmail: !contact,
     needVolume: !have.has("transaction_volume"),
     needSides: !have.has("transaction_count"),
     needRank: !have.has("ranking"),
+    needSignals: !freshSignals,
   };
 }
 
@@ -271,6 +302,22 @@ export async function enrichProspect(
             });
           }
         }
+        if (need.needSignals && result.recentDevelopments) {
+          const known = new Set<string>(BUYING_SIGNAL_KINDS);
+          for (const dev of result.recentDevelopments) {
+            // A development without any source is a rumor, not a signal —
+            // the sweep's own citations back an unattributed find.
+            const devSource = dev.sourceUrl ?? citations[0] ?? null;
+            if (!devSource) continue;
+            await insert("buying_signal", {
+              // Unknown kinds map to "other" — surfaced, never dropped.
+              kind: known.has(dev.kind) ? dev.kind : "other",
+              label: dev.headline,
+              observedOn: dev.date,
+              sourceUrl: devSource,
+            });
+          }
+        }
       }
       await writeAudit(tx, {
         userId: user.id,
@@ -356,7 +403,22 @@ export async function approveEnrichmentProposal(
     const sourceUrl =
       (payload.sourceUrl as string | null) ?? citations[0] ?? null;
 
-    if (proposal.kind === "contact_email") {
+    if (proposal.kind === "buying_signal") {
+      const observedOn =
+        typeof payload.observedOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(payload.observedOn)
+          ? payload.observedOn
+          : new Date().toISOString().slice(0, 10);
+      const added = await addBuyingSignal(user, {
+        prospectId: proposal.prospectId,
+        kind: String(payload.kind),
+        label: String(payload.label),
+        sourceUrl: String(sourceUrl),
+        observedOn,
+        provenance: "publicly_sourced",
+        notes: "Found via Perplexity research (spec 081)",
+      });
+      if (!added.ok) return fail(added.error);
+    } else if (proposal.kind === "contact_email") {
       const added = await addContact(user, {
         prospectId: proposal.prospectId,
         name: String(payload.name ?? "Unknown"),
@@ -437,7 +499,7 @@ export async function rejectEnrichmentProposal(
 
 export interface EnrichmentProposalRow {
   id: string;
-  kind: "contact_email" | "authority_signal";
+  kind: "contact_email" | "authority_signal" | "buying_signal";
   payload: Record<string, unknown>;
   citations: string[];
   confidence: number | null;

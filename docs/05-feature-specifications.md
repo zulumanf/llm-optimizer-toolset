@@ -123,3 +123,13 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** a failed sweep is a failed run, never filled in; missing key fails closed; discovery never asks for emails (spec 079's job, with its validity gate); each sweep ledgers under `prospect-discovery-v1`.
 
 **Acceptance criteria:** nothing becomes a prospect without operator approval; the mock stays guarded out of production.
+
+## Buying-Signal Research
+
+**Purpose:** wake the `buyingSignals` score component — Perplexity finds recent developments (brokerage moves, expansions, press) and stages them for approval, telling the operator *when* to reach out (`specs/081-buying-signal-research.md`).
+
+**User flow:** rides the same single enrichment call (a `recentDevelopments` section appears when signal research is >30 days stale) → sourced developments stage as proposals → approval materializes via the existing buying-signals machinery with recency-decayed scoring. The worker's daily tick sweeps active launches; freshness windows make it self-limiting.
+
+**Edge cases:** an unsourced development is a rumor — never staged; unknown kinds map to `other`, surfaced not dropped; undated finds record today as the observation date.
+
+**Acceptance criteria:** approval remains the only path to a signal (`PRINCIPLES.md` #8); still one call per prospect, ever.

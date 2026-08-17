@@ -40,6 +40,29 @@ export interface AutomationTickReport {
 export async function runAutomationTick(
   opts: { includeHealth?: boolean } = {}
 ): Promise<AutomationTickReport> {
+  // Prospect enrichment sweep (spec 081) rides the DAILY cadence only —
+  // and is self-limiting beyond that: per-prospect freshness windows mean
+  // zero API calls until something is 30 days stale. Staged proposals
+  // only; every approval stays human (PRINCIPLES #8). Isolated: a sweep
+  // failure must never fail dispatch.
+  if (opts.includeHealth) {
+    try {
+      const { systemUser } = await import("@/lib/auth");
+      const { sweepEnrichment } = await import("@/lib/prospects/enrichment");
+      const { sql: db } = await import("@/db/client");
+      const system = await systemUser();
+      const launches = await db`
+        select id from market_launches where archived_at is null
+      `;
+      for (const launch of launches) {
+        await sweepEnrichment(system, { launchId: launch.id as string });
+      }
+    } catch (err) {
+      log("error", "cron.enrichment_sweep_failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+  }
   const triggers = await runTriggerDispatch();
   const events = await runEventDelivery(100);
   const health = opts.includeHealth
