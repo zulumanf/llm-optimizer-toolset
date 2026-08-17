@@ -43,6 +43,8 @@ import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
 import { auditLinkForProspect } from "@/lib/prospects/links";
 import { latestSenseCheckForProspect } from "@/lib/prospects/sense-check";
 import { SenseCheckPanel } from "@/components/prospects/sense-check-panel";
+import { EnrichmentPanel } from "@/components/prospects/enrichment-panel";
+import { listEnrichmentProposals } from "@/lib/prospects/enrichment";
 import {
   GenerateRecordingButton,
   RecordingStatusSelect,
@@ -136,6 +138,8 @@ export default async function ProspectDetailPage({
   const senseCheck = findings.some((f) => f.isPrimary && f.status === "approved")
     ? await latestSenseCheckForProspect(id)
     : undefined;
+  // Enrichment proposals (spec 079) — staged research awaiting review.
+  const enrichmentProposals = await listEnrichmentProposals(id);
   // Branded share link (spec 076) — preferred over the raw token URL.
   const brandedLink = await auditLinkForProspect(id);
   const brandedUrl = brandedLink
@@ -210,6 +214,14 @@ export default async function ProspectDetailPage({
 
       <div className="rounded-md border border-primary/50 bg-primary/5 px-4 py-2.5 text-sm">
         <span className="font-medium">Next step:</span> {nextStep}
+      </div>
+
+      <div className="mt-3">
+        <EnrichmentPanel
+          prospectId={id}
+          initial={enrichmentProposals}
+          keyConfigured={Boolean(process.env.PERPLEXITY_API_KEY)}
+        />
       </div>
 
       <Section title="Overview">
