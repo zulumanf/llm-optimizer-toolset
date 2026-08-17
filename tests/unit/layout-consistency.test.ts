@@ -61,8 +61,13 @@ const PAGES = pageFiles(APP_DIR).map((path) => ({
 const LEGACY_SHELLS = new Set([
   "app/agents/page.tsx",
   "app/approvals/page.tsx",
-  "app/audit/[token]/answers/page.tsx",
-  "app/audit/[token]/page.tsx",
+  // Renamed [token] → [handle] in spec 076 (Next.js sibling-param rule).
+  "app/audit/[handle]/answers/page.tsx",
+  "app/audit/[handle]/page.tsx",
+  // Spec 076 branded routes: thin wrappers DELEGATING to the pages above —
+  // they render that page's content and must not add a second shell.
+  "app/audit/[handle]/[key]/answers/page.tsx",
+  "app/audit/[handle]/[key]/page.tsx",
   "app/automation/connectors/page.tsx",
   "app/automation/events/page.tsx",
   "app/automation/outreach/page.tsx",
