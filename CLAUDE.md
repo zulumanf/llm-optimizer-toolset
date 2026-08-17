@@ -66,7 +66,7 @@ Never optimize for "ranking." Always optimize for:
 ## UI Rules
 
 - Tailwind only. shadcn/ui components. No inline styles, no CSS files per component.
-- Dark mode supported from day one. Desktop-first (internal tool).
+- Dark mode supported from day one. Responsive: desktop-optimized, phone-usable (spec 083).
 - Accessible: keyboard navigation, labels, focus states, sufficient contrast.
 - Every async view has loading, empty, and error states. No spinners without context.
 - Full details: `docs/04-ui-design-system.md`.

@@ -413,12 +413,17 @@ async function main(): Promise<void> {
     "weekly run"
   );
   await drainJobs();
-  const prepared = await refreshSvc.prepareAuditRefreshCandidates({ runId: weeklyRun.id });
-  if (prepared.prepared !== 1) {
-    throw new Error(
-      `refresh seed expected 1 prepared candidate, got ${JSON.stringify(prepared)}`
-    );
-  }
+  // The audit_refresh_v1 workflow may have prepared the candidate already
+  // (benchmark.completed delivery through the real engine — the seed drains
+  // jobs, so the automation runs for real here). Either path must end with
+  // exactly one pending candidate; the explicit call covers the case where
+  // delivery hasn't fired yet.
+  await refreshSvc.prepareAuditRefreshCandidates({ runId: weeklyRun.id });
+  const [pendingCard] = await sql`
+    select 1 from audit_refresh_candidates
+    where run_id = ${weeklyRun.id} and status = 'pending'
+  `;
+  if (!pendingCard) throw new Error("refresh seed: no pending candidate exists");
   const state = {
     clientProjectId: project.id,
     prospectId: prospect.prospectId,
