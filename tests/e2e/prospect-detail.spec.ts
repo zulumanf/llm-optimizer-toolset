@@ -22,6 +22,13 @@ test("published audit shows copy, expire, and revoke controls", async ({ page })
   await expect(page.getByRole("button", { name: /revoke/i })).toBeVisible();
 });
 
+test("sense-check panel renders the stored concern (spec 077)", async ({ page }) => {
+  await page.goto(path);
+  await expect(page.getByText(/sense-check — a second read/i)).toBeVisible();
+  await expect(page.getByText("E2E seeded concern: headline overstates the table.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /re-run/i })).toBeVisible();
+});
+
 test("copy link prefers the branded audit URL (spec 076)", async ({
   page,
   context,

@@ -87,6 +87,11 @@ export const TASK_ROUTES = {
     tier: "frontier",
     rationale: "First outbound touch to a high-value prospect — outward-facing prose.",
   },
+  audit_sense_check: {
+    tier: "frontier",
+    rationale:
+      "Reads the whole prospect-facing audit for coherence and tone before it ships — the language-judgment case the cheap tier reliably misses (spec 077).",
+  },
   classify_reply: {
     tier: "cheap",
     rationale: "Short-text intent classification; low-confidence routes to a human.",

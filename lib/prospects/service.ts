@@ -2494,6 +2494,45 @@ export async function publishAudit(
       }
     }
 
+    // Sense-check gate (spec 077): the agent's concern-severity findings
+    // join the disqualification machinery ONLY when the stored check read
+    // exactly what is being published (content hash match). A stale or
+    // absent check is advisory — the agent is an assistant, never a
+    // permission — and polish-severity findings never gate.
+    {
+      const { assembleAuditContent, contentHash, latestSenseCheck, serializeAuditContent } =
+        await import("@/lib/prospects/sense-check");
+      const check = await latestSenseCheck(input.prospectId, finding.id);
+      if (!check) {
+        publishWarnings.push(
+          "No sense-check has been run on this audit — consider running it before sending."
+        );
+      } else if (check.error) {
+        publishWarnings.push(
+          "The last sense-check failed to complete — its absence is not a clean bill."
+        );
+      } else {
+        const { content } = await assembleAuditContent(input.prospectId, {
+          humanFinding: input.humanFinding?.text ?? null,
+          adoptionStat: input.adoptionStat?.text ?? null,
+        });
+        const publishingHash = contentHash(serializeAuditContent(content));
+        if (publishingHash !== check.contentHash) {
+          publishWarnings.push(
+            "The audit content changed after its last sense-check — re-run it to make the check current."
+          );
+        } else {
+          for (const concern of check.concerns) {
+            if (concern.severity === "concern") {
+              disqualifyingWarnings.push(
+                `Sense-check (${concern.area}): ${concern.detail}`
+              );
+            }
+          }
+        }
+      }
+    }
+
     // Spec 052: warnings that say "consider disqualifying" are not
     // decorations. Publishing over them requires an explicit
     // acknowledgment with a written reason, recorded in the audit log —

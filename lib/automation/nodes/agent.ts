@@ -63,6 +63,27 @@ const outreachDraft = z.object({
   omittedForLackOfEvidence: z.array(z.string()).default([]),
 });
 
+/** Spec 077: the sense-check DESCRIBES problems, never rewrites — no field
+ * in this shape can carry replacement copy. Exported for the service and
+ * its tests. */
+export const auditSenseCheck = z.object({
+  concerns: z
+    .array(
+      z.object({
+        severity: z.enum(["concern", "polish"]),
+        area: z.enum(["coherence", "overreach", "copy", "numbers", "fairness"]),
+        detail: z.string().min(1),
+        quote: z.string().nullable().default(null),
+      })
+    )
+    .default([]),
+  overallReadsFair: z.boolean(),
+  confidence,
+  /** WHY the confidence is what it is (docs/12): named limiting factors. */
+  confidenceNote: z.string().min(1),
+});
+export type AuditSenseCheckOutput = z.infer<typeof auditSenseCheck>;
+
 const replyClassification = z.object({
   intent: z.enum([
     "interested",
@@ -319,6 +340,7 @@ const repurposedAsset = z.object({
 const AGENT_SCHEMAS = {
   classify_lead: leadClassification,
   draft_outreach: outreachDraft,
+  audit_sense_check: auditSenseCheck,
   classify_reply: replyClassification,
   extract_claims: claimExtraction,
   verify_claims: claimVerification,
