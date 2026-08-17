@@ -471,8 +471,13 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
       const [draftRow] = await sql`
         select body from outreach_drafts where id = ${draft.draftId}
       `;
+      // Spec 076: drafts embed the BRANDED link (slug + short key), falling
+      // back to the token URL only for prospects minted before the feature.
+      const { auditLinkForProspect } = await import("@/lib/prospects/links");
+      const branded = await auditLinkForProspect(prospectId);
+      expect(branded).not.toBeNull();
       expect(draftRow?.body as string).toContain(
-        `https://avos.example.com/audit/${accessToken}`
+        `https://avos.example.com/audit/${branded?.slug}/${branded?.key}`
       );
       expect(draftRow?.body as string).toContain('reply "show me"');
     } finally {
