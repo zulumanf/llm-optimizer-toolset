@@ -5,7 +5,10 @@
 import { describe, expect, it } from "vitest";
 import {
   authorityProfile,
+  magnitudeFactor,
+  MAGNITUDE_FLOOR,
   PROVENANCE_FACTORS,
+  RANK_UNQUANTIFIED_FACTOR,
   type AuthoritySignalInput,
 } from "@/lib/prospects/authority";
 
@@ -27,9 +30,11 @@ describe("authorityProfile", () => {
     expect(profile.components.every((c) => c.points === 0)).toBe(true);
   });
 
-  it("scores a single verified ranking at exactly its kind points", () => {
-    const profile = authorityProfile([signal({ kind: "ranking", provenance: "verified" })]);
-    // ranking = 15 × 1.0 × 1
+  it("scores a single verified #1 ranking at exactly its kind points", () => {
+    const profile = authorityProfile([
+      signal({ kind: "ranking", provenance: "verified", valueNumber: 1 }),
+    ]);
+    // ranking = 15 × 1.0 (rank #1) × 1.0 × 1
     expect(profile.score).toBe(15);
     const recognition = profile.components.find((c) => c.key === "recognition")!;
     expect(recognition.points).toBe(15);
@@ -58,12 +63,12 @@ describe("authorityProfile", () => {
   });
 
   it("caps each component at its maximum", () => {
-    // Sales kinds sum to 12+8+4+3+3 = 30 = the cap exactly at verified; with
-    // an extra manual duplicate nothing can push past 30.
+    // Sales kinds sum to 12+8+4+3+3 = 30 = the cap exactly at verified and
+    // magnitude-saturating values (spec 078); nothing can push past 30.
     const profile = authorityProfile([
-      signal({ kind: "transaction_volume" }),
-      signal({ kind: "transaction_count" }),
-      signal({ kind: "avg_deal_value" }),
+      signal({ kind: "transaction_volume", valueNumber: 250_000_000 }),
+      signal({ kind: "transaction_count", valueNumber: 300 }),
+      signal({ kind: "avg_deal_value", valueNumber: 2_500_000 }),
       signal({ kind: "notable_sale" }),
       signal({ kind: "notable_listing" }),
     ]);
@@ -74,10 +79,10 @@ describe("authorityProfile", () => {
 
   it("excludes global-scope evidence with a reason instead of discounting it", () => {
     const profile = authorityProfile([
-      signal({ kind: "transaction_volume", scope: "global" }),
-      signal({ kind: "ranking", scope: "local" }),
+      signal({ kind: "transaction_volume", scope: "global", valueNumber: 250_000_000 }),
+      signal({ kind: "ranking", scope: "local", valueNumber: 1 }),
     ]);
-    expect(profile.score).toBe(15); // only the local ranking
+    expect(profile.score).toBe(15); // only the local #1 ranking
     expect(profile.excluded.length).toBe(1);
     expect(profile.excluded[0]!.reason).toContain("Global-scope");
   });
@@ -90,8 +95,8 @@ describe("authorityProfile", () => {
 
   it("computes confidence from provenance mix and component coverage", () => {
     const profile = authorityProfile([
-      signal({ kind: "ranking", provenance: "verified" }), // recognition
-      signal({ kind: "review_footprint", provenance: "estimated" }), // reputation
+      signal({ kind: "ranking", provenance: "verified", valueNumber: 1 }), // recognition
+      signal({ kind: "review_footprint", provenance: "estimated", valueNumber: 100 }), // reputation
     ]);
     // mean provenance = (1.0 + 0.4)/2 = 0.7; coverage = 2/5
     expect(profile.confidence).toBeCloseTo(0.5 * 0.7 + 0.5 * 0.4, 10);
@@ -116,12 +121,107 @@ describe("authorityProfile", () => {
       "speaking",
       "specialization",
     ] as const;
-    const profile = authorityProfile(kinds.map((kind) => signal({ kind, provenance: "verified" })));
+    // Magnitude-saturating values everywhere a kind has them (spec 078).
+    const saturate: Record<string, number> = {
+      transaction_volume: 250_000_000,
+      transaction_count: 300,
+      avg_deal_value: 2_500_000,
+      ranking: 1,
+      review_footprint: 150,
+    };
+    const profile = authorityProfile(
+      kinds.map((kind) =>
+        signal({ kind, provenance: "verified", valueNumber: saturate[kind] ?? null })
+      )
+    );
     expect(profile.score).toBe(100);
     expect(profile.confidence).toBe(1);
     const discounted = authorityProfile(
       kinds.map((kind) => signal({ kind, provenance: "publicly_sourced" }))
     );
     expect(discounted.score).toBeLessThan(100);
+  });
+});
+
+describe("magnitudeFactor (spec 078)", () => {
+  it("scales volume on a log curve: $1M floor, $10M half, $100M full", () => {
+    expect(magnitudeFactor("transaction_volume", 1_000_000)).toBe(MAGNITUDE_FLOOR);
+    expect(magnitudeFactor("transaction_volume", 10_000_000)).toBeCloseTo(0.5, 10);
+    expect(magnitudeFactor("transaction_volume", 100_000_000)).toBe(1);
+    expect(magnitudeFactor("transaction_volume", 219_310_000)).toBe(1);
+    // Brian Spain's $23.3M — the live cohort's hand-computed anchor.
+    expect(magnitudeFactor("transaction_volume", 23_300_000)).toBeCloseTo(0.6837, 3);
+  });
+
+  it("scales counts and reviews on log curves with their own full points", () => {
+    expect(magnitudeFactor("transaction_count", 200)).toBe(1);
+    expect(magnitudeFactor("transaction_count", 24)).toBeCloseTo(
+      Math.log10(24) / Math.log10(200),
+      10
+    );
+    expect(magnitudeFactor("review_footprint", 100)).toBe(1);
+    expect(magnitudeFactor("review_footprint", 10)).toBeCloseTo(0.5, 10);
+  });
+
+  it("bands rankings best-first and keeps missing rank below every band", () => {
+    expect(magnitudeFactor("ranking", 1)).toBe(1);
+    expect(magnitudeFactor("ranking", 3)).toBe(0.87);
+    expect(magnitudeFactor("ranking", 4)).toBe(0.73);
+    expect(magnitudeFactor("ranking", 10)).toBe(0.73);
+    expect(magnitudeFactor("ranking", 25)).toBe(0.6);
+    expect(magnitudeFactor("ranking", 26)).toBe(RANK_UNQUANTIFIED_FACTOR);
+    expect(magnitudeFactor("ranking", null)).toBe(RANK_UNQUANTIFIED_FACTOR);
+  });
+
+  it("never lets a missing value outscore a present one", () => {
+    for (const kind of [
+      "transaction_volume",
+      "transaction_count",
+      "avg_deal_value",
+      "review_footprint",
+    ] as const) {
+      const missing = magnitudeFactor(kind, null);
+      expect(magnitudeFactor(kind, 1)).toBeGreaterThanOrEqual(missing);
+      expect(missing).toBe(MAGNITUDE_FLOOR);
+    }
+  });
+
+  it("is monotonic: a bigger value never scores less", () => {
+    const values = [1, 10, 1_000, 1_000_000, 20_000_000, 100_000_000, 1e9];
+    for (const kind of ["transaction_volume", "transaction_count", "avg_deal_value"] as const) {
+      let prev = 0;
+      for (const v of values) {
+        const f = magnitudeFactor(kind, v);
+        expect(f).toBeGreaterThanOrEqual(prev);
+        prev = f;
+      }
+    }
+  });
+
+  it("leaves kinds without magnitude semantics untouched", () => {
+    expect(magnitudeFactor("press_mention", null)).toBe(1);
+    expect(magnitudeFactor("award", 5)).toBe(1);
+    expect(magnitudeFactor("notable_sale", null)).toBe(1);
+  });
+
+  it("differentiates the cohort that motivated the spec", () => {
+    // Properties by Southern: $219M / 258 sides / #1 vs Brian Spain:
+    // $23.3M / 24 sides / #3 — identical under authority-v1 (35 each).
+    const pbs = authorityProfile([
+      signal({ kind: "transaction_volume", valueNumber: 219_310_000 }),
+      signal({ kind: "transaction_count", valueNumber: 258 }),
+      signal({ kind: "ranking", valueNumber: 1 }),
+    ]);
+    const spain = authorityProfile([
+      signal({ kind: "transaction_volume", valueNumber: 23_300_000 }),
+      signal({ kind: "transaction_count", valueNumber: 24 }),
+      signal({ kind: "ranking", valueNumber: 3 }),
+    ]);
+    expect(pbs.score).toBe(35);
+    expect(spain.score).toBeCloseTo(
+      12 * 0.6837 + 8 * (Math.log10(24) / Math.log10(200)) + 15 * 0.87,
+      1
+    );
+    expect(pbs.score! - spain.score!).toBeGreaterThan(8);
   });
 });

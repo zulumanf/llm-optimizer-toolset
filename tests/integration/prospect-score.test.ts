@@ -167,6 +167,7 @@ describe.skipIf(!TEST_URL)("prospect final score (integration)", () => {
       await svc.addAuthoritySignal(operator, {
         prospectId,
         kind: "ranking",
+        valueNumber: 1,
         label: "Ranked #2 Manhattan team",
         sourceUrl: "https://example.com/ranking",
         provenance: "verified",

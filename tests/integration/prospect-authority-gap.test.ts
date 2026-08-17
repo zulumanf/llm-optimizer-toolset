@@ -196,7 +196,8 @@ describe.skipIf(!TEST_URL)("prospect authority & visibility gap (integration)", 
       await svc.addAuthoritySignal(operator, {
         prospectId,
         kind: "ranking",
-        label: "Ranked #2 Manhattan team by closed volume",
+        label: "Ranked #1 Manhattan team by closed volume",
+        valueNumber: 1,
         sourceUrl: "https://example.com/ranking",
         provenance: "verified",
         scope: "local",
@@ -208,6 +209,7 @@ describe.skipIf(!TEST_URL)("prospect authority & visibility gap (integration)", 
         prospectId,
         kind: "transaction_volume",
         label: "$310M Manhattan volume 2025",
+        valueNumber: 310_000_000,
         sourceUrl: "https://example.com/volume",
         provenance: "publicly_sourced",
       })
@@ -224,7 +226,7 @@ describe.skipIf(!TEST_URL)("prospect authority & visibility gap (integration)", 
     );
 
     const view = await gap.authorityGapForProspect(prospectId);
-    // ranking 15×1.0 + volume 12×0.85 = 25.2; global volume excluded.
+    // ranking 15×1.0 (#1) + volume 12×1.0 ($310M ≥ full) ×0.85 = 25.2 (spec 078).
     expect(view.authority.score).toBeCloseTo(25.2, 10);
     expect(view.authority.excluded.length).toBe(1);
     const excludedId = view.authority.excluded[0]!.signalId;
@@ -271,10 +273,11 @@ describe.skipIf(!TEST_URL)("prospect authority & visibility gap (integration)", 
     const { accessToken } = unwrap(await svc.publishAudit(operator, { prospectId }));
     const snapshot = await svc.getAuditByToken(accessToken, { userAgent: "vitest" });
     expect(snapshot?.authorityGap).toBeDefined();
-    expect(snapshot?.authorityGap?.authorityScore).toBe(15);
+    // ranking 15 × 0.87 (rank #2 band, spec 078) = 13.05
+    expect(snapshot?.authorityGap?.authorityScore).toBe(13.05);
     expect(snapshot?.authorityGap?.visibilityScore).toBe(0);
-    expect(snapshot?.authorityGap?.gap).toBe(15);
-    expect(snapshot?.authorityGap?.authorityVersion).toBe("authority-v1");
+    expect(snapshot?.authorityGap?.gap).toBe(13.05);
+    expect(snapshot?.authorityGap?.authorityVersion).toBe("authority-v2");
     expect(snapshot?.authorityGap?.visibilityVersion).toBe("valuable-visibility-v1");
     expect(snapshot?.authorityGap?.signals).toEqual([
       {

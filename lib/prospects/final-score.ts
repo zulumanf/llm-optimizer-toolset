@@ -20,7 +20,7 @@ import type {
 } from "@/lib/prospects/constants";
 import { buyingSignalScore } from "@/lib/prospects/buying-signals";
 
-export const PROSPECT_SCORE_VERSION = "prospect-score-v2";
+export const PROSPECT_SCORE_VERSION = "prospect-score-v3";
 export const FINAL_WEIGHT_SET_NAME = "prospect-final";
 
 /**
