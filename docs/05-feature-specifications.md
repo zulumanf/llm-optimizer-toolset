@@ -153,3 +153,9 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** /audit/* keeps zero workspace chrome at every width; desktop layout is pixel-unchanged at lg+.
 
 **Acceptance criteria:** a 390px Playwright fence asserts no horizontal page scroll on the key operator surfaces.
+
+## Score Blurbs
+
+**Purpose:** the prospects table explains each score at a glance — a deterministic one-line rendering of the stored breakdown (`specs/084-score-blurbs.md`): strongest and weakest measured components, what isn't measured yet, and the priority-archetype boost.
+
+**Acceptance criteria:** pure function over the stored breakdown, never a model; legacy rows without a breakdown render no blurb.

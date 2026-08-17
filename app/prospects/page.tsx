@@ -25,6 +25,7 @@ import {
 import { acquisitionFunnel } from "@/lib/prospects/funnel";
 import { acquisitionScoreFeedback } from "@/lib/prospects/score-feedback";
 import { openRefreshCount } from "@/lib/prospects/refresh";
+import { scoreBlurb } from "@/lib/prospects/score-blurb";
 import { PROSPECT_SOURCE_IDS } from "@/lib/prospects/providers/registry";
 import { mockProviderAllowed } from "@/lib/ai/registry";
 import { listMarkets } from "@/lib/exclusivity/service";
@@ -275,6 +276,11 @@ export default async function ProspectsPage() {
                       <Badge variant="destructive" className="ml-2">
                         do not contact
                       </Badge>
+                    )}
+                    {scoreBlurb(p.qualificationBreakdown) && (
+                      <p className="mt-0.5 text-xs font-normal text-muted-foreground">
+                        {scoreBlurb(p.qualificationBreakdown)}
+                      </p>
                     )}
                   </TableCell>
                   <TableCell>{p.launchName}</TableCell>
