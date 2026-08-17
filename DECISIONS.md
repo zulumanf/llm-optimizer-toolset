@@ -2087,3 +2087,20 @@ redirected into the void on every sign-in. `publicOrigin()` in lib/env.ts now
 prefers APP_URL (already required for outbound audit links) and falls back to
 the request origin only for dev, where APP_URL is unset by design. Rule going
 forward: any absolute URL the app emits about itself goes through APP_URL.
+
+## 2026-08-16 — The refresh queue prepares; only the click publishes (spec 075)
+
+The weekly baseline now produces fresh prospect-market data with no consumer.
+The tempting fix — republish audits automatically — would break PRINCIPLES #8
+exactly where it matters most: an audit is an outbound claims document about
+a real business. Spec 075 instead builds the autonomy-ladder level-2 shape as
+structure: the `audit_refresh_v1` workflow contains no act or human node
+because everything it does is preparation (queue rows, generated findings
+left `candidate`), and the approval lives in `approveAuditRefresh`, whose
+click runs the unchanged `reviewFinding` + `publishAudit` gates. Two
+consequences worth recording: candidates carry their preparation errors as
+`needs_attention` cards rather than vanishing (a silent skip reads as
+"nothing changed"), and the delta computation flags `claimStillTrue: false`
+when the prospect now leads the rival — the one situation where republishing
+the same pitch would be actively wrong, surfaced before the click instead of
+after the send.

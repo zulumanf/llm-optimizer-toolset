@@ -6,6 +6,7 @@ import * as discovery from "@/lib/prospects/discovery";
 import * as buying from "@/lib/prospects/buying-signals";
 import * as quickstart from "@/lib/prospects/quickstart";
 import * as exhibits from "@/lib/prospects/exhibits";
+import * as refresh from "@/lib/prospects/refresh";
 
 const run = makeActionRunner(["/prospects", "layout"]);
 
@@ -117,4 +118,11 @@ export async function addActivityNote(input: unknown) {
 
 export async function promoteProspect(input: unknown) {
   return run((u) => svc.promoteProspectToClient(u, input));
+}
+
+export async function approveAuditRefresh(input: unknown) {
+  return run((u) => refresh.approveAuditRefresh(u, input));
+}
+export async function dismissAuditRefresh(input: unknown) {
+  return run((u) => refresh.dismissAuditRefresh(u, input));
 }

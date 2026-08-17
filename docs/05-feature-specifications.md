@@ -73,3 +73,13 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** task suggested with zero evidence (blocked); evidence's parent report superseded (task keeps original evidence — it pointed at immutable data).
 
 **Acceptance criteria:** no suggested task without evidence; no task auto-executes anything (`PRINCIPLES.md` #8).
+
+## Audit Refresh Queue
+
+**Purpose:** consume the weekly baseline data flowing for prospect markets — every published audit gets a prepared refresh, and the operator's remaining work is one reviewed click per audit (`specs/075-audit-refresh-queue.md`).
+
+**User flow:** scheduled market run finishes → `audit_refresh_v1` prepares a candidate per published audit (linked run, generated findings, week-over-week delta, dry-run preflight) → operator opens `/prospects/refresh-queue` → reviews the delta and finding, types/edits the required human finding, acknowledges any warnings → Approve & publish republishes through the unchanged `publishAudit` gates to the same token; Hold dismisses for the week.
+
+**Edge cases:** preparation failure becomes a `needs_attention` card, never a silent skip; a claim that flipped (prospect now leads the rival) is flagged loudly before approval; promoted/revoked prospects are excluded and refuse late approval; a newer run supersedes undecided candidates; duplicate event delivery is idempotent per (prospect, run).
+
+**Acceptance criteria:** nothing prospect-visible changes without `approveAuditRefresh` — a named staff click through the full publish gates (`PRINCIPLES.md` #8).

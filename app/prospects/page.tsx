@@ -23,12 +23,13 @@ import {
 } from "@/lib/prospects/discovery";
 import { acquisitionFunnel } from "@/lib/prospects/funnel";
 import { acquisitionScoreFeedback } from "@/lib/prospects/score-feedback";
+import { openRefreshCount } from "@/lib/prospects/refresh";
 import { PROSPECT_SOURCE_IDS } from "@/lib/prospects/providers/registry";
 import { mockProviderAllowed } from "@/lib/ai/registry";
 import { listMarkets } from "@/lib/exclusivity/service";
 
 export default async function ProspectsPage() {
-  const [launches, prospects, markets, candidates, duplicates, funnel, feedback] =
+  const [launches, prospects, markets, candidates, duplicates, funnel, feedback, refreshCount] =
     await Promise.all([
       listLaunches(),
       listProspects({ limit: 100 }),
@@ -37,6 +38,7 @@ export default async function ProspectsPage() {
       listProspectDuplicates(),
       acquisitionFunnel(),
       acquisitionScoreFeedback(),
+      openRefreshCount(),
     ]);
   const providers = PROSPECT_SOURCE_IDS.filter((id) => id !== "mock" || mockProviderAllowed());
 
@@ -47,6 +49,14 @@ export default async function ProspectsPage() {
         description="Market launches and the account-based acquisition pipeline: benchmark evidence in, human-reviewed outreach out."
         actions={
           <>
+            {refreshCount > 0 && (
+              <Link
+                href="/prospects/refresh-queue"
+                className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+              >
+                Refresh queue · {refreshCount} pending
+              </Link>
+            )}
             <LaunchDialog markets={markets.map((m) => ({ id: m.id, name: m.name, parentName: m.parentName }))} />
             {/* No source adapter = no Discover button (plan 3.8): a dialog
                 with an empty provider list errors on submit. CSV import and
