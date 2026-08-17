@@ -113,3 +113,13 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** fully-known prospect costs zero calls; freshness window stops re-queries; a failed call stores a failure row; emails are `ai_inferred` and signals `publicly_sourced` — never `verified` from research alone (spec 074 owns that); missing API key fails closed.
 
 **Acceptance criteria:** no auto-approval at any confidence; every call in the LLM ledger under the daily ceiling.
+
+## Perplexity Prospect Discovery
+
+**Purpose:** the first real discovery adapter — one search-grounded call proposes a market's notable teams as review candidates (`specs/080-perplexity-discovery.md`).
+
+**User flow:** Prospects → Discover → pick perplexity + segment → candidates stage with citations and `ai_inferred` provenance in the existing review queue → approve to create prospects → run spec-079 enrichment on approved ones for emails/production.
+
+**Edge cases:** a failed sweep is a failed run, never filled in; missing key fails closed; discovery never asks for emails (spec 079's job, with its validity gate); each sweep ledgers under `prospect-discovery-v1`.
+
+**Acceptance criteria:** nothing becomes a prospect without operator approval; the mock stays guarded out of production.
