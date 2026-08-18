@@ -23,6 +23,10 @@ export interface GeneratedPrompt {
   audience: string;
   priceTier: string | null;
   templateRef: string;
+  /** Structured dimensions (spec 087): known exactly at substitution time,
+   * so they are stamped as columns instead of living only in the text. */
+  neighborhood: string | null;
+  propertyType: string | null;
 }
 
 export interface ExpansionResult {
@@ -91,6 +95,8 @@ export function expandMarketPack(
             audience: template.audience,
             priceTier,
             templateRef: `${pack.key}@v${pack.version}:${template.key}`,
+            neighborhood: template.scope === "city" ? null : area,
+            propertyType,
           });
         }
       }
@@ -153,6 +159,8 @@ export async function generateMarketPrompts(
         audience: prompt.audience,
         priceTier: prompt.priceTier ?? undefined,
         templateRef: prompt.templateRef,
+        neighborhood: prompt.neighborhood ?? undefined,
+        propertyType: prompt.propertyType ?? undefined,
       });
       if (!result.ok) {
         return fail(new ClassifiedError("internal", `Prompt insert failed: ${result.error.message}`));

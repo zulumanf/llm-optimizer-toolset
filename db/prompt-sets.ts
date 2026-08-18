@@ -21,10 +21,17 @@ export interface Prompt {
   isHoldout: boolean;
   /** Intent tier 1–4 (migration 030); null = untiered (all historical prompts). */
   tier: number | null;
+  /** Provenance (spec 035/087): manual | import | vertical_pack | expansion
+   * | generated | observed. */
+  source: string;
   /** Generation lineage (spec 040); null on manual/imported prompts. */
   audience: string | null;
   priceTier: string | null;
   templateRef: string | null;
+  /** Real-estate intent dimensions (spec 087); null = unspecified. */
+  neighborhood: string | null;
+  building: string | null;
+  propertyType: string | null;
   createdAt: Date;
   archivedAt: Date | null;
 }
@@ -83,7 +90,8 @@ export async function getPromptSet(setId: string): Promise<PromptSet | null> {
 export async function listActivePrompts(setId: string): Promise<Prompt[]> {
   return sql<Prompt[]>`
     select id, prompt_set_id, text, category, language, position,
-           is_holdout, tier, created_at, archived_at
+           is_holdout, tier, source, audience, price_tier, template_ref,
+           neighborhood, building, property_type, created_at, archived_at
     from prompts
     where prompt_set_id = ${setId} and archived_at is null
     order by position asc, created_at asc
