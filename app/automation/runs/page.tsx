@@ -2,6 +2,7 @@
  * Every run, live and test, newest first. The list an operator scans when
  * something is wrong and they do not yet know where.
  */
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { recentRuns } from "@/lib/automation/metrics";
 import { Badge } from "@/components/ui/badge";
@@ -21,12 +22,16 @@ export default async function AutomationRunsPage({
   const runs = await recentRuns({ mode: filter, limit: 100 });
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <h1 className="text-2xl font-semibold">Runs</h1>
-      <p className="mt-1 mb-4 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        title="Runs"
+        description={
+          <>
         Production and test runs are distinguished in the database, not by
         convention — a test run physically cannot send, publish, or invoice.
-      </p>
+          </>
+        }
+      />
 
       <AutomationNav current="runs" />
 
@@ -120,6 +125,6 @@ export default async function AutomationRunsPage({
           </table>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

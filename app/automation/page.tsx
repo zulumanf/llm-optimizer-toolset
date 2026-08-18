@@ -5,6 +5,7 @@
  * manual baseline, none exists, and inventing one here would be exactly the kind
  * of unsupported claim the rest of this platform refuses to make.
  */
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Clock, Plug, Radio, Workflow } from "lucide-react";
 import { businessMetrics, recentRuns, workflowMetrics } from "@/lib/automation/metrics";
@@ -73,13 +74,11 @@ export default async function AutomationDashboardPage() {
   const keyReady = encryptionAvailable();
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <h1 className="text-2xl font-semibold">Automation</h1>
-      <p className="mt-1 mb-4 text-sm text-muted-foreground">
-        Triggers start work, the graph executes it, gates hold anything
-        consequential, and every failure becomes a visible exception. Nothing here
-        sends, publishes, or invoices without a recorded decision.
-      </p>
+    <PageShell>
+      <PageHeader
+        title="Automation"
+        description="Triggers start work, the graph executes it, gates hold anything consequential, and every failure becomes a visible exception. Nothing here sends, publishes, or invoices without a recorded decision."
+      />
 
       <AutomationNav current="overview" />
 
@@ -408,6 +407,6 @@ export default async function AutomationDashboardPage() {
         formula in <code className="font-mono">lib/workflow/exceptions.ts</code>;
         every component is visible on the exceptions page.
       </p>
-    </div>
+    </PageShell>
   );
 }

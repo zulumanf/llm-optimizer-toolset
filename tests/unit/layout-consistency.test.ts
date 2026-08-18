@@ -75,17 +75,6 @@ const INTENTIONAL_SHELLS = new Map<string, string>([
 ]);
 
 const LEGACY_SHELLS = new Set([
-  "app/automation/connectors/page.tsx",
-  "app/automation/events/page.tsx",
-  "app/automation/outreach/page.tsx",
-  "app/automation/page.tsx",
-  "app/automation/runs/[runId]/page.tsx",
-  "app/automation/runs/page.tsx",
-  "app/automation/triggers/page.tsx",
-  "app/automation/workflows/[key]/page.tsx",
-  "app/automation/workflows/page.tsx",
-  "app/control-tower/briefs/[briefId]/page.tsx",
-  "app/control-tower/page.tsx",
   "app/page.tsx",
   "app/projects/[id]/accuracy/page.tsx",
   "app/projects/[id]/activity/page.tsx",
@@ -122,8 +111,6 @@ const LEGACY_SHELLS = new Set([
   "app/projects/[id]/tasks/page.tsx",
   "app/projects/[id]/validation/page.tsx",
   "app/projects/page.tsx",
-  "app/workflows/[runId]/page.tsx",
-  "app/workflows/page.tsx",
 ]);
 
 // The ratchet: a page that migrates must leave the list, and a page not on
