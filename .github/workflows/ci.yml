@@ -54,7 +54,7 @@ jobs:
       # so a leaked key could never be spent by a test run.
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history so the migrations-changed check can diff against the
           # PR base / previous push (Actions diet, 2026-08-18).
@@ -149,7 +149,7 @@ jobs:
       E2E_DATABASE_URL: postgres://postgres:postgres@localhost:5433/llm_optimizer_e2e
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
