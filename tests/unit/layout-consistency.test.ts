@@ -58,16 +58,23 @@ const PAGES = pageFiles(APP_DIR).map((path) => ({
  * landed (6 widths → 10). The list below is the debt as of the freeze; it
  * may only shrink. A new page must use the shell or fail this suite.
  */
+/**
+ * Deliberate exemptions, NOT debt (split from the ratchet 2026-08-17):
+ * these pages' hand-rolled shells ARE the design and must never migrate.
+ */
+const INTENTIONAL_SHELLS = new Map<string, string>([
+  ["app/audit/[handle]/page.tsx", "prospect-facing document — zero workspace chrome by spec 048"],
+  ["app/audit/[handle]/answers/page.tsx", "prospect-facing appendix — same document shell"],
+  ["app/audit/[handle]/[key]/page.tsx", "branded delegation wrapper — renders the document page"],
+  ["app/audit/[handle]/[key]/answers/page.tsx", "branded delegation wrapper — renders the appendix"],
+  ["app/portal/page.tsx", "client portal landing — the portal carries its own shell (spec 031)"],
+  ["app/portal/[projectId]/page.tsx", "client portal overview — portal shell (specs 031/085)"],
+  ["app/portal/[projectId]/work/page.tsx", "client portal — portal shell"],
+  ["app/portal/[projectId]/reports/page.tsx", "client portal — portal shell"],
+  ["app/login/page.tsx", "auth screen — renders before any workspace exists"],
+]);
+
 const LEGACY_SHELLS = new Set([
-  "app/agents/page.tsx",
-  "app/approvals/page.tsx",
-  // Renamed [token] → [handle] in spec 076 (Next.js sibling-param rule).
-  "app/audit/[handle]/answers/page.tsx",
-  "app/audit/[handle]/page.tsx",
-  // Spec 076 branded routes: thin wrappers DELEGATING to the pages above —
-  // they render that page's content and must not add a second shell.
-  "app/audit/[handle]/[key]/answers/page.tsx",
-  "app/audit/[handle]/[key]/page.tsx",
   "app/automation/connectors/page.tsx",
   "app/automation/events/page.tsx",
   "app/automation/outreach/page.tsx",
@@ -77,18 +84,9 @@ const LEGACY_SHELLS = new Set([
   "app/automation/triggers/page.tsx",
   "app/automation/workflows/[key]/page.tsx",
   "app/automation/workflows/page.tsx",
-  "app/companies/page.tsx",
   "app/control-tower/briefs/[briefId]/page.tsx",
   "app/control-tower/page.tsx",
-  "app/exclusivity/page.tsx",
-  "app/login/page.tsx",
-  "app/notifications/page.tsx",
-  "app/onboarding/page.tsx",
   "app/page.tsx",
-  "app/portal/[projectId]/page.tsx",
-  "app/portal/[projectId]/reports/page.tsx",
-  "app/portal/[projectId]/work/page.tsx",
-  "app/portal/page.tsx",
   "app/projects/[id]/accuracy/page.tsx",
   "app/projects/[id]/activity/page.tsx",
   "app/projects/[id]/campaigns/[campaignId]/page.tsx",
@@ -133,7 +131,7 @@ const LEGACY_SHELLS = new Set([
 describe("legacy-shell ratchet", () => {
   it("every non-legacy page uses the layout primitives", () => {
     const offenders = PAGES.filter(
-      (p) => !LEGACY_SHELLS.has(p.rel) && !p.source.includes("@/components/layout/page")
+      (p) => !LEGACY_SHELLS.has(p.rel) && !INTENTIONAL_SHELLS.has(p.rel) && !p.source.includes("@/components/layout/page")
     ).map((p) => p.rel);
     expect(offenders).toEqual([]);
   });
@@ -156,7 +154,7 @@ describe("page layout consistency", () => {
   it("uses one content width on every migrated page", () => {
     const offenders: string[] = [];
     for (const page of PAGES) {
-      if (LEGACY_SHELLS.has(page.rel)) continue;
+      if (LEGACY_SHELLS.has(page.rel) || INTENTIONAL_SHELLS.has(page.rel)) continue;
       const widths = [...page.source.matchAll(/max-w-(\w+)/g)].map((m) => m[1]);
       // 7xl is the page container; prose/3xl are legitimate *text* measures
       // inside it. Anything else is a bespoke page width.
@@ -183,7 +181,7 @@ describe("page layout consistency", () => {
   it("gives every migrated page exactly one h1, via PageHeader", () => {
     const offenders: string[] = [];
     for (const page of PAGES) {
-      if (LEGACY_SHELLS.has(page.rel)) continue;
+      if (LEGACY_SHELLS.has(page.rel) || INTENTIONAL_SHELLS.has(page.rel)) continue;
       const h1s = (page.source.match(/<h1\b/g) ?? []).length;
       // PageHeader owns the h1; a page declaring its own has bypassed the shell.
       if (h1s > 0) offenders.push(`${page.rel}: ${h1s} bespoke <h1>`);
