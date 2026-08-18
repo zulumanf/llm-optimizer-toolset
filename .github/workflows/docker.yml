@@ -1,0 +1,41 @@
+# Deploy artifacts must stay buildable (spec 059) — but a Docker image only
+# rots through its inputs: the Dockerfiles themselves, the dependency tree,
+# or the ignore file. Application code is already build-verified by ci.yml's
+# `npm run build`, so rebuilding both images on every push was ~8 billed
+# minutes per run spent re-checking things that hadn't changed (Actions
+# diet, 2026-08-18). Native path filters mean this workflow costs nothing
+# on the runs where it could not fail.
+name: docker
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "Dockerfile.worker"
+      - ".dockerignore"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/docker.yml"
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - "Dockerfile.worker"
+      - ".dockerignore"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/docker.yml"
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build web image
+        run: docker build -t avos-web .
+      - name: Build worker image
+        run: docker build -f Dockerfile.worker -t avos-worker .
