@@ -2295,3 +2295,41 @@ silently remapped; diagnoses split `observations` (measured) from
 `explanation` (inference) in the data model, not prompt wording (the same
 move 064 made for gap_findings); `interventions.intervention_type` is
 nullable — legacy rows stay unlabeled, never guessed.
+
+## 2026-08-18 — Displacement is derived, never stored; suggestions stage before they measure (spec 087)
+
+Recommendation displacement ("who was recommended when the subject was
+absent") is computed on read from the immutable response/mention/citation
+ledgers (`lib/competitors/displacement.ts`), never persisted: a stored
+displacement table would go stale on every re-parse and review correction,
+and the market-citations precedent (086) already proved derived-with-floors
+works. Same call for AI Recommendation Share
+(`lib/scoring/recommendation-share.ts`) — its unit is the "recommendation
+moment" (a valid response recommending ≥1 tracked company, echo-excluded on
+BOTH sides, subject included), deliberately not the tracked-mention
+denominator share_of_voice uses; both metrics coexist because they answer
+different questions. Sub-threshold data says `insufficient_evidence` /
+`insufficient_data` with raw counts still visible, never 0%.
+
+Prompt dimensions (neighborhood/building/property_type) became columns
+because they were only recoverable from prompt text — the one derivation
+that actually can't be done on read. They are metadata, not freeze identity
+(the tier precedent): retagging never forces a version. Freeze now also
+carries `source` and `template_ref`; duplicate stops dropping holdout and
+segment fields — both were silent provenance loss.
+
+Prompt suggestions stage in `prompt_suggestions` (the enrichment_proposals
+lifecycle, same `decideStagedRow` kernel) instead of inserting directly:
+generated prompts entering measurement without a human decision would make
+coverage growth unauditable. Progressive staging: each call proposes the
+next uncovered batch up to a per-call cap, deduped against active prompts
+and pending rows.
+
+Priority bands (do_now/do_next/test/low_priority, `priorityBand`) are a
+vocabulary over the existing gap opportunity score, not a new score — the
+thresholds are named constants, and the task mapping (p1/p2/p3) reads from
+the band so the work queue and the finding always agree. Source-type
+playbooks (`lib/sources/playbooks.ts`) are typed constants keyed by the 086
+taxonomy — code-reviewed capability facts, like the collector registry —
+and seed `citation_opportunities.acquisition_path` only at insert, never
+overwriting an operator's choice.
