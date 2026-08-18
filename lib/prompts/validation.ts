@@ -69,14 +69,22 @@ export const addPromptSchema = z.object({
   language: language.optional(),
   isHoldout: z.boolean().optional(),
   tier: tier.optional(),
-  // Provenance (spec 035): where this prompt came from. Bulk import writes
-  // its own rows and stamps 'import' itself.
-  source: z.enum(["manual", "vertical_pack", "expansion"]).optional(),
+  // Provenance (spec 035, widened by 087): where this prompt came from.
+  // 'generated' = approved suggestion; 'observed' = transcribed from a real
+  // user question. Mirrors the prompts_source_check constraint.
+  source: z
+    .enum(["manual", "import", "vertical_pack", "expansion", "generated", "observed"])
+    .optional(),
   // Generation lineage (spec 040): who the prompt targets, which price tier
   // it probes, and exactly which pack template produced it.
   audience: z.string().trim().max(40).optional(),
   priceTier: z.string().trim().max(60).optional(),
   templateRef: z.string().trim().max(120).optional(),
+  // Real-estate intent dimensions (spec 087): structured, no longer only
+  // baked into the prompt text.
+  neighborhood: z.string().trim().max(80).optional(),
+  building: z.string().trim().max(80).optional(),
+  propertyType: z.string().trim().max(40).optional(),
 });
 
 export const updatePromptSchema = z.object({
@@ -85,6 +93,12 @@ export const updatePromptSchema = z.object({
   category: category.optional(),
   language: language.optional(),
   tier: tier.optional(),
+  // Dimensions are nullable-updatable: null clears, undefined leaves as-is.
+  audience: z.string().trim().max(40).nullable().optional(),
+  priceTier: z.string().trim().max(60).nullable().optional(),
+  neighborhood: z.string().trim().max(80).nullable().optional(),
+  building: z.string().trim().max(80).nullable().optional(),
+  propertyType: z.string().trim().max(40).nullable().optional(),
 });
 
 export const promptIdSchema = z.object({ promptId: z.string().uuid() });

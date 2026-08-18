@@ -18,8 +18,8 @@ import {
 import { firstZodMessage } from "@/lib/service-helpers";
 
 const PROMPT_COLUMNS = sql`id, prompt_set_id, text, category, language,
-  position, is_holdout, tier, audience, price_tier, template_ref,
-  created_at, archived_at`;
+  position, is_holdout, tier, source, audience, price_tier, template_ref,
+  neighborhood, building, property_type, created_at, archived_at`;
 
 async function requireActiveSet(tx: TransactionSql, setId: string): Promise<void> {
   const [set] = await tx`
@@ -39,21 +39,25 @@ export async function addPrompt(
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
   }
-  const { setId, text, category, language, isHoldout, tier, source, audience, priceTier, templateRef } =
-    parsed.data;
+  const {
+    setId, text, category, language, isHoldout, tier, source,
+    audience, priceTier, templateRef, neighborhood, building, propertyType,
+  } = parsed.data;
   try {
     assertCanWrite(user);
     const prompt = await sql.begin(async (tx) => {
       await requireActiveSet(tx, setId);
       const [row] = await tx<Prompt[]>`
         insert into prompts (prompt_set_id, text, category, language, position,
-          is_holdout, tier, source, audience, price_tier, template_ref)
+          is_holdout, tier, source, audience, price_tier, template_ref,
+          neighborhood, building, property_type)
         values (
           ${setId}, ${text}, ${category}, ${language ?? "en"},
           (select coalesce(max(position), 0) + 1 from prompts
             where prompt_set_id = ${setId} and archived_at is null),
           ${isHoldout ?? false}, ${tier ?? null}, ${source ?? "manual"},
-          ${audience ?? null}, ${priceTier ?? null}, ${templateRef ?? null}
+          ${audience ?? null}, ${priceTier ?? null}, ${templateRef ?? null},
+          ${neighborhood ?? null}, ${building ?? null}, ${propertyType ?? null}
         )
         returning ${PROMPT_COLUMNS}
       `;
@@ -81,7 +85,10 @@ export async function updatePrompt(
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
   }
-  const { promptId, text, category, language, tier } = parsed.data;
+  const {
+    promptId, text, category, language, tier,
+    audience, priceTier, neighborhood, building, propertyType,
+  } = parsed.data;
   try {
     assertCanWrite(user);
     const prompt = await sql.begin(async (tx) => {
@@ -98,7 +105,19 @@ export async function updatePrompt(
           text = coalesce(${text ?? null}, text),
           category = coalesce(${category ?? null}, category),
           language = coalesce(${language ?? null}, language),
-          tier = coalesce(${tier ?? null}, tier)
+          tier = coalesce(${tier ?? null}, tier),
+          -- Dimensions distinguish "leave as-is" (undefined) from "clear"
+          -- (explicit null) — coalesce cannot express the clear.
+          audience = case when ${audience === undefined}
+            then audience else ${audience ?? null} end,
+          price_tier = case when ${priceTier === undefined}
+            then price_tier else ${priceTier ?? null} end,
+          neighborhood = case when ${neighborhood === undefined}
+            then neighborhood else ${neighborhood ?? null} end,
+          building = case when ${building === undefined}
+            then building else ${building ?? null} end,
+          property_type = case when ${propertyType === undefined}
+            then property_type else ${propertyType ?? null} end
         where id = ${promptId}
         returning ${PROMPT_COLUMNS}
       `;
