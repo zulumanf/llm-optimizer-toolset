@@ -159,3 +159,11 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Purpose:** the prospects table explains each score at a glance — a deterministic one-line rendering of the stored breakdown (`specs/084-score-blurbs.md`): strongest and weakest measured components, what isn't measured yet, and the priority-archetype boost.
 
 **Acceptance criteria:** pure function over the stored breakdown, never a model; legacy rows without a breakdown render no blurb.
+
+## Client Dashboard (The Four Questions)
+
+**Purpose:** the portal overview answers what a client logs in asking (`specs/085-client-dashboard.md`): is it working (hero + delta since baseline); where do I stand vs named rivals; what have you done for me; when do I hear from you next.
+
+**Edge cases:** one run → no delta claimed; no runs → setup message; measurement unconfigured → "measurement paused", never a fake date; every number keeps its sample size.
+
+**Acceptance criteria:** deny-by-default reads unchanged; type-scale and phone fences pass on /portal.

@@ -34,6 +34,12 @@ for (const path of SURFACES) {
   });
 }
 
+test("client portal renders phone-width with no horizontal scroll", async ({ page }) => {
+  await page.goto(`/portal/${state.clientProjectId}`);
+  await expect(page.locator("h1")).toContainText("Lumina");
+  await expectNoHorizontalScroll(page);
+});
+
 test("prospect detail renders phone-width with no horizontal scroll", async ({ page }) => {
   await page.goto(`/prospects/${state.prospectId}`);
   await expect(page.locator("h1")).toContainText("Rivera Team");

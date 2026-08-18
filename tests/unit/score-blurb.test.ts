@@ -1,12 +1,13 @@
 /**
- * Spec 084: the table blurb is a pure rendering of the stored breakdown —
- * known-answer tested, including the shapes production actually holds.
+ * Spec 084 (verbiage pass): the table blurb is decision-first plain
+ * language — track record and AI room-to-grow lead; bookkeeping facts
+ * (contact info, timing) appear only when missing; never a model.
  */
 import { describe, expect, it } from "vitest";
 import { scoreBlurb } from "@/lib/prospects/score-blurb";
 
 describe("scoreBlurb", () => {
-  it("renders strongest, weakest, missing, and the archetype boost", () => {
+  it("leads with track record and AI room; notes gaps; carries the boost", () => {
     // Brian Spain's real production shape (2026-08-17 recompute).
     const blurb = scoreBlurb({
       components: {
@@ -21,33 +22,33 @@ describe("scoreBlurb", () => {
       archetype: "verified_authority_underrepresented",
     });
     expect(blurb).toBe(
-      "Strongest: reachability (100) · weakest: verified authority (33) · not yet measured: outreach timing · priority boost: proven producer, barely recommended by AI"
+      "Track record 33/100 · room to grow in AI answers 35/100 · recent activity unknown · priority: proven producer, barely recommended by AI"
     );
   });
 
-  it("omits sections that do not apply", () => {
-    const blurb = scoreBlurb({
-      components: { visibilityGap: 40, commercialAuthority: 20 },
-      missing: [],
-      archetype: null,
+  it("never presents contact info as a strength — only as a gap", () => {
+    const withContact = scoreBlurb({
+      components: { commercialAuthority: 20, visibilityGap: 40, contactability: 100 },
     });
-    expect(blurb).toBe(
-      "Strongest: AI-visibility upside (40) · weakest: verified authority (20)"
-    );
+    expect(withContact).not.toContain("contact");
+
+    const withoutContact = scoreBlurb({
+      components: { commercialAuthority: 20, visibilityGap: 40, contactability: null },
+    });
+    expect(withoutContact).toContain("no contact info yet");
   });
 
-  it("returns null for legacy/absent breakdowns and empty components", () => {
+  it("renders what exists when one anchor is missing", () => {
+    const blurb = scoreBlurb({
+      components: { visibilityGap: 40, contactability: 100, buyingSignals: 25 },
+    });
+    expect(blurb).toBe("Room to grow in AI answers 40/100");
+  });
+
+  it("returns null for legacy/absent breakdowns and anchor-less components", () => {
     expect(scoreBlurb(null)).toBeNull();
     expect(scoreBlurb(undefined)).toBeNull();
     expect(scoreBlurb({})).toBeNull();
-    expect(
-      scoreBlurb({ components: { buyingSignals: null }, missing: ["buyingSignals"] })
-    ).toBeNull();
-  });
-
-  it("falls back to the raw key for unknown components — never drops them", () => {
-    const blurb = scoreBlurb({ components: { futureComponent: 50, visibilityGap: 10 } });
-    expect(blurb).toContain("futureComponent (50)");
-    expect(blurb).toContain("AI-visibility upside (10)");
+    expect(scoreBlurb({ components: { contactability: 100 } })).toBeNull();
   });
 });
