@@ -311,7 +311,11 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     `;
     expect(owned?.sourceType).toBe("client_site");
     expect(owned?.relationship).toBe("owned");
-    expect(owned?.classifierVersion).toBe("source-classifier-v1");
+    // Stamped with whatever classifier version actually ran — pin to the
+    // exported constant, not a literal, so a classifier bump can't silently
+    // diverge from what rows record (it did once: v1 → v2, spec 086).
+    const { SOURCE_CLASSIFIER_VERSION } = await import("@/lib/sources/classify");
+    expect(owned?.classifierVersion).toBe(SOURCE_CLASSIFIER_VERSION);
     const [thirdParty] = await sql`
       select source_type, relationship from sources
       where project_id = ${projectId} and domain = 'example.com'

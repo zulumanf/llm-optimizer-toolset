@@ -84,6 +84,8 @@ const UNKNOWN_PATH_CAP = 0.5;
 const QUALITY_BY_SOURCE_TYPE: Record<SourceType, number> = {
   news: 1,
   government: 1,
+  industry_ranking: 1,
+  local_press: 0.95,
   review: 0.9,
   portal: 0.8,
   directory: 0.6,

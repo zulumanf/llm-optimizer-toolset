@@ -566,7 +566,15 @@ export default async function ProspectDetailPage({
                     confidence {Math.round(d.confidence * 100)}%
                   </Badge>
                 </div>
-                <p className="mt-1 text-muted-foreground">{d.explanation}</p>
+                {/* Measured fact vs reading (spec 086 epistemics) */}
+                {d.observations.map((obs, j) => (
+                  <p key={j} className="mt-1 text-muted-foreground">
+                    <span className="font-medium text-foreground">Observed:</span> {obs}
+                  </p>
+                ))}
+                <p className="mt-1 text-muted-foreground">
+                  <span className="font-medium text-foreground">Read:</span> {d.explanation}
+                </p>
                 {d.affectedPrompts.length > 0 && (
                   <p className="mt-1 text-xs text-muted-foreground">
                     Affected prompts: {d.affectedPrompts.map((p) => `“${p}”`).join(" · ")}

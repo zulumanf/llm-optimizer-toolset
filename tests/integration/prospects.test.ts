@@ -274,10 +274,74 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     // versions its numbers were computed with.
     expect(snapshot?.instrumentVersions?.scoring.length).toBeGreaterThan(0);
     expect(snapshot?.instrumentVersions?.parser.length).toBeGreaterThan(0);
+    // Collection provenance (spec 086): the snapshot states how the answers
+    // were collected, derived from stored instrument facts. A mock/API run
+    // is method 'api'; the search/model-only split covers every response;
+    // a prospect project measures for prospecting.
+    expect(snapshot?.collection?.method).toBe("api");
+    expect(
+      (snapshot?.collection?.searchEnabled ?? 0) +
+        (snapshot?.collection?.modelOnly ?? 0)
+    ).toBe(snapshot?.benchmark.responseCount);
+    // Purpose derives from stored facts: this fixture's project is kind
+    // 'client' (production benchmark projects are 'prospect' → prospecting)
+    // and the run was manual.
+    expect(snapshot?.collection?.purpose).toBe("client_baseline");
+    // No consumer observations were recorded → the section must be absent,
+    // never fabricated (API runs can't present as consumer UI).
+    expect(snapshot?.consumerValidation).toBeUndefined();
     const [viewCount] = await sql`
       select count(*)::int as n from prospect_audit_views where audit_id = ${auditId}
     `;
     expect(viewCount?.n).toBe(1);
+
+    // Consumer validation (spec 086 over the 011 workflow): record one
+    // clean-session observation and republish — the snapshot gains the
+    // section with its OWN denominator; the API counts stay untouched.
+    {
+      const evidence = await import("@/lib/evidence/service");
+      const [runRow] = await sql`
+        select project_id, prompt_set_version_id from runs where id = ${runId}
+      `;
+      const validation = unwrap(
+        await evidence.createClientValidationRun(operator, {
+          projectId: runRow?.projectId as string,
+          promptSetVersionId: runRow?.promptSetVersionId as string,
+          promptCount: 1,
+        })
+      );
+      const [vr] = await sql`
+        select selected_prompt_ids from client_validation_runs
+        where id = ${validation.validationRunId}
+      `;
+      unwrap(
+        await evidence.recordClientValidationObservation(operator, {
+          validationRunId: validation.validationRunId,
+          promptId: (vr?.selectedPromptIds as string[])[0]!,
+          provider: "chatgpt",
+          performedOn: "2026-08-18",
+          rawResponse: "Sure — Rivera Team is a strong option in this market.",
+          claimedMentioned: true,
+          claimedRecommended: false,
+        })
+      );
+      unwrap(await svc.publishAudit(operator, { prospectId }));
+      const republished = await svc.getAuditByToken(accessToken, {
+        userAgent: "vitest",
+      });
+      expect(republished?.consumerValidation).toEqual({
+        observations: 1,
+        mentioned: 1,
+        byProvider: [{ provider: "chatgpt", observations: 1, mentioned: 1 }],
+        performedFrom: "2026-08-18",
+        performedTo: "2026-08-18",
+      });
+      // Separate denominators: API response count is unchanged by the
+      // consumer observation.
+      expect(republished?.benchmark.responseCount).toBe(
+        snapshot?.benchmark.responseCount
+      );
+    }
 
     // Source-link liveness (spec 065): a dead receipt is an ack-required
     // warning — publish refuses, then publishes with a recorded reason.
