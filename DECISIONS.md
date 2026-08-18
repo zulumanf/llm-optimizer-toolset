@@ -2246,3 +2246,25 @@ exit code, and two real 076 regressions (the design-guard ratchet and a
 branded-URL assertion) rode through multiple merges while CI was red.
 Verification now uses pipefail and reads the counts. Trust the numbers
 you actually saw, never the exit code of a pipeline's last command.
+
+## 2026-08-18 — Actions diet: pay for signal, not habit
+
+GitHub Actions spend hit ~9,000 min/month pace (152 CI runs × ~35 billed
+min + a 48×/day heartbeat) against a 2,000-min free tier, and billing
+failures took CI hostage twice in one month. Three changes, none of which
+weaken a gate that could actually fail:
+
+1. **docker job → docker.yml with native path filters.** An image only
+   rots through Dockerfile*, the dependency tree, or .dockerignore; app
+   code is already build-verified by `npm run build` in verify. Rebuilding
+   both images on every push was ~8 min/run of re-checking the unchanged.
+2. **Migration reversibility loop runs only when db/migrations/** or the
+   migrator changed** (unknown diff base ⇒ run it — uncertainty fails
+   toward checking). A plain `migrate up` still runs on every CI pass.
+3. **Heartbeat throttled to every 6h**, and marked for deletion outright
+   once a free external uptime monitor (5-min checks, zero Actions cost)
+   points at /api/health. A build system is the wrong pager.
+
+Also: docs-only pushes (`**.md`, docs/, specs/) skip CI via paths-ignore —
+a run that cannot fail is a run that only costs. CI remains event-driven;
+a day with no pushes is now a day with (almost) no Actions runs.

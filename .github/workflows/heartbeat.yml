@@ -1,18 +1,20 @@
-# Uptime check only (2026-08-17). The platform's clock moved into the
-# always-on Railway worker (workers/index.ts ticks lib/ops/tick.ts every 10
-# minutes), which is what the old 10-minute schedule here existed to fake.
-# What remains is the one job an external vantage point genuinely does
-# better: noticing the site is down. Every 30 minutes; the app check FAILS
-# the workflow (GitHub emails on failure); the marketing root is report-only
-# until its host is connected — flip it to strict by removing "|| true" once
-# recommendedfirst.com serves.
+# Uptime check only (2026-08-17; throttled 2026-08-18). The platform's clock
+# lives in the always-on Railway worker (workers/index.ts ticks
+# lib/ops/tick.ts every 10 minutes) — nothing here drives the product.
 #
-# Requires repo secret APP_URL; exits quietly without it so the workflow can
-# merge before a deploy exists. CRON_SECRET is no longer needed here.
+# This exists solely as an external vantage point that notices the site is
+# down and emails on failure. Every 6 hours is a compromise while it exists
+# at all: the REAL fix is a free external uptime monitor (e.g. UptimeRobot,
+# 5-minute checks at zero Actions cost) pointed at $APP_URL/api/health —
+# once that is live, DELETE this workflow entirely.
+#
+# Requires repo secret APP_URL; exits quietly without it. The marketing root
+# is report-only until its host is connected — flip it to strict by removing
+# "|| true" once recommendedfirst.com serves.
 name: heartbeat
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "17 */6 * * *"
   workflow_dispatch: {}
 
 jobs:
