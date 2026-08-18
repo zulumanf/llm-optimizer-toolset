@@ -13,11 +13,16 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { suggestTask } from "@/lib/tasks/service";
 import {
   detectGaps,
+  priorityBand,
   DETECTOR_VERSION,
   type PromptOutcome,
   type CompanyOutcome,
   type DomainCitation,
 } from "@/lib/gaps/detect";
+import {
+  playbookFor,
+  SOURCE_PLAYBOOK_VERSION,
+} from "@/lib/sources/playbooks";
 import { extractUrls, urlDomain } from "@/lib/parsing/prepass";
 import { PROMPT_NAMES_COMPANY } from "@/lib/scoring/prompt-echo";
 import { extractCitations } from "@/lib/ai/citations";
@@ -212,12 +217,50 @@ export async function analyzeRun(
       })
     );
 
+    // Displacement (spec 087): who collected the recommendation when the
+    // subject was absent. Derived on read; only forwarded when the absent
+    // sample clears the engine's evidence threshold.
+    const { runDisplacement } = await import("@/lib/competitors/displacement");
+    const displacementResult = await runDisplacement(runId, {
+      subjectCompanyId: subject.id,
+    });
+    const displacement =
+      displacementResult && displacementResult.status === "ok"
+        ? {
+            validResponses: displacementResult.validResponses,
+            absentResponses: displacementResult.absentResponses,
+            rivals: displacementResult.rivals
+              .filter((r) => r.meaningful)
+              .map((r) => ({
+                name: r.name,
+                displacedResponses: r.displacedResponses,
+                topClusters: r.byCluster.slice(0, 3).map((c) => c.segment),
+                topDomains: (
+                  displacementResult.sourceAssociations.find(
+                    (s) => s.companyId === r.companyId
+                  )?.domains ?? []
+                )
+                  .filter((d) => d.meaningful)
+                  .slice(0, 5)
+                  .map((d) => ({
+                    domain: d.domain,
+                    count: d.count,
+                    sourceType: d.sourceType,
+                  })),
+              })),
+            sampleResponseIds:
+              displacementResult.rivals.find((r) => r.meaningful)?.responseIds.slice(0, 3) ??
+              [],
+          }
+        : undefined;
+
     const findings = detectGaps({
       subjectName: subject.name,
       subjectDomain: subject.domain,
       prompts,
       companies: [...byCompany.values()],
       domains,
+      displacement,
     });
 
     await sql.begin(async (tx) => {
@@ -271,6 +314,36 @@ export async function analyzeRun(
   }
 }
 
+/**
+ * Source-type playbook lines for a displacement finding's task (spec 087):
+ * the rivals' associated source types decide what the legitimate next moves
+ * are, instead of a generic "get more citations".
+ */
+function displacementPlaybookNote(
+  gapType: string,
+  detail: Record<string, unknown>
+): string {
+  if (gapType !== "displacement") return "";
+  const rivals = (detail.rivals ?? []) as {
+    topDomains?: { sourceType: string | null }[];
+  }[];
+  const sourceTypes = [
+    ...new Set(
+      rivals
+        .flatMap((r) => r.topDomains ?? [])
+        .map((d) => d.sourceType)
+        .filter((t): t is string => t != null)
+    ),
+  ];
+  if (sourceTypes.length === 0) return "";
+  const lines = sourceTypes.flatMap((t) => {
+    const playbook = playbookFor(t);
+    return playbook ? [`- ${playbook.label}: ${playbook.actions[0]}`] : [];
+  });
+  if (lines.length === 0) return "";
+  return `\n\nPlaybook (${SOURCE_PLAYBOOK_VERSION}) — rival-associated source types:\n${lines.join("\n")}`;
+}
+
 /** Turn a finding into an evidence-backed suggested task (yellow level). */
 export async function createTaskFromFinding(
   user: CurrentUser,
@@ -300,11 +373,18 @@ export async function createTaskFromFinding(
     // exact refs the detector cited, not a placeholder. The first-score
     // fallback survives only for pre-064 findings with empty evidence.
     const findingEvidenceIds = (finding.evidenceIds as string[] | null) ?? [];
+    const band = priorityBand(Number(finding.opportunityScore));
+    const playbookNote = displacementPlaybookNote(
+      finding.gapType as string,
+      finding.detail as Record<string, unknown>
+    );
     const result = await suggestTask(user, {
       projectId: finding.projectId as string,
       title: `[${finding.gapType}] ${String(finding.finding).slice(0, 100)}`,
-      description: `${finding.finding}\n\nOpportunity score ${finding.opportunityScore} (detector ${finding.detectorVersion}).`,
-      priority: Number(finding.opportunityScore) >= 70 ? "p1" : "p2",
+      description:
+        `${finding.finding}\n\nOpportunity score ${finding.opportunityScore} ` +
+        `(detector ${finding.detectorVersion}, band ${band}).${playbookNote}`,
+      priority: band === "do_now" ? "p1" : band === "do_next" ? "p2" : "p3",
       ...(findingEvidenceIds.length > 0
         ? { evidenceIds: findingEvidenceIds }
         : {

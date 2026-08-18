@@ -11,6 +11,8 @@ import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany, listCompaniesForProject } from "@/db/companies";
 import { domainLabelsForProject } from "@/db/citation-profiles";
+import { domainClassifications } from "@/db/displacement";
+import { playbookFor } from "@/lib/sources/playbooks";
 import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
@@ -237,10 +239,27 @@ export async function discoverOpportunities(
       // round-trips inside an open transaction. Same idempotency: existing
       // rows only touch updated_at, operator fields and status never move.
       if (kept.length > 0) {
+        // Seed acquisition_path from the source-type playbook (spec 087) at
+        // insert time only — an operator's later choice is never overwritten.
+        const classified = await domainClassifications(
+          projectId,
+          kept.map((s) => s.domain)
+        );
+        const typeByDomain = new Map(
+          classified.map((c) => [c.domain, c.sourceType])
+        );
+        const paths = kept.map((s) => {
+          const sourceType = typeByDomain.get(s.domain);
+          return (sourceType && playbookFor(sourceType)?.defaultAcquisitionPath) ?? "unknown";
+        });
         const rows = await tx`
-          insert into citation_opportunities (project_id, domain, created_by)
-          select ${projectId}, d.domain, ${user.id}
-          from unnest(${kept.map((s) => s.domain)}::text[]) as d(domain)
+          insert into citation_opportunities
+            (project_id, domain, acquisition_path, created_by)
+          select ${projectId}, d.domain, d.path, ${user.id}
+          from unnest(
+            ${kept.map((s) => s.domain)}::text[],
+            ${paths}::text[]
+          ) as d(domain, path)
           on conflict (project_id, domain)
             do update set updated_at = now()
           returning (xmax = 0) as inserted
