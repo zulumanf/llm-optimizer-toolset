@@ -212,12 +212,21 @@ export async function prepareAuditRefreshCandidates(input: {
     const prospectId = prospect.id as string;
     try {
       const [existing] = await sql`
-        select id from audit_refresh_candidates
+        select id, status from audit_refresh_candidates
         where prospect_id = ${prospectId} and run_id = ${input.runId}
       `;
-      if (existing) {
+      if (existing && existing.status !== "needs_attention") {
         result.skipped.push({ prospectId, reason: "already_prepared" });
         continue;
+      }
+      if (existing) {
+        // A failed preparation is OURS to retry (2026-08-17: the first
+        // production run needed manual row deletion to recover after the
+        // review gate cleared). Decided/pending rows are never touched.
+        await sql`
+          delete from audit_refresh_candidates
+          where id = ${existing.id} and status = 'needs_attention'
+        `;
       }
 
       // A newer run makes older undecided candidates moot — one open card

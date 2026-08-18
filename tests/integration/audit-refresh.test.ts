@@ -12,6 +12,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
 import { unwrap } from "../helpers/result";
+import {
+  drainJobs as drainPipeline,
+  seedApprovedFinding,
+  type PipelineModules,
+} from "../helpers/prospect-fixtures";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -96,17 +101,11 @@ describe.skipIf(!TEST_URL)("audit refresh queue (integration)", () => {
     await sql.end();
   });
 
-  async function drainJobs(): Promise<void> {
-    for (let i = 0; i < 200; i += 1) {
-      const job = await jobs.claimNextJob("test-worker");
-      if (!job) return;
-      if (job.type === "execute_run") await execute.executeRun(job.payload.runId as string);
-      else if (job.type === "parse_response")
-        await parsing.parseResponse(job.payload.responseId as string);
-      else if (job.type === "compute_scores")
-        await scoring.computeScores(job.payload.runId as string);
-      await jobs.completeJob(job.id);
-    }
+  function modules(): PipelineModules {
+    return {
+      sql, projectSvc, setSvc, promptSvc, runSvc, execute, jobs,
+      companySvc, claims, parsing, scoring, exclusivity, svc,
+    };
   }
 
   interface Fixture {
@@ -117,88 +116,13 @@ describe.skipIf(!TEST_URL)("audit refresh queue (integration)", () => {
     prospectCompanyId: string;
   }
 
-  /** A prospect-kind project with a scored manual run and a published audit. */
+  /** Shared fixture through finding approval, plus this suite's publish. */
   async function seedPublishedAudit(): Promise<Fixture> {
-    const subject = unwrap(await companySvc.upsertCompany(operator, { name: "Lumina" }));
-    unwrap(await companySvc.upsertCompany(operator, { name: "Acme" }));
-    const rivera = unwrap(await companySvc.upsertCompany(operator, { name: "Rivera Team" }));
-    const project = unwrap(
-      await projectSvc.createProject(operator, { name: "Prospect market: Manhattan" })
-    );
-    await sql`update projects set kind = 'prospect' where id = ${project.id}`;
-    unwrap(
-      await claims.setSubjectCompany(operator, { projectId: project.id, companyId: subject.id })
-    );
-    const set = unwrap(
-      await setSvc.createPromptSet(operator, { projectId: project.id, name: "Set" })
-    );
-    for (const p of [
-      { text: "best luxury team in manhattan?", category: "recommendation" as const },
-      { text: "which team should sell my tribeca loft?", category: "recommendation" as const },
-    ]) {
-      unwrap(await promptSvc.addPrompt(operator, { setId: set.id, ...p }));
-    }
-    unwrap(await setSvc.freezePromptSet(operator, { id: set.id }));
-    const [version] = await sql`
-      select id from prompt_set_versions where prompt_set_id = ${set.id}
-    `;
-    const versionId = version?.id as string;
-
-    const run = unwrap(
-      await runSvc.startRun(operator, {
-        projectId: project.id,
-        promptSetVersionId: versionId,
-        providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }],
-        budgetUsd: 5,
-        label: "initial benchmark",
-      })
-    );
-    await drainJobs();
-
-    const market = unwrap(
-      await exclusivity.createMarket(admin, { name: "Manhattan", kind: "borough", aliases: [] })
-    );
-    const launch = unwrap(
-      await svc.createLaunch(operator, {
-        name: "Manhattan luxury residential",
-        marketId: market.marketId,
-        priceSegment: "luxury",
-        serviceCategory: "residential brokerage",
-      })
-    );
-    const prospect = unwrap(
-      await svc.createProspect(operator, {
-        launchId: launch.launchId,
-        businessName: "Rivera Team",
-        prospectType: "team",
-        companyId: rivera.id,
-        teamLeader: "Ana Rivera",
-      })
-    );
-    const { benchmarkId } = unwrap(
-      await svc.linkBenchmark(operator, { prospectId: prospect.prospectId, runId: run.id })
-    );
-    unwrap(await svc.generateFindings(operator, { benchmarkId }));
-    const [top] = await sql`
-      select id from prospect_findings
-      where benchmark_id = ${benchmarkId} and status = 'candidate'
-      order by rank_score desc nulls last limit 1
-    `;
-    unwrap(
-      await svc.reviewFinding(operator, {
-        findingId: top?.id as string,
-        decision: "approved",
-        makePrimary: true,
-      })
-    );
-    unwrap(await svc.publishAudit(operator, { prospectId: prospect.prospectId }));
-    return {
-      projectId: project.id,
-      versionId,
-      runId: run.id,
-      prospectId: prospect.prospectId,
-      prospectCompanyId: rivera.id,
-    };
+    const fixture = await seedApprovedFinding(modules(), operator, admin, {
+      projectKind: "prospect",
+    });
+    unwrap(await svc.publishAudit(operator, { prospectId: fixture.prospectId }));
+    return fixture;
   }
 
   async function startScheduledRun(fixture: Fixture, label: string): Promise<string> {
@@ -215,7 +139,7 @@ describe.skipIf(!TEST_URL)("audit refresh queue (integration)", () => {
         "scheduled"
       )
     );
-    await drainJobs();
+    await drainPipeline(modules());
     return run.id;
   }
 
@@ -244,6 +168,22 @@ describe.skipIf(!TEST_URL)("audit refresh queue (integration)", () => {
     expect(again.skipped).toEqual([
       { prospectId: fixture.prospectId, reason: "already_prepared" },
     ]);
+
+    // A needs_attention row is preparation's own failure — retried in
+    // place once the blocker clears, never a permanent wedge (cleanup
+    // 2026-08-17: the first production run required manual row deletion).
+    await sql`
+      update audit_refresh_candidates
+      set status = 'needs_attention', finding_id = null, error = 'simulated'
+      where run_id = ${run2}
+    `;
+    const retried = await refresh.prepareAuditRefreshCandidates({ runId: run2 });
+    expect(retried.prepared).toBe(1);
+    const [after] = await sql`
+      select status, finding_id from audit_refresh_candidates where run_id = ${run2}
+    `;
+    expect(after?.status).toBe("pending");
+    expect(after?.findingId).not.toBeNull();
   });
 
   it("safe-skips runs the queue does not consume", async () => {

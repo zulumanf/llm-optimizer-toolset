@@ -11,6 +11,10 @@ import type { CurrentUser } from "@/lib/auth";
 import type { AgentCaller } from "@/lib/ai/agent";
 import { seedTestActors } from "../helpers/actors";
 import { unwrap } from "../helpers/result";
+import {
+  seedApprovedFinding,
+  type PipelineModules,
+} from "../helpers/prospect-fixtures";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -130,90 +134,19 @@ describe.skipIf(!TEST_URL)("audit sense-check (integration)", () => {
     await sql.end();
   });
 
-  async function drainJobs(): Promise<void> {
-    for (let i = 0; i < 200; i += 1) {
-      const job = await jobs.claimNextJob("test-worker");
-      if (!job) return;
-      if (job.type === "execute_run") await execute.executeRun(job.payload.runId as string);
-      else if (job.type === "parse_response")
-        await parsing.parseResponse(job.payload.responseId as string);
-      else if (job.type === "compute_scores")
-        await scoring.computeScores(job.payload.runId as string);
-      await jobs.completeJob(job.id);
-    }
+  function modules(): PipelineModules {
+    return {
+      sql, projectSvc, setSvc, promptSvc, runSvc, execute, jobs,
+      companySvc, claims, parsing, scoring, exclusivity, svc,
+    };
   }
 
+  /** Shared fixture: scored prospect run through finding approval. */
   async function seedReadyProspect(): Promise<string> {
-    const subject = unwrap(await companySvc.upsertCompany(operator, { name: "Lumina" }));
-    unwrap(await companySvc.upsertCompany(operator, { name: "Acme" }));
-    const rivera = unwrap(await companySvc.upsertCompany(operator, { name: "Rivera Team" }));
-    const project = unwrap(
-      await projectSvc.createProject(operator, { name: "Prospect market" })
-    );
-    await sql`update projects set kind = 'prospect' where id = ${project.id}`;
-    unwrap(
-      await claims.setSubjectCompany(operator, { projectId: project.id, companyId: subject.id })
-    );
-    const set = unwrap(
-      await setSvc.createPromptSet(operator, { projectId: project.id, name: "Set" })
-    );
-    for (const text of [
-      "best luxury team in manhattan?",
-      "which team should sell my tribeca loft?",
-    ]) {
-      unwrap(await promptSvc.addPrompt(operator, { setId: set.id, text, category: "recommendation" }));
-    }
-    unwrap(await setSvc.freezePromptSet(operator, { id: set.id }));
-    const [version] = await sql`
-      select id from prompt_set_versions where prompt_set_id = ${set.id}
-    `;
-    const run = unwrap(
-      await runSvc.startRun(operator, {
-        projectId: project.id,
-        promptSetVersionId: version?.id as string,
-        providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }],
-        budgetUsd: 5,
-        label: "benchmark",
-      })
-    );
-    await drainJobs();
-    const market = unwrap(
-      await exclusivity.createMarket(admin, { name: "Manhattan", kind: "borough", aliases: [] })
-    );
-    const launch = unwrap(
-      await svc.createLaunch(operator, {
-        name: "Manhattan luxury residential",
-        marketId: market.marketId,
-        priceSegment: "luxury",
-        serviceCategory: "residential brokerage",
-      })
-    );
-    const prospect = unwrap(
-      await svc.createProspect(operator, {
-        launchId: launch.launchId,
-        businessName: "Rivera Team",
-        prospectType: "team",
-        companyId: rivera.id,
-        teamLeader: "Ana Rivera",
-      })
-    );
-    const { benchmarkId } = unwrap(
-      await svc.linkBenchmark(operator, { prospectId: prospect.prospectId, runId: run.id })
-    );
-    unwrap(await svc.generateFindings(operator, { benchmarkId }));
-    const [top] = await sql`
-      select id from prospect_findings
-      where benchmark_id = ${benchmarkId} and status = 'candidate'
-      order by rank_score desc nulls last limit 1
-    `;
-    unwrap(
-      await svc.reviewFinding(operator, {
-        findingId: top?.id as string,
-        decision: "approved",
-        makePrimary: true,
-      })
-    );
-    return prospect.prospectId;
+    const fixture = await seedApprovedFinding(modules(), operator, admin, {
+      projectKind: "prospect",
+    });
+    return fixture.prospectId;
   }
 
   it("stores results with version, model, and hash; a failed call stores the failure", async () => {
