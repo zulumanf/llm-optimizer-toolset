@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { workflowRunDetail } from "@/db/control-tower";
@@ -34,21 +35,25 @@ export default async function WorkflowRunPage({
   const pendingApprovals = approvals.filter((a) => a.decision === null);
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="mb-1 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{run.definitionName}</h1>
-        <Link
-          href="/workflows"
-          className="text-sm text-muted-foreground underline hover:text-foreground"
-        >
-          All workflows
-        </Link>
-      </div>
-      <p className="mb-6 text-sm text-muted-foreground">
-        <span className="font-mono text-xs">{run.definitionKey}</span> v{run.version}
-        {run.projectName ? ` · ${run.projectName}` : ""} · started{" "}
-        {run.startedAt.toISOString().slice(0, 16).replace("T", " ")}
-      </p>
+    <PageShell>
+      <PageHeader
+        title={run.definitionName}
+        description={
+          <>
+            <span className="font-mono text-xs">{run.definitionKey}</span> v{run.version}
+            {run.projectName ? ` · ${run.projectName}` : ""} · started{" "}
+            {run.startedAt.toISOString().slice(0, 16).replace("T", " ")}
+          </>
+        }
+        actions={
+          <Link
+            href="/workflows"
+            className="text-sm text-muted-foreground underline hover:text-foreground"
+          >
+            All workflows
+          </Link>
+        }
+      />
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Badge variant={run.state === "failed" ? "destructive" : "default"}>
@@ -215,7 +220,7 @@ export default async function WorkflowRunPage({
           </table>
         </div>
       </section>
-    </div>
+    </PageShell>
   );
 }
 

@@ -4,6 +4,7 @@
  * Everything an operator needs before deciding to run it — including what it
  * needs that is not connected, and what it will stop for.
  */
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AUTOMATION_WORKFLOWS } from "@/lib/automation/workflows";
@@ -46,15 +47,17 @@ export default async function WorkflowDetailPage({
   const errors = validateAutomationDefinition(workflow);
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <div className="mb-1 flex items-baseline gap-2">
-        <h1 className="text-2xl font-semibold">{workflow.name}</h1>
-        <Badge variant="outline">v{workflow.version}</Badge>
-      </div>
-      <p className="font-mono text-xs text-muted-foreground">{workflow.key}</p>
-      <p className="mt-2 mb-4 max-w-3xl text-sm text-muted-foreground">
-        {workflow.description}
-      </p>
+    <PageShell>
+      <PageHeader
+        title={workflow.name}
+        badge={<Badge variant="outline">v{workflow.version}</Badge>}
+        description={
+          <>
+            <span className="font-mono text-xs">{workflow.key}</span>
+            <span className="mt-2 block">{workflow.description}</span>
+          </>
+        }
+      />
 
       <AutomationNav current="workflows" />
 
@@ -299,6 +302,6 @@ export default async function WorkflowDetailPage({
           </div>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }

@@ -4,6 +4,7 @@
  * Events are insert-only: this is the record of what the platform believed
  * happened, and editing one would be editing history.
  */
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { listEvents, listDeadLetters, eventStats, listSubscriptions } from "@/db/events";
 import { eventTypesByGroup, knownEventTypes } from "@/lib/events/catalog";
 import { Badge } from "@/components/ui/badge";
@@ -25,13 +26,17 @@ export default async function EventsPage() {
   const subscribedTypes = new Set(subscriptions.filter((s) => s.enabled).map((s) => s.eventType));
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <h1 className="text-2xl font-semibold">Domain events</h1>
-      <p className="mt-1 mb-4 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        title="Domain events"
+        description={
+          <>
         {knownEventTypes().length} declared types. Publishing is transactional with
         the change that caused it — an event cannot exist for a write that rolled
         back, and a write cannot commit without its event.
-      </p>
+          </>
+        }
+      />
 
       <AutomationNav current="events" />
 
@@ -193,6 +198,6 @@ export default async function EventsPage() {
           ))}
         </div>
       </section>
-    </div>
+    </PageShell>
   );
 }
