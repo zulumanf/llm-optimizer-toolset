@@ -738,9 +738,30 @@ export default async function ProspectAuditPage({
                 <p className="text-sm font-medium">
                   {i + 1}. {why.title}
                 </p>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  {why.explanation}
-                </p>
+                {/* Measured fact vs our reading of it, kept visibly apart
+                    (spec 086) — the reader can accept the count and argue
+                    with the interpretation. Older snapshots carry no
+                    observations and render as before. */}
+                {why.observations && why.observations.length > 0 ? (
+                  <>
+                    {why.observations.map((obs, j) => (
+                      <p key={j} className="mt-0.5 text-sm">
+                        <span className="font-medium">Counted:</span>{" "}
+                        <span className="text-muted-foreground">{obs}</span>
+                      </p>
+                    ))}
+                    <p className="mt-0.5 text-sm">
+                      <span className="font-medium">Our read:</span>{" "}
+                      <span className="text-muted-foreground">
+                        {why.explanation}
+                      </span>
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {why.explanation}
+                  </p>
+                )}
                 <p className="mt-1.5 text-sm">
                   <span className="font-medium">The fix:</span> {why.suggestedAction}
                 </p>
@@ -850,6 +871,54 @@ export default async function ProspectAuditPage({
               </dd>
             </div>
           </dl>
+          {/* Collection provenance (spec 086) — how the answers were
+              gathered, said plainly. Older snapshots carry no collection
+              block and render without this line. */}
+          {snapshot.collection && (
+            <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
+              Collected through the assistants&apos; official interfaces for
+              developers
+              {snapshot.collection.searchEnabled > 0 &&
+              snapshot.collection.modelOnly > 0
+                ? ` — ${snapshot.collection.searchEnabled} answers with live web search on, ${snapshot.collection.modelOnly} without`
+                : snapshot.collection.searchEnabled > 0
+                  ? " with live web search on"
+                  : ""}
+              .
+              {!snapshot.consumerValidation &&
+                " We did not additionally hand-check the consumer apps for this report; the counting method is identical either way."}
+            </p>
+          )}
+          {snapshot.consumerValidation && (
+            <div className="mt-3 max-w-[65ch] rounded-md border p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Hand-checked in the consumer apps
+              </p>
+              <p className="mt-1 text-sm">
+                Separately from the systematic measurement above, we asked the
+                same questions by hand in fresh sessions of the consumer apps
+                ({snapshot.consumerValidation.performedFrom}
+                {snapshot.consumerValidation.performedTo !==
+                snapshot.consumerValidation.performedFrom
+                  ? ` – ${snapshot.consumerValidation.performedTo}`
+                  : ""}
+                ): {snapshot.prospectName} appeared in{" "}
+                <span className="tabular-nums">
+                  {snapshot.consumerValidation.mentioned} of{" "}
+                  {snapshot.consumerValidation.observations}
+                </span>{" "}
+                answers. Counted separately — these never mix into the numbers
+                above.
+              </p>
+              <ul className="mt-1.5 text-xs text-muted-foreground">
+                {snapshot.consumerValidation.byProvider.map((p) => (
+                  <li key={p.provider} className="tabular-nums">
+                    {p.provider}: {p.mentioned}/{p.observations}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
             {snapshot.methodology}
           </p>

@@ -35,7 +35,10 @@ describe("deriveDiagnoses", () => {
     const diagnosis = deriveDiagnoses(inputs).find((d) => d.key === "no_organic_visibility")!;
     expect(diagnosis).toBeDefined();
     expect(diagnosis.affectedPrompts.length).toBe(2);
-    expect(diagnosis.explanation).toContain("0 of 6");
+    // v2 epistemics: the measured fact lives in observations, the reading
+    // of it in explanation — both present, kept apart.
+    expect(diagnosis.observations.join(" ")).toContain("0 of 6");
+    expect(diagnosis.explanation.length).toBeGreaterThan(0);
     // Mentioned somewhere → not triggered.
     expect(
       keys({ ...base(), prompts: [prompt({ mentioned: 1 })] })
@@ -187,6 +190,21 @@ describe("deriveDiagnoses", () => {
     expect(results.every((d) => d.suggestedAction.length > 10)).toBe(true);
     for (let i = 1; i < results.length; i += 1) {
       expect(results[i - 1]!.confidence).toBeGreaterThanOrEqual(results[i]!.confidence);
+    }
+  });
+
+  it("every diagnosis states at least one measured observation, apart from its inference (spec 086)", () => {
+    const results = deriveDiagnoses({
+      ...base(),
+      signalKinds: [],
+      prompts: [prompt({})],
+      assessments: { website_indexable: "no", structured_data_consistent: "no" },
+    });
+    expect(results.length).toBeGreaterThan(0);
+    for (const d of results) {
+      expect(d.observations.length).toBeGreaterThan(0);
+      expect(d.observations.every((o) => o.length > 0)).toBe(true);
+      expect(d.explanation.length).toBeGreaterThan(0);
     }
   });
 });

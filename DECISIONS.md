@@ -2268,3 +2268,30 @@ weaken a gate that could actually fail:
 Also: docs-only pushes (`**.md`, docs/, specs/) skip CI via paths-ignore —
 a run that cannot fail is a run that only costs. CI remains event-driven;
 a day with no pushes is now a day with (almost) no Actions runs.
+
+## 2026-08-18 — Observation provenance is derived, not stored (spec 086)
+
+Collection method, surface, measurement tier (A–D), and measurement purpose
+needed to exist — but every fact they derive from was already stored:
+`responses` rows are API-collected by construction (the executor is their
+only writer), manual consumer observations live only in
+`client_validation_observations` (011, never enter scores), search-vs-model
+instrumentation is on `request_params`/model id, and purpose facts sit on
+`projects.kind` × `runs.trigger` × `intervention_runs.role`. So provenance
+became pure functions (`lib/runs/provenance.ts`), not columns: a derived
+label cannot drift from the facts, and an API response structurally cannot
+be presented as a consumer observation. The audit snapshot freezes the
+derived block at publish (same rationale as instrumentVersions). The
+collector registry is typed constants, not a table — its rows are
+code-reviewed capability facts, and nothing automated consumes them yet.
+
+Also 086: market-level citation aggregation (`lib/citations/market.ts`)
+stays derived-on-read from `response_citations` with an explicit
+insufficient-evidence floor (MIN_MARKET_CITATIONS=10) — no second copy of
+counts; source classifier v2 adds `industry_ranking`/`local_press` (the two
+labels the real-estate diagnosis actually runs on) with existing rows kept
+on v1 labels until `scripts/reclassify-sources.ts` re-runs them — never
+silently remapped; diagnoses split `observations` (measured) from
+`explanation` (inference) in the data model, not prompt wording (the same
+move 064 made for gap_findings); `interventions.intervention_type` is
+nullable — legacy rows stay unlabeled, never guessed.

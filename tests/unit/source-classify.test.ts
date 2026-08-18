@@ -61,4 +61,37 @@ describe("classifySource (deterministic v1)", () => {
     // notlumina.io must not match lumina.io
     expect(classifySource("notlumina.io", context).relationship).toBe("third_party");
   });
+
+  it("v2: industry rankings and local press classify as their own types", () => {
+    expect(classifySource("realtrends.com", context).sourceType).toBe(
+      "industry_ranking"
+    );
+    expect(classifySource("www.realtrends.com", context).sourceType).toBe(
+      "industry_ranking"
+    );
+    expect(classifySource("jerseydigs.com", context).sourceType).toBe("local_press");
+    expect(classifySource("nj.com", context).sourceType).toBe("local_press");
+    // National real-estate press stays news, not local_press.
+    expect(classifySource("therealdeal.com", context).sourceType).toBe("news");
+  });
+
+  it("v2: market packs can extend local press via context", () => {
+    expect(
+      classifySource("hudsonreporter.com", {
+        ...context,
+        localPressDomains: ["hudsonreporter.com"],
+      }).sourceType
+    ).toBe("local_press");
+    // Without the context entry it stays honest 'other'.
+    expect(classifySource("hudsonreporter.com", context).sourceType).toBe("other");
+  });
+
+  it("v2: an owned domain outranks every type list, including the new ones", () => {
+    expect(
+      classifySource("jerseydigs.com", {
+        subjectDomain: "jerseydigs.com",
+        competitorDomains: [],
+      })
+    ).toEqual({ sourceType: "client_site", relationship: "owned" });
+  });
 });

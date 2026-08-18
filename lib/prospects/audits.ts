@@ -51,6 +51,7 @@ import {
 } from "@/lib/prospects/shared";
 import { authorityGapForRun } from "@/lib/prospects/gap";
 import { diagnoseProspect } from "@/lib/prospects/diagnose";
+import { apiSurface, measurementPurpose } from "@/lib/runs/provenance";
 import { computeProspectScoreView } from "@/lib/prospects/final-score";
 import { validateAuditEvidence } from "@/lib/prospects/audit-evidence";
 import { todayIso } from "@/lib/prospects/constants";
@@ -132,6 +133,26 @@ export interface AuditSnapshot {
    * re-verified against exactly the methodology that produced it. Optional:
    * pre-065 snapshots render without it (presentation-only rule). */
   instrumentVersions?: { scoring: string[]; parser: string[] };
+  /** How the observations were collected (spec 086), derived from stored
+   * instrument facts at publish. Optional: pre-086 snapshots render without
+   * it. searchEnabled + modelOnly = responseCount. */
+  collection?: {
+    method: "api";
+    searchEnabled: number;
+    modelOnly: number;
+    purpose: string;
+  };
+  /** Staff-recorded clean-session consumer observations (spec 011) on the
+   * same benchmark project, summarized per platform with their OWN
+   * denominator — never merged into the API counts above. Present only when
+   * observations exist. */
+  consumerValidation?: {
+    observations: number;
+    mentioned: number;
+    byProvider: { provider: string; observations: number; mentioned: number }[];
+    performedFrom: string;
+    performedTo: string;
+  };
   keyFinding: {
     title: string;
     explanation: string;
@@ -277,7 +298,13 @@ export interface AuditSnapshot {
   };
   /** Prospect-facing "why this is happening" (spec 042 diagnoses, whitelist
    * only — internal research-gap diagnoses never ship to a prospect). */
-  whyItHappens?: { title: string; explanation: string; suggestedAction: string }[];
+  whyItHappens?: {
+    title: string;
+    /** Measured facts (spec 086) — absent on snapshots published before v2. */
+    observations?: string[];
+    explanation: string;
+    suggestedAction: string;
+  }[];
   /** The domains the AI answers actually cited — where visibility is won. */
   topSources?: { domain: string; citations: number }[];
   /** Spec 038 — present only when both sides were measurable at publish
@@ -543,6 +570,7 @@ export async function publishAudit(
       .slice(0, 3)
       .map((d) => ({
         title: PROSPECT_FACING_DIAGNOSES[d.key]!,
+        observations: d.observations,
         explanation: d.explanation,
         suggestedAction: d.suggestedAction,
       }));
@@ -842,6 +870,81 @@ export async function publishAudit(
         scoring: (versions?.scoring as string[]) ?? [],
         parser: (versions?.parser as string[]) ?? [],
       };
+    }
+
+    // Collection provenance (spec 086): how the observations were collected,
+    // derived from instrument facts stored at capture time. All benchmark
+    // responses are API-collected by construction (the executor is the only
+    // writer of `responses`); the split states how many ran with live web
+    // search versus model-only.
+    {
+      const facts = await sql`
+        select provider, model, request_params from responses
+        where run_id = ${benchmark.runId} and error is null
+      `;
+      const searchEnabled = facts.filter(
+        (f) =>
+          apiSurface({
+            provider: f.provider as string,
+            model: f.model as string,
+            requestParams: f.requestParams as { tools?: string[] } | null,
+          }) === "web_search"
+      ).length;
+      const [runFacts] = await sql`
+        select r.trigger, p.kind,
+          (select ir.role from intervention_runs ir
+            where ir.run_id = r.id limit 1) as intervention_role
+        from runs r join projects p on p.id = r.project_id
+        where r.id = ${benchmark.runId}
+      `;
+      snapshot.collection = {
+        method: "api",
+        searchEnabled,
+        modelOnly: facts.length - searchEnabled,
+        purpose: measurementPurpose({
+          projectKind: (runFacts?.kind as "client" | "prospect") ?? "prospect",
+          trigger: (runFacts?.trigger as "manual" | "scheduled") ?? "manual",
+          interventionRole:
+            (runFacts?.interventionRole as "baseline" | "post" | null) ?? null,
+        }),
+      };
+
+      // Consumer validation (spec 011 workflow): staff-recorded clean-session
+      // observations on the same benchmark project. Separate table, separate
+      // denominator — never merged into the API counts, per the 011 rule that
+      // client-performed observations never enter benchmark metrics.
+      const [cv] = await sql`
+        select count(o.id)::int as observations,
+          count(o.id) filter (where o.claimed_mentioned)::int as mentioned,
+          min(o.performed_on)::text as performed_from,
+          max(o.performed_on)::text as performed_to
+        from client_validation_observations o
+        join client_validation_runs vr on vr.id = o.validation_run_id
+        where vr.project_id = (select project_id from runs where id = ${benchmark.runId})
+      `;
+      if (cv && (cv.observations as number) > 0) {
+        const byProvider = await sql`
+          select o.provider,
+            count(o.id)::int as observations,
+            count(o.id) filter (where o.claimed_mentioned)::int as mentioned
+          from client_validation_observations o
+          join client_validation_runs vr on vr.id = o.validation_run_id
+          where vr.project_id = (select project_id from runs where id = ${benchmark.runId})
+          group by o.provider
+          order by o.provider
+        `;
+        snapshot.consumerValidation = {
+          observations: cv.observations as number,
+          mentioned: cv.mentioned as number,
+          byProvider: byProvider.map((p) => ({
+            provider: p.provider as string,
+            observations: p.observations as number,
+            mentioned: p.mentioned as number,
+          })),
+          performedFrom: cv.performedFrom as string,
+          performedTo: cv.performedTo as string,
+        };
+      }
     }
 
     // Publish-time quality flags for the OPERATOR (PR B amendment 4) —

@@ -92,6 +92,7 @@ export default async function ProspectsPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Owner</TableHead>
                 <TableHead className="text-right">Prospects</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -106,6 +107,14 @@ export default async function ProspectsPage() {
                   <TableCell className="text-right tabular-nums">
                     {l.prospectCount}
                     {l.targetProspectCount ? ` / ${l.targetProspectCount}` : ""}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Link
+                      href={`/prospects/sources?launch=${l.id}`}
+                      className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                      What AI relies on →
+                    </Link>
                   </TableCell>
                 </TableRow>
               ))}
