@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FileEdit } from "lucide-react";
@@ -46,34 +47,29 @@ export default async function ContentPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Clients</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Content
-      </nav>
-
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Content</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: "Clients", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Content" }]}
+        title="Content"
+        description={
+          <>
             Brief → draft → verify → approve → publish. Drafts only use
             approved claims; the citation gate blocks everything else. You
             publish externally — recording it spawns the measuring
             intervention.
-          </p>
-        </div>
-        <NewBriefButton
+          </>
+        }
+        actions={
+          <>
+            <NewBriefButton
           findings={openFindings.map((f) => ({
             id: f.id as string,
             label: `[${Number(f.opportunityScore).toFixed(0)}] ${f.gapType}: ${String(f.finding).slice(0, 80)}…`,
           }))}
         />
-      </div>
-
+          </>
+        }
+      />
       {assets.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <FileEdit className="size-8 text-muted-foreground" />
@@ -125,6 +121,6 @@ export default async function ContentPage({
           </Table>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

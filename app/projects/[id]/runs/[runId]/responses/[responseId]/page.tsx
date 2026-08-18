@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { getResponse, getRun } from "@/db/runs";
 import { sql } from "@/db/client";
@@ -34,34 +34,31 @@ export default async function ResponsePage({
   `;
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href={`/projects/${projectId}/runs/${runId}`} className="hover:text-foreground">
-          {run.label}
-        </Link>
-        {" / "}response
-      </nav>
-
-      <div className="mb-4">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold">
-            {response.provider} · {response.model} · rep {response.repetition}
-          </h1>
-          {response.error ? (
+    <PageShell>
+      <PageHeader
+        crumbs={[
+          { label: run.label, href: `/projects/${projectId}/runs/${runId}` },
+          { label: "response" },
+        ]}
+        title={`${response.provider} · ${response.model} · rep ${response.repetition}`}
+        badge={
+          response.error ? (
             <Badge variant="destructive">{response.error.kind}</Badge>
           ) : response.refusal ? (
             <Badge variant="outline">refusal</Badge>
           ) : (
             <Badge variant="secondary">captured</Badge>
-          )}
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {formatDate(response.requestedAt)} ·{" "}
-          {response.latencyMs != null ? `${response.latencyMs}ms` : "no latency"} ·{" "}
-          {response.tokensIn ?? 0} in / {response.tokensOut ?? 0} out tokens · $
-          {Number(response.costUsd).toFixed(4)} · immutable capture
-        </p>
-      </div>
+          )
+        }
+        description={
+          <span className="text-xs">
+            {formatDate(response.requestedAt)} ·{" "}
+            {response.latencyMs != null ? `${response.latencyMs}ms` : "no latency"} ·{" "}
+            {response.tokensIn ?? 0} in / {response.tokensOut ?? 0} out tokens · $
+            {Number(response.costUsd).toFixed(4)} · immutable capture
+          </span>
+        }
+      />
 
       <section className="mb-6">
         <h2 className="mb-1 text-sm font-medium text-muted-foreground">Prompt</h2>
@@ -162,6 +159,6 @@ export default async function ResponsePage({
           </pre>
         </details>
       )}
-    </div>
+    </PageShell>
   );
 }

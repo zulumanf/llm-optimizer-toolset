@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getRun } from "@/db/runs";
@@ -84,26 +85,22 @@ export default async function EvidencePage({
   };
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href={`/projects/${projectId}/runs/${runId}`} className="hover:text-foreground">
-          {run.label}
-        </Link>
-        {" / "}evidence
-      </nav>
-
-      <div className="mb-2 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">
-            {result.companyName} — {metric.replace(/_/g, " ")}
-          </h1>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">
+    <PageShell>
+      <PageHeader
+        crumbs={[
+          { label: run.label, href: `/projects/${projectId}/runs/${runId}` },
+          { label: "evidence" },
+        ]}
+        title={`${result.companyName} — ${metric.replace(/_/g, " ")}`}
+        description={
+          <>
+          <span className="mt-1 block text-2xl font-semibold tabular-nums text-foreground">
             {result.numerator} / {result.denominator}
             <span className="ml-3 text-sm text-muted-foreground">
               {result.value == null ? "—" : `${(result.value * 100).toFixed(1)}%`}
             </span>
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          </span>
+          <span className="mt-1 block text-xs">
             Every eligible observation is listed below — the {result.numerator}{" "}
             positives and the {result.denominator - result.numerator} negatives.
             Scoring {SCORING_VERSION} ·{" "}
@@ -129,21 +126,24 @@ export default async function EvidencePage({
             ) : (
               <span className="text-destructive">{tampered} MISMATCHES</span>
             )}
-          </p>
-        </div>
-        <EvidenceTools
-          runId={runId}
-          projectId={projectId}
-          latestExport={
-            latestExport
-              ? {
-                  exportId: latestExport.id as string,
-                  sha256: latestExport.sha256 as string,
-                }
-              : null
-          }
-        />
-      </div>
+          </span>
+          </>
+        }
+        actions={
+          <EvidenceTools
+            runId={runId}
+            projectId={projectId}
+            latestExport={
+              latestExport
+                ? {
+                    exportId: latestExport.id as string,
+                    sha256: latestExport.sha256 as string,
+                  }
+                : null
+            }
+          />
+        }
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         {DRILLDOWN_METRICS.map((m) => (
@@ -253,7 +253,7 @@ export default async function EvidencePage({
             <tbody>
               {result.perPrompt.map((p) => (
                 <tr key={p.promptId} className="border-t">
-                  <td className="max-w-lg truncate p-2">
+                  <td className="max-w-md truncate p-2">
                     {p.promptText}
                     {p.isHoldout && <Badge variant="outline" className="ml-1">holdout</Badge>}
                   </td>
@@ -292,6 +292,6 @@ export default async function EvidencePage({
           </p>
         </section>
       )}
-    </div>
+    </PageShell>
   );
 }

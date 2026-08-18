@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { ClipboardCheck } from "lucide-react";
 import { getProject } from "@/db/projects";
@@ -56,21 +56,13 @@ export default async function ValidationPage({
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <PageShell>
       <ProjectTabs projectId={id} setKey="reports" />
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Clients</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Client validation
-      </nav>
-
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Client validation</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        crumbs={[{ label: "Clients", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Client validation" }]}
+        title="Client validation"
+        description={
+          <>
             The client checks our numbers themselves: a seeded random sample
             of frozen prompts, run in their own clean sessions. These
             observations are stored separately and{" "}
@@ -78,17 +70,20 @@ export default async function ValidationPage({
               never enter benchmark metrics
             </span>{" "}
             — they are compared directionally.
-          </p>
-        </div>
-        <NewValidationRunButton
+          </>
+        }
+        actions={
+          <>
+            <NewValidationRunButton
           projectId={id}
           versions={frozenVersions.map((v) => ({
             id: v.id as string,
             label: `${v.setName} — v${v.version}`,
           }))}
         />
-      </div>
-
+          </>
+        }
+      />
       {runs.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <ClipboardCheck className="size-8 text-muted-foreground" />
@@ -167,6 +162,6 @@ export default async function ValidationPage({
           })}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { sql } from "@/db/client";
@@ -41,26 +41,19 @@ export default async function TasksPage({
   }));
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
+    <PageShell>
       <ProjectTabs projectId={id} setKey="work" />
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Tasks
-      </nav>
-
-      <div className="mb-4">
-        <h1 className="text-2xl font-semibold">Tasks</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Tasks" }]}
+        title="Tasks"
+        description={
+          <>
           Software suggests with evidence; humans approve (PRINCIPLES.md #8).
           Completing a task can record it as an intervention so the effect gets
           measured.{rejected > 0 ? ` ${rejected} rejected task${rejected === 1 ? "" : "s"} hidden.` : ""}
-        </p>
-      </div>
-
+          </>
+        }
+      />
       <div className="grid gap-4 lg:grid-cols-4">
         {COLUMNS.map((column) => {
           const items = tasks.filter((t) => t.status === column.status);
@@ -89,6 +82,6 @@ export default async function TasksPage({
           );
         })}
       </div>
-    </div>
+    </PageShell>
   );
 }

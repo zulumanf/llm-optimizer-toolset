@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { sql } from "@/db/client";
@@ -49,25 +49,21 @@ export default async function PacketInspector({
       : null;
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href={`/projects/${id}`} className="hover:text-foreground">{project.name}</Link>
-        {" / "}
-        <Link href={`/projects/${id}/knowledge/packets`} className="hover:text-foreground">
-          Packets
-        </Link>
-        {" / "}inspector
-      </nav>
-
-      <h1 className="mb-1 text-2xl font-semibold">Packet inspector</h1>
-      <p className="mb-4 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: project.name, href: `/projects/${id}` }, { label: "Packets", href: `/projects/${id}/knowledge/packets` }, { label: "inspector" }]}
+        title="Packet inspector"
+        description={
+          <>
         <span className="font-medium">{explanation.templateKey}</span> ·{" "}
         {explanation.tokenCount.toLocaleString()} of{" "}
         {explanation.tokenBudget.toLocaleString()} tokens
         {budgetUse !== null && ` (${budgetUse}% of budget)`} ·{" "}
         {explanation.included.length} items included, {explanation.excluded.length} excluded
         {expired && " · expired for execution (readable for audit)"}
-      </p>
+          </>
+        }
+      />
 
       <KnowledgeLayerNav projectId={id} />
 
@@ -177,6 +173,6 @@ export default async function PacketInspector({
             : `${withheld.length} approved claim${withheld.length === 1 ? " was" : "s were"} withheld because this packet's audience may not see their privacy class. The omission is recorded here rather than being silent.`}
         </p>
       </section>
-    </div>
+    </PageShell>
   );
 }

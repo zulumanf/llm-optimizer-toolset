@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { FolderPlus } from "lucide-react";
 import { listPortfolio } from "@/db/projects";
@@ -47,10 +48,12 @@ export default async function ProjectsPage({
   };
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Clients</h1>
-        <div className="flex items-center gap-3">
+    <PageShell>
+      <PageHeader
+        title="Clients"
+        actions={
+          <>
+            <div className="flex items-center gap-3">
           <Link
             href={includeArchived ? "/projects" : "/projects?archived=1"}
             className="text-sm text-muted-foreground hover:text-foreground"
@@ -67,8 +70,9 @@ export default async function ProjectsPage({
             <ProjectFormDialog mode="create" />
           </div>
         </div>
-      </div>
-
+          </>
+        }
+      />
       <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-muted-foreground">Tier:</span>
         <Link href={filterHref({ tier: null })}>
@@ -184,6 +188,6 @@ export default async function ProjectsPage({
           </Table>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

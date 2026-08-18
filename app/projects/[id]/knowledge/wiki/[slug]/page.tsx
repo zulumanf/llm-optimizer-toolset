@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { sql } from "@/db/client";
@@ -23,7 +23,7 @@ export default async function WikiPageDetail({
   if (!page) {
     const known = await listWikiPages(id);
     return (
-      <div className="mx-auto max-w-4xl p-6">
+      <PageShell>
         <KnowledgeLayerNav projectId={id} />
         <div className="rounded-lg border border-dashed p-8 text-center">
           <p className="text-sm font-medium">
@@ -35,7 +35,7 @@ export default async function WikiPageDetail({
               : "It may be stale and awaiting its first successful build."}
           </p>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -91,28 +91,30 @@ export default async function WikiPageDetail({
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href={`/projects/${id}`} className="hover:text-foreground">{project.name}</Link>
-        {" / "}
-        <Link href={`/projects/${id}/knowledge/wiki`} className="hover:text-foreground">
-          Wiki
-        </Link>
-        {" / "}{slug}
-      </nav>
-
-      <div className="mb-1 flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-semibold">{page.title}</h1>
-        <Badge variant={page.freshness === "current" ? "default" : "secondary"}>
-          {page.freshness.replace(/_/g, " ")}
-        </Badge>
-        {page.stale && <Badge variant="secondary">stale</Badge>}
-      </div>
-      <p className="mb-4 text-sm text-muted-foreground">
-        v{page.version} · {page.tokenCount.toLocaleString()} tokens · compiled{" "}
-        {page.generatedAt.slice(0, 10)} by {page.compilerVersion} · privacy{" "}
-        {page.privacy.replace(/_/g, " ")}
-      </p>
+    <PageShell>
+      <PageHeader
+        crumbs={[
+          { label: project.name, href: `/projects/${id}` },
+          { label: "Wiki", href: `/projects/${id}/knowledge/wiki` },
+          { label: slug },
+        ]}
+        title={page.title}
+        badge={
+          <>
+            <Badge variant={page.freshness === "current" ? "default" : "secondary"}>
+              {page.freshness.replace(/_/g, " ")}
+            </Badge>
+            {page.stale && <Badge variant="secondary">stale</Badge>}
+          </>
+        }
+        description={
+          <>
+            v{page.version} · {page.tokenCount.toLocaleString()} tokens · compiled{" "}
+            {page.generatedAt.slice(0, 10)} by {page.compilerVersion} · privacy{" "}
+            {page.privacy.replace(/_/g, " ")}
+          </>
+        }
+      />
 
       <KnowledgeLayerNav projectId={id} />
 
@@ -263,6 +265,6 @@ export default async function WikiPageDetail({
           ))}
         </div>
       </section>
-    </div>
+    </PageShell>
   );
 }

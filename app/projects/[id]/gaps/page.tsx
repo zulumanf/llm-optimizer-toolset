@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { Crosshair } from "lucide-react";
 import { getProject } from "@/db/projects";
@@ -36,34 +36,29 @@ export default async function GapsPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <PageShell>
       <ProjectTabs projectId={id} setKey="findings" />
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Gaps
-      </nav>
-
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Evidence gaps</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Gaps" }]}
+        title="Evidence gaps"
+        description={
+          <>
             Why the client is (or isn&rsquo;t) retrieved — typed findings from
             scored runs, ranked by deterministic opportunity score (docs/15).
             Findings become tasks only with your approval.
-          </p>
-        </div>
-        {latestScoredRun[0] && (
+          </>
+        }
+        actions={
+          <>
+            {latestScoredRun[0] && (
           <AnalyzeRunButton
             runId={latestScoredRun[0].id as string}
             runLabel={latestScoredRun[0].label as string}
           />
         )}
-      </div>
-
+          </>
+        }
+      />
       {findings.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <Crosshair className="size-8 text-muted-foreground" />
@@ -101,6 +96,6 @@ export default async function GapsPage({
         deterministic; v1.1 findings carry classification, confidence, and
         evidence refs (LLM enrichment lands as a later version)
       </p>
-    </div>
+    </PageShell>
   );
 }

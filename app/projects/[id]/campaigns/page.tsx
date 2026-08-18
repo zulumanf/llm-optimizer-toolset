@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
@@ -35,20 +36,23 @@ export default async function CampaignsPage({
   const campaigns = await listCampaigns(id);
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
+    <PageShell>
       <ProjectTabs projectId={id} setKey="work" />
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Campaigns</h1>
-          <p className="text-sm text-muted-foreground">
+      <PageHeader
+        title="Campaigns"
+        description={
+          <>
             Named objectives with a baseline captured at activation — grouping
             prompts, findings, tasks, and interventions into one accountable
             program (spec 029).
-          </p>
-        </div>
-        <CampaignFormDialog projectId={id} />
-      </div>
-
+          </>
+        }
+        actions={
+          <>
+            <CampaignFormDialog projectId={id} />
+          </>
+        }
+      />
       {campaigns.length === 0 ? (
         <p className="rounded-md border border-dashed p-8 text-sm text-muted-foreground">
           No campaigns yet. Create one to group related work under an
@@ -93,6 +97,6 @@ export default async function CampaignsPage({
           </TableBody>
         </Table>
       )}
-    </div>
+    </PageShell>
   );
 }

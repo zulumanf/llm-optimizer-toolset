@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { sql } from "@/db/client";
 import { getProject } from "@/db/projects";
@@ -49,35 +49,32 @@ export default async function AssetPage({
   const gate = verification?.gate ?? null;
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href={`/projects/${projectId}/content`} className="hover:text-foreground">
-          Content
-        </Link>
-        {" / "}{asset.title as string}
-      </nav>
-
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">{asset.title as string}</h1>
-            <Badge>{asset.status as string}</Badge>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        crumbs={[
+          { label: "Content", href: `/projects/${projectId}/content` },
+          { label: asset.title as string },
+        ]}
+        title={asset.title as string}
+        badge={<Badge>{asset.status as string}</Badge>}
+        description={
+          <>
             {(asset.assetType as string).replace(/_/g, " ")} → &ldquo;
             {asset.targetPrompt as string}&rdquo;
             {asset.publishedUrl ? ` · published at ${asset.publishedUrl}` : ""}
-          </p>
-        </div>
-        <AssetControls
-          assetId={assetId}
-          status={asset.status as string}
-          versions={frozenSets.map((v) => ({
-            id: v.id as string,
-            label: `${v.setName} — v${v.version}`,
-          }))}
-        />
-      </div>
+          </>
+        }
+        actions={
+          <AssetControls
+            assetId={assetId}
+            status={asset.status as string}
+            versions={frozenSets.map((v) => ({
+              id: v.id as string,
+              label: `${v.setName} — v${v.version}`,
+            }))}
+          />
+        }
+      />
 
       <section className="mb-6 rounded-md border bg-muted/30 p-4 text-sm">
         <p className="mb-1 font-medium">Brief</p>
@@ -145,6 +142,6 @@ export default async function AssetPage({
       <p className="text-xs text-muted-foreground">
         Version history: {versions.map((v) => `v${v.version} (${v.author})`).join(" · ")}
       </p>
-    </div>
+    </PageShell>
   );
 }

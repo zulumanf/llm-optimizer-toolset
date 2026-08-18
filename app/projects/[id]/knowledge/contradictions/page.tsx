@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { listContradictions } from "@/db/knowledge";
@@ -27,12 +27,11 @@ export default async function ContradictionsPage({
   const contradictions = await listContradictions(id);
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href={`/projects/${id}`} className="hover:text-foreground">{project.name}</Link>
-        {" / "}Contradictions
-      </nav>
-      <h1 className="mb-1 text-2xl font-semibold">Open contradictions</h1>
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: project.name, href: `/projects/${id}` }, { label: "Contradictions" }]}
+        title="Open contradictions"
+      />
       <p className="mb-4 max-w-3xl text-sm text-muted-foreground">
         Detected by deterministic rules, not by a model&apos;s opinion. A
         contradiction is a flag for a human — resolve it by approving a corrected
@@ -85,6 +84,6 @@ export default async function ContradictionsPage({
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

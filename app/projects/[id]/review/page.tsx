@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { CheckCheck } from "lucide-react";
 import { getProject } from "@/db/projects";
@@ -17,26 +17,17 @@ export default async function ReviewPage({
   const queue = await listReviewQueue(id);
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <PageShell>
       <ProjectTabs projectId={id} setKey="measure" counts={{ "/review": queue.length }} />
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Review
-      </nav>
-      <div className="mb-4">
-        <h1 className="text-2xl font-semibold">
-          Review queue{queue.length > 0 ? ` — ${queue.length} item${queue.length === 1 ? "" : "s"}` : ""}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Low-confidence classifications await a human verdict. Judge only what
-          the response says — scoring stays blocked until this queue is clear
-          (docs/07 step 6).
-        </p>
-      </div>
+      <PageHeader
+        crumbs={[
+          { label: "Projects", href: "/projects" },
+          { label: project.name, href: `/projects/${id}` },
+          { label: "Review" },
+        ]}
+        title={`Review queue${queue.length > 0 ? ` — ${queue.length} item${queue.length === 1 ? "" : "s"}` : ""}`}
+        description="Low-confidence classifications await a human verdict. Judge only what the response says — scoring stays blocked until this queue is clear (docs/07 step 6)."
+      />
 
       {queue.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
@@ -48,6 +39,6 @@ export default async function ReviewPage({
       ) : (
         <ReviewQueue items={queue} />
       )}
-    </div>
+    </PageShell>
   );
 }

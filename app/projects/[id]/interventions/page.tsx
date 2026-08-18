@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FlaskConical } from "lucide-react";
@@ -57,27 +58,21 @@ export default async function InterventionsPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
+    <PageShell>
       <ProjectTabs projectId={id} setKey="work" />
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Interventions
-      </nav>
-
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Interventions</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Interventions" }]}
+        title="Interventions"
+        description={
+          <>
             What the client shipped, tied to before/after measurement on a frozen
             prompt set (docs/07). Post runs re-use the baseline instrument at
             +2/+6/+12 weeks.
-          </p>
-        </div>
-        {project.status === "active" && (
+          </>
+        }
+        actions={
+          <>
+            {project.status === "active" && (
           <CreateInterventionDialog
             projectId={id}
             versions={versions.map((v) => ({
@@ -86,8 +81,9 @@ export default async function InterventionsPage({
             }))}
           />
         )}
-      </div>
-
+          </>
+        }
+      />
       {interventions.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <FlaskConical className="size-8 text-muted-foreground" />
@@ -165,6 +161,6 @@ export default async function InterventionsPage({
           </Table>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

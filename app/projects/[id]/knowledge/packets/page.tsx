@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
@@ -21,12 +22,11 @@ export default async function PacketsPage({
   const templates = listPacketTemplates();
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href={`/projects/${id}`} className="hover:text-foreground">{project.name}</Link>
-        {" / "}Packets
-      </nav>
-      <h1 className="mb-1 text-2xl font-semibold">Context packets</h1>
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: project.name, href: `/projects/${id}` }, { label: "Packets" }]}
+        title="Context packets"
+      />
       <p className="mb-4 max-w-3xl text-sm text-muted-foreground">
         What an agent was actually shown, stored so a past decision stays
         reproducible. Every packet is built to a named template, inside a token
@@ -102,6 +102,6 @@ export default async function PacketsPage({
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

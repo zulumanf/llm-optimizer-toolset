@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
@@ -31,14 +32,11 @@ export default async function WikiIndexPage({
   const stale = pages.filter((p) => p.stale);
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">{project.name}</Link>
-        {" / "}Wiki
-      </nav>
-      <h1 className="mb-1 text-2xl font-semibold">Compiled wiki</h1>
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Wiki" }]}
+        title="Compiled wiki"
+      />
       <p className="mb-4 max-w-3xl text-sm text-muted-foreground">
         Generated from canonical records — never hand-authored, and never
         authoritative. Editing a page cannot change what the platform believes;
@@ -71,7 +69,7 @@ export default async function WikiIndexPage({
           <Section title="Pages" pages={rest} projectId={id} />
         </>
       )}
-    </div>
+    </PageShell>
   );
 }
 
