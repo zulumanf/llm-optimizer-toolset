@@ -20,6 +20,7 @@ import { standardTemplates } from "@/lib/markets/packs";
 import { installPackDefinition } from "@/lib/markets/install";
 import { createLaunch } from "@/lib/prospects/service";
 import type { MarketPackDefinition } from "@/lib/markets/types";
+import { decideStagedRow } from "@/lib/research/decisions";
 
 export const PACK_DRAFT_VERSION = "market-pack-draft-v1";
 const PACK_DRAFT_MODEL = "sonar";
@@ -198,19 +199,14 @@ export async function installMarketPackDraft(
       serviceCategory: "residential brokerage",
     });
     if (!launch.ok) return fail(launch.error);
-    await sql.begin(async (tx) => {
-      await tx`
-        update market_pack_drafts
-        set status = 'installed', decided_by = ${user.id}, decided_at = now()
-        where id = ${draft.id}
-      `;
-      await writeAudit(tx, {
-        userId: user.id,
-        action: "market.pack_draft_install",
-        entity: "market_pack_draft",
-        entityId: draft.id as string,
-        detail: { cityName: draft.cityName, launchId: launch.data.launchId },
-      });
+    await decideStagedRow({
+      table: "market_pack_drafts",
+      id: draft.id as string,
+      user,
+      to: "installed",
+      auditAction: "market.pack_draft_install",
+      auditEntity: "market_pack_draft",
+      auditDetail: { cityName: draft.cityName, launchId: launch.data.launchId },
     });
     return ok({ launchId: launch.data.launchId, cityName: pack.cityName });
   } catch (err) {
@@ -228,14 +224,16 @@ export async function rejectMarketPackDraft(
   }
   try {
     assertCanWrite(user);
-    const rows = await sql`
-      update market_pack_drafts
-      set status = 'rejected', decided_by = ${user.id}, decided_at = now()
-      where id = ${parsed.data.draftId} and status = 'pending'
-      returning id
-    `;
-    if (!rows[0]) throw new ClassifiedError("conflict", "Draft not found or already decided.");
-    return ok({ draftId: rows[0].id as string });
+    await decideStagedRow({
+      table: "market_pack_drafts",
+      id: parsed.data.draftId,
+      user,
+      to: "rejected",
+      auditAction: "market.pack_draft_reject",
+      auditEntity: "market_pack_draft",
+      auditDetail: {},
+    });
+    return ok({ draftId: parsed.data.draftId });
   } catch (err) {
     return fail(err);
   }

@@ -19,6 +19,7 @@ import {
 import { addAuthoritySignal, addContact } from "@/lib/prospects/service";
 import { addBuyingSignal } from "@/lib/prospects/buying-signals";
 import { BUYING_SIGNAL_KINDS } from "@/lib/prospects/constants";
+import { decideStagedRow } from "@/lib/research/decisions";
 
 export const ENRICHMENT_VERSION = "prospect-enrichment-v1";
 export const ENRICHMENT_MODEL = "sonar";
@@ -442,19 +443,14 @@ export async function approveEnrichmentProposal(
       if (!added.ok) return fail(added.error);
     }
 
-    await sql.begin(async (tx) => {
-      await tx`
-        update enrichment_proposals
-        set status = 'approved', decided_by = ${user.id}, decided_at = now()
-        where id = ${proposal.id}
-      `;
-      await writeAudit(tx, {
-        userId: user.id,
-        action: "prospect.enrichment_approve",
-        entity: "enrichment_proposal",
-        entityId: proposal.id as string,
-        detail: { prospectId: proposal.prospectId, kind: proposal.kind },
-      });
+    await decideStagedRow({
+      table: "enrichment_proposals",
+      id: proposal.id as string,
+      user,
+      to: "approved",
+      auditAction: "prospect.enrichment_approve",
+      auditEntity: "enrichment_proposal",
+      auditDetail: { prospectId: proposal.prospectId, kind: proposal.kind },
     });
     return ok({ proposalId: proposal.id as string });
   } catch (err) {
@@ -474,24 +470,20 @@ export async function rejectEnrichmentProposal(
   }
   try {
     assertCanWrite(user);
-    const rows = await sql`
-      update enrichment_proposals
-      set status = 'rejected', decided_by = ${user.id}, decided_at = now()
-      where id = ${parsed.data.proposalId} and status = 'pending'
-      returning id, prospect_id
+    const [row] = await sql`
+      select prospect_id from enrichment_proposals where id = ${parsed.data.proposalId}
     `;
-    const row = rows[0];
-    if (!row) throw new ClassifiedError("conflict", "Proposal not found or already decided.");
-    await sql.begin((tx) =>
-      writeAudit(tx, {
-        userId: user.id,
-        action: "prospect.enrichment_reject",
-        entity: "enrichment_proposal",
-        entityId: row.id as string,
-        detail: { prospectId: row.prospectId, reason: parsed.data.reason ?? null },
-      })
-    );
-    return ok({ proposalId: row.id as string });
+    if (!row) throw new ClassifiedError("not_found", "Proposal not found.");
+    await decideStagedRow({
+      table: "enrichment_proposals",
+      id: parsed.data.proposalId,
+      user,
+      to: "rejected",
+      auditAction: "prospect.enrichment_reject",
+      auditEntity: "enrichment_proposal",
+      auditDetail: { prospectId: row.prospectId, reason: parsed.data.reason ?? null },
+    });
+    return ok({ proposalId: parsed.data.proposalId });
   } catch (err) {
     return fail(err);
   }
