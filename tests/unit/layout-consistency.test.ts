@@ -74,9 +74,7 @@ const INTENTIONAL_SHELLS = new Map<string, string>([
   ["app/login/page.tsx", "auth screen — renders before any workspace exists"],
 ]);
 
-const LEGACY_SHELLS = new Set([
-  "app/page.tsx",
-]);
+const LEGACY_SHELLS = new Set<string>([]);
 
 // The ratchet: a page that migrates must leave the list, and a page not on
 // the list must use the shell. Both directions fail loudly.

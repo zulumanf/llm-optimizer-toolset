@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { clientCostRollup } from "@/db/operations";
@@ -54,21 +55,19 @@ export default async function OperationsPage() {
   const info = items.filter((i) => i.severity === "info");
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="mb-1 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Today</h1>
-        <Link
-          href="/onboarding"
-          className="text-sm text-muted-foreground underline hover:text-foreground"
-        >
-          Onboard a client
-        </Link>
-      </div>
-      <p className="mb-6 text-sm text-muted-foreground">
-        What needs you across every client, ordered by urgency. Severity is
-        assigned by rule, not by feel — measurement breakage and live factual
-        problems outrank queued work, which outranks setup hygiene.
-      </p>
+    <PageShell>
+      <PageHeader
+        title="Today"
+        description="What needs you across every client, ordered by urgency. Severity is assigned by rule, not by feel — measurement breakage and live factual problems outrank queued work, which outranks setup hygiene."
+        actions={
+          <Link
+            href="/onboarding"
+            className="text-sm text-muted-foreground underline hover:text-foreground"
+          >
+            Onboard a client
+          </Link>
+        }
+      />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Tile
@@ -233,6 +232,6 @@ export default async function OperationsPage() {
           </p>
         </section>
       )}
-    </div>
+    </PageShell>
   );
 }
