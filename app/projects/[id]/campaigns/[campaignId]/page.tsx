@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { campaignDetail } from "@/lib/campaigns/service";
 import { Badge } from "@/components/ui/badge";
@@ -29,26 +30,28 @@ export default async function CampaignDetailPage({
   if (!detail || detail.projectId !== id) notFound();
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="flex items-center gap-3 text-2xl font-semibold">
-            {detail.name}
-            <Badge variant={detail.status === "active" ? "default" : "secondary"}>
-              {detail.status}
-            </Badge>
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+    <PageShell className="space-y-6">
+      <PageHeader
+        title={detail.name}
+        badge={
+          <Badge variant={detail.status === "active" ? "default" : "secondary"}>
+            {detail.status}
+          </Badge>
+        }
+        description={
+          <>
             {detail.objective}
-          </p>
-          {detail.hypothesis && (
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              <span className="font-medium">Hypothesis:</span> {detail.hypothesis}
-            </p>
-          )}
-        </div>
-        <CampaignTransitions campaignId={detail.id} status={detail.status} />
-      </div>
+            {detail.hypothesis && (
+              <span className="mt-1 block">
+                <span className="font-medium">Hypothesis:</span> {detail.hypothesis}
+              </span>
+            )}
+          </>
+        }
+        actions={
+          <CampaignTransitions campaignId={detail.id} status={detail.status} />
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -128,6 +131,6 @@ export default async function CampaignDetailPage({
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }

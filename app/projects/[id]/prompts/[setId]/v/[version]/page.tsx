@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { getPromptSet, getVersion } from "@/db/prompt-sets";
@@ -33,41 +33,29 @@ export default async function VersionPage({
   );
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${projectId}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}
-        <Link
-          href={`/projects/${projectId}/prompts/${setId}`}
-          className="hover:text-foreground"
-        >
-          {set.name}
-        </Link>
-        {" / "}v{version.version}
-      </nav>
-
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">
-              {set.name} — v{version.version}
-            </h1>
-            <Badge>frozen</Badge>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        crumbs={[
+          { label: "Projects", href: "/projects" },
+          { label: project.name, href: `/projects/${projectId}` },
+          { label: set.name, href: `/projects/${projectId}/prompts/${setId}` },
+          { label: `v${version.version}` },
+        ]}
+        title={`${set.name} — v${version.version}`}
+        badge={<Badge>frozen</Badge>}
+        description={
+          <>
             {prompts.length} prompts · frozen {formatDate(version.frozenAt)} ·
             immutable — this snapshot never changes
-          </p>
-        </div>
-        <DuplicateSetDialog
-          sourceVersionId={version.id}
-          sourceName={`${set.name} v${version.version}`}
-        />
-      </div>
+          </>
+        }
+        actions={
+          <DuplicateSetDialog
+            sourceVersionId={version.id}
+            sourceName={`${set.name} v${version.version}`}
+          />
+        }
+      />
 
       <div className="rounded-lg border">
         <ul className="divide-y">
@@ -135,6 +123,6 @@ export default async function VersionPage({
           </div>
         </section>
       )}
-    </div>
+    </PageShell>
   );
 }

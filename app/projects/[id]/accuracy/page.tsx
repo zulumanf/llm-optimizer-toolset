@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
@@ -52,35 +53,30 @@ export default async function AccuracyPage({
   const filters = ["open", "acknowledged", "fix_in_progress", "corrected", "dismissed", "all"];
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <PageShell>
       <ProjectTabs projectId={id} setKey="findings" />
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Clients</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Accuracy
-      </nav>
-
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Factual accuracy</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        crumbs={[{ label: "Clients", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Accuracy" }]}
+        title="Factual accuracy"
+        description={
+          <>
             What AI assistants get wrong about the client — captured answers
             audited against the approved claims. Every finding quotes the
             answer verbatim; quotes that don&rsquo;t appear in the stored
             evidence are rejected before they reach this page.
-          </p>
-        </div>
-        {analysable[0] && (
+          </>
+        }
+        actions={
+          <>
+            {analysable[0] && (
           <AnalyzeAccuracyButton
             runId={analysable[0].id as string}
             runLabel={analysable[0].label as string}
           />
         )}
-      </div>
-
+          </>
+        }
+      />
       <div className="mb-4 flex flex-wrap gap-2 text-sm">
         {filters.map((f) => (
           <Link key={f} href={`?status=${f}`}>
@@ -124,6 +120,6 @@ export default async function AccuracyPage({
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

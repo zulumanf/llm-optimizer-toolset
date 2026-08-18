@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { listActiveCompanies } from "@/db/companies";
@@ -85,29 +85,24 @@ export default async function CompetitorsPage({
   );
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Competitors
-      </nav>
-
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Competitors</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Competitors" }]}
+        title="Competitors"
+        description={
+          <>
             Identical methodology for every company (docs/06). Values are from
             the latest scored run, cross-provider aggregate.
-          </p>
-        </div>
-        {project.status === "active" && (
+          </>
+        }
+        actions={
+          <>
+            {project.status === "active" && (
           <AddCompetitorDialog projectId={id} companies={untracked} />
         )}
-      </div>
-
+          </>
+        }
+      />
       <div className="overflow-x-auto rounded-lg border">
         <Table>
           <TableHeader>
@@ -449,6 +444,6 @@ export default async function CompetitorsPage({
           <CandidatePanel projectId={id} candidates={candidates} />
         </section>
       )}
-    </div>
+    </PageShell>
   );
 }
