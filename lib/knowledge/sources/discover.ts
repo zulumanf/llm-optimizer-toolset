@@ -34,6 +34,7 @@ import {
   SOURCE_FETCH_TIMEOUT_MS,
 } from "@/lib/knowledge/constants";
 import { safeFetch } from "@/lib/security/safe-fetch";
+import { discoverSitemaps } from "@/lib/discoverability/sitemap";
 import { extractLinks, extractTitle, visibleText } from "@/lib/html";
 
 /**
@@ -216,32 +217,11 @@ function crawlLinks(html: string, baseUrl: string, host: string): string[] {
   ];
 }
 
+/** Sitemap URLs via the one sitemap parser (lib/discoverability/sitemap),
+ * flattened to the string list the crawl queue expects. */
 async function readSitemap(origin: string): Promise<string[]> {
-  const candidates = [`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`];
-  const urls = new Set<string>();
-
-  for (const candidate of candidates) {
-    try {
-      const { html, status } = await fetchText(candidate);
-      if (status !== 200 || !html.includes("<loc>")) continue;
-
-      const locs = [...html.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1]!.trim());
-      // A sitemap index points at more sitemaps; follow one level, not a tree.
-      const nested = locs.filter((loc) => /sitemap.*\.xml$/i.test(loc)).slice(0, 5);
-      for (const loc of locs.filter((l) => !/sitemap.*\.xml$/i.test(l))) urls.add(loc);
-
-      for (const child of nested) {
-        const inner = await fetchText(child);
-        for (const match of inner.html.matchAll(/<loc>([^<]+)<\/loc>/gi)) {
-          urls.add(match[1]!.trim());
-        }
-      }
-      if (urls.size > 0) break;
-    } catch {
-      // No sitemap is normal; the crawl fallback handles it.
-    }
-  }
-  return [...urls];
+  const report = await discoverSitemaps(origin, []);
+  return [...new Set(report.entries.map((entry) => entry.url))];
 }
 
 const discoverSchema = z.object({
