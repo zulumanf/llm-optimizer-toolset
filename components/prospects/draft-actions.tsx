@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Check, Mail, MailOpen, Pencil, Send } from "lucide-react";
+import { CalendarClock, CalendarOff, Check, Mail, MailOpen, Pencil, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,9 +24,14 @@ import {
 } from "@/components/ui/select";
 import {
   approveOutreachDraft,
+  cancelScheduledSend,
   createOutreachDraft,
+  scheduleDraftSend,
   sendProspectDraft,
 } from "@/app/prospects/actions";
+
+const DEFAULT_PURPOSE =
+  "AI-visibility benchmark findings relevant to their team's market position";
 
 export interface DraftContactOption {
   id: string;
@@ -271,6 +276,161 @@ export function OpenInMailButton({
       <a href={href}>
         <MailOpen className="size-4" /> Open in mail app
       </a>
+    </Button>
+  );
+}
+
+/**
+ * The platform's own transmission (spec 091): sends the approved text
+ * through the connected Gmail mailbox, behind the full gate chain. The
+ * dialog is the human click PRINCIPLES #8 requires for this exact send.
+ */
+export function SendViaGmailButton({ draftId }: { draftId: string }) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [purpose, setPurpose] = useState(DEFAULT_PURPOSE);
+
+  const send = () => {
+    startTransition(async () => {
+      const result = await sendProspectDraft({
+        draftId,
+        channel: "gmail",
+        businessPurpose: purpose,
+      });
+      if (result.ok) {
+        toast.success("Sent via Gmail — gate ledger written.");
+        setOpen(false);
+      } else {
+        toast.error(result.error.message);
+      }
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm">
+          <Send className="size-4" /> Send via Gmail
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Send this approved email now?</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-1.5">
+          <Label htmlFor="send-purpose">Business purpose (recorded on the send ledger)</Label>
+          <Textarea
+            id="send-purpose"
+            value={purpose}
+            onChange={(e) => setPurpose(e.target.value)}
+            rows={2}
+          />
+          <p className="text-xs text-muted-foreground">
+            Every gate re-runs before transmission: suppression, do-not-contact,
+            re-contact windows, territory, sender identity, daily cap.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button onClick={send} disabled={pending || purpose.trim().length < 10}>
+            {pending ? "Sending…" : "Send now"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Schedule the transmission of an approved draft (spec 091). The named
+ * time and stated purpose are the human confirmation the worker executes;
+ * the gate still re-runs in full when the time arrives.
+ */
+export function ScheduleSendButton({ draftId }: { draftId: string }) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [sendAt, setSendAt] = useState("");
+  const [purpose, setPurpose] = useState(DEFAULT_PURPOSE);
+
+  const schedule = () => {
+    startTransition(async () => {
+      const result = await scheduleDraftSend({
+        draftId,
+        sendAt: new Date(sendAt).toISOString(),
+        businessPurpose: purpose,
+      });
+      if (result.ok) {
+        toast.success(
+          `Scheduled — sends via Gmail around ${new Date(sendAt).toLocaleString()}.`
+        );
+        setOpen(false);
+      } else {
+        toast.error(result.error.message);
+      }
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          <CalendarClock className="size-4" /> Schedule send
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Schedule this approved email</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="schedule-at">Send at</Label>
+            <Input
+              id="schedule-at"
+              type="datetime-local"
+              value={sendAt}
+              onChange={(e) => setSendAt(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              The worker checks roughly every 10 minutes, so the send lands
+              shortly after this time. Up to 30 days ahead.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="schedule-purpose">
+              Business purpose (recorded on the send ledger)
+            </Label>
+            <Textarea
+              id="schedule-purpose"
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              rows={2}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            onClick={schedule}
+            disabled={pending || !sendAt || purpose.trim().length < 10}
+          >
+            {pending ? "Scheduling…" : "Schedule"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function CancelScheduledSendButton({ draftId }: { draftId: string }) {
+  const [pending, startTransition] = useTransition();
+  const cancel = () => {
+    startTransition(async () => {
+      const result = await cancelScheduledSend({ draftId });
+      if (result.ok) toast.success("Schedule cancelled — the draft stays approved.");
+      else toast.error(result.error.message);
+    });
+  };
+  return (
+    <Button size="sm" variant="outline" onClick={cancel} disabled={pending}>
+      <CalendarOff className="size-4" /> {pending ? "Cancelling…" : "Cancel schedule"}
     </Button>
   );
 }
