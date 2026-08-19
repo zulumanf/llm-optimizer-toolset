@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { Snowflake } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +13,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { useAction } from "@/lib/hooks/use-action";
 import { freezePromptSet } from "@/app/prompts/actions";
 
 interface Props {
@@ -26,7 +26,7 @@ interface Props {
 export function FreezeButton({ setId, nextVersion, promptCount, disabled }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [pending, startTransition] = useTransition();
+  const { pending, run } = useAction();
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
@@ -51,18 +51,20 @@ export function FreezeButton({ setId, nextVersion, promptCount, disabled }: Prop
           <Button
             disabled={pending}
             onClick={() =>
-              startTransition(async () => {
-                const result = await freezePromptSet({ id: setId });
-                if (result.ok) {
-                  toast.success(`Frozen as version ${result.data.version}.`);
+              run(
+                async () => {
+                  const result = await freezePromptSet({ id: setId });
+                  // The dialog closes and the page refreshes on BOTH
+                  // outcomes; the hook only refreshes on success.
                   setOpen(false);
-                  router.refresh();
-                } else {
-                  toast.error(result.error.message);
-                  setOpen(false);
-                  router.refresh();
+                  if (!result.ok) router.refresh();
+                  return result;
+                },
+                {
+                  success: (data) => `Frozen as version ${data.version}.`,
+                  refresh: true,
                 }
-              })
+              )
             }
           >
             {pending ? "Freezing…" : "Freeze"}
