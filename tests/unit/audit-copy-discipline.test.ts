@@ -38,6 +38,11 @@ const BANNED = [
   "introduction goes to",
   "hard to displace",
   "the answer named someone specific to hire.",
+  // Referral/lead claims (compliance pass 2026-08-19): a mention is never
+  // a referral, a lead, or a lost commission.
+  "sends your clients",
+  "leads are going to",
+  "stealing your AI leads",
 ];
 
 describe("prospect-facing copy discipline", () => {
@@ -57,6 +62,18 @@ describe("prospect-facing copy discipline", () => {
     );
     expect(source).toContain("recommendation mentions across the");
     expect(source).toContain("MENTIONS_VS_ANSWERS_NOTE");
+  });
+
+  it("the page scopes its numbers and tells the reader how to read them", () => {
+    const source = readFileSync(
+      join(ROOT, "app/audit/[handle]/page.tsx"),
+      "utf8"
+    );
+    expect(source).toContain("Results reflect the captured prompts");
+    expect(source).toContain("How to read this report");
+    expect(source).toContain("forecast of referrals");
+    expect(source).toContain("Citation frequency does not establish");
+    expect(source).toContain("expressly suggested hiring or using");
   });
 
   it("the commission block stays labeled illustrative", () => {

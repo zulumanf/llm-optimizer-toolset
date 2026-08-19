@@ -73,7 +73,7 @@ const SUGGESTED_ACTIONS: Record<string, string> = {
   mentioned_never_recommended:
     "Add differentiation and proof (rankings, verified sales, reviews) to the pages models retrieve — being known is not being endorsed.",
   missing_from_cited_sources:
-    "Build profiles or coverage on the cited third-party surfaces — portals, directories, local press. Competitor-owned pages among the citations are context, not targets.",
+    "The cited domains are clues to the public sources visible in this sample. Improving accurate, consistent representation across relevant third-party profiles (portals, directories, local press) and building authoritative on-site content may improve how AI systems describe you over time. Competitor-owned pages among the citations are context, not targets.",
   competitors_dominate_sources:
     "Strengthen the neutral third-party surfaces (directories, local press) the answers also cite — competitor-owned pages are not available surfaces.",
   missing_from_high_intent_prompts:
