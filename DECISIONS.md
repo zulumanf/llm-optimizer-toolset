@@ -2370,3 +2370,29 @@ entity-footprint checks (no licensed acquisition path), multi-hop redirect
 chains (final URL is recorded; hop lists are not), duplicate-content
 detection, and any audit-page technical section (calibrate prospect-facing
 copy against real scans first).
+
+## 2026-08-18 — Dogfood is a third project kind, and the baseline is derived
+
+RecommendedFirst now measures itself (internal dogfood case study) through
+the exact client pipeline: a `projects` row, the standard prompt-set →
+run → scores → citations → gaps → interventions chain, and the existing
+project detail surfaces. Two decisions worth recording:
+
+**`kind='internal'` instead of a flag or a parallel system** (migration
+084). Client surfaces already filter `kind='client'` and prospect surfaces
+read the prospects table, so a third kind is excluded from client
+portfolios, client counts, and cross-talk scoping *by construction* — no
+per-query exclusion audit. `createProject` deliberately has no kind input;
+the seed script (`scripts/onboard-recommendedfirst.ts`) promotes it the
+same way prospect promotion does. Down-migration re-kinds internal rows as
+'prospect' rather than deleting anything.
+
+**The baseline is the earliest scored run, derived at read time** — no
+`is_baseline` column, no snapshot mutation. Runs are already immutable and
+ordered; marking one would create a mutable fact about immutable data. The
+/dogfood page (staff-gated) labels runs[0] as baseline and reports deltas
+as observed change, never as intervention-caused. Branded control prompts
+need no KPI filtering either: they name the brand, so prompt-echo
+exclusion already removes them from every visibility rate; a unit test
+(tests/unit/dogfood-prompts.test.ts) pins that invariant on the catalog
+(`lib/dogfood/prompts.ts`, 33 prompts frozen as v1 at onboarding).
