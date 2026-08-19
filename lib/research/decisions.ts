@@ -16,7 +16,7 @@ import type { CurrentUser } from "@/lib/auth";
 import type { AuditEntry } from "@/db/audit";
 
 export async function decideStagedRow(args: {
-  table: "enrichment_proposals" | "market_pack_drafts";
+  table: "enrichment_proposals" | "market_pack_drafts" | "prompt_suggestions";
   id: string;
   user: CurrentUser;
   /** The terminal status this decision applies. */

@@ -17,7 +17,10 @@ import { CATEGORY_INTENT_VALUE } from "@/lib/scoring/intent";
 // v1.1 (spec 064): identical severity/opportunity math — scores are
 // byte-identical to v1 — plus epistemics: classification, confidence, and
 // typed evidence refs on every finding.
-export const DETECTOR_VERSION = "gap-detector-v1.1";
+// v1.2 (spec 087): adds the displacement detector (who was recommended when
+// the subject was absent, lib/competitors/displacement.ts). Existing finding
+// types and their scores are unchanged.
+export const DETECTOR_VERSION = "gap-detector-v1.2";
 
 /** The platform's epistemic labels (docs/12), now emitted as data.
  * working_hypothesis is reserved for the future LLM enrichment detector. */
@@ -111,7 +114,8 @@ export interface GapFinding {
     | "recommendation"
     | "citation"
     | "category_share"
-    | "source_target";
+    | "source_target"
+    | "displacement";
   promptCategory: string | null;
   finding: string;
   detail: Record<string, unknown>;
@@ -136,6 +140,9 @@ const GAP_FACTORS: Record<GapFinding["gapType"], { execution: number; attainabil
   source_target: { execution: 0.6, attainability: 0.5, speed: 0.4 },
   recommendation: { execution: 0.6, attainability: 0.5, speed: 0.4 },
   category_share: { execution: 0.5, attainability: 0.4, speed: 0.4 },
+  // Displacement is worked through the sources/authority behind the winning
+  // rival — same execution profile as chasing a recommendation.
+  displacement: { execution: 0.6, attainability: 0.5, speed: 0.4 },
 };
 
 function score(
@@ -156,14 +163,49 @@ function score(
 
 const UNBRANDED = new Set(["recommendation", "problem", "how-to"]);
 
+/** Compact displacement summary (spec 087) the service derives from
+ * lib/competitors/displacement.ts. Meaningful rivals only — the engine has
+ * already applied MIN_MEANINGFUL_DISPLACEMENTS and the echo rule. */
+export interface DisplacementGapInput {
+  validResponses: number;
+  absentResponses: number;
+  rivals: {
+    name: string;
+    displacedResponses: number;
+    topClusters: string[];
+    topDomains: { domain: string; count: number; sourceType: string | null }[];
+  }[];
+  sampleResponseIds?: string[];
+}
+
+/** Priority banding over the shared opportunity score — vocabulary for the
+ * work queue, not a new score. Thresholds are named so the mapping to task
+ * priorities (createTaskFromFinding) stays inspectable. */
+export const PRIORITY_BANDS = {
+  doNow: 70,
+  doNext: 50,
+  test: 30,
+} as const;
+export type PriorityBand = "do_now" | "do_next" | "test" | "low_priority";
+
+export function priorityBand(opportunityScore: number): PriorityBand {
+  if (opportunityScore >= PRIORITY_BANDS.doNow) return "do_now";
+  if (opportunityScore >= PRIORITY_BANDS.doNext) return "do_next";
+  if (opportunityScore >= PRIORITY_BANDS.test) return "test";
+  return "low_priority";
+}
+
 export function detectGaps(input: {
   subjectName: string;
   subjectDomain: string | null;
   prompts: PromptOutcome[];
   companies: CompanyOutcome[];
   domains: DomainCitation[];
+  /** Optional (spec 087): callers without displacement data get the v1.1
+   * finding set unchanged. */
+  displacement?: DisplacementGapInput;
 }): GapFinding[] {
-  const { subjectName, prompts, companies, domains } = input;
+  const { subjectName, prompts, companies, domains, displacement } = input;
   const findings: GapFinding[] = [];
   const subject = companies.find((c) => c.isSubject);
   const competitors = companies.filter((c) => !c.isSubject);
@@ -377,6 +419,52 @@ export function detectGaps(input: {
         kind: "response" as const,
         refId: id,
         note: "Sampled answer citing one of the top third-party domains listed in the finding.",
+      })),
+    });
+  }
+
+  // 7. Displacement (spec 087): the subject was absent and named rivals
+  // repeatedly collected the recommendation. The engine has already enforced
+  // MIN_ABSENT_SAMPLE upstream — a caller passing a summary asserts
+  // sufficiency; rivals arrive meaningful-only and echo-excluded.
+  if (
+    displacement &&
+    displacement.absentResponses > 0 &&
+    displacement.rivals.length > 0
+  ) {
+    const top = displacement.rivals[0]!;
+    // A rival taking half the subject-absent answers saturates severity.
+    const severity = Math.min(
+      1,
+      (top.displacedResponses / displacement.absentResponses) * 2
+    );
+    const rivalLine = displacement.rivals
+      .slice(0, 4)
+      .map((r) => `${r.name} (${r.displacedResponses}×)`)
+      .join(", ");
+    const clusterNote =
+      top.topClusters.length > 0
+        ? ` ${top.name} collects them mostly in: ${top.topClusters.slice(0, 3).join(", ")}.`
+        : "";
+    findings.push({
+      gapType: "displacement",
+      promptCategory: null,
+      finding: `In ${displacement.absentResponses} of ${displacement.validResponses} valid answers ${subjectName} was absent — and the recommendation went to ${rivalLine} instead.${clusterNote}`,
+      detail: {
+        validResponses: displacement.validResponses,
+        absentResponses: displacement.absentResponses,
+        rivals: displacement.rivals as unknown as Record<string, unknown>[],
+      },
+      severity,
+      // Losing the recommendation moment itself: full commercial value.
+      opportunityScore: score("displacement", severity, 1.0),
+      // Counted recommendation events, not an interpretation.
+      classification: "observation",
+      confidence: sampleConfidence(displacement.absentResponses),
+      evidence: (displacement.sampleResponseIds ?? []).slice(0, 5).map((id) => ({
+        kind: "response" as const,
+        refId: id,
+        note: "Sampled subject-absent answer whose recommendation went to a rival counted in the finding.",
       })),
     });
   }
