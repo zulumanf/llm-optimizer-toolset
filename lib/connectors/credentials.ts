@@ -142,6 +142,8 @@ export function needsRotation(secrets: ResolvedSecrets): boolean {
 /**
  * Re-encrypt an existing credential under the current key. Used by rotation;
  * the plaintext never leaves this module.
+ * NO PRODUCTION CALLER YET (cleanup audit 2026-08-18): key rotation is a
+ * script-invoked operation until an admin surface exists — do not delete.
  */
 export async function rotateCredential(
   connectionId: string,

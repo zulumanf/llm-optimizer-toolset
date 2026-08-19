@@ -74,10 +74,25 @@ async function main(): Promise<void> {
         console.log(`applied  ${file}`);
       }
     } else {
-      const last = files.filter((f) => applied.has(f)).pop();
+      // Roll back the most recently APPLIED migration, not the
+      // lexicographically last one. The two differ whenever a branch merges
+      // a lower-numbered migration after a higher one has shipped — with a
+      // filename sort, `down` would unwind a migration that other applied
+      // migrations may depend on (cleanup audit 2026-08-18).
+      const [lastApplied] = await sql`
+        select name from schema_migrations
+        order by applied_at desc, name desc limit 1
+      `;
+      const last = lastApplied?.name as string | undefined;
       if (!last) {
         console.log("Nothing to roll back.");
         return;
+      }
+      if (!files.includes(last)) {
+        console.error(
+          `Cannot roll back ${last}: its file is missing from ${MIGRATIONS_DIR}.`
+        );
+        process.exit(1);
       }
       const { down } = parseMigration(last);
       await sql.begin(async (tx) => {
