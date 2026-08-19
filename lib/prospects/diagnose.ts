@@ -16,7 +16,7 @@ import { normalizeEntityName, normalizeDomain } from "@/lib/knowledge/normalize"
 import type { AssessmentItem, AssessmentValue } from "@/lib/prospects/constants";
 import type { AuthoritySignalKind } from "@/lib/prospects/constants";
 
-export const DIAGNOSIS_VERSION = "prospect-diagnosis-v2";
+export const DIAGNOSIS_VERSION = "prospect-diagnosis-v3";
 
 const EVIDENCE_PROMPT_LIMIT = 5;
 const CITED_DOMAIN_LIMIT = 5;
@@ -69,13 +69,13 @@ export interface DiagnoseInputs {
 
 const SUGGESTED_ACTIONS: Record<string, string> = {
   no_organic_visibility:
-    "Build presence on the surfaces the answers cite (see source targets) and publish neighborhood-specific proof of work.",
+    "Build presence on the third-party surfaces the answers cite (see source targets) and publish neighborhood-specific proof of work.",
   mentioned_never_recommended:
     "Add differentiation and proof (rankings, verified sales, reviews) to the pages models retrieve — being known is not being endorsed.",
   missing_from_cited_sources:
-    "Get profiles or coverage on the cited domains — the answers pull from them, not from your own site.",
+    "Build profiles or coverage on the cited third-party surfaces — portals, directories, local press. Competitor-owned pages among the citations are context, not targets.",
   competitors_dominate_sources:
-    "Target the competitor-controlled surfaces with neutral third-party alternatives (directories, local press) the models also cite.",
+    "Strengthen the neutral third-party surfaces (directories, local press) the answers also cite — competitor-owned pages are not available surfaces.",
   missing_from_high_intent_prompts:
     "Create content matching the questions buyers and sellers actually ask (best listing agent, who should sell my X) — you only appear on general ones.",
   entity_ambiguity:

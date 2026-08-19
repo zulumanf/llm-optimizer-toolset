@@ -35,6 +35,7 @@ import {
   PROSPECT_SOURCES,
   PROSPECT_TYPES,
   PROVENANCE_LABELS,
+  SIGNAL_SOURCE_TYPES,
   RECORDING_STATUSES,
   RELATIONSHIP_STRENGTHS,
   findProhibitedPhrase,
@@ -177,6 +178,10 @@ const signalSchema = z.object({
   valueText: z.string().trim().max(500).optional(),
   sourceUrl: z.string().trim().url().max(1000).optional(),
   provenance: z.enum(PROVENANCE_LABELS),
+  /** Evidence classification (migration 085): lets an operator record
+   * sponsored coverage or self-reported claims as exactly that. Optional —
+   * unclassified stays null, never guessed. */
+  sourceType: z.enum(SIGNAL_SOURCE_TYPES).optional(),
   /** Global evidence (nationwide volume, brand rankings) is shown for
    * context but excluded from the local-authority score (spec 038). */
   scope: z.enum(["local", "global"]).default("local"),
@@ -495,10 +500,12 @@ export async function addAuthoritySignal(
       const [row] = await tx`
         insert into prospect_authority_signals
           (prospect_id, kind, label, value_number, value_text, source_url,
-           provenance, scope, retrieved_at, confidence, notes, created_by)
+           provenance, source_type, scope, retrieved_at, confidence, notes,
+           created_by)
         values (${input.prospectId}, ${input.kind}, ${input.label},
           ${input.valueNumber ?? null}, ${input.valueText ?? null},
-          ${input.sourceUrl ?? null}, ${input.provenance}, ${input.scope},
+          ${input.sourceUrl ?? null}, ${input.provenance},
+          ${input.sourceType ?? null}, ${input.scope},
           ${input.retrievedAt ?? null},
           ${input.confidence ?? null}, ${input.notes ?? null}, ${user.id})
         returning id

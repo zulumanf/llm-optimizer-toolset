@@ -37,6 +37,18 @@ export const PROVENANCE_LABELS = [
 ] as const;
 export type ProvenanceLabel = (typeof PROVENANCE_LABELS)[number];
 
+/** Evidence classification (migrations 074/085): who stands behind a fact.
+ * 'sponsored' marks paid placement (e.g. sponsored publication coverage) —
+ * kept and shown, but discounted by the authority score and badged
+ * distinctly from independent reporting on the audit page. */
+export const SIGNAL_SOURCE_TYPES = [
+  "independent",
+  "self_reported",
+  "derived",
+  "sponsored",
+] as const;
+export type SignalSourceTypeLabel = (typeof SIGNAL_SOURCE_TYPES)[number];
+
 export const AUTHORITY_SIGNAL_KINDS = [
   "transaction_volume",
   "transaction_count",
