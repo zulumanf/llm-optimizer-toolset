@@ -1,15 +1,18 @@
 /**
- * B4 (pilot-launch-plan): one suite per test database, enforced.
+ * B4 (pilot-launch-plan): one suite per test database, enforced — and, since
+ * the fixture cleanup, the single place the test schema is built.
  *
- * Every integration file does `drop schema public cascade` + migrate in its
- * beforeAll. Two vitest invocations sharing TEST_DATABASE_URL therefore
- * destroy each other's schema mid-flight — dozens of files fail with
- * confusing catalog errors and the operator concludes the suite is flaky
- * (this happened during the 2026-07-31 audit, three concurrent runs).
+ * The suite migrates ONCE here (drop `public` + all migrations, in-process)
+ * instead of every integration file shelling out `tsx scripts/migrate.ts` in
+ * its beforeAll (73 files × ~80 migrations dominated the suite's runtime).
+ * Files inherit the schema; their beforeEach truncate lists own data hygiene.
  *
- * A session-scoped advisory lock held for the whole run turns that into a
- * fast, explicit refusal instead. Unit-only runs (no TEST_DATABASE_URL) are
- * unaffected.
+ * Two vitest invocations sharing TEST_DATABASE_URL would destroy each
+ * other's data mid-flight — dozens of files fail with confusing errors and
+ * the operator concludes the suite is flaky (this happened during the
+ * 2026-07-31 audit, three concurrent runs). A session-scoped advisory lock
+ * held for the whole run turns that into a fast, explicit refusal instead.
+ * Unit-only runs (no TEST_DATABASE_URL) are unaffected.
  */
 // globalSetup runs before setupFiles, so it must load .env itself — without
 // this, TEST_DATABASE_URL is unset here, the guard silently no-ops, and the
@@ -18,6 +21,8 @@ import * as dotenv from "dotenv";
 dotenv.config();
 
 import postgres from "postgres";
+
+import { migrate } from "../scripts/migrate";
 
 // Arbitrary fixed key; the only requirement is that every suite instance
 // agrees on it.
@@ -46,6 +51,11 @@ export default async function globalSetup(): Promise<(() => Promise<void>) | voi
     await sql.end().catch(() => undefined);
     return;
   }
+
+  // Lock held: build the schema once for the whole run. A failure here is a
+  // real failure (broken migration, unreachable db) and must fail the run.
+  await sql.unsafe("drop schema public cascade; create schema public;");
+  await migrate("up", url, () => undefined);
 
   return async () => {
     // Session lock: released on disconnect anyway, but be explicit.

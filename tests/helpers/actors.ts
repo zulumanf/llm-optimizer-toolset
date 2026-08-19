@@ -13,6 +13,7 @@
  * without each test having to remember.
  */
 import type { Sql } from "@/db/client";
+import type { CurrentUser } from "@/lib/auth";
 
 /** Every actor id referenced anywhere in the suite. */
 export const TEST_ACTOR_IDS = [
@@ -47,6 +48,38 @@ export const TEST_ACTOR_IDS = [
   "00000000-0000-4000-8000-00000000b001",
   "00000000-0000-4000-8000-00000000b002",
 ] as const;
+
+/**
+ * Ready-made CurrentUser literals for the most common actors, so new files
+ * stop hand-writing them. Ids are inside the reserved fixture namespace and
+ * covered by TEST_ACTOR_IDS, so `seedTestActors` provisions them.
+ */
+export function operatorUser(): CurrentUser {
+  return {
+    id: "00000000-0000-4000-8000-000000000401",
+    email: "op@test.local",
+    name: "Operator",
+    role: "operator",
+  };
+}
+
+export function adminUser(): CurrentUser {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+    email: "admin@test.local",
+    name: "Admin",
+    role: "admin",
+  };
+}
+
+export function clientViewerUser(): CurrentUser {
+  return {
+    id: "00000000-0000-4000-8000-00000000a002",
+    email: "client@example.com",
+    name: "Client Viewer",
+    role: "client_viewer",
+  };
+}
 
 /**
  * Provision every fixture actor. Call once per file after migrating, and
