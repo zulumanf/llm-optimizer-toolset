@@ -4,6 +4,21 @@ export function formatDate(d: Date): string {
 }
 
 /**
+ * Render a 0..1 rate as a percent string. `digits: 0` (default) rounds with
+ * Math.round; `digits: 1` uses toFixed(1). null/undefined renders as
+ * `nullAs` (default "—") — an unmeasured rate must never print as 0%.
+ */
+export function formatPercent(
+  value: number | null | undefined,
+  opts: { digits?: 0 | 1; nullAs?: string } = {}
+): string {
+  if (value === null || value === undefined) return opts.nullAs ?? "—";
+  return opts.digits === 1
+    ? `${(value * 100).toFixed(1)}%`
+    : `${Math.round(value * 100)}%`;
+}
+
+/**
  * Client-facing metric names (spec 051). One vocabulary across the report
  * HTML, the portal, and verdict lines — "recommendation_rate" is ours,
  * "Actively recommended" is theirs.

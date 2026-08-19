@@ -8,6 +8,7 @@
  * "AI citation value ≠ backlink authority" is enforced by this module's
  * input shape, not by a comment.
  */
+import { formatPercent } from "@/lib/format";
 import { weightedComposite, type WeightSet } from "@/lib/scoring/weights";
 import type { SourceType } from "@/lib/sources/classify";
 
@@ -144,8 +145,9 @@ export interface AcvsResult {
   explanation: string[];
 }
 
+/** Ratio wrapper: a zero denominator is "n/a", never a division. */
 const pct = (n: number, d: number): string =>
-  d > 0 ? `${Math.round((n / d) * 100)}%` : "n/a";
+  d > 0 ? formatPercent(n / d) : "n/a";
 
 /**
  * Explanation lines are TEMPLATES over stored numbers — never model-written,

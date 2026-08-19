@@ -19,6 +19,7 @@
  *   "the pages AI reads" is theirs.
  */
 import type { GapFinding } from "@/lib/gaps/detect";
+import { formatPercent } from "@/lib/format";
 
 export const PLAN_COMPOSER_VERSION = "plan-composer-v2";
 
@@ -55,7 +56,7 @@ export interface Play {
 }
 
 const has = (state: ClientState, key: string) => state.approvedClaimKeys.includes(key);
-const pct = (rate: number | null) => (rate === null ? "—" : `${Math.round(rate * 100)}%`);
+const pct = (rate: number | null) => formatPercent(rate);
 const topDomains = (state: ClientState, n: number) =>
   state.citedDomains.slice(0, n).map((d) => d.domain);
 

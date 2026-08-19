@@ -6,6 +6,7 @@
  * `findProhibitedPhrase` is the guard both here (by construction) and at
  * approval (by validation).
  */
+import { formatPercent } from "@/lib/format";
 import {
   FINDING_GENERATOR_VERSION,
   MIN_RESPONSES_FOR_FINDINGS,
@@ -67,7 +68,7 @@ export interface GeneratorInput {
   prospectAbsentResponseIds: string[];
 }
 
-const pct = (v: number): string => `${Math.round(v * 100)}%`;
+const pct = (v: number): string => formatPercent(v);
 
 /** Sample-size confidence: 0 at the minimum, ~0.9 by n=50, capped. */
 function sampleConfidence(n: number): number {

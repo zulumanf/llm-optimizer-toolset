@@ -9,6 +9,7 @@
  */
 import type { ReportBody, NarrativeSection, SnapshotScore } from "@/lib/reports/types";
 import { findCausalPhrase } from "@/lib/workflow/gates";
+import { formatPercent } from "@/lib/format";
 
 const CITATION_RE = /\[(score|response|finding|accuracy):([0-9a-f-]{36})\]/g;
 // Non-global twin for .test() — the global one is stateful and unsafe there
@@ -85,7 +86,7 @@ export function validateNarrative(
   };
 }
 
-const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+const pct = (v: number) => formatPercent(v, { digits: 1 });
 
 /**
  * Make arbitrary stored text safe to interpolate into a cited sentence.

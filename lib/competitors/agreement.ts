@@ -16,6 +16,7 @@ import { getSubjectCompany } from "@/db/companies";
 import { listCompetitorsIncludingArchived } from "@/db/competitors";
 import { latestScoredRunId } from "@/db/dashboard";
 import type { FrozenPrompt } from "@/lib/prompts/types";
+import { formatPercent } from "@/lib/format";
 
 export const MODEL_AGREEMENT_VERSION = "model-agreement-v1";
 
@@ -82,7 +83,8 @@ interface MentionLite {
   recommended: boolean;
 }
 
-const pct = (n: number, of: number) => `${Math.round((n / of) * 100)}%`;
+/** Ratio semantics kept local; formatting is lib/format's. */
+const pct = (n: number, of: number) => formatPercent(n / of);
 
 /** Label precedence from the spec — first match wins, pure and pinned. */
 function settle(

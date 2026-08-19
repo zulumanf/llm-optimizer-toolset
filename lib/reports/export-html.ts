@@ -10,7 +10,7 @@
  */
 import type { ReportBody } from "@/lib/reports/types";
 import { NARRATIVE_SECTIONS } from "@/lib/reports/types";
-import { METRIC_LABELS } from "@/lib/format";
+import { METRIC_LABELS, formatPercent } from "@/lib/format";
 import { verdictLine } from "@/lib/reports/verdict-language";
 
 const SECTION_LABELS: Record<string, string> = {
@@ -29,7 +29,7 @@ function esc(text: string): string {
 }
 
 function pct(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
+  return formatPercent(value, { digits: 1 });
 }
 
 function fmt(metric: string, value: number): string {
