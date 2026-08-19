@@ -1,6 +1,7 @@
 import { sql } from "@/db/client";
 import { getSubjectCompany } from "@/db/companies";
 import { SCORING_VERSION } from "@/lib/constants";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 export interface TrendPoint {
   runId: string;
@@ -108,11 +109,7 @@ export async function dataHealth(projectId: string): Promise<HealthTile> {
     join responses r on r.id = m.response_id
     join runs on runs.id = r.run_id
     where runs.project_id = ${projectId} and m.needs_review
-      and not exists (
-        select 1 from mentions newer
-        where newer.response_id = m.response_id
-          and newer.company_id = m.company_id and newer.revision > m.revision
-      )
+      and ${CURRENT_REVISION}
   `;
   const [failed] = await sql`
     select count(*)::int as n from jobs where status = 'failed'

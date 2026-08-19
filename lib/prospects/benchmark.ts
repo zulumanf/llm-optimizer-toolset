@@ -9,6 +9,7 @@ import { sql } from "@/db/client";
 import { SCORING_VERSION } from "@/lib/constants";
 import { PROMPT_NAMES_COMPANY } from "@/lib/scoring/prompt-echo";
 import type { BenchmarkEntityMetrics, AbsenceEvidence } from "@/lib/prospects/findings";
+import { CURRENT_REVISION } from "@/db/mentions";
 import {
   valuableVisibilityFromCells,
   type ValuableVisibility,
@@ -21,12 +22,7 @@ const EVIDENCE_RESPONSE_LIMIT = 100;
  * (simplify pass 2026-08-14): publishAudit's stakes and excerpt queries
  * inlined verbatim copies of this safety-critical idiom. Correlates on a
  * `mentions m` alias in the consuming query. */
-export const CURRENT = sql`not exists (
-  select 1 from mentions newer
-  where newer.response_id = m.response_id
-    and newer.company_id = m.company_id
-    and newer.revision > m.revision
-)`;
+export const CURRENT = sql`${CURRENT_REVISION}`;
 
 export interface RunSummary {
   id: string;

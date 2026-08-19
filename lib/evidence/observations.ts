@@ -10,6 +10,7 @@ import { extractCitations } from "@/lib/ai/citations";
 import { extractUrls } from "@/lib/parsing/prepass";
 import type { FrozenPrompt } from "@/lib/prompts/types";
 import { stabilityLabel, type Stability } from "@/lib/evidence/stability";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 // Metric names here MUST match the names scoring writes to `scores`
 // (lib/scoring/metrics.ts). This list previously said "citation_rate" while
@@ -139,9 +140,7 @@ export async function drilldown(args: {
       m.confidence, m.needs_review, m.parser_version
     from responses r
     left join mentions m on m.response_id = r.id and m.company_id = ${companyId}
-      and not exists (select 1 from mentions n
-        where n.response_id = m.response_id and n.company_id = m.company_id
-          and n.revision > m.revision)
+      and ${CURRENT_REVISION}
     where r.run_id = ${runId}
     order by r.requested_at asc
   `;

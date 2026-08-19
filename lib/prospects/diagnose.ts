@@ -16,6 +16,7 @@ import { normalizeEntityName, normalizeDomain } from "@/lib/knowledge/normalize"
 import type { AssessmentItem, AssessmentValue } from "@/lib/prospects/constants";
 import type { AuthoritySignalKind } from "@/lib/prospects/constants";
 import { logSampleConfidence } from "@/lib/confidence";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 export const DIAGNOSIS_VERSION = "prospect-diagnosis-v2";
 
@@ -343,11 +344,7 @@ export async function diagnoseProspect(prospectId: string): Promise<DiagnosisRep
       from responses r
       join fp on fp.prompt_id = r.prompt_id
       left join mentions m on m.response_id = r.id and m.company_id = ${companyId}
-        and not exists (
-          select 1 from mentions newer
-          where newer.response_id = m.response_id
-            and newer.company_id = m.company_id and newer.revision > m.revision
-        )
+        and ${CURRENT_REVISION}
       where r.run_id = ${runId} and r.error is null and not fp.is_holdout
         and not coalesce(
           (select ${PROMPT_NAMES_COMPANY} from companies c where c.id = ${companyId}),

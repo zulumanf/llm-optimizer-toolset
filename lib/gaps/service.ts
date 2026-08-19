@@ -27,6 +27,7 @@ import { extractUrls, urlDomain } from "@/lib/parsing/prepass";
 import { PROMPT_NAMES_COMPANY } from "@/lib/scoring/prompt-echo";
 import { extractCitations } from "@/lib/ai/citations";
 import { log } from "@/lib/logger";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 export async function analyzeRun(
   user: CurrentUser,
@@ -76,9 +77,7 @@ export async function analyzeRun(
       join runs on runs.id = r.run_id
       left join mentions m on m.response_id = r.id
         and m.company_id = ${subject.id}
-        and not exists (select 1 from mentions n
-          where n.response_id = m.response_id and n.company_id = m.company_id
-            and n.revision > m.revision)
+        and ${CURRENT_REVISION}
       where r.run_id = ${runId}
       group by r.prompt_id, runs.prompt_set_version_id
     `;
@@ -155,12 +154,7 @@ export async function analyzeRun(
       from named n
       left join mentions m on m.response_id = n.response_id
         and m.company_id = n.company_id
-        and not exists (
-          select 1 from mentions later
-          where later.response_id = m.response_id
-            and later.company_id = m.company_id
-            and later.revision > m.revision
-        )
+        and ${CURRENT_REVISION}
       group by n.company_id
     `;
     for (const row of organicRows) {

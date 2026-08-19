@@ -11,6 +11,7 @@
  * arithmetic the drill-down uses.
  */
 import { sql } from "@/db/client";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 const GROUPING_RELATIONSHIPS = ["works_for", "brokerage", "affiliated_with"];
 
@@ -106,10 +107,7 @@ export async function relationshipGroups(
         where resp.run_id = ${latestRun.id}
           and m.company_id = any(${memberIds})
           and m.mentioned
-          and not exists (select 1 from mentions newer
-            where newer.response_id = m.response_id
-              and newer.company_id = m.company_id
-              and newer.revision > m.revision)
+          and ${CURRENT_REVISION}
       `;
       group.groupMentionRate = Number(mentioned?.n ?? 0) / sampleSize;
       group.sampleSize = sampleSize;
