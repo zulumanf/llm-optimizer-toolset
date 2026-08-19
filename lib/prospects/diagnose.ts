@@ -15,6 +15,7 @@ import { classifySource } from "@/lib/sources/classify";
 import { normalizeEntityName, normalizeDomain } from "@/lib/knowledge/normalize";
 import type { AssessmentItem, AssessmentValue } from "@/lib/prospects/constants";
 import type { AuthoritySignalKind } from "@/lib/prospects/constants";
+import { logSampleConfidence } from "@/lib/confidence";
 
 export const DIAGNOSIS_VERSION = "prospect-diagnosis-v2";
 
@@ -92,9 +93,7 @@ const SUGGESTED_ACTIONS: Record<string, string> = {
     "Research local press coverage and record it — media mentions are a top citation source for agent recommendations.",
 };
 
-function sampleConfidence(n: number): number {
-  return Math.min(0.95, 0.4 + Math.log10(Math.max(1, n)) * 0.32);
-}
+const sampleConfidence = logSampleConfidence;
 
 export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
   const out: Diagnosis[] = [];
