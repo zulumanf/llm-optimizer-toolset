@@ -3,24 +3,10 @@ import Link from "next/link";
 import { listWorkflowRuns } from "@/db/control-tower";
 import { WORKFLOW_TEMPLATES } from "@/lib/workflow/templates";
 import { validateGraph } from "@/lib/workflow/graph";
-import { Badge } from "@/components/ui/badge";
+import { StateBadge } from "@/components/automation/state-badge";
 
 export const dynamic = "force-dynamic";
 
-const STATE_VARIANT: Record<string, "default" | "destructive" | "outline" | "secondary"> = {
-  running: "default",
-  initializing: "default",
-  queued: "outline",
-  waiting_for_approval: "secondary",
-  waiting_for_dependency: "secondary",
-  waiting_for_external_system: "secondary",
-  completed: "outline",
-  partially_completed: "secondary",
-  failed: "destructive",
-  cancelled: "outline",
-  safely_stopped: "secondary",
-  timed_out: "destructive",
-};
 
 export default async function WorkflowsPage() {
   const runs = await listWorkflowRuns({ limit: 50 });
@@ -116,9 +102,7 @@ export default async function WorkflowsPage() {
                       {run.projectName ?? "—"}
                     </td>
                     <td className="p-2">
-                      <Badge variant={STATE_VARIANT[run.state] ?? "outline"}>
-                        {run.state.replace(/_/g, " ")}
-                      </Badge>
+                      <StateBadge state={run.state} />
                       {run.stopReason && (
                         <p className="mt-0.5 text-xs text-muted-foreground">{run.stopReason}</p>
                       )}
