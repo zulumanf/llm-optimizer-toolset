@@ -17,7 +17,12 @@ import {
 } from "@/lib/attribution/service";
 
 const evidenceSchema = z.object({
-  kind: z.enum(["response", "mention", "score", "source", "report"]),
+  // Mirrors the evidence_kind_check constraint (007, widened by 083 with the
+  // technical-scan objects).
+  kind: z.enum([
+    "response", "mention", "score", "source", "report",
+    "site_page", "site_scan",
+  ]),
   refId: z.string().uuid(),
   note: z.string().min(1).max(500),
 });

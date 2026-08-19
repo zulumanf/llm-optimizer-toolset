@@ -40,7 +40,7 @@ import { safeFetch } from "@/lib/security/safe-fetch";
  * site is being crawled — an earlier version interpolated the target domain,
  * which would have told every webmaster their own site was crawling them.
  */
-const CRAWLER_USER_AGENT =
+export const CRAWLER_USER_AGENT =
   "AvosVisibilityAudit/1.0 (internal AI-visibility audit; contact the operator who scheduled it)";
 
 /**

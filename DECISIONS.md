@@ -2333,3 +2333,40 @@ playbooks (`lib/sources/playbooks.ts`) are typed constants keyed by the 086
 taxonomy — code-reviewed capability facts, like the collector registry —
 and seed `citation_opportunities.acquisition_path` only at insert, never
 overwriting an operator's choice.
+
+## 2026-08-18 — Technical discoverability: persist the facts, reuse the queue (spec 088)
+
+The own-site crawler (spec 021 path) already classified a client's pages by
+kind and read sitemaps — and threw all of it away at ingest. Spec 088 adds
+the missing persistence (`site_scans` / `site_pages` / `site_findings`)
+rather than another crawler: one engine of small deterministic checks
+(robots per AI crawler, sitemap lastmod, canonical/noindex, JSON-LD,
+internal-link edges, content-year freshness), no DOM parser (the extractor
+precedent), no LLM, all through safeFetch — the discovery robots helper's
+raw-fetch bypass was not copied.
+
+`site_findings` is a new table instead of widening `gap_findings` because
+gap findings are run-scoped by a NOT NULL FK and a technical scan is not a
+measurement run; distorting that anchor to fit would have cost more than a
+sibling table that promotes into the SAME `tasks` queue via `suggestTask`.
+The evidence-kind CHECK gained `site_page`/`site_scan` so technical tasks
+clear the same evidence gate with real refs, not placeholders.
+
+Severity (how wrong the technical condition is) and priority (how worth
+fixing, via the shared `priorityBand` over the gap formula shape,
+`site-priority-v1`) are separate columns on purpose: an orphaned building
+authority page is medium-severity but do-now; a blog canonical mismatch is
+the same severity and low priority.
+
+Epistemics: unknown never becomes negative — no robots.txt is "no policy
+observed", no date signals is "freshness unknown", sitemap absence is an
+inventory observation, and crawler blocking is an access fact, never a
+recommendation-visibility claim. Checks are versioned
+(`technical-scan-v1`, `page-classifier-v1`, `schema-check-v1`,
+`site-priority-v1`) and findings freeze their formula inputs.
+
+Deferred deliberately: crawler-log analytics (no log ingestion exists),
+entity-footprint checks (no licensed acquisition path), multi-hop redirect
+chains (final URL is recorded; hop lists are not), duplicate-content
+detection, and any audit-page technical section (calibrate prospect-facing
+copy against real scans first).

@@ -81,6 +81,16 @@ export const handlers: Record<
       createdBy: (payload.createdBy as string | null) ?? null,
     });
   },
+  // Spec 088: technical discoverability scan of the client's own domain —
+  // robots, sitemaps, per-page facts, findings. A failed scan records its
+  // own 'failed' row; a retry starts a fresh scan, never mutating history.
+  technical_scan: async (payload) => {
+    const { runTechnicalScan } = await import("@/lib/discoverability/scan");
+    await runTechnicalScan({
+      projectId: payload.projectId as string,
+      startedBy: (payload.startedBy as string | null) ?? null,
+    });
+  },
   // Long agent/IO operations run here rather than blocking a request:
   // each is idempotent, so a retry after a crash is safe (UX pass).
   analyze_gaps: async (payload) => {
