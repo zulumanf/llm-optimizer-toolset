@@ -3,14 +3,12 @@
  * matters: notifications are DERIVED from live state — they self-resolve,
  * never stack duplicates, and re-open if a fixed issue comes back.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const user: CurrentUser = {
   id: "00000000-0000-4000-8000-000000001001",
@@ -29,16 +27,14 @@ describe.skipIf(!TEST_URL)("notifications (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     notifications = await import("@/lib/notifications/service");
     onboarding = await import("@/lib/verticals/onboarding");
     projectSvc = await import("@/lib/projects/service");
     claimsSvc = await import("@/lib/claims/service");
     companySvc = await import("@/lib/companies/service");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 

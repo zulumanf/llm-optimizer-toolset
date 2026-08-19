@@ -3,15 +3,14 @@
  * injected fake site: robots → sitemap → pages → persisted facts → findings
  * → existing task queue with real evidence refs. No network, no sleeps.
  */
-import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 import { unwrap } from "../helpers/result";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 const DOMAIN = "client-site.com";
 const ORIGIN = `https://${DOMAIN}`;
 
@@ -98,6 +97,9 @@ describe.skipIf(!TEST_URL)("technical discoverability scan (integration)", () =>
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     projectSvc = await import("@/lib/projects/service");
     companySvc = await import("@/lib/companies/service");
     claims = await import("@/lib/claims/service");
@@ -105,11 +107,6 @@ describe.skipIf(!TEST_URL)("technical discoverability scan (integration)", () =>
     promptSvc = await import("@/lib/prompts/prompt-service");
     scan = await import("@/lib/discoverability/scan");
     svc = await import("@/lib/discoverability/service");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 

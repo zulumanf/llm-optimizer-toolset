@@ -4,14 +4,12 @@
  * standard denials. Score history is inserted directly — the pure detector
  * has its own fixtures; this proves the plumbing around it.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const user: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000501",
@@ -40,6 +38,9 @@ describe.skipIf(!TEST_URL)("competitor movement & portfolio fields (integration)
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     movement = await import("@/lib/competitors/movement");
     notifications = await import("@/lib/notifications/service");
     projectSvc = await import("@/lib/projects/service");
@@ -49,11 +50,6 @@ describe.skipIf(!TEST_URL)("competitor movement & portfolio fields (integration)
     setSvc = await import("@/lib/prompts/set-service");
     promptSvc = await import("@/lib/prompts/prompt-service");
     projectsDb = await import("@/db/projects");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
     await sql`
       insert into users (id, email, name, role) values

@@ -2,9 +2,9 @@
  * Spec 059: the worker's pulse, the health report, the two-audience health
  * endpoint, and alert dedupe — against real Postgres.
  */
-import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { afterEach, afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -16,13 +16,11 @@ describe.skipIf(!TEST_URL)("ops liveness (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     health = await import("@/lib/ops/health");
     alerts = await import("@/lib/ops/alerts");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
   });
 
   beforeEach(async () => {

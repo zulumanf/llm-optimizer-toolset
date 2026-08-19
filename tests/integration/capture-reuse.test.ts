@@ -9,11 +9,10 @@
  * proven by the absence of provider calls, and mock is excluded from
  * reuse by design.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 import { unwrap } from "../helpers/result";
 
 const providerCalls: { promptText: string; model: string }[] = [];
@@ -45,7 +44,6 @@ vi.mock("@/lib/ai/registry", async (importOriginal) => {
 });
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 const MARKET_PROMPT = "Who are the best real estate teams in Jersey City?";
 
 const operator: CurrentUser = {
@@ -70,6 +68,9 @@ describe.skipIf(!TEST_URL)("shared market captures (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     projectSvc = await import("@/lib/projects/service");
     setSvc = await import("@/lib/prompts/set-service");
     promptSvc = await import("@/lib/prompts/prompt-service");
@@ -80,11 +81,6 @@ describe.skipIf(!TEST_URL)("shared market captures (integration)", () => {
     claims = await import("@/lib/claims/service");
     parsing = await import("@/lib/parsing/service");
     scoring = await import("@/lib/scoring/compute");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 

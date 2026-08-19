@@ -14,9 +14,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import postgres from "postgres";
-import * as dotenv from "dotenv";
-
-dotenv.config();
 
 const MIGRATIONS_DIR = join(__dirname, "..", "db", "migrations");
 const UP_MARKER = "-- +migrate up";
@@ -108,8 +105,15 @@ async function main(): Promise<void> {
 }
 
 // Only run the CLI when executed directly (tsx/node); importing this module
-// (vitest global setup, test helpers) must not trigger a migration.
+// (vitest global setup, test helpers) must not trigger a migration — and
+// must not load dotenv: tests/setup.ts DELETES provider keys so the suite
+// can never spend tokens, and a top-level dotenv.config() here silently
+// restored them into every test process that imported the helpers
+// (cleanup 2026-08-18 — the suite was making real OpenAI calls).
 if (require.main === module) {
+  // Lazy: dotenv only for the CLI path, matching the old behavior.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("dotenv").config();
   main().catch((err) => {
     console.error(err);
     process.exit(1);

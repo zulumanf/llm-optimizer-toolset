@@ -3,14 +3,12 @@
  * under test: automation does the mechanical work and HALTS wherever a human
  * owes the client a judgement.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const user: CurrentUser = {
   id: "00000000-0000-4000-8000-000000001101",
@@ -36,6 +34,9 @@ describe.skipIf(!TEST_URL)("weekly cycle (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     cycles = await import("@/lib/cycles/service");
     projectSvc = await import("@/lib/projects/service");
     companySvc = await import("@/lib/companies/service");
@@ -48,11 +49,6 @@ describe.skipIf(!TEST_URL)("weekly cycle (integration)", () => {
     scoring = await import("@/lib/scoring/compute");
     jobs = await import("@/db/jobs");
     mock = await import("@/lib/ai/mock");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 

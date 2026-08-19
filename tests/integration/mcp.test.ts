@@ -4,14 +4,13 @@
  * the services' gates, idempotency keys replay instead of re-executing,
  * and every executed mutation lands in the append-only ledger.
  */
-import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const operator: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000201",
@@ -52,6 +51,9 @@ describe.skipIf(!TEST_URL)("mcp tools (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     tools = await import("@/lib/mcp/tools");
     projectSvc = await import("@/lib/projects/service");
     setSvc = await import("@/lib/prompts/set-service");
@@ -65,11 +67,6 @@ describe.skipIf(!TEST_URL)("mcp tools (integration)", () => {
     attribution = await import("@/lib/attribution/service");
     gaps = await import("@/lib/gaps/service");
     mock = await import("@/lib/ai/mock");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
     await sql`update users set role = 'reviewer' where id = ${reviewer.id}`;
     await sql`update users set role = 'client_viewer' where id = ${clientViewer.id}`;

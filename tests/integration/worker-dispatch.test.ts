@@ -9,10 +9,10 @@
  * Real Postgres: lease semantics are properties of the SQL, not the
  * TypeScript.
  */
-import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -24,11 +24,12 @@ describe.skipIf(!TEST_URL)("worker dispatch substrate (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     jobs = await import("@/db/jobs");
     core = await import("@/workers/core");
 
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, { cwd: ROOT, stdio: "pipe" });
     await seedTestActors(sql);
   });
 
