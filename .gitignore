@@ -19,3 +19,6 @@ var/
 tests/e2e/.seed-state.json
 playwright-report/
 test-results/
+
+# Claude Code personal settings (permission rules for prod ops)
+.claude/settings.local.json
