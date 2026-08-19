@@ -15,7 +15,7 @@ We measure how AI assistants (ChatGPT, Claude, Gemini, Perplexity, etc.) mention
   and prospects have real, scoped access: client roles (`client_viewer`,
   `client_validator`) see only their granted project through `/portal`;
   prospects see published, snapshot-frozen audit pages via high-entropy
-  tokens (`/audit/[token]`). Every new surface must declare which audience it
+  tokens (`/audit/[handle]` and branded `/audit/[handle]/[key]`, spec 076). Every new surface must declare which audience it
   serves; anything reachable by a client or prospect follows deny-by-default
   visibility (`client_visible`, published-only) and the prospect-voice and
   audit-page-design skills.
@@ -52,6 +52,7 @@ Never optimize for "ranking." Always optimize for:
 - Business logic stays in `lib/` — never inside React components.
 - Never put database logic inside React components. Data access lives in `db/`.
 - Always create migrations for schema changes. Never mutate the schema by hand.
+- Migration numbers are a monotonic APPLY sequence, not spec numbers — the spec reference lives in each migration's header comment. A branch's new migration must be numbered above the highest on `main` at merge time.
 - All AI provider calls go through the provider abstraction in `lib/ai/`. Never call a vendor SDK directly from a feature.
 
 ## Coding Rules

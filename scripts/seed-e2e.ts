@@ -128,7 +128,7 @@ async function main(): Promise<void> {
   const evidence = [
     { kind: "response", refId: response?.id as string, note: "e2e seed evidence" },
   ];
-  const suggested = unwrap(
+  unwrap(
     await tasksSvc.suggestTask(operator, {
       projectId: project.id,
       title: "E2E: publish neighborhood guide",
