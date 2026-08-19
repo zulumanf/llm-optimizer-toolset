@@ -45,6 +45,20 @@ export async function runAutomationTick(
   // zero API calls until something is 30 days stale. Staged proposals
   // only; every approval stays human (PRINCIPLES #8). Isolated: a sweep
   // failure must never fail dispatch.
+  // Evidence-link health (2026-08-19) rides the daily lane too: receipts on
+  // LIVE audits get re-fetched weekly (staleness window inside the sweep),
+  // so a moved or dead source link becomes a known state instead of a
+  // silently-healthy render. Isolated: a sweep failure never fails dispatch.
+  if (opts.includeHealth) {
+    try {
+      const { sweepEvidenceLinks } = await import("@/lib/evidence/link-health");
+      await sweepEvidenceLinks();
+    } catch (err) {
+      log("error", "cron.evidence_link_sweep_failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+  }
   if (opts.includeHealth) {
     try {
       const { systemUser } = await import("@/lib/auth");

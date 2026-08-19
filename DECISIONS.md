@@ -2396,3 +2396,45 @@ need no KPI filtering either: they name the brand, so prompt-echo
 exclusion already removes them from every visibility rate; a unit test
 (tests/unit/dogfood-prompts.test.ts) pins that invariant on the catalog
 (`lib/dogfood/prompts.ts`, 33 prompts frozen as v1 at onboarding).
+
+## 2026-08-19 — Audit evidence precision (Team Moza review)
+
+The live Team Moza audit surfaced four credibility defects: API-collected
+benchmarks rendered as "we asked ChatGPT"; observed citation patterns
+stated as causes ("sources AI reads", "how the answer changes"); a
+counted-mentions total (189) captioned so it could read as 189 answers;
+and a claimed lost introduction ("today that introduction goes to X").
+Decisions:
+
+**Terminology derives from run metadata, never a hardcoded brand.**
+`lib/prospects/terminology.ts` is the one prospect-facing vocabulary layer:
+the tested-system phrase is built from `benchmark.providers` +
+`snapshot.collection` (spec 086 facts), so future providers/models render
+correctly with zero copy edits. Consumer names (ChatGPT/Gemini/Claude)
+survive only in the reader's verify-it-yourself invitation and in real
+share-link exhibits. `tests/unit/audit-copy-discipline.test.ts` scans the
+audit surfaces for the banned phrasings (layout-consistency precedent).
+
+**The page fixes apply to already-published audits without republish** —
+the audit page is presentation-only over the frozen snapshot, so every
+copy repair (units, causal language, commission framing) reaches the live
+Team Moza link immediately. Snapshot-side additions (topSources
+`category`, signal `sourceType` badges, retitled diagnoses) are additive
+optional fields that appear on the next publish; old snapshots render
+unchanged.
+
+**Evidence-link health is an append-only sidecar, not columns on evidence
+rows** (`evidence_link_checks`, migration 085) — signals and snapshots are
+immutable, so health is a separate measured fact keyed by URL, latest row
+wins. The sweep rides the worker tick's existing daily `includeHealth`
+lane (no new scheduler); the page degrades a KNOWN-broken receipt to
+"source on file / page has since moved" and follows redirects to the
+canonical URL. Unknown is rendered as-is: unchecked is not broken.
+
+**'sponsored' joins the signal source_type domain** (074's vocabulary) and
+takes a 0.5 factor in the authority score (authority-v3) — sponsored
+coverage stays visible and badged ("Sponsored coverage") but cannot score
+like independent reporting. Cited-surface actionability reuses the spec
+086 classifier at publish time: competitor-owned domains render as
+diagnostic context, never as "get listed here" targets
+(prospect-diagnosis-v3 action copy says so explicitly).

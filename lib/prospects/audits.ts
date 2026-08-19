@@ -52,6 +52,9 @@ import {
 import { authorityGapForRun } from "@/lib/prospects/gap";
 import { diagnoseProspect } from "@/lib/prospects/diagnose";
 import { apiSurface, measurementPurpose } from "@/lib/runs/provenance";
+import { classifySource } from "@/lib/sources/classify";
+import { surfaceCategory } from "@/lib/prospects/terminology";
+import { normalizeDomain } from "@/lib/knowledge/normalize";
 import { computeProspectScoreView } from "@/lib/prospects/final-score";
 import { validateAuditEvidence } from "@/lib/prospects/audit-evidence";
 import { todayIso } from "@/lib/prospects/constants";
@@ -60,8 +63,10 @@ const PROSPECT_FACING_DIAGNOSES: Record<string, string> = {
   no_organic_visibility: "AI doesn't surface you yet",
   missing_from_high_intent_prompts: "Missing exactly where buyers decide",
   mentioned_never_recommended: "Known, but not recommended",
-  missing_from_cited_sources: "You're not in the sources AI reads",
-  competitors_dominate_sources: "Competitors control the sources AI reads",
+  // Observed, not causal (Team Moza review 2026-08-19): the benchmark
+  // counts citations; it does not prove what the models "read" or why.
+  missing_from_cited_sources: "Your site wasn't among the cited sources",
+  competitors_dominate_sources: "Competitor-owned pages dominate the cited sources",
 };
 
 /** Rivals on the prospect-facing audit comparison — the visible market. */
@@ -305,8 +310,16 @@ export interface AuditSnapshot {
     explanation: string;
     suggestedAction: string;
   }[];
-  /** The domains the AI answers actually cited — where visibility is won. */
-  topSources?: { domain: string; citations: number }[];
+  /** The domains the AI answers actually cited. `category` says what a
+   * surface is TO THE PROSPECT (spec 086 classifier at publish time):
+   * owned / platform / earned are realistic surfaces; competitor-owned is
+   * diagnostic context, never an optimization target. Additive — older
+   * snapshots render uncategorized. */
+  topSources?: {
+    domain: string;
+    citations: number;
+    category?: "owned" | "platform" | "earned" | "competitor" | null;
+  }[];
   /** Spec 038 — present only when both sides were measurable at publish
    * time. Additive: audits published before the field render unchanged. */
   authorityGap?: {
@@ -319,13 +332,22 @@ export interface AuditSnapshot {
     components: { label: string; points: number; maxPoints: number }[];
     organicResponses: number;
     /** Counted evidence statements only — provenance-labeled, source-linked. */
-    signals: { label: string; provenance: string; sourceUrl: string | null }[];
+    signals: {
+      label: string;
+      provenance: string;
+      sourceUrl: string | null;
+      /** Evidence classification badge (migration 074/085): independent /
+       * self_reported / sponsored / derived. Additive — older snapshots
+       * render the plain provenance text as before. */
+      sourceType?: string | null;
+    }[];
   };
 }
 
 const METHODOLOGY_TEXT =
   "Prompts were selected to represent realistic buyer and seller questions for this market and " +
-  "run repeatedly against the listed AI engines. Responses were captured verbatim and parsed for " +
+  "run repeatedly against the listed AI models through their providers' official developer " +
+  "interfaces. Responses were captured verbatim and parsed for " +
   "which businesses each engine mentioned or recommended. Rates are the share of captured " +
   "responses in which a business appeared. AI responses are probabilistic: individual answers " +
   "vary, which is why sample sizes are shown and why no single response is treated as a result.";
@@ -558,6 +580,7 @@ export async function publishAudit(
                 label: s.label,
                 provenance: s.provenance,
                 sourceUrl: s.sourceUrl,
+                sourceType: s.sourceType,
               })),
           }
         : undefined;
@@ -790,10 +813,43 @@ export async function publishAudit(
       order by citations desc
       limit 5
     `;
-    const topSources = sourceRows.map((s) => ({
-      domain: s.domain as string,
-      citations: Number(s.citations),
-    }));
+    // Actionability classification (Team Moza review 2026-08-19): the same
+    // spec-086 classifier the source graph uses, so a competitor-owned
+    // domain renders as diagnostic context and is never prescribed as a
+    // surface to get listed on. Unclassifiable domains stay uncategorized.
+    const [subjectSite] = await sql`
+      select p.website, c.domain as company_domain
+      from prospects p
+      left join companies c on c.id = p.company_id
+      where p.id = ${input.prospectId}
+    `;
+    const rivalDomainRows = await sql`
+      select domain from companies
+      where archived_at is null and domain is not null
+        and id != ${benchmark.companyId}
+    `;
+    const rawSubjectSite =
+      (subjectSite?.website as string | null) ??
+      (subjectSite?.companyDomain as string | null);
+    const subjectDomain = rawSubjectSite
+      ? normalizeDomain(rawSubjectSite) || null
+      : null;
+    const competitorDomains = rivalDomainRows
+      .map((r) => normalizeDomain(r.domain as string))
+      .filter((d) => Boolean(d));
+    const topSources = sourceRows.map((s) => {
+      const category = surfaceCategory(
+        classifySource(normalizeDomain(s.domain as string), {
+          subjectDomain,
+          competitorDomains,
+        })
+      );
+      return {
+        domain: s.domain as string,
+        citations: Number(s.citations),
+        ...(category ? { category } : {}),
+      };
+    });
 
     // Fallback reads correctly inside "questions about {marketName}" —
     // "the monitored market" produced a broken sentence on the page.
