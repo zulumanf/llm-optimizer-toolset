@@ -53,7 +53,7 @@ export const CRAWLER_USER_AGENT =
  * goodwill we are trying to earn. A visibility audit is never so urgent that it
  * justifies hammering the site it is auditing.
  */
-const CRAWL_DELAY_MS = 1_200;
+export const CRAWL_DELAY_MS = 1_200;
 
 /** How much to slow down after a 429, and the ceiling on that. */
 const BACKOFF_MULTIPLIER = 2;
