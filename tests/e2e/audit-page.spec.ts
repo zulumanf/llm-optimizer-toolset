@@ -14,9 +14,10 @@ test("renders the punch: hero, counted moments, track-record contrast", async ({
   // Three hero variants exist (named-rival / open-space / legacy headline);
   // all of them talk about answers or name the prospect.
   await expect(page.locator("h1")).toContainText(/answers|recommended|Rivera Team|#9/i);
-  // Counted moments (stakes) — the "N× / 0×" pair.
-  await expect(page.getByText(/the answer named someone specific to hire/i)).toBeVisible();
-  await expect(page.getByText(/it was you/i)).toBeVisible();
+  // Counted moments (stakes) — mention units stated at the number (spec 090).
+  await expect(page.getByText(/recommendation mentions across the/i)).toBeVisible();
+  await expect(page.getByText(/^(was|were) you\.$/i)).toBeVisible();
+  await expect(page.getByText(/mentions outnumber answers/i)).toBeVisible();
   // Provenance claim before any number (PR B).
   await expect(page.getByText(/public records and published AI answers/i)).toBeVisible();
   // The record-vs-visibility contrast in facts — the numeric scorecard is gone.
