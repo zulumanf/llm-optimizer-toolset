@@ -12,6 +12,7 @@
  */
 import { ClassifiedError } from "@/lib/errors";
 import { mockProviderAllowed } from "@/lib/ai/registry";
+import { executeCapability } from "@/lib/connectors/execute";
 
 export interface OutboundEmail {
   recipientEmail: string | null;
@@ -48,9 +49,68 @@ const mockChannel: EmailChannel = {
   },
 };
 
+/**
+ * The first real transmitting channel (spec 091). Deliberately dumb: every
+ * gate (approval, DNC, suppression, recontact, territory, sender identity,
+ * daily cap) runs in sendProspectDraft before dispatch is reached, and the
+ * connector layer owns credentials, refresh, and the Gmail API shape.
+ * Prospect outreach is platform-scoped, so the connection is the
+ * platform-level (project_id null) gmail connection minted by
+ * scripts/connect-gmail.ts.
+ */
+const gmailChannel: EmailChannel = {
+  id: "gmail",
+  transmits: true,
+  async dispatch(message: OutboundEmail) {
+    if (!message.recipientEmail) {
+      throw new ClassifiedError("validation", "The gmail channel requires a recipient email.");
+    }
+    if (!message.subject || message.subject.trim().length === 0) {
+      throw new ClassifiedError("validation", "The gmail channel requires a subject line.");
+    }
+    const result = await executeCapability<{ messageId: string }>({
+      capability: "email.send_approved_message",
+      projectId: null,
+      input: {
+        to: message.recipientEmail,
+        subject: message.subject,
+        body: message.body,
+      },
+      mode: "live",
+      provider: "gmail",
+    });
+    if (!result.ok) {
+      if (result.errorCode === "no_connection") {
+        throw new ClassifiedError(
+          "validation",
+          "No Gmail connection is configured — run scripts/connect-gmail.ts to authorize the sending mailbox."
+        );
+      }
+      if (result.errorCode === "revoked") {
+        throw new ClassifiedError(
+          "provider_auth",
+          "The Gmail connection has been revoked — re-run scripts/connect-gmail.ts to re-authorize."
+        );
+      }
+      // Transport-level failure: nothing was accepted by Gmail (the HTTP
+      // call failed or returned an error), so retrying is safe.
+      throw new ClassifiedError(
+        "internal",
+        `Gmail dispatch failed (${result.errorCode ?? "unknown"}): ${result.error ?? "no detail"}`
+      );
+    }
+    // A successful dispatch MUST be recorded even if Gmail's response
+    // carried no id — throwing here would roll back the ledger row for a
+    // message that actually left. Null id = "sent, id not returned".
+    const messageId = result.data?.messageId;
+    return { providerMessageId: messageId && messageId.length > 0 ? messageId : null };
+  },
+};
+
 const CHANNELS: Record<string, EmailChannel> = {
   manual: manualChannel,
   mock: mockChannel,
+  gmail: gmailChannel,
 };
 
 export const OUTREACH_SEND_CHANNELS = Object.keys(CHANNELS);
