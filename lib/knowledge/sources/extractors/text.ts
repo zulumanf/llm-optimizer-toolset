@@ -6,6 +6,11 @@
  * script/style blocks then tags produces text a human can verify against the
  * stored original. Anything cleverer would need a DOM and would still need the
  * original kept for audit.
+ *
+ * Note: the shared HTML primitives live in `lib/html`. The extractor here is
+ * intentionally NOT built on them — it additionally strips comments, converts
+ * block-close tags to newlines, and decodes entities, because extracted
+ * evidence text must keep paragraph structure for span anchoring.
  */
 import { EXTRACTED_TEXT_MAX_CHARS } from "@/lib/knowledge/constants";
 import {

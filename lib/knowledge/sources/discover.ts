@@ -34,6 +34,7 @@ import {
   SOURCE_FETCH_TIMEOUT_MS,
 } from "@/lib/knowledge/constants";
 import { safeFetch } from "@/lib/security/safe-fetch";
+import { extractLinks, extractTitle, visibleText } from "@/lib/html";
 
 /**
  * How we identify ourselves. Named after the platform, not after whichever
@@ -206,39 +207,13 @@ async function fetchPolitely(
   return { html: "", status: 429, delayMs };
 }
 
-/** Visible text length, for spotting JS-rendered pages. */
-function visibleTextLength(html: string): number {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim().length;
-}
-
-function extractTitle(html: string): string | null {
-  return html.match(/<title[^>]*>([^<]{1,200})<\/title>/i)?.[1]?.trim() ?? null;
-}
-
-function extractLinks(html: string, baseUrl: string, host: string): string[] {
-  const out = new Set<string>();
-  for (const match of html.matchAll(/<a\b[^>]*href=["']([^"'#]+)["']/gi)) {
-    const href = match[1]!;
-    if (href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:")) {
-      continue;
-    }
-    try {
-      const resolved = new URL(href, baseUrl);
-      // Same host only: following off-site links turns a client audit into a
-      // crawl of the open web.
-      if (resolved.host !== host) continue;
-      resolved.hash = "";
-      out.add(normalizeUrl(resolved.toString()));
-    } catch {
-      // A malformed href is the page's problem, not a reason to stop.
-    }
-  }
-  return [...out];
+/** Same-host outlinks (lib/html), canonicalized and deduped for the queue. */
+function crawlLinks(html: string, baseUrl: string, host: string): string[] {
+  return [
+    ...new Set(
+      extractLinks(html, baseUrl, { host }).map((url) => normalizeUrl(url))
+    ),
+  ];
 }
 
 async function readSitemap(origin: string): Promise<string[]> {
@@ -355,7 +330,7 @@ export async function discoverSite(raw: unknown): Promise<ActionResult<Discovery
         continue;
       }
 
-      const textLength = visibleTextLength(html);
+      const textLength = visibleText(html).length;
       results.push({
         url: next.url,
         kind,
@@ -367,7 +342,7 @@ export async function discoverSite(raw: unknown): Promise<ActionResult<Discovery
       });
 
       if (next.depth < maxDepth) {
-        for (const link of extractLinks(html, next.url, host)) {
+        for (const link of crawlLinks(html, next.url, host)) {
           if (!seen.has(link) && !shouldSkipUrl(link)) {
             queue.push({ url: link, depth: next.depth + 1, source: "crawl" });
           }
