@@ -67,7 +67,20 @@ export interface GeneratorInput {
   prospectAbsentResponseIds: string[];
 }
 
-const pct = (v: number): string => `${Math.round(v * 100)}%`;
+/** Sub-10% rates keep one decimal — Math.round turns 1/64 into "2%", a
+ * round-up in our favor (sense-check catch, spec 094). Counts are still the
+ * preferred unit; use this only where a rate genuinely reads better. */
+const pct = (v: number): string => {
+  const points = v * 100;
+  if (points > 0 && points < 10 && Math.abs(points - Math.round(points)) > 1e-9) {
+    return `${points.toFixed(1)}%`;
+  }
+  return `${Math.round(points)}%`;
+};
+
+/** The exact count behind a rate — the unit that cannot mislead. */
+const countOf = (rate: number, sampleSize: number): number =>
+  Math.round(rate * sampleSize);
 
 /** Sample-size confidence: 0 at the minimum, ~0.9 by n=50, capped. */
 function sampleConfidence(n: number): number {
@@ -104,13 +117,18 @@ export function generateFindingCandidates(input: GeneratorInput): FindingCandida
     allAbsenceIds.length > 0
   ) {
     const anchor = evidenced[0]!;
+    const recCount = countOf(p.recommendationRate, p.sampleSize);
     out.push({
       kind: "authority_visibility_gap",
-      title: `AI visibility appears weaker than ${input.prospectName}'s documented market position`,
+      // v2 (spec 094): the two measurements side by side, no asserted
+      // benchmark between them — "underrepresented relative to its
+      // documented position" claimed the rank should predict AI visibility,
+      // which the data does not establish (sense-check, all 14 audits).
+      title: `${input.prospectName}: a documented record, and ${recCount} AI recommendation${recCount === 1 ? "" : "s"} in ${p.sampleSize} monitored answers`,
       explanation:
-        `${anchor.label}. Yet across ${p.sampleSize} monitored responses, ` +
-        `${input.prospectName} was recommended in ${pct(p.recommendationRate)}. ` +
-        `The team appears underrepresented relative to its documented position.`,
+        `${anchor.label}. Separately, across ${p.sampleSize} monitored responses, ` +
+        `${input.prospectName} was recommended in ${recCount} of ${p.sampleSize}. ` +
+        `Both measurements are shown with their sources; the contrast is the observation.`,
       metrics: {
         recommendation_rate: p.recommendationRate,
         sample_size: p.sampleSize,
@@ -144,9 +162,10 @@ export function generateFindingCandidates(input: GeneratorInput): FindingCandida
       title: `${c.name} is recommended more consistently than ${input.prospectName}`,
       explanation:
         `Across ${p.sampleSize} monitored responses, ${c.name} was recommended in ` +
-        `${pct(c.recommendationRate)} while ${input.prospectName} was recommended in ` +
-        `${pct(p.recommendationRate)}. In ${ev.responseIds.length} of those responses, ` +
-        `${c.name} appeared where ${input.prospectName} was absent.`,
+        `${countOf(c.recommendationRate, c.sampleSize)} while ${input.prospectName} ` +
+        `was recommended in ${countOf(p.recommendationRate, p.sampleSize)}. ` +
+        `In ${ev.responseIds.length} of those responses, ${c.name} appeared where ` +
+        `${input.prospectName} was absent.`,
       metrics: {
         prospect_recommendation_rate: p.recommendationRate,
         competitor_recommendation_rate: c.recommendationRate,
@@ -177,9 +196,10 @@ export function generateFindingCandidates(input: GeneratorInput): FindingCandida
       kind: "absence",
       title: `${input.prospectName} is absent from most monitored AI responses`,
       explanation:
-        `${input.prospectName} was mentioned in ${pct(p.mentionRate)} of ` +
-        `${p.sampleSize} monitored responses — absent from the remaining ` +
-        `${pct(1 - p.mentionRate)}.`,
+        `${input.prospectName} was mentioned in ` +
+        `${countOf(p.mentionRate, p.sampleSize)} of ${p.sampleSize} monitored ` +
+        `responses (${pct(p.mentionRate)}) — absent from the remaining ` +
+        `${p.sampleSize - countOf(p.mentionRate, p.sampleSize)}.`,
       metrics: { mention_rate: p.mentionRate, sample_size: p.sampleSize },
       signalIds: [],
       responseIds: input.prospectAbsentResponseIds,
@@ -214,7 +234,7 @@ export function generateFindingCandidates(input: GeneratorInput): FindingCandida
           `In the monitored responses, ${citedRivals.map((c) => c.name).join(", ")} ` +
           `appeared with source citations while no sources referencing ` +
           `${input.prospectName} were cited. Assistants appear to lack citable ` +
-          `material about the team.`,
+          `material about ${input.prospectName}.`,
         metrics: {
           prospect_citation_score: p.citationScore ?? 0,
           competitors_with_citations: citedRivals.length,
