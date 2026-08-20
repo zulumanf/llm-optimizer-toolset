@@ -14,6 +14,7 @@ import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import {
   CONFIRM_REQUIRED,
+  describeSchema,
   getAssistantTool,
   runAssistantTool,
 } from "@/lib/assistant/tools";
@@ -44,7 +45,7 @@ export async function mintPendingAction(
   if (!parsed.success) {
     throw new ClassifiedError(
       "validation",
-      `Invalid input for ${tool}: ${parsed.error.issues[0]?.message ?? "bad shape"}`
+      `Invalid input for ${tool} (${parsed.error.issues[0]?.message ?? "bad shape"}). Expected shape: ${describeSchema(def.schema)} — fix the input and call the tool again.`
     );
   }
   const summary = def.summarize

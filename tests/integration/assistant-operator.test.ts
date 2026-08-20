@@ -150,6 +150,28 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect(reply.toolCalls[0]!.summary).toContain("Gate Co");
   });
 
+
+  it("a wrong input shape gets the expected shape back and the corrected retry succeeds", async () => {
+    const reply = unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "show me Gate Co" },
+        scripted([
+          // Wrong shape first — the model's guess at the field name.
+          { action: "tool", tool: "get_prospect", input: { id: P1 } },
+          // The validation error names the expected shape; corrected retry.
+          { action: "tool", tool: "get_prospect", input: { prospect_id: P1 } },
+          { action: "answer", answer: "Found it after correcting my input." },
+        ])
+      )
+    );
+    expect(reply.toolCalls.length).toBe(2);
+    expect(reply.toolCalls[0]!.ok).toBe(false);
+    expect(reply.toolCalls[0]!.summary).toContain("Expected shape");
+    expect(reply.toolCalls[0]!.summary).toContain('"prospect_id": uuid');
+    expect(reply.toolCalls[1]!.ok).toBe(true);
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(
@@ -160,3 +182,4 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     ).rejects.toThrow(/Invalid input/);
   });
 });
+
