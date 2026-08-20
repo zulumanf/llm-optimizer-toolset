@@ -35,9 +35,10 @@ const ONLY_PROSPECT: string | null =
   (prospectFlag !== -1 ? process.argv[prospectFlag + 1] : null) ?? null;
 
 const ACK_REASON =
-  "Mechanical republish to apply spec-090 evidence-precision snapshot fixes " +
-  "(diagnosis retitles, cited-surface categories, evidence badges); " +
-  "measurement basis unchanged.";
+  "Mechanical republish to apply spec-090/093 snapshot wording fixes " +
+  "(diagnosis retitles, cited-surface categories, evidence badges, precise " +
+  "citation-count units, tightened diagnosis copy); measurement basis " +
+  "unchanged.";
 
 async function main(): Promise<void> {
   const rows = await sql`
