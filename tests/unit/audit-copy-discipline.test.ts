@@ -60,7 +60,9 @@ describe("prospect-facing copy discipline", () => {
       join(ROOT, "app/audit/[handle]/page.tsx"),
       "utf8"
     );
-    expect(source).toContain("recommendation mentions across the");
+    // Round 2: the headline count names what it counts — explicit
+    // recommendations (never bare name-drops), spanning entity kinds.
+    expect(source).toContain("explicit recommendations — of a team, agent, or brokerage —");
     expect(source).toContain("MENTIONS_VS_ANSWERS_NOTE");
   });
 

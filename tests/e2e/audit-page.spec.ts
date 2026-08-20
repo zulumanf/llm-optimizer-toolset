@@ -15,7 +15,9 @@ test("renders the punch: hero, counted moments, track-record contrast", async ({
   // all of them talk about answers or name the prospect.
   await expect(page.locator("h1")).toContainText(/answers|recommended|Rivera Team|#9/i);
   // Counted moments (stakes) — mention units stated at the number (spec 090).
-  await expect(page.getByText(/recommendation mentions across the/i)).toBeVisible();
+  await expect(
+    page.getByText(/explicit recommendations — of a team, agent, or brokerage/i)
+  ).toBeVisible();
   await expect(page.getByText(/^(was|were) you\.$/i)).toBeVisible();
   await expect(page.getByText(/mentions outnumber answers/i)).toBeVisible();
   // Provenance claim before any number (PR B).

@@ -10,7 +10,6 @@ import {
   MENTIONS_VS_ANSWERS_NOTE,
   isActionableSurface,
   providersDisplay,
-  recommendationMentionsLine,
   sourceQualityLabel,
   surfaceCategory,
   testedSystemPhrase,
@@ -68,12 +67,6 @@ describe("testedSystemPhrase — model terminology from run metadata", () => {
 });
 
 describe("mention counts vs answer counts", () => {
-  it("189 mentions over 64 answers renders both units and never '189 answers'", () => {
-    const line = recommendationMentionsLine(189, 64);
-    expect(line).toBe("189 recommendation mentions across the 64 answers");
-    expect(line).not.toContain("189 answers");
-  });
-
   it("the note explains why mentions outnumber answers", () => {
     expect(MENTIONS_VS_ANSWERS_NOTE).toMatch(/mentions outnumber answers/);
   });
