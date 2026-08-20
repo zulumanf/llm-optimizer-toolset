@@ -32,7 +32,7 @@ const PACK = {
   buyerSegments: [],
   sellerSegments: [],
   terminology: {},
-  brokerages: [],
+  brokerages: ["Test Realty"],
   publications: [],
   excludedPlaceNames: [],
   templates: [

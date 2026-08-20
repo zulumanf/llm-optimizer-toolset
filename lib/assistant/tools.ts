@@ -186,11 +186,23 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   {
     name: "run_discovery",
     description:
-      "Scan a launch's benchmark answers for agent/team names not yet tracked as prospects — returns staged candidates for review.",
+      "Research a launch's market for agent/team prospects via an external source (Perplexity by default — no benchmark needed first). Returns staged candidates for operator review; use segment to focus (e.g. 'top-producing teams', 'RealTrends-ranked teams') and limit for a target count.",
     tier: "direct",
-    schema: z.object({ launch_id: uuid }),
+    schema: z.object({
+      launch_id: uuid,
+      provider: z.enum(["perplexity", "mock"]).default("perplexity"),
+      segment: z.string().trim().max(120).optional(),
+      limit: z.number().int().positive().max(50).optional(),
+    }),
     run: async (user, input) =>
-      unwrapResult(await runProspectDiscovery(user, { launchId: input.launch_id })),
+      unwrapResult(
+        await runProspectDiscovery(user, {
+          launchId: input.launch_id,
+          provider: input.provider ?? "perplexity",
+          ...(input.segment ? { segment: input.segment } : {}),
+          ...(typeof input.limit === "number" ? { limit: input.limit } : {}),
+        })
+      ),
   },
   {
     name: "enrich_prospect",

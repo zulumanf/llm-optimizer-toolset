@@ -16,6 +16,8 @@ import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { createProject } from "@/lib/projects/service";
+import { upsertCompany } from "@/lib/companies/service";
+import { setSubjectCompany } from "@/lib/claims/service";
 import { addPrompt } from "@/lib/prompts/prompt-service";
 import { createPromptSet, freezePromptSet } from "@/lib/prompts/set-service";
 import { expandMarketPack } from "@/lib/markets/generate";
@@ -101,11 +103,31 @@ export async function bootstrapMarketBenchmark(
     }
     const pack = draft.payload as unknown as MarketPackDefinition;
 
+    // Parsing needs a subject company to anchor (specs 004+): for a
+    // market-wide discovery run the anchor is the pack's first prominent
+    // local brokerage — a real, Perplexity-cited entity, never an invention.
+    // The same precedent createBenchmarkProject sets per-prospect.
+    const anchorName = pack.brokerages[0];
+    if (!anchorName) {
+      throw new ClassifiedError(
+        "validation",
+        "The installed pack lists no local brokerages, so the benchmark has no honest subject anchor — add one to the pack (or set a subject in the project UI) before benchmarking."
+      );
+    }
+
     const project = await createProject(user, {
       name: projectName,
-      description: `Market-level benchmark for ${marketName} prospecting (bootstrapped from the installed market pack). Not a client.`,
+      description: `Market-level benchmark for ${marketName} prospecting (bootstrapped from the installed market pack). Subject anchor: ${anchorName}, a prominent local brokerage from the pack — not a client.`,
     });
     if (!project.ok) return fail(project.error);
+    await sql`update projects set kind = 'prospect' where id = ${project.data.id}`;
+    const anchor = await upsertCompany(user, { name: anchorName, aliases: [] });
+    if (!anchor.ok) return fail(anchor.error);
+    const subject = await setSubjectCompany(user, {
+      projectId: project.data.id,
+      companyId: anchor.data.id,
+    });
+    if (!subject.ok) return fail(subject.error);
 
     const set = await createPromptSet(user, {
       projectId: project.data.id,
