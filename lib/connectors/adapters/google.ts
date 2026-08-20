@@ -55,6 +55,9 @@ async function googleRefresh(ctx: ConnectorContext) {
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     },
+    // Without this, the http layer redacts access_token in the response and
+    // the literal "[redacted]" gets stored as the credential.
+    rawSecrets: true,
   });
   if (!response.ok) {
     return { refreshed: false, error: `token endpoint returned ${response.status}` };
