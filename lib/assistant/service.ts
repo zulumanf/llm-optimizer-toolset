@@ -1,9 +1,10 @@
 /**
- * Workspace assistant (spec 044): a bounded agent loop whose ONLY data
- * access is the MCP observer tool registry, invoked as the calling user —
- * same staff assertion, zod validation, and classified errors as the MCP
- * server. Operator (mutating) tools are structurally excluded: the
- * assistant reads and explains; it never writes platform state.
+ * Workspace assistant (spec 044; operator mode spec 096): a bounded agent
+ * loop over the MCP observer registry plus the assistant tool belt, invoked
+ * as the calling user. Direct-tier belt tools stage reviewable artifacts;
+ * confirm-tier tools NEVER execute from the model — they mint a pending
+ * action the operator confirms with a button (lib/assistant/confirm.ts).
+ * Raw MCP operator tools stay structurally unreachable by name.
  *
  * Conversations persist; messages are insert-only, each assistant message
  * carrying the tool calls it rests on and its cost. Tests inject a fake
@@ -17,6 +18,13 @@ import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { runAgent, type AgentCaller } from "@/lib/ai/agent";
 import { MCP_TOOLS, invokeTool } from "@/lib/mcp/tools";
+import {
+  ASSISTANT_TOOLS,
+  CONFIRM_REQUIRED,
+  getAssistantTool,
+  runAssistantTool,
+} from "@/lib/assistant/tools";
+import { mintPendingAction } from "@/lib/assistant/confirm";
 import {
   ASSISTANT_PROMPT_VERSION,
   assistantSystemPrompt,
@@ -49,11 +57,20 @@ export interface AssistantToolCall {
   summary: string;
 }
 
+export interface AssistantPendingAction {
+  id: string;
+  tool: string;
+  summary: string;
+  /** Server-minted; rendered as the Confirm button. Never shown to the model. */
+  token: string;
+}
+
 export interface AssistantReply {
   conversationId: string;
   reply: string;
   toolCalls: AssistantToolCall[];
   costMicroUsd: number;
+  pendingActions: AssistantPendingAction[];
 }
 
 export interface AssistantMessageRow {
@@ -162,13 +179,20 @@ export async function askAssistant(
       userName: user.name,
       today: new Date().toISOString().slice(0, 10),
       pathname: input.pathname,
-      toolCatalog: OBSERVER_TOOLS.map((t) => ({
-        name: t.name,
-        description: t.description,
-      })),
+      toolCatalog: [
+        ...OBSERVER_TOOLS.map((t) => ({ name: t.name, description: t.description })),
+        ...ASSISTANT_TOOLS.map((t) => ({
+          name: t.name,
+          description:
+            t.tier === "confirm"
+              ? `${t.description} [REQUIRES OPERATOR CONFIRMATION — calling this stages a Confirm button; it never executes directly]`
+              : t.description,
+        })),
+      ],
     });
 
     const toolCalls: AssistantToolCall[] = [];
+    const pendingActions: AssistantPendingAction[] = [];
     let cost = 0;
     let reply: string | null = null;
 
@@ -201,17 +225,51 @@ export async function askAssistant(
       }
       const toolName = output.tool;
       const toolInput = output.input;
-      // Observer-only: a mutating tool name is unknown here BY CONSTRUCTION.
-      const known = OBSERVER_TOOLS.some((t) => t.name === toolName);
-      const result = known
-        ? await invokeTool(user, toolName, toolInput)
-        : ({
-            ok: false as const,
+      // Three sources, in precedence order (spec 096): MCP observer tools,
+      // then the assistant belt — whose confirm tier NEVER executes from
+      // here: it mints a pending action for the operator's Confirm button.
+      const isObserver = OBSERVER_TOOLS.some((t) => t.name === toolName);
+      const assistantTool = getAssistantTool(toolName);
+      let result: { ok: true; data: unknown } | { ok: false; error: { kind: string; message: string } };
+      if (isObserver) {
+        result = await invokeTool(user, toolName, toolInput);
+      } else if (assistantTool && CONFIRM_REQUIRED.has(toolName)) {
+        try {
+          const pending = await mintPendingAction(user, conversationId, toolName, toolInput);
+          pendingActions.push({ id: pending.id, tool: pending.tool, summary: pending.summary, token: pending.token });
+          result = {
+            ok: true,
+            data: {
+              requires_confirmation: true,
+              summary: pending.summary,
+              note: "A Confirm button is now shown to the operator. Nothing has executed. Tell them what it will do and wait — do not retry this tool.",
+            },
+          };
+        } catch (err) {
+          result = {
+            ok: false,
             error: {
               kind: "validation",
-              message: `Unknown tool "${toolName}" — only read-only tools are available to you.`,
+              message: err instanceof Error ? err.message : "could not stage the action",
             },
-          });
+          };
+        }
+      } else if (assistantTool) {
+        try {
+          result = { ok: true, data: await runAssistantTool(user, toolName, toolInput) };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "tool failed";
+          result = { ok: false, error: { kind: "validation", message } };
+        }
+      } else {
+        result = {
+          ok: false,
+          error: {
+            kind: "validation",
+            message: `Unknown tool "${toolName}".`,
+          },
+        };
+      }
       const summary = result.ok
         ? toolResultForTranscript(result.data)
         : `ERROR (${result.error.kind}): ${result.error.message}`;
@@ -251,6 +309,7 @@ export async function askAssistant(
       reply: finalReply,
       toolCalls,
       costMicroUsd: Math.round(cost),
+      pendingActions,
     });
   } catch (err) {
     return fail(err);

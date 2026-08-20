@@ -120,20 +120,22 @@ describe.skipIf(!TEST_URL)("workspace assistant (integration)", () => {
     expect(all.length).toBe(4);
   });
 
-  it("mutating tools and unknown tools come back as tool errors, and the turn still answers", async () => {
+  it("raw MCP operator tools and unknown tools come back as tool errors, and the turn still answers", async () => {
     const reply = unwrap(
       await assistant.askAssistant(
         operator,
         { message: "start a run", pathname: "/" },
         scripted([
-          // run_prompt_set is an OPERATOR tool — invisible to the assistant.
+          // run_prompt_set is an MCP OPERATOR tool — never in the assistant
+          // belt by that name (spec 096 wraps live runs as the confirm-gated
+          // start_benchmark_run instead), so it stays unknown here.
           { action: "tool", tool: "run_prompt_set", input: { project_id: "x" } },
           { action: "answer", answer: "I can't start runs — use the Runs page." },
         ])
       )
     );
     expect(reply.toolCalls[0]).toMatchObject({ tool: "run_prompt_set", ok: false });
-    expect(reply.toolCalls[0]?.summary).toContain("read-only");
+    expect(reply.toolCalls[0]?.summary).toContain("Unknown tool");
     expect(reply.reply).toContain("Runs page");
   });
 

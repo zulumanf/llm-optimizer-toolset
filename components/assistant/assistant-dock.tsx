@@ -5,7 +5,13 @@ import { usePathname } from "next/navigation";
 import { ChevronDown, ChevronUp, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { askAssistant, getAssistantConversation } from "@/app/assistant/actions";
+import {
+  askAssistant,
+  cancelAssistantAction,
+  confirmAssistantAction,
+  getAssistantConversation,
+  getPendingAssistantActions,
+} from "@/app/assistant/actions";
 
 const STORAGE_KEY = "avos-assistant-conversation";
 
@@ -20,6 +26,13 @@ interface Message {
   toolCalls?: ToolCall[];
 }
 
+interface PendingAction {
+  id: string;
+  tool: string;
+  summary: string;
+  token: string;
+}
+
 /**
  * The always-present assistant bar (spec 044): a composer docked at the
  * bottom of the workspace like ChatGPT/Claude — the input is always there;
@@ -30,6 +43,7 @@ export function AssistantDock() {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const conversationId = useRef<string | null>(null);
@@ -43,6 +57,9 @@ export function AssistantDock() {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (!stored) return;
     conversationId.current = stored;
+    void getPendingAssistantActions(stored).then((result) => {
+      if (result.ok) setPendingActions(result.data as PendingAction[]);
+    });
     void getAssistantConversation(stored).then((result) => {
       if (result.ok) {
         setMessages(
@@ -92,12 +109,41 @@ export function AssistantDock() {
           conversationId: string;
           reply: string;
           toolCalls: ToolCall[];
+          pendingActions?: PendingAction[];
         };
         conversationId.current = data.conversationId;
         window.localStorage.setItem(STORAGE_KEY, data.conversationId);
         setMessages((prev) => [
           ...prev,
           { role: "assistant", content: data.reply, toolCalls: data.toolCalls },
+        ]);
+        if (data.pendingActions && data.pendingActions.length > 0) {
+          setPendingActions((prev) => [...prev, ...data.pendingActions!]);
+        }
+      } else {
+        setError(result.error.message);
+      }
+    });
+  };
+
+  const decide = (action: PendingAction, kind: "confirm" | "cancel") => {
+    if (pending) return;
+    startTransition(async () => {
+      const result =
+        kind === "confirm"
+          ? await confirmAssistantAction({ token: action.token })
+          : await cancelAssistantAction({ token: action.token });
+      setPendingActions((prev) => prev.filter((a) => a.id !== action.id));
+      if (result.ok) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content:
+              kind === "confirm"
+                ? `Confirmed and executed: ${action.summary}.`
+                : `Dismissed without executing: ${action.summary}.`,
+          },
         ]);
       } else {
         setError(result.error.message);
@@ -109,6 +155,7 @@ export function AssistantDock() {
     window.localStorage.removeItem(STORAGE_KEY);
     conversationId.current = null;
     setMessages([]);
+    setPendingActions([]);
     setError(null);
   };
 
@@ -121,7 +168,7 @@ export function AssistantDock() {
               <MessageCircle className="size-4" />
               <span className="text-sm font-medium">AVOS assistant</span>
               <span className="text-xs text-muted-foreground">
-                read-only · answers from live data
+                answers from live data · consequential actions need your confirm
               </span>
               <div className="ml-auto flex items-center gap-1">
                 <Button variant="ghost" size="sm" onClick={reset}>
@@ -164,6 +211,26 @@ export function AssistantDock() {
                         .join(", ")}
                     </p>
                   )}
+                </div>
+              ))}
+              {pendingActions.map((a) => (
+                <div key={a.id} className="rounded-md border border-foreground/25 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Needs your confirmation
+                  </p>
+                  <p className="mt-1 text-sm">{a.summary}</p>
+                  <div className="mt-2 flex gap-2">
+                    <Button size="sm" onClick={() => decide(a, "confirm")} disabled={pending}>
+                      Confirm
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => decide(a, "cancel")} disabled={pending}>
+                      Dismiss
+                    </Button>
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Nothing runs until you confirm — the button is bound to this exact
+                    action and expires in 15 minutes.
+                  </p>
                 </div>
               ))}
               {pending && (

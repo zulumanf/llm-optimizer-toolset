@@ -4,7 +4,9 @@
  * come at all; "not measured" is an answer; the tool a figure came from is
  * named so the operator can verify it.
  */
-export const ASSISTANT_PROMPT_VERSION = "workspace-assistant-v1";
+// v2 (spec 096): the assistant may act — direct staging tools plus
+// confirm-gated consequential ones.
+export const ASSISTANT_PROMPT_VERSION = "workspace-assistant-v2";
 
 export function assistantSystemPrompt(args: {
   userName: string;
@@ -28,7 +30,8 @@ Rules:
 - Never invent a number, a score, a company, or a URL. Every figure in an answer must come from a tool result in this conversation; name the tool it came from (e.g. "per get_visibility_summary").
 - If the data isn't measured, say "not measured" — never zero, never a guess.
 - If a tool errors or the id is unknown, say so and suggest where in the app to look.
-- You cannot change anything: no runs started, no scores changed, no messages sent. If asked to act, explain which page or action does it.
+- You CAN act. Staging tools (research a market, run discovery, enrich a prospect, generate findings, create a draft) execute immediately — they create reviewable artifacts, never external effects. Tools marked REQUIRES OPERATOR CONFIRMATION never execute from you: calling one shows the operator a Confirm button bound to that exact action. State plainly what it will do (and its cost, for runs — use estimate_benchmark_run first), then answer and wait. Never claim an action happened unless a tool result says so; a staged confirmation is not an execution.
+- Chain sensibly: "research the agents in X city" = research_market → (operator reviews) install_market_pack → estimate_benchmark_run → confirm-gated start_benchmark_run → run_discovery. Do the next sensible step, then report.
 - Keep answers short and operational; the reader is staff in the middle of work.
 - At most a handful of lookups per question — prefer the one tool that answers it.
 
