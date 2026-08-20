@@ -7,7 +7,7 @@
  *
  * Nothing in this module sends anything or calls an AI provider.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { sql } from "@/db/client";
 import type { TransactionSql } from "@/db/client";
@@ -91,7 +91,8 @@ import { mockScoringAllowed } from "@/lib/ai/registry";
 import { checkNoMockResponses } from "@/lib/qa/preflight";
 // removed-unused: validateAuditEvidence
 import {} from "@/lib/prospects/audit-evidence";
-import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
+import { auditUrl, brandedAuditUrl, openPixelUrl } from "@/lib/prospects/urls";
+import { plainTextToTrackedHtml } from "@/lib/text/html";
 import {
   auditLinkForProspect,
 } from "@/lib/prospects/links";
@@ -2216,20 +2217,27 @@ export async function sendProspectDraft(
         banned ? `Contains prohibited wording ("${banned}").` : "clean"
       );
 
+      // body_hash stays on the PLAIN text — the human-approved artifact.
+      // The HTML part (spec 092) is a mechanical rendering of that text
+      // plus the open-tracking pixel; it carries no content of its own.
       const bodyHash = createHash("sha256")
         .update(`${(draft.subject as string) ?? ""}\n${body}`)
         .digest("hex");
       const allowed = failed === null;
 
-      const writeLedger = async (providerMessageId: string | null): Promise<string> => {
+      const writeLedger = async (
+        providerMessageId: string | null,
+        openToken: string | null
+      ): Promise<string> => {
         const [row] = await tx`
           insert into prospect_outreach_sends
             (draft_id, prospect_id, channel, recipient_email, body_hash,
-             business_purpose, gate_verdict, allowed, provider_message_id, sent_by)
+             business_purpose, gate_verdict, allowed, provider_message_id,
+             sent_by, open_token)
           values (${draft.id}, ${draft.prospectId}, ${channel.id}, ${email ?? null},
             ${bodyHash}, ${input.businessPurpose},
             ${tx.json({ version: SEND_GATE_VERSION, checks } as never)},
-            ${allowed}, ${providerMessageId}, ${user.id})
+            ${allowed}, ${providerMessageId}, ${user.id}, ${openToken})
           returning id
         `;
         return row?.id as string;
@@ -2238,7 +2246,7 @@ export async function sendProspectDraft(
       // Refusals are evidence too — ledgered and audited, which is why this
       // RETURNS instead of throwing: a throw would roll the ledger row back.
       if (!allowed) {
-        const refusalId = await writeLedger(null);
+        const refusalId = await writeLedger(null, null);
         await writeAudit(tx, {
           userId: user.id,
           action: "prospect.send_refused",
@@ -2249,6 +2257,19 @@ export async function sendProspectDraft(
         return { refused: failed ?? "gate check failed" };
       }
 
+      // Open tracking (spec 092): telemetry, never a gate — no APP_URL
+      // means the send transmits untracked (plain text, token null).
+      let openToken: string | null = null;
+      let htmlBody: string | null = null;
+      if (channel.id === "gmail") {
+        const token = randomBytes(16).toString("hex");
+        const pixel = openPixelUrl(token);
+        if (pixel) {
+          openToken = token;
+          htmlBody = plainTextToTrackedHtml(body, pixel);
+        }
+      }
+
       // Dispatch before the ledger row so the insert-only row carries the
       // provider message id (both current channels are in-process; a
       // network channel restructures this into claim → dispatch → finalize).
@@ -2256,8 +2277,9 @@ export async function sendProspectDraft(
         recipientEmail: email,
         subject: (draft.subject as string) ?? null,
         body,
+        htmlBody,
       });
-      const sendId = await writeLedger(dispatched.providerMessageId);
+      const sendId = await writeLedger(dispatched.providerMessageId, openToken);
 
       await tx`
         update outreach_drafts set sent_recorded_at = now(), sent_recorded_by = ${user.id}

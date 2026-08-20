@@ -19,3 +19,11 @@ export function brandedAuditUrl(slug: string, key: string): string | null {
   if (!base) return null;
   return `${base.replace(/\/$/, "")}/audit/${slug}/${key}`;
 }
+
+/** Open-tracking pixel URL (spec 092): /api/open/<token>. Same APP_URL
+ * rules — null means the send goes out untracked, never blocked. */
+export function openPixelUrl(token: string): string | null {
+  const base = process.env.APP_URL;
+  if (!base) return null;
+  return `${base.replace(/\/$/, "")}/api/open/${token}`;
+}
