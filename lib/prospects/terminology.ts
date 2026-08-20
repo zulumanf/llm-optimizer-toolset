@@ -109,13 +109,6 @@ export function recommendationMentionsLine(
 export const MENTIONS_VS_ANSWERS_NOTE =
   "One answer usually names several options, so mentions outnumber answers.";
 
-export function mentionSplitLine(
-  teamMentions: number,
-  brandMentions: number
-): string {
-  return `${teamMentions} mentions of individual teams · ${brandMentions} of brokerage brands`;
-}
-
 // ------------------------------------------------------- source quality
 
 export type SignalSourceType =
@@ -195,7 +188,3 @@ export function isActionableSurface(
   return category !== "competitor";
 }
 
-export const COMPETITOR_SURFACE_NOTE =
-  "Competitor-owned sites are shown because they help explain the " +
-  "information environment around these answers — they are not surfaces " +
-  "to get listed on.";

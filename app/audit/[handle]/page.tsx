@@ -22,9 +22,7 @@ import { visibilityThreshold } from "@/lib/prospects/constants";
 import { formatVerifiedProduction } from "@/lib/prospects/realtrends";
 import { getCurrentUserOrNull, isStaff } from "@/lib/auth";
 import {
-  COMPETITOR_SURFACE_NOTE,
   MENTIONS_VS_ANSWERS_NOTE,
-  mentionSplitLine,
   providersDisplay,
   sourceQualityLabel,
   testedSystemPhrase,
@@ -306,12 +304,13 @@ export default async function ProspectAuditPage({
           {snapshot.headline}
         </h1>
       )}
-      {/* Scope qualifier at the headline (compliance pass 2026-08-19): the
-          numbers are a dated sample, said before any number is argued with. */}
+      {/* The ONE above-the-fold caveat (spec 093): a compact scope line said
+          before any number is argued with. Everything else it used to carry
+          lives in "How this was measured" — a reader qualified at every turn
+          stops reading, so caveats appear exactly twice on this page. */}
       <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
-        Results reflect the captured prompts and test dates — not market
-        share, lead volume, a permanent AI ranking, or a judgment of service
-        quality.
+        Point-in-time sample — the captured prompts and test dates, not market
+        share, lead volume, or a permanent AI ranking.
         {transcriptsShown > 0 && (
           <>
             {" "}
@@ -326,12 +325,10 @@ export default async function ProspectAuditPage({
         )}
       </p>
       <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
-        AI answers may shape early consideration when buyers and sellers
-        research who to contact — and those answers name specific teams. We
-        put{" "}
-        {snapshot.benchmark.promptCount} real {snapshot.marketName} questions
-        to {testedSystemPhrase(snapshot.benchmark.providers, snapshot.collection)}{" "}
-        and captured {snapshot.benchmark.responseCount} answers;{" "}
+        We put {snapshot.benchmark.promptCount} real {snapshot.marketName}{" "}
+        buyer and seller questions to{" "}
+        {testedSystemPhrase(snapshot.benchmark.providers, snapshot.collection)},
+        each asked {repsLabel};{" "}
         {transcriptsComplete
           ? "every answer is published below."
           : transcriptsShown > 0 && transcriptTotal !== null
@@ -345,27 +342,6 @@ export default async function ProspectAuditPage({
         Everything on this page comes from public records and published AI
         answers — no estimates, no proprietary scores.
       </p>
-      {snapshot.adoptionStat && (
-        <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
-          {snapshot.adoptionStat.text}{" "}
-          {receiptHref(snapshot.adoptionStat.sourceUrl).href ? (
-            <a
-              href={receiptHref(snapshot.adoptionStat.sourceUrl).href!}
-              target="_blank"
-              rel="noreferrer"
-              className="underline underline-offset-2"
-            >
-              ({snapshot.adoptionStat.sourceLabel}
-              {snapshot.adoptionStat.sourceDate ? `, ${snapshot.adoptionStat.sourceDate}` : ""})
-            </a>
-          ) : (
-            <>
-              ({snapshot.adoptionStat.sourceLabel}
-              {snapshot.adoptionStat.sourceDate ? `, ${snapshot.adoptionStat.sourceDate}` : ""})
-            </>
-          )}
-        </p>
-      )}
 
       {stakes ? (
         <section className="mt-10">
@@ -391,19 +367,6 @@ export default async function ProspectAuditPage({
           <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
             {MENTIONS_VS_ANSWERS_NOTE}
           </p>
-          {stakes.teamRecommendations != null &&
-            stakes.brandRecommendations != null &&
-            stakes.brandRecommendations > 0 && (
-              <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
-                {mentionSplitLine(
-                  stakes.teamRecommendations,
-                  stakes.brandRecommendations
-                )}
-                {stakes.brandRecommendations > stakes.teamRecommendations &&
-                  " — in these answers, brand names filled the space where no individual team was named"}
-                .
-              </p>
-            )}
           {stakes.competitorsNamed.length > 0 && (
             <p className="mt-3 text-sm text-muted-foreground">
               Buyers heard instead:{" "}
@@ -566,22 +529,27 @@ export default async function ProspectAuditPage({
         )
       )}
 
-      {/* Business significance LAST in the authority stack (RealTrends
-          upgrade): an illustrative estimate, never a verified claim —
-          production volume is not commission income. */}
+      {/* Business significance folds behind a click (spec 093): a dollar
+          calculation in the first viewport shifts the tone from evidence-led
+          to sales arithmetic. Full illustrative-estimate disclaimer intact
+          inside — an illustrative estimate, never a verified claim. */}
       {stakes?.avgDealUsd != null && snapshot.commissionEstimate && (
-        <p className="mt-4 max-w-[65ch] text-xs text-muted-foreground">
-          For scale: at ≈ $
-          {Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K reported
-          average closed volume per side ({stakes.avgDealBasis}), a single
-          additional transaction can be commercially meaningful — roughly $
-          {snapshot.commissionEstimate.amountUsd.toLocaleString()} in gross
-          commission, an illustrative estimate at an assumed{" "}
-          {snapshot.commissionEstimate.ratePct}% commission rate. This is not
-          a forecast of referrals, commissions, or revenue from AI
-          visibility; the sourced record reports production volume, not
-          commission income.
-        </p>
+        <div className="mt-2 max-w-[65ch]">
+          <Drawer summary="Why this could matter financially — an illustrative calculation">
+            <p className="max-w-[65ch] text-xs text-muted-foreground">
+              At ≈ $
+              {Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K reported
+              average closed volume per side ({stakes.avgDealBasis}), a single
+              additional transaction can be commercially meaningful — roughly $
+              {snapshot.commissionEstimate.amountUsd.toLocaleString()} in gross
+              commission, an illustrative estimate at an assumed{" "}
+              {snapshot.commissionEstimate.ratePct}% commission rate. This is not
+              a forecast of referrals, commissions, or revenue from AI
+              visibility; the sourced record reports production volume, not
+              commission income.
+            </p>
+          </Drawer>
+        </div>
       )}
 
       {/* ================================================== the receipt */}
@@ -594,43 +562,20 @@ export default async function ProspectAuditPage({
           <p className="mt-1 text-sm text-muted-foreground">
             Who shows up when {snapshot.marketName} buyers and sellers ask.
           </p>
-          {/* The whole recipe, in plain words, AT the figures it explains
-              (spec 048 round 4): a skeptic shouldn't have to open a drawer
-              to learn how a number was made. The full method + limitations
-              stay in "How this was measured" below. */}
-          <ol className="mt-3 max-w-[65ch] list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-            <li>
-              We wrote {snapshot.benchmark.promptCount} real buyer and seller
-              questions{snapshot.promptEvidence.length > 0 ? " (full list below)" : ""}.
-            </li>
-            <li>
-              We asked each one {repsLabel}. The answers change a little on
-              every ask — like asking four different receptionists — so we
-              count the pattern across all{" "}
-              {snapshot.benchmark.responseCount} answers, never one lucky
-              reply.
-            </li>
-            <li>
-              {transcriptsComplete
-                ? "Every answer is published below, word-for-word."
-                : transcriptsShown > 0 && transcriptTotal !== null
-                  ? `Every answer was saved word-for-word; ${transcriptsShown} of the ${transcriptTotal} are published below.`
-                  : transcriptsShown > 0
-                    ? "Captured answers are published below, word-for-word."
-                    : "Every answer was saved word-for-word."}
-            </li>
-            <li>
-              We counted who was named and who was recommended. The table is those
-              counts — nothing estimated.
-            </li>
-          </ol>
+          {/* The recipe in two sentences AT the figures it explains (spec
+              093 tightening of spec 048's list): the full method and
+              limitations stay in "How this was measured" below. */}
+          <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
+            We asked each of the {snapshot.benchmark.promptCount} questions{" "}
+            {repsLabel} and counted the pattern across all{" "}
+            {snapshot.benchmark.responseCount} answers — never one lucky
+            reply. The table is those counts, nothing estimated.
+          </p>
           <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
             <span className="text-foreground">Brought up</span> = named at all.{" "}
             <span className="text-foreground">Recommended</span> = the answer
-            expressly suggested hiring or using the team or agent. Counts
-            describe this prompt set and test dates; one answer can name more
-            than one team, agent, or brokerage, so totals overlap and are not
-            market share or consumer preference.
+            expressly suggested hiring or using the team or agent. One answer
+            can name several, so counts overlap.
           </p>
           {(() => {
             const hasRanks = snapshot.comparison.some((r) => r.marketRank != null);
@@ -742,10 +687,6 @@ export default async function ProspectAuditPage({
                         register both, so the rows overlap rather than add up.
                       </p>
                     )}
-                    <p className="mt-2 max-w-[65ch] text-sm">
-                      No individual team owns the answers yet — that space is still
-                      open.
-                    </p>
                   </div>
                 )}
               </div>
@@ -873,12 +814,12 @@ export default async function ProspectAuditPage({
                   .join(", ")}
                 .
               </p>
+              {/* ONE causality sentence (spec 093) — the stacked disclaimers
+                  it replaces made the page sound uncertain of its own data. */}
               <p className="mt-1.5">
-                These were among the sources repeatedly cited in the answers we
-                captured. Citation frequency does not establish that a source
-                caused a specific recommendation.
-                {snapshot.topSources.some((s) => s.category === "competitor") &&
-                  ` ${COMPETITOR_SURFACE_NOTE}`}
+                Citation frequency does not establish that any one source
+                caused a recommendation — the list identifies the public
+                information environment the models surfaced.
               </p>
             </div>
           )}
@@ -979,6 +920,45 @@ export default async function ProspectAuditPage({
             {transcriptsShown > 0 &&
               " Exact model identifiers are shown with each captured answer in the appendix."}
           </p>
+          {/* The reading rules that used to repeat across the page (spec 093)
+              live here now, said once. */}
+          <p className="mb-3 max-w-[65ch] text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">
+              How to read this report:
+            </span>{" "}
+            a point-in-time audit of a defined set of AI answers, designed to
+            identify visibility gaps and possible source patterns. It is not a
+            judgment of service quality, and it does not predict lead flow,
+            prove competitive superiority, or guarantee future AI
+            recommendations.
+          </p>
+          {snapshot.adoptionStat && (
+            <p className="mb-3 max-w-[65ch] text-xs text-muted-foreground">
+              Context: {snapshot.adoptionStat.text}{" "}
+              {receiptHref(snapshot.adoptionStat.sourceUrl).href ? (
+                <a
+                  href={receiptHref(snapshot.adoptionStat.sourceUrl).href!}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  ({snapshot.adoptionStat.sourceLabel}
+                  {snapshot.adoptionStat.sourceDate
+                    ? `, ${snapshot.adoptionStat.sourceDate}`
+                    : ""}
+                  )
+                </a>
+              ) : (
+                <>
+                  ({snapshot.adoptionStat.sourceLabel}
+                  {snapshot.adoptionStat.sourceDate
+                    ? `, ${snapshot.adoptionStat.sourceDate}`
+                    : ""}
+                  )
+                </>
+              )}
+            </p>
+          )}
           <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             <div>
               <dt className="text-xs text-muted-foreground">When</dt>
@@ -1080,18 +1060,9 @@ export default async function ProspectAuditPage({
       {/* ========================================================= CTA */}
       <section className="mt-14 border-t pt-8">
         <p className={`${serif.className} max-w-[42ch] text-balance text-lg`}>
-          Across our captures, the answers lean on the same sources again and
-          again — strengthening your presence in the sources they already cite
-          is the clearest opportunity this benchmark identifies.
-        </p>
-        <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">
-            How to read this report:
-          </span>{" "}
-          this is a point-in-time audit of a defined set of AI answers. It is
-          designed to identify visibility gaps and possible source patterns —
-          not to predict lead flow, prove competitive superiority, or
-          guarantee future AI recommendations.
+          The clearest opportunity: make {snapshot.prospectName}&apos;s
+          credentials consistently visible across the credible public sources
+          that appeared in these answers.
         </p>
         <div className="mt-4">
           {ctaButton ?? (
