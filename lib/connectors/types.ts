@@ -131,6 +131,16 @@ export interface ConnectorHttpRequest {
   /** Form-encoded body, for providers that require it. */
   form?: Record<string, string>;
   timeoutMs?: number;
+  /**
+   * Return response `data` WITHOUT secret redaction. STRICTLY for token
+   * refresh calls whose entire purpose is receiving a credential that goes
+   * straight into the encrypted store: the default redaction turned every
+   * refreshed access_token into the literal string "[redacted]", which was
+   * then stored and sent to the provider — every oauth2 connector died one
+   * hour after connecting (found live, first outreach batch 2026-08-20).
+   * `text` stays redacted regardless.
+   */
+  rawSecrets?: boolean;
 }
 
 export interface ConnectorHttpResponse<T = unknown> {
