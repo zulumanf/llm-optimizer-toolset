@@ -2472,3 +2472,27 @@ levels, approval-to-body-hash binding via `workflow_approvals`), so a
 drain there must compose that machinery, not bypass it with the prospect
 gate. Its own spec. The prospect-draft stack — what /prospects drives —
 is the pipeline the operator asked to connect.
+
+## 2026-08-19 — Open tracking ships, honestly labeled (spec 092)
+
+Spec 091's out-of-scope note said tracking pixels would "deliberately
+never" ship. The operator overrode that the same day: they want open
+counts. The reversal is principled, not a compromise — nothing in
+PRINCIPLES.md forbids telemetry; what the platform's ethos forbids is
+**presenting noisy numbers as precise ones**. So the metric ships with its
+noise stated in the UI ("upper bound — inflated by mail-client
+prefetching; audit views are the real intent signal"), raw open events are
+insert-only evidence interpreted at read time, and `body_hash` stays on
+the plain-text body: the HTML part is a mechanical rendering of the
+approved artifact plus the pixel, never content of its own.
+
+**The pixel endpoint is a public route handler** (`/api/open/[token]`),
+the same exception `/audit/[token]` already holds to the "route handlers
+only for webhooks/cron" rule — an unauthenticated surface a mail client
+fetches cannot be a server action. It serves the same GIF for known and
+unknown tokens (no validity oracle) and never fails the request: a
+tracking outage undercounts, which the metric already admits.
+
+**Tracking never gates.** No APP_URL → the send transmits untracked
+(token null); old ledger rows with null tokens render as "not tracked",
+never as zero opens (absence of data is not a zero).
