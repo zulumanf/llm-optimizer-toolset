@@ -18,6 +18,7 @@ import { publishAudit } from "@/lib/prospects/audits";
 import { enrichProspect, approveEnrichmentProposal } from "@/lib/prospects/enrichment";
 import { runProspectDiscovery } from "@/lib/prospects/discovery";
 import { draftMarketPack, installMarketPackDraft } from "@/lib/markets/research";
+import { bootstrapMarketBenchmark } from "@/lib/markets/bootstrap";
 import {
   actionQueues,
   engagementNow,
@@ -169,13 +170,39 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
       ),
   },
   {
+    name: "bootstrap_market_benchmark",
+    description:
+      "For an installed market launch: create (or find) its benchmark project, generate the prompt set from the installed pack, and freeze it — returns project_id, prompt_set_version_id, prompt count, and a suggestedProviders config copied from the most recent completed run. THE step between install_market_pack and estimate_benchmark_run; tell the operator to review the prompts before confirming a run.",
+    tier: "direct",
+    schema: z.object({ launch_id: uuid, cap: z.number().int().min(4).max(200).optional() }),
+    run: async (user, input) =>
+      unwrapResult(
+        await bootstrapMarketBenchmark(user, {
+          launchId: input.launch_id,
+          ...(typeof input.cap === "number" ? { cap: input.cap } : {}),
+        })
+      ),
+  },
+  {
     name: "run_discovery",
     description:
-      "Scan a launch's benchmark answers for agent/team names not yet tracked as prospects — returns staged candidates for review.",
+      "Research a launch's market for agent/team prospects via an external source (Perplexity by default — no benchmark needed first). Returns staged candidates for operator review; use segment to focus (e.g. 'top-producing teams', 'RealTrends-ranked teams') and limit for a target count.",
     tier: "direct",
-    schema: z.object({ launch_id: uuid }),
+    schema: z.object({
+      launch_id: uuid,
+      provider: z.enum(["perplexity", "mock"]).default("perplexity"),
+      segment: z.string().trim().max(120).optional(),
+      limit: z.number().int().positive().max(50).optional(),
+    }),
     run: async (user, input) =>
-      unwrapResult(await runProspectDiscovery(user, { launchId: input.launch_id })),
+      unwrapResult(
+        await runProspectDiscovery(user, {
+          launchId: input.launch_id,
+          provider: input.provider ?? "perplexity",
+          ...(input.segment ? { segment: input.segment } : {}),
+          ...(typeof input.limit === "number" ? { limit: input.limit } : {}),
+        })
+      ),
   },
   {
     name: "enrich_prospect",
