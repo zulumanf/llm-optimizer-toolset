@@ -193,8 +193,10 @@ minute-level granularity, and the tick is the platform's one clock):
   parsing is its own spec — reply-based opt-out remains manual recording onto
   the suppression list for now).
 - In-app OAuth connect surface (CLI mint suffices for one operator).
-- Open/click tracking (deliberately never — no tracking pixels in outreach;
-  aligns with the truthfulness posture).
+- Open/click tracking. (This spec originally said "deliberately never";
+  the operator overrode that on 2026-08-19 — open tracking shipped as spec
+  092, with the metric's noise stated in the UI rather than hidden. Click
+  tracking via link rewriting remains unbuilt.)
 - Multi-mailbox rotation, sending-domain warmup automation.
 
 ## Acceptance criteria

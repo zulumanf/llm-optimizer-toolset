@@ -18,6 +18,9 @@ export interface OutboundEmail {
   recipientEmail: string | null;
   subject: string | null;
   body: string;
+  /** Optional HTML rendering of `body` (spec 092: open-tracking pixel).
+   * Mechanical rendering only — the approved artifact is the plain text. */
+  htmlBody?: string | null;
 }
 
 export interface EmailChannel {
@@ -75,6 +78,7 @@ const gmailChannel: EmailChannel = {
         to: message.recipientEmail,
         subject: message.subject,
         body: message.body,
+        ...(message.htmlBody ? { htmlBody: message.htmlBody } : {}),
       },
       mode: "live",
       provider: "gmail",

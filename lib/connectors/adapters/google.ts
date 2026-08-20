@@ -277,29 +277,47 @@ const gmailConfig = z.object({
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1";
 
-/** RFC 2822 message, base64url encoded as Gmail requires. */
+/** RFC 2822 message, base64url encoded as Gmail requires. With an
+ * `htmlBody`, emits multipart/alternative (plain text first, HTML second —
+ * RFC 2046 puts the preferred form last); plain-text-only messages carry
+ * the same headers and body as before spec 092. */
 function encodeMessage(args: {
   to: string;
   from: string;
   subject: string;
   body: string;
+  htmlBody?: string;
   replyTo?: string;
   unsubscribeUrl?: string;
 }): string {
-  const headers = [
-    `To: ${args.to}`,
-    `From: ${args.from}`,
-    `Subject: ${args.subject}`,
-    'Content-Type: text/plain; charset="UTF-8"',
-    "MIME-Version: 1.0",
-  ];
+  const headers = [`To: ${args.to}`, `From: ${args.from}`, `Subject: ${args.subject}`];
   if (args.replyTo) headers.push(`Reply-To: ${args.replyTo}`);
   // A one-click unsubscribe header is a compliance field, not a nicety.
   if (args.unsubscribeUrl) {
     headers.push(`List-Unsubscribe: <${args.unsubscribeUrl}>`);
     headers.push("List-Unsubscribe-Post: List-Unsubscribe=One-Click");
   }
-  return Buffer.from(`${headers.join("\r\n")}\r\n\r\n${args.body}`, "utf8")
+  let payload: string;
+  if (args.htmlBody) {
+    // Static boundary is safe: it can only collide with body text, and both
+    // parts are platform-generated from the approved draft.
+    const boundary = "=_avos_alt_boundary";
+    headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+    headers.push("MIME-Version: 1.0");
+    payload =
+      `--${boundary}\r\n` +
+      'Content-Type: text/plain; charset="UTF-8"\r\n\r\n' +
+      `${args.body}\r\n` +
+      `--${boundary}\r\n` +
+      'Content-Type: text/html; charset="UTF-8"\r\n\r\n' +
+      `${args.htmlBody}\r\n` +
+      `--${boundary}--`;
+  } else {
+    headers.push('Content-Type: text/plain; charset="UTF-8"');
+    headers.push("MIME-Version: 1.0");
+    payload = args.body;
+  }
+  return Buffer.from(`${headers.join("\r\n")}\r\n\r\n${payload}`, "utf8")
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
@@ -325,7 +343,6 @@ export const gmailConnector = buildAdapter({
   ],
   outstandingWork: [
     ...OUTSTANDING,
-    "HTML multipart bodies are not implemented — outbound mail is plain text.",
     "Thread pagination beyond the first page is not implemented.",
   ],
   handlers: {
@@ -392,6 +409,7 @@ export const gmailConnector = buildAdapter({
               from,
               subject,
               body,
+              htmlBody: typeof input.htmlBody === "string" ? input.htmlBody : undefined,
               unsubscribeUrl:
                 typeof input.unsubscribeUrl === "string" ? input.unsubscribeUrl : undefined,
             }),
@@ -452,6 +470,7 @@ export const gmailConnector = buildAdapter({
             from,
             subject,
             body,
+            htmlBody: typeof input.htmlBody === "string" ? input.htmlBody : undefined,
             unsubscribeUrl:
               typeof input.unsubscribeUrl === "string" ? input.unsubscribeUrl : undefined,
           }),

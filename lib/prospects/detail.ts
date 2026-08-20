@@ -220,6 +220,11 @@ export interface DraftRow {
   contactId: string | null;
   contactName: string | null;
   contactEmail: string | null;
+  /** Whether any allowed send of this draft carried an open-tracking pixel
+   * (spec 092). False renders as "not tracked", never as zero opens. */
+  openTracked: boolean;
+  openCount: number;
+  lastOpenedAt: Date | null;
 }
 
 export async function listDrafts(prospectId: string): Promise<DraftRow[]> {
@@ -227,9 +232,20 @@ export async function listDrafts(prospectId: string): Promise<DraftRow[]> {
     select d.id, d.channel, d.version, d.subject, d.body, d.cta, d.generated_by,
       d.status, d.approved_at, d.sent_recorded_at, d.scheduled_send_at,
       d.last_send_error, d.contact_id,
-      c.name as contact_name, c.email as contact_email
+      c.name as contact_name, c.email as contact_email,
+      coalesce(o.open_tracked, false) as open_tracked,
+      coalesce(o.open_count, 0) as open_count,
+      o.last_opened_at
     from outreach_drafts d
     left join prospect_contacts c on c.id = d.contact_id
+    left join lateral (
+      select bool_or(s.open_token is not null) as open_tracked,
+        count(op.id)::int as open_count,
+        max(op.opened_at) as last_opened_at
+      from prospect_outreach_sends s
+      left join outreach_email_opens op on op.send_id = s.id
+      where s.draft_id = d.id and s.allowed
+    ) o on true
     where d.prospect_id = ${prospectId}
     order by d.channel asc, d.version desc
   `;

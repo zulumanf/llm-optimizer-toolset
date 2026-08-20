@@ -543,6 +543,109 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     expect(draft?.lastSendError).toMatch(/did not record an outcome/);
   });
 
+  it("open tracking (spec 092): pixel in the HTML part, token on the ledger, opens recorded and surfaced", async () => {
+    const { draftId } = await seedApprovedDraft();
+    executeCapability.mockResolvedValue(sendOk);
+    const originalAppUrl = process.env.APP_URL;
+    process.env.APP_URL = "https://app.test.local";
+    try {
+      const result = unwrap(
+        await svc.sendProspectDraft(operator, {
+          draftId,
+          channel: "gmail",
+          businessPurpose: PURPOSE,
+        })
+      );
+      const [ledger] = await sql`
+        select open_token, body_hash from prospect_outreach_sends where id = ${result.sendId}
+      `;
+      const token = ledger?.openToken as string;
+      expect(token).toMatch(/^[0-9a-f]{32}$/);
+
+      // The HTML part carries the pixel; the plain part stays the approved text.
+      const dispatched = executeCapability.mock.calls[0]?.[0] as {
+        input: { body: string; htmlBody?: string };
+      };
+      expect(dispatched.input.htmlBody).toContain(`https://app.test.local/api/open/${token}`);
+      expect(dispatched.input.body).not.toContain("<img");
+
+      // The pixel route records an open for the token, nothing for a fake one.
+      const { GET } = await import("@/app/api/open/[token]/route");
+      const hit = await GET(
+        new Request("https://app.test.local/api/open/x", {
+          headers: { "user-agent": "test-agent", "x-forwarded-for": "203.0.113.9" },
+        }),
+        { params: Promise.resolve({ token }) }
+      );
+      expect(hit.status).toBe(200);
+      expect(hit.headers.get("content-type")).toBe("image/gif");
+      const miss = await GET(new Request("https://app.test.local/api/open/x"), {
+        params: Promise.resolve({ token: "f".repeat(32) }),
+      });
+      expect(miss.status).toBe(200);
+
+      const opens = await sql`
+        select ip, user_agent from outreach_email_opens op
+        join prospect_outreach_sends s on s.id = op.send_id
+        where s.id = ${result.sendId}
+      `;
+      expect(opens.length).toBe(1);
+      expect(opens[0]).toMatchObject({ ip: "203.0.113.9", userAgent: "test-agent" });
+      // Opens are insert-only evidence.
+      await expect(
+        sql`update outreach_email_opens set user_agent = 'tampered'`
+      ).rejects.toThrow(/immutable|forbid/i);
+
+      // Surfaced on the draft row (same aggregate listDrafts renders;
+      // detail.ts itself is server-only and cannot be imported here).
+      const [row] = await sql`
+        select bool_or(s.open_token is not null) as open_tracked,
+          count(op.id)::int as open_count, max(op.opened_at) as last_opened_at
+        from prospect_outreach_sends s
+        left join outreach_email_opens op on op.send_id = s.id
+        where s.draft_id = ${draftId} and s.allowed
+      `;
+      expect(row).toMatchObject({ openTracked: true, openCount: 1 });
+      expect(row?.lastOpenedAt).not.toBeNull();
+    } finally {
+      if (originalAppUrl === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = originalAppUrl;
+    }
+  });
+
+  it("open tracking: without APP_URL the send transmits untracked — never blocked, never zero", async () => {
+    const { draftId } = await seedApprovedDraft();
+    executeCapability.mockResolvedValue(sendOk);
+    const originalAppUrl = process.env.APP_URL;
+    delete process.env.APP_URL;
+    try {
+      const result = unwrap(
+        await svc.sendProspectDraft(operator, {
+          draftId,
+          channel: "gmail",
+          businessPurpose: PURPOSE,
+        })
+      );
+      const dispatched = executeCapability.mock.calls[0]?.[0] as {
+        input: { htmlBody?: string };
+      };
+      expect(dispatched.input.htmlBody).toBeUndefined();
+      const [ledger] = await sql`
+        select open_token from prospect_outreach_sends where id = ${result.sendId}
+      `;
+      expect(ledger?.openToken).toBeNull();
+      const [row] = await sql`
+        select bool_or(s.open_token is not null) as open_tracked
+        from prospect_outreach_sends s
+        where s.draft_id = ${draftId} and s.allowed
+      `;
+      expect(row?.openTracked).toBe(false);
+    } finally {
+      if (originalAppUrl === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = originalAppUrl;
+    }
+  });
+
   it("drain: never picks up a schedule on anything but an approved, unsent draft", async () => {
     const { draftId } = await seedApprovedDraft();
     // Force the schedule onto a superseded row: approving a NEW version
