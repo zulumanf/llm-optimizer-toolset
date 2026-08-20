@@ -945,7 +945,22 @@ export default async function ProspectDetailPage({
                     {!d.sentRecordedAt && d.scheduledSendAt
                       ? ` · scheduled ${new Date(d.scheduledSendAt).toLocaleString()}`
                       : ""}
+                    {d.sentRecordedAt && d.openTracked
+                      ? d.openCount > 0
+                        ? ` · opened ${d.openCount}× (last ${new Date(
+                            d.lastOpenedAt as Date
+                          ).toLocaleString()})`
+                        : " · no opens recorded"
+                      : ""}
                   </span>
+                  {d.sentRecordedAt && d.openTracked && d.openCount > 0 && (
+                    <span
+                      className="text-xs text-muted-foreground"
+                      title="Open counts are inflated by mail-client prefetching (Apple Mail, Gmail proxies) — treat as an upper bound. Audit views are the real intent signal."
+                    >
+                      (upper bound)
+                    </span>
+                  )}
                   <div className="ml-auto flex items-center gap-2">
                     {d.status === "draft" && (
                       <>
