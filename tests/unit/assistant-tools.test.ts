@@ -45,3 +45,19 @@ describe("assistant tool catalog", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 });
+
+describe("describeSchema — the catalog can never drift from validation", () => {
+  it("renders research_market's exact shape", async () => {
+    const { describeSchema, getAssistantTool } = await import("@/lib/assistant/tools");
+    const shape = describeSchema(getAssistantTool("research_market")!.schema);
+    expect(shape).toBe('{"city_name": string, "state": string}');
+  });
+
+  it("renders uuids, enums, optionals, arrays and datetimes readably", async () => {
+    const { describeSchema, getAssistantTool } = await import("@/lib/assistant/tools");
+    expect(describeSchema(getAssistantTool("schedule_send")!.schema)).toContain('"draft_id": uuid');
+    expect(describeSchema(getAssistantTool("schedule_send")!.schema)).toContain("iso-datetime");
+    expect(describeSchema(getAssistantTool("start_benchmark_run")!.schema)).toContain('"providers": [{');
+    expect(describeSchema(getAssistantTool("enrich_prospect")!.schema)).toContain('"force"?: boolean');
+  });
+});

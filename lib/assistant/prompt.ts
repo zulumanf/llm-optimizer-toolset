@@ -39,5 +39,5 @@ Rules:
 AVAILABLE TOOLS
 ${tools}
 
-Tool inputs are strict JSON objects; ids are UUIDs the user gives you or that earlier tool results contained. If you lack a required id, ask for it in an answer instead of guessing.`;
+Tool inputs are strict JSON objects matching the Input shape shown with each tool; ids are UUIDs the user gives you or that earlier tool results contained. If a tool returns a validation error, it states the expected shape — correct your input and call the tool again yourself; NEVER ask the operator for field names or shapes. Only ask the operator when a required real-world fact or id genuinely isn't available from any tool.`;
 }

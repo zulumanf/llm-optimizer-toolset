@@ -21,6 +21,7 @@ import { MCP_TOOLS, invokeTool } from "@/lib/mcp/tools";
 import {
   ASSISTANT_TOOLS,
   CONFIRM_REQUIRED,
+  describeSchema,
   getAssistantTool,
   runAssistantTool,
 } from "@/lib/assistant/tools";
@@ -31,7 +32,9 @@ import {
 } from "@/lib/assistant/prompt";
 import { log } from "@/lib/logger";
 
-export const MAX_TOOL_CALLS = 6;
+// 10 (spec 096 follow-up): research chains legitimately take more steps,
+// and self-corrected retries after a validation error need headroom.
+export const MAX_TOOL_CALLS = 10;
 export const HISTORY_LIMIT = 20;
 const MESSAGE_MAX = 4000;
 const TOOL_RESULT_CHAR_LIMIT = 6000;
@@ -180,13 +183,17 @@ export async function askAssistant(
       today: new Date().toISOString().slice(0, 10),
       pathname: input.pathname,
       toolCatalog: [
-        ...OBSERVER_TOOLS.map((t) => ({ name: t.name, description: t.description })),
+        ...OBSERVER_TOOLS.map((t) => ({
+          name: t.name,
+          description: `${t.description} Input: ${describeSchema(t.schema)}`,
+        })),
         ...ASSISTANT_TOOLS.map((t) => ({
           name: t.name,
-          description:
+          description: `${
             t.tier === "confirm"
               ? `${t.description} [REQUIRES OPERATOR CONFIRMATION — calling this stages a Confirm button; it never executes directly]`
-              : t.description,
+              : t.description
+          } Input: ${describeSchema(t.schema)}`,
         })),
       ],
     });

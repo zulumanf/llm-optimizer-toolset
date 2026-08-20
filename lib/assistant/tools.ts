@@ -398,10 +398,56 @@ export async function runAssistantTool(
   if (!tool) throw new ClassifiedError("not_found", `Unknown assistant tool "${name}".`);
   const parsed = tool.schema.safeParse(rawInput);
   if (!parsed.success) {
+    // Self-healing errors: state the expected shape so the model corrects
+    // its input and retries in-loop instead of asking the operator.
     throw new ClassifiedError(
       "validation",
-      `Invalid input for ${name}: ${parsed.error.issues[0]?.message ?? "bad shape"}`
+      `Invalid input for ${name} (${parsed.error.issues[0]?.message ?? "bad shape"}). Expected shape: ${describeSchema(tool.schema)} — fix the input and call the tool again.`
     );
   }
   return tool.run(user, parsed.data as Record<string, unknown>);
+}
+
+// ------------------------------------------------------- schema describer
+
+/** Compact, model-readable shape for a zod schema — derived, never
+ * hand-written, so the catalog cannot drift from validation (spec 096
+ * follow-up: the model guessed input shapes and gave up on mismatch). */
+export function describeSchema(schema: z.ZodTypeAny): string {
+  const walk = (s: z.ZodTypeAny): string => {
+    const def = (s as { _def: { typeName: string } })._def;
+    switch (def.typeName) {
+      case "ZodObject": {
+        const shape = (s as z.AnyZodObject).shape as Record<string, z.ZodTypeAny>;
+        const parts = Object.entries(shape).map(([key, value]) => {
+          const optional =
+            value.isOptional() || value._def.typeName === "ZodDefault" ? "?" : "";
+          return `"${key}"${optional}: ${walk(value)}`;
+        });
+        return `{${parts.join(", ")}}`;
+      }
+      case "ZodOptional":
+      case "ZodDefault":
+      case "ZodNullable":
+        return walk((def as unknown as { innerType: z.ZodTypeAny }).innerType);
+      case "ZodArray":
+        return `[${walk((def as unknown as { type: z.ZodTypeAny }).type)}, …]`;
+      case "ZodEnum":
+        return (def as unknown as { values: string[] }).values.map((v) => `"${v}"`).join("|");
+      case "ZodString": {
+        const checks = (def as unknown as { checks?: { kind: string }[] }).checks ?? [];
+        if (checks.some((c) => c.kind === "uuid")) return "uuid";
+        if (checks.some((c) => c.kind === "email")) return "email";
+        if (checks.some((c) => c.kind === "datetime")) return "iso-datetime";
+        return "string";
+      }
+      case "ZodNumber":
+        return "number";
+      case "ZodBoolean":
+        return "boolean";
+      default:
+        return "value";
+    }
+  };
+  return walk(schema);
 }
