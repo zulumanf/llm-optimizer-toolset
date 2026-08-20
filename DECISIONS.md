@@ -2438,3 +2438,37 @@ like independent reporting. Cited-surface actionability reuses the spec
 086 classifier at publish time: competitor-owned domains render as
 diagnostic context, never as "get listed here" targets
 (prospect-diagnosis-v3 action copy says so explicitly).
+
+## 2026-08-19 — Gmail is the ESP; scheduling defers a confirmed action (spec 091)
+
+**The open ESP decision (spec 052 out-of-scope note) resolves as Gmail API**,
+sending as `francisco@recommendedfirst.com` (Google Workspace on the business
+domain — chosen over personal @gmail.com for deliverability and CAN-SPAM
+sender-identity alignment). Daily cap starts at `GMAIL_DAILY_SEND_CAP = 25`
+while the address warms; Gmail's hard limits are far higher, the cap is ours.
+
+**PRINCIPLES #8 reconciliation for scheduled sends:** "no automated action
+executes without human confirmation" — the confirmation is the human's
+approval of the exact message body (frozen `body_hash`) together with the
+human-named `scheduled_send_at`. The worker only *transmits* that confirmed
+action; it never originates, edits, or reschedules one. The full send gate
+re-runs at transmission time (spec 052 §E), so an approval that has since
+become unsafe (new suppression, territory conflict, erasure) refuses and
+blocks rather than sends. Editing an approved draft clears its schedule and
+returns it to review — a schedule can never outrun the human's approval of
+the current body.
+
+**Credential mint is a one-time CLI, not an in-app OAuth surface** — one
+operator, and the connector page already shows connection health once the
+row exists. Client id/secret live in the connection config because the
+adapter's shared `googleRefresh` reads them from there by design; the
+tokens themselves go through the `lib/connectors/credentials.ts` boundary
+(the only module that encrypts/decrypts).
+
+**The sequences engine's `dueSequences()` stays unconsumed for now** —
+descoped from 091 after reading the wiring: sequence messages transmit
+through the automation layer's own gate (`assertSendAllowed`: autonomy
+levels, approval-to-body-hash binding via `workflow_approvals`), so a
+drain there must compose that machinery, not bypass it with the prospect
+gate. Its own spec. The prospect-draft stack — what /prospects drives —
+is the pipeline the operator asked to connect.

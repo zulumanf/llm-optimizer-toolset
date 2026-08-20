@@ -336,3 +336,16 @@ export const SENDER_CREDENTIAL = process.env.SENDER_CREDENTIAL ?? null;
 // is a policy decision that belongs in a diff.
 export const RECONTACT_PERSON_WINDOW_DAYS = 30;
 export const BROKERAGE_SEND_CAP_30D = 3;
+
+// Gmail transmission (spec 091). The cap is ours, far below Gmail's own
+// limits — a warming sender address, and a policy constant like the ones
+// above: raising it is a diff, not a config edit.
+export const GMAIL_DAILY_SEND_CAP = 25;
+/** How far ahead a human may schedule an approved draft's transmission. */
+export const SCHEDULED_SEND_MAX_DAYS_AHEAD = 30;
+/** Transport-failure retries before a scheduled send parks as blocked. */
+export const SCHEDULED_SEND_MAX_ATTEMPTS = 3;
+/** A claim older than this with no recorded outcome means the worker died
+ * mid-dispatch. Such a draft is never auto-retried — the mail may have
+ * left — it parks for a human to verify in the Gmail Sent folder. */
+export const SCHEDULED_SEND_STALE_CLAIM_MINUTES = 15;

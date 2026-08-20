@@ -33,10 +33,13 @@ import {
 } from "@/components/prospects/audit-actions";
 import {
   ApproveDraftButton,
+  CancelScheduledSendButton,
   EditDraftButton,
   GenerateDraftButton,
   OpenInMailButton,
   RecordSentButton,
+  ScheduleSendButton,
+  SendViaGmailButton,
   type DraftContactOption,
 } from "@/components/prospects/draft-actions";
 import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
@@ -939,6 +942,9 @@ export default async function ProspectDetailPage({
                     {d.sentRecordedAt
                       ? ` · sent ${new Date(d.sentRecordedAt).toLocaleString()}`
                       : ""}
+                    {!d.sentRecordedAt && d.scheduledSendAt
+                      ? ` · scheduled ${new Date(d.scheduledSendAt).toLocaleString()}`
+                      : ""}
                   </span>
                   <div className="ml-auto flex items-center gap-2">
                     {d.status === "draft" && (
@@ -963,10 +969,23 @@ export default async function ProspectDetailPage({
                           body={d.body}
                         />
                         <RecordSentButton draftId={d.id} />
+                        {d.scheduledSendAt ? (
+                          <CancelScheduledSendButton draftId={d.id} />
+                        ) : (
+                          <>
+                            <ScheduleSendButton draftId={d.id} />
+                            <SendViaGmailButton draftId={d.id} />
+                          </>
+                        )}
                       </>
                     )}
                   </div>
                 </div>
+                {!d.sentRecordedAt && d.lastSendError && (
+                  <p className="mt-2 rounded bg-destructive/10 p-2 text-xs text-destructive">
+                    Last send attempt: {d.lastSendError}
+                  </p>
+                )}
                 {d.subject && <p className="mt-2 text-sm font-medium">{d.subject}</p>}
                 <pre className="mt-2 whitespace-pre-wrap rounded bg-muted p-3 font-sans text-sm">
                   {d.body}

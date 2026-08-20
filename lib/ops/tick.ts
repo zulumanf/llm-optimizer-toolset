@@ -29,6 +29,7 @@ export interface AutomationTickReport {
   alerts: Record<string, unknown>;
   outcomes: Record<string, unknown>;
   notifications: Record<string, unknown>;
+  scheduledSends: Record<string, unknown>;
 }
 
 /**
@@ -160,6 +161,21 @@ export async function runAutomationTick(
     });
   }
 
+  // Scheduled prospect sends (spec 091): transmit approved drafts whose
+  // human-named send time has arrived, through the same gated entry point a
+  // human click uses. Claim-marked and windowed — safe at any frequency,
+  // from any number of ticks. Isolated: a drain failure never fails dispatch.
+  let scheduledSends: Record<string, unknown> = { skipped: true };
+  try {
+    const { drainScheduledSends } = await import("@/lib/prospects/scheduled-sends");
+    scheduledSends = { ...(await drainScheduledSends()) };
+  } catch (err) {
+    log("error", "cron.scheduled_sends_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    scheduledSends = { error: "scheduled-send drain failed; dispatch was unaffected" };
+  }
+
   // Notification sync (docs/17 B2): derives the operator inbox from platform
   // state. It had no production scheduler at all once launchd retired — the
   // worker tick is what actually runs it now. Idempotent; isolated.
@@ -202,6 +218,7 @@ export async function runAutomationTick(
     alerts,
     outcomes,
     notifications,
+    scheduledSends,
   };
 }
 

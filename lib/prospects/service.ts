@@ -44,6 +44,8 @@ import {
   type ProspectType,
   RECONTACT_PERSON_WINDOW_DAYS,
   BROKERAGE_SEND_CAP_30D,
+  GMAIL_DAILY_SEND_CAP,
+  SCHEDULED_SEND_MAX_DAYS_AHEAD,
 } from "@/lib/prospects/constants";
 import { validateTransition } from "@/lib/prospects/stages";
 import {
@@ -1742,8 +1744,12 @@ export async function approveOutreachDraft(
           `The draft contains prohibited wording ("${banned}") — remove it before approval.`
         );
       }
+      // Superseding also clears any pending schedule (spec 091): the worker
+      // only transmits status = 'approved' rows, but a dead schedule left on
+      // a superseded draft would read as a send that is still coming.
       await tx`
-        update outreach_drafts set status = 'superseded'
+        update outreach_drafts set status = 'superseded',
+          scheduled_send_at = null, send_claimed_at = null
         where prospect_id = ${draft.prospectId} and channel = ${draft.channel}
           and status = 'approved' and id != ${draft.id}
       `;
@@ -1828,19 +1834,169 @@ export async function recordDraftSent(
   }
 }
 
+/**
+ * Schedule an approved draft's transmission (spec 091). This is a second
+ * explicit human act on an already-approved draft — approval freezes the
+ * text, scheduling names the time. The worker (drainScheduledSends) only
+ * ever transmits what this recorded, through the same sendProspectDraft
+ * gate a human click uses, and the gate re-runs in full at send time.
+ */
+export async function scheduleDraftSend(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ draftId: string; sendAt: string }>> {
+  const parsed = z
+    .object({
+      draftId: z.string().uuid(),
+      sendAt: z.coerce.date(),
+      businessPurpose: z.string().trim().min(10).max(1000),
+    })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(
+      new ClassifiedError(
+        "validation",
+        "Scheduling needs a draft, a send time, and a stated business purpose (≥ 10 characters)."
+      )
+    );
+  }
+  const { draftId, sendAt, businessPurpose } = parsed.data;
+  try {
+    assertCanWrite(user);
+    const now = Date.now();
+    if (sendAt.getTime() <= now) {
+      throw new ClassifiedError(
+        "validation",
+        "The scheduled time is in the past — use Send via Gmail for an immediate send."
+      );
+    }
+    if (sendAt.getTime() > now + SCHEDULED_SEND_MAX_DAYS_AHEAD * 24 * 60 * 60 * 1000) {
+      throw new ClassifiedError(
+        "validation",
+        `Sends can be scheduled at most ${SCHEDULED_SEND_MAX_DAYS_AHEAD} days ahead.`
+      );
+    }
+    await sql.begin(async (tx) => {
+      const [draft] = await tx`
+        select id, prospect_id, contact_id, status, sent_recorded_at
+        from outreach_drafts where id = ${draftId} for update
+      `;
+      if (!draft) throw new ClassifiedError("not_found", "Draft not found.");
+      if (draft.status !== "approved") {
+        throw new ClassifiedError("validation", "Only approved drafts can be scheduled.");
+      }
+      if (draft.sentRecordedAt) {
+        throw new ClassifiedError("conflict", "This draft already has a recorded send.");
+      }
+      // Early feedback only — the authoritative gate re-runs at send time.
+      const prospect = await lockProspect(tx, draft.prospectId as string);
+      await assertRecipientContactable(
+        tx,
+        prospect,
+        (draft.contactId as string | null) ?? null,
+        "a send cannot be scheduled"
+      );
+      await tx`
+        update outreach_drafts set
+          scheduled_send_at = ${sendAt}, scheduled_by = ${user.id},
+          scheduled_business_purpose = ${businessPurpose},
+          send_attempts = 0, send_claimed_at = null, last_send_error = null
+        where id = ${draft.id}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.send_scheduled",
+        entity: "outreach_draft",
+        entityId: draft.id as string,
+        detail: { prospectId: draft.prospectId, sendAt: sendAt.toISOString() },
+      });
+      await logActivity(
+        tx,
+        draft.prospectId as string,
+        "send_scheduled",
+        { draftId: draft.id, sendAt: sendAt.toISOString() },
+        user.id
+      );
+    });
+    return ok({ draftId, sendAt: sendAt.toISOString() });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Cancel a pending scheduled send. Idempotent on an unscheduled draft. */
+export async function cancelScheduledSend(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ draftId: string }>> {
+  const parsed = z.object({ draftId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid draft id."));
+  }
+  try {
+    assertCanWrite(user);
+    await sql.begin(async (tx) => {
+      const [draft] = await tx`
+        select id, prospect_id, scheduled_send_at, send_claimed_at
+        from outreach_drafts where id = ${parsed.data.draftId} for update
+      `;
+      if (!draft) throw new ClassifiedError("not_found", "Draft not found.");
+      if (draft.sendClaimedAt) {
+        throw new ClassifiedError(
+          "conflict",
+          "The worker has already claimed this send — it may be transmitting right now. Check the send ledger before rescheduling."
+        );
+      }
+      await tx`
+        update outreach_drafts set
+          scheduled_send_at = null, send_attempts = 0, last_send_error = null
+        where id = ${draft.id}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.send_schedule_cancelled",
+        entity: "outreach_draft",
+        entityId: draft.id as string,
+        detail: {
+          prospectId: draft.prospectId,
+          wasScheduledFor: draft.scheduledSendAt
+            ? (draft.scheduledSendAt as Date).toISOString()
+            : null,
+        },
+      });
+      await logActivity(
+        tx,
+        draft.prospectId as string,
+        "send_schedule_cancelled",
+        { draftId: draft.id },
+        user.id
+      );
+    });
+    return ok({ draftId: parsed.data.draftId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 // Not exported: stamped into ledger rows, no external consumer.
-const SEND_GATE_VERSION = "prospect-send-gate-v1";
+// v2 (spec 091): adds the daily_send_cap check for transmitting gmail sends.
+const SEND_GATE_VERSION = "prospect-send-gate-v2";
 
 /**
  * The bridge between the two outreach stacks (spec 043): every dispatch —
  * and every gate refusal — leaves an insert-only ledger row with the full
  * check list and the sha256 of the exact text. First touch stays human:
- * this runs behind a human click, never a scheduler (DECISIONS.md,
- * spec-011 reconciliation).
+ * this runs behind a human click, or behind the worker transmitting a
+ * send a human explicitly approved and scheduled (spec 091 — the schedule
+ * defers a confirmed action, never originates one; DECISIONS.md).
  *
- * Dispatch happens inside the transaction because both current channels
- * ('manual', 'mock') are in-process and instant. A future network channel
- * restructures this into claim → dispatch → finalize.
+ * Dispatch happens inside the transaction. For 'manual'/'mock' that is
+ * trivially safe (in-process, instant). For 'gmail' it means the gate's
+ * row locks are held across one bounded HTTP call — acceptable at this
+ * volume (GMAIL_DAILY_SEND_CAP), and it keeps the invariant that a ledger
+ * row and its draft's sent-marker commit atomically. The crash window
+ * between Gmail accepting and the commit is covered on the scheduled path
+ * by the claim marker in drainScheduledSends (never auto-retried).
  */
 export async function sendProspectDraft(
   user: CurrentUser,
@@ -2007,6 +2163,23 @@ export async function sendProspectDraft(
           ? `sending as ${identity.senderName}, ${identity.companyName}`
           : "No sender identity is configured — set the legal sender (name, company, postal address) before any outreach."
       );
+
+      // Daily transmission cap (spec 091): a warming sender address. Counts
+      // allowed gmail sends in the trailing 24h — refusals don't consume cap.
+      if (channel.id === "gmail") {
+        const [{ n } = { n: 0 }] = await tx`
+          select count(*)::int as n from prospect_outreach_sends
+          where channel = 'gmail' and allowed
+            and sent_at > now() - interval '24 hours'
+        `;
+        check(
+          "daily_send_cap",
+          Number(n) < GMAIL_DAILY_SEND_CAP,
+          Number(n) < GMAIL_DAILY_SEND_CAP
+            ? `${n} of ${GMAIL_DAILY_SEND_CAP} daily Gmail sends used`
+            : `The daily Gmail cap of ${GMAIL_DAILY_SEND_CAP} sends is spent — the send refuses until the 24-hour window clears.`
+        );
+      }
 
       let body = (draft.body as string) ?? "";
       if (channel.transmits) {
