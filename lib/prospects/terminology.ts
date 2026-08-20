@@ -97,14 +97,6 @@ export function verifySuggestionApps(providers: string[]): string {
 
 // ---------------------------------------------------- mention arithmetic
 
-/** The headline count, with its unit stated: mentions, never answers. */
-export function recommendationMentionsLine(
-  totalMentions: number,
-  responseCount: number
-): string {
-  return `${totalMentions} recommendation mentions across the ${responseCount} answers`;
-}
-
 /** Why mentions outnumber answers — stated next to the count, always. */
 export const MENTIONS_VS_ANSWERS_NOTE =
   "One answer usually names several options, so mentions outnumber answers.";

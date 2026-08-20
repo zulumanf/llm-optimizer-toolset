@@ -73,7 +73,7 @@ const SUGGESTED_ACTIONS: Record<string, string> = {
   mentioned_never_recommended:
     "Add differentiation and proof (rankings, verified sales, reviews) to the pages models retrieve — being known is not being endorsed.",
   missing_from_cited_sources:
-    "The cited domains are clues to the public sources visible in this sample. Improving accurate, consistent representation across relevant third-party profiles (portals, directories, local press) and building authoritative on-site content may improve how AI systems describe you over time. Competitor-owned pages among the citations are context, not targets.",
+    "The cited domains are clues to the public sources visible in this sample. Improving accurate, consistent representation across relevant third-party profiles (portals, directories, local press) and building authoritative on-site content may improve how AI systems describe you over time.",
   competitors_dominate_sources:
     "Strengthen the neutral third-party surfaces (directories, local press) the answers also cite — competitor-owned pages are not available surfaces.",
   missing_from_high_intent_prompts:
@@ -207,13 +207,16 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "missing_from_cited_sources",
         "Not in the retrieval path",
-        // Precise units (spec 093, reader feedback): "cited N times" reads
-        // implausibly high without saying each displayed citation counts,
-        // repeats included — and the zero must name its denominator.
+        // Precise, auditable units (spec 093 rounds 1+2): the count names
+        // its denominator and how repeats are treated — a bare "cited N
+        // times" reads implausibly high and invites the exact skeptical
+        // question it should be answering.
         [
-          `Across the captured answers we recorded ${totalCitations} source citations (each displayed citation counted, repeats included) — your own site appeared 0 times.`,
+          `Across the ${totalResponses} captured answers we recorded ${totalCitations} displayed source citations (repeated citations counted each time they appeared) — your own site appeared 0 times.`,
         ],
-        "The models are building these answers from other people's pages; presence on the cited surfaces may matter more than your own site here.",
+        // One sentence of reading, no stacked hedges (round 2) — the longer
+        // "how to act on it" text lives in the suggested action.
+        "The cited domains show the public information environment surfaced in this sample; your site did not appear among them.",
         sampleConfidence(totalCitations),
         { citedDomains: top }
       );

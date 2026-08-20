@@ -78,3 +78,38 @@ deleting a guarantee.
 - [ ] diagnose.ts labels the citation count precisely; unit test covers the
       new wording.
 - [ ] Lint, typecheck, full suite pass.
+
+## Round 2 (2026-08-20, second reader pass)
+
+Adopted, all presentation- or generator-level:
+
+1. Hero qualifier grammar: "Point-in-time sample based on these captured
+   prompts and test dates — not …".
+2. Headline count names what it counts: "N explicit recommendations — of a
+   team, agent, or brokerage — across the M answers" (verified against the
+   stakes query: `m.recommended` only, never bare name-drops).
+3. "Buyers heard instead" → "Most frequently recommended alternatives in
+   this sample" (the list IS ordered by recommendation count — the new
+   wording is the counted truth; the old one implied live buyer diversion).
+4. Rank callout: "In this sample, reported market rank did not correspond
+   with AI recommendation frequency" (drops the unestablished
+   "proportionally").
+5. Commission drawer: statement first, arithmetic shown as arithmetic
+   (≈ $X volume × assumed Y% ≈ $Z), both compliance pins intact.
+6. Citation observation (generator): "Across the {responses} captured
+   answers we recorded {N} displayed source citations (repeated citations
+   counted each time they appeared) — your own site appeared 0 times." The
+   explanation collapses to one sentence; the suggested action drops its
+   trailing competitor-pages hedge. Future publishes only.
+7. `recommendationMentionsLine` deleted from terminology (unused since the
+   page's inline phrasing took over; the copy-discipline test pins the page
+   string directly).
+
+**Declined: "ChatGPT with web search enabled".** The reviewer's own
+condition — "only use this if that is exactly what you tested" — fails: the
+benchmark runs through OpenAI's developer API, not the ChatGPT product, and
+spec 090's terminology layer exists precisely to prevent that conflation
+(test-enforced: "an API benchmark must never render as 'we asked
+ChatGPT'"). The precision the reviewer wants is served the truthful way:
+the methodology drawer states the collection method and the appendix shows
+the exact model identifier with every captured answer.

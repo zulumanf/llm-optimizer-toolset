@@ -309,8 +309,8 @@ export default async function ProspectAuditPage({
           lives in "How this was measured" — a reader qualified at every turn
           stops reading, so caveats appear exactly twice on this page. */}
       <p className="mt-2 max-w-[65ch] text-xs text-muted-foreground">
-        Point-in-time sample — the captured prompts and test dates, not market
-        share, lead volume, or a permanent AI ranking.
+        Point-in-time sample based on these captured prompts and test dates —
+        not market share, lead volume, or a permanent AI ranking.
         {transcriptsShown > 0 && (
           <>
             {" "}
@@ -345,15 +345,16 @@ export default async function ProspectAuditPage({
 
       {stakes ? (
         <section className="mt-10">
-          {/* Honest units (Team Moza review): 189 mentions over 64 answers
-              must never read as 189 answers — the unit and the "why more
-              than 64" note sit AT the number. The count spans teams AND
-              brokerage brands, so the line must not say "team" (P3). */}
+          {/* Honest units (Team Moza review rounds 1+2): the count is
+              EXPLICIT recommendations only (m.recommended in the stakes
+              query — never bare name-drops), spanning teams, agents, and
+              brokerage brands, and must never read as 189 answers. The unit
+              and the "why more than 64" note sit AT the number. */}
           <p className="text-2xl font-semibold tracking-tight">
             <span className="tabular-nums">{stakes.recommendationMomentsTotal}</span>{" "}
             <span className="font-normal text-muted-foreground">
-              recommendation mentions across the{" "}
-              {snapshot.benchmark.responseCount} answers.
+              explicit recommendations — of a team, agent, or brokerage —
+              across the {snapshot.benchmark.responseCount} answers.
             </span>
           </p>
           <p className="mt-1 text-2xl font-semibold tracking-tight">
@@ -368,8 +369,12 @@ export default async function ProspectAuditPage({
             {MENTIONS_VS_ANSWERS_NOTE}
           </p>
           {stakes.competitorsNamed.length > 0 && (
+            // "Buyers heard instead" implied real buyers were being diverted
+            // (round 2) — this is what the sample actually shows, and the
+            // list is ordered by recommendation count, so "most frequently
+            // recommended" is the counted truth.
             <p className="mt-3 text-sm text-muted-foreground">
-              Buyers heard instead:{" "}
+              Most frequently recommended alternatives in this sample:{" "}
               <span className="font-medium text-foreground">
                 {stakes.competitorsNamed.slice(0, 4).join(" · ")}
               </span>
@@ -396,9 +401,11 @@ export default async function ProspectAuditPage({
               : ""}
             .
           </p>
+          {/* "Proportionally" implied a mathematical relationship the data
+              doesn't establish (round 2) — say only what the sample shows. */}
           <p className="mt-1.5 text-sm font-medium">
-            Real-world market position is not translating proportionally into
-            these AI recommendations.
+            In this sample, reported market rank did not correspond with AI
+            recommendation frequency.
           </p>
         </div>
       )}
@@ -536,17 +543,20 @@ export default async function ProspectAuditPage({
       {stakes?.avgDealUsd != null && snapshot.commissionEstimate && (
         <div className="mt-2 max-w-[65ch]">
           <Drawer summary="Why this could matter financially — an illustrative calculation">
+            {/* Statement first, arithmetic shown as arithmetic (round 2):
+                the reader can check the multiplication themselves. */}
             <p className="max-w-[65ch] text-xs text-muted-foreground">
-              At ≈ $
-              {Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K reported
-              average closed volume per side ({stakes.avgDealBasis}), a single
-              additional transaction can be commercially meaningful — roughly $
-              {snapshot.commissionEstimate.amountUsd.toLocaleString()} in gross
-              commission, an illustrative estimate at an assumed{" "}
-              {snapshot.commissionEstimate.ratePct}% commission rate. This is not
-              a forecast of referrals, commissions, or revenue from AI
-              visibility; the sourced record reports production volume, not
-              commission income.
+              At {snapshot.prospectName}&apos;s reported average closed volume
+              per side ({stakes.avgDealBasis}), one additional transaction
+              could be commercially meaningful. Illustration only — an
+              illustrative estimate, not a measurement: ≈ $
+              {Math.round(stakes.avgDealUsd / 1000).toLocaleString()}K average
+              volume × an assumed {snapshot.commissionEstimate.ratePct}%
+              commission ≈ $
+              {snapshot.commissionEstimate.amountUsd.toLocaleString()} gross
+              commission. This is not a forecast of referrals, commissions, or
+              revenue from AI visibility; the sourced record reports
+              production volume, not commission income.
             </p>
           </Drawer>
         </div>
