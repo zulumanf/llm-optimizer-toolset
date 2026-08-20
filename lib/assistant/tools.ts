@@ -18,6 +18,7 @@ import { publishAudit } from "@/lib/prospects/audits";
 import { enrichProspect, approveEnrichmentProposal } from "@/lib/prospects/enrichment";
 import { runProspectDiscovery } from "@/lib/prospects/discovery";
 import { draftMarketPack, installMarketPackDraft } from "@/lib/markets/research";
+import { bootstrapMarketBenchmark } from "@/lib/markets/bootstrap";
 import {
   actionQueues,
   engagementNow,
@@ -165,6 +166,20 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
         await installMarketPackDraft(user, {
           draftId: input.draft_id,
           ...(input.price_segment ? { priceSegment: input.price_segment } : {}),
+        })
+      ),
+  },
+  {
+    name: "bootstrap_market_benchmark",
+    description:
+      "For an installed market launch: create (or find) its benchmark project, generate the prompt set from the installed pack, and freeze it — returns project_id, prompt_set_version_id, prompt count, and a suggestedProviders config copied from the most recent completed run. THE step between install_market_pack and estimate_benchmark_run; tell the operator to review the prompts before confirming a run.",
+    tier: "direct",
+    schema: z.object({ launch_id: uuid, cap: z.number().int().min(4).max(200).optional() }),
+    run: async (user, input) =>
+      unwrapResult(
+        await bootstrapMarketBenchmark(user, {
+          launchId: input.launch_id,
+          ...(typeof input.cap === "number" ? { cap: input.cap } : {}),
         })
       ),
   },
