@@ -207,7 +207,12 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "missing_from_cited_sources",
         "Not in the retrieval path",
-        [`The answers cited their sources ${totalCitations} times — never your own site.`],
+        // Precise units (spec 093, reader feedback): "cited N times" reads
+        // implausibly high without saying each displayed citation counts,
+        // repeats included — and the zero must name its denominator.
+        [
+          `Across the captured answers we recorded ${totalCitations} source citations (each displayed citation counted, repeats included) — your own site appeared 0 times.`,
+        ],
         "The models are building these answers from other people's pages; presence on the cited surfaces may matter more than your own site here.",
         sampleConfidence(totalCitations),
         { citedDomains: top }
