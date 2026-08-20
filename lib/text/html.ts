@@ -16,8 +16,10 @@ export function escapeHtml(value: string): string {
  */
 export function plainTextToTrackedHtml(body: string, pixelUrl: string | null): string {
   const escaped = escapeHtml(body).replace(/\r?\n/g, "<br>\n");
+  // Never style the pixel hidden — several clients skip loading hidden
+  // images, suppressing real opens; a 1×1 transparent GIF is invisible anyway.
   const pixel = pixelUrl
-    ? `\n<img src="${escapeHtml(pixelUrl)}" width="1" height="1" alt="" style="display:none">`
+    ? `\n<img src="${escapeHtml(pixelUrl)}" width="1" height="1" alt="">`
     : "";
   return `<div style="font-family:inherit;white-space:normal">${escaped}</div>${pixel}`;
 }

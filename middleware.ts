@@ -23,7 +23,11 @@ import { devAuthRefusalReason, publicOrigin } from "@/lib/env";
 
 /** Paths reachable without a session. `/audit` is the prospect audit page —
  * its own security is the high-entropy token (spec 032). */
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/audit"];
+// `/api/open` is the email open-tracking pixel (spec 092): fetched by mail
+// clients and image proxies, never by a session — the auth redirect was
+// silently eating every open event (found live: zero opens ever recorded
+// while the endpoint 307'd to /login).
+const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/api/open", "/audit"];
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   if (process.env.AUTH_MODE !== "supabase") {
