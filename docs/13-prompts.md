@@ -16,7 +16,7 @@ Single source of truth for every AI prompt **we author** (parsers, drafting aids
 | Content Brief | `content-brief-v1` | `lib/content/prompts.ts` (BRIEF_SYSTEM) | `gpt-5.4-2026-03-05` (AGENT_MODEL) |
 | Content Draft | `content-draft-v1` | `lib/content/prompts.ts` (DRAFT_SYSTEM) | same |
 | Fact Verifier | `fact-verify-v1` | `lib/content/prompts.ts` (VERIFY_SYSTEM) — fresh-context, never the drafter | same |
-| Audit Sense-Check | `audit-sense-check-v1` | `lib/automation/prompts.ts` (`audit_sense_check`), run by `lib/prospects/sense-check.ts` — describes concerns, never rewrites; concern-severity findings join the publish ack-gate (spec 077) | `gpt-5.4-2026-03-05` (AGENT_MODEL, frontier via TASK_ROUTES) |
+| Audit Sense-Check | `audit-sense-check-v2` | `lib/automation/prompts.ts` (`audit_sense_check`), run by `lib/prospects/sense-check.ts` — describes concerns, never rewrites; concern-severity findings join the publish ack-gate (spec 077). v2 2026-08-20: output shape stated explicitly after live schema drift (invented area labels, omitted overallReadsFair); schema maps unknown areas to `other`, surfaced never dropped | `gpt-5.4-2026-03-05` (AGENT_MODEL, frontier via TASK_ROUTES) |
 
 > Spec 010 note: the three content prompts live as versioned constants in
 > `lib/content/prompts.ts` (implemented before MENTION_PARSER_V1/

@@ -585,7 +585,9 @@ export default async function ProspectAuditPage({
             <span className="text-foreground">Brought up</span> = named at all.{" "}
             <span className="text-foreground">Recommended</span> = the answer
             expressly suggested hiring or using the team or agent. One answer
-            can name several, so counts overlap.
+            can name several, so counts overlap. The set is every entity the
+            answers named — individual agents, teams, and brokerage brands
+            together — not a curated peer group.
           </p>
           {(() => {
             const hasRanks = snapshot.comparison.some((r) => r.marketRank != null);

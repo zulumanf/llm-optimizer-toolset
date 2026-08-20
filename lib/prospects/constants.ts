@@ -257,7 +257,9 @@ export const RECORDING_STATUSES = [
 ] as const;
 export type RecordingStatus = (typeof RECORDING_STATUSES)[number];
 
-export const FINDING_GENERATOR_VERSION = "prospect-findings-v1+deterministic";
+// v2 (spec 094): no asserted rank→visibility benchmark, no "the team" for
+// individuals, counts as the primary unit (no rounded-up sub-10% rates).
+export const FINDING_GENERATOR_VERSION = "prospect-findings-v2+deterministic";
 export const RECORDING_GENERATOR_VERSION = "recording-plan-v1+deterministic";
 export const OUTREACH_TEMPLATE_VERSION = "reply-first-email-v1";
 
