@@ -119,7 +119,10 @@ Requirements:
 
   audit_sense_check: prompt(
     "audit_sense_check",
-    "audit-sense-check-v1",
+    // v2 (2026-08-20): v1 never stated the output shape; the model invented
+    // area labels and omitted overallReadsFair, failing validation twice on
+    // every live run. The shape is now explicit in the prompt.
+    "audit-sense-check-v2",
     `You review a prospect-facing AI-visibility audit before a human decides to
 publish it. The audit makes factual claims about a real business's presence
 in AI assistant answers, backed by measured data. You are the last read
@@ -149,7 +152,18 @@ Rules specific to this task:
   blocking.
 - An empty concerns list is a valid, honest result for a clean audit.
 - In confidenceNote, name what limited your confidence (e.g. metrics
-  supplied without their sample sizes).`,
+  supplied without their sample sizes).
+
+OUTPUT SHAPE — return exactly this JSON, no other fields:
+{"concerns": [{"severity": "concern"|"polish",
+  "area": "coherence"|"overreach"|"copy"|"numbers"|"fairness",
+  "detail": string, "quote": string|null}, ...],
+ "overallReadsFair": boolean, "confidence": number 0..1,
+ "confidenceNote": string}
+Every concern MUST carry severity, area, and detail. "area" must be one of
+the five values above — pick the closest fit, never invent a new label.
+"overallReadsFair" and "confidenceNote" are always required, even when
+concerns is empty.`,
     "Review this audit content. Return JSON only.",
   ),
 

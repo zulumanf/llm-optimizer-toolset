@@ -77,7 +77,7 @@ describe("auditSenseCheck schema", () => {
     ).toBe(true);
   });
 
-  it("rejects unknown severities/areas and missing confidence note", () => {
+  it("rejects unknown severities and missing confidence note", () => {
     expect(
       auditSenseCheck.safeParse({
         ...valid,
@@ -87,6 +87,22 @@ describe("auditSenseCheck schema", () => {
     expect(
       auditSenseCheck.safeParse({ ...valid, confidenceNote: "" }).success
     ).toBe(false);
+  });
+
+  it("maps unknown or missing areas to 'other' — a mislabeled concern is surfaced, never a parse failure", () => {
+    // Found live (2026-08-20): the model returned area "authority-signals"
+    // and omitted area entirely; both failed the whole check twice. The
+    // concern's substance is the detail, not its label.
+    const invented = auditSenseCheck.parse({
+      ...valid,
+      concerns: [{ ...valid.concerns[0], area: "authority-signals" }],
+    });
+    expect(invented.concerns[0]?.area).toBe("other");
+    const missing = auditSenseCheck.parse({
+      ...valid,
+      concerns: [{ severity: "concern", detail: "numbers disagree", quote: null }],
+    });
+    expect(missing.concerns[0]?.area).toBe("other");
   });
 
   it("has no field that could carry replacement copy", () => {

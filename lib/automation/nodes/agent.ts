@@ -71,7 +71,14 @@ export const auditSenseCheck = z.object({
     .array(
       z.object({
         severity: z.enum(["concern", "polish"]),
-        area: z.enum(["coherence", "overreach", "copy", "numbers", "fairness"]),
+        // The model sometimes labels a concern with an area outside the
+        // vocabulary (found live: "authority-signals") or omits it. A
+        // mislabeled concern is still a concern — surfaced as "other",
+        // never dropped, never a two-strike failure of the whole check
+        // (the diagnose layer's unknown-kind rule, applied here).
+        area: z
+          .enum(["coherence", "overreach", "copy", "numbers", "fairness", "other"])
+          .catch("other"),
         detail: z.string().min(1),
         quote: z.string().nullable().default(null),
       })
