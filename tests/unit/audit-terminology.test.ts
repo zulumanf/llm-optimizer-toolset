@@ -7,10 +7,8 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  COMPETITOR_SURFACE_NOTE,
   MENTIONS_VS_ANSWERS_NOTE,
   isActionableSurface,
-  mentionSplitLine,
   providersDisplay,
   recommendationMentionsLine,
   sourceQualityLabel,
@@ -74,12 +72,6 @@ describe("mention counts vs answer counts", () => {
     const line = recommendationMentionsLine(189, 64);
     expect(line).toBe("189 recommendation mentions across the 64 answers");
     expect(line).not.toContain("189 answers");
-  });
-
-  it("the split line states mention units for teams and brands", () => {
-    expect(mentionSplitLine(94, 95)).toBe(
-      "94 mentions of individual teams · 95 of brokerage brands"
-    );
   });
 
   it("the note explains why mentions outnumber answers", () => {
@@ -149,7 +141,4 @@ describe("actionable surfaces vs competitor-owned diagnostics", () => {
     ).toBeNull();
   });
 
-  it("the competitor note explains without prescribing", () => {
-    expect(COMPETITOR_SURFACE_NOTE).toMatch(/not surfaces to get listed on/);
-  });
 });

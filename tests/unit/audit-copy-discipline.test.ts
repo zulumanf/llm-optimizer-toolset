@@ -69,7 +69,11 @@ describe("prospect-facing copy discipline", () => {
       join(ROOT, "app/audit/[handle]/page.tsx"),
       "utf8"
     );
-    expect(source).toContain("Results reflect the captured prompts");
+    // Spec 093: caveats live in exactly two places — the compact scope line
+    // under the hero, and the methodology drawer (which carries the full
+    // "how to read" rules, including the service-quality clause).
+    expect(source).toContain("Point-in-time sample");
+    expect(source).toMatch(/not a\s+judgment of service quality/);
     expect(source).toContain("How to read this report");
     expect(source).toContain("forecast of referrals");
     expect(source).toContain("Citation frequency does not establish");
@@ -82,7 +86,7 @@ describe("prospect-facing copy discipline", () => {
       "utf8"
     );
     expect(source).toContain("illustrative estimate");
-    expect(source).toContain("not commission income");
+    expect(source).toMatch(/not\s+commission income/);
   });
 
   it("the tested-system phrase derives from run metadata, not hardcoded branding", () => {

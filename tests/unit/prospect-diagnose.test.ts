@@ -96,6 +96,12 @@ describe("deriveDiagnoses", () => {
       (d) => d.key === "missing_from_cited_sources"
     )!;
     expect(diagnosis.citedDomains.length).toBe(2);
+    // Precise units (spec 093): the total says HOW it was counted — a bare
+    // "cited 1772 times" reads implausibly high without "repeats included" —
+    // and the zero names its subject.
+    expect(diagnosis.observations[0]).toContain("7 source citations");
+    expect(diagnosis.observations[0]).toContain("repeats included");
+    expect(diagnosis.observations[0]).toContain("your own site appeared 0 times");
     // Own domain cited → not triggered.
     expect(
       keys({
