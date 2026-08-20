@@ -142,6 +142,27 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
 
   // ----------------------------------------------------------- direct
   {
+    name: "list_launches",
+    description:
+      "Market launches with their market names and prospect counts — CHECK THIS BEFORE research_market: an existing launch means the city is already installed and discovery/bootstrap can run on it directly. Optional name filter.",
+    tier: "read",
+    schema: z.object({ name: z.string().trim().max(120).optional() }),
+    run: async (_user, input) => {
+      const name = typeof input.name === "string" ? `%${input.name}%` : "%";
+      return sql`
+        select l.id as launch_id, l.name, m.name as market, l.status,
+          (select count(*)::int from prospects p
+            where p.launch_id = l.id and p.archived_at is null) as prospects
+        from market_launches l
+        join markets m on m.id = l.market_id
+        where l.archived_at is null
+          and (l.name ilike ${name} or m.name ilike ${name})
+        order by l.created_at desc
+        limit 40
+      `;
+    },
+  },
+  {
     name: "research_market",
     description:
       "Start researching a city: Perplexity-composes a market pack draft (market definition, buyer/seller prompt pack, notable agents). Returns the staged draft for review — install_market_pack makes it real. THE entry point for 'research the agents in X city'.",

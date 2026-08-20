@@ -77,17 +77,38 @@ export interface MachineHealth {
   activeSuppressions: number;
 }
 
-/** External, human-like audit views — the subquery every view count uses. */
-const HUMAN_VIEWS = sql`
+/** Mail-provider link scanners fetch every URL in a delivered email within
+ * seconds, wearing real-browser user agents (found live: audit "views" 7-40
+ * seconds after each send, multiple IPs). A view inside this window after a
+ * send to the same prospect is counted as a scan, not interest. */
+const SCANNER_WINDOW_SECONDS = 120;
+
+/** External, human-like audit views — the subquery every view count uses.
+ * Excludes script user agents AND the post-send scanner window. */
+const operatorIps = (): string[] =>
+  (process.env.INTERNAL_VIEW_IPS ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+const humanViews = () => sql`
   select v.audit_id, v.viewed_at from prospect_audit_views v
+  join prospect_audits va on va.id = v.audit_id
   where not v.is_internal
     and v.user_agent is not null
     and v.user_agent !~* ${SCRIPT_UA}
+    and (v.ip is null or v.ip != all(${sql.array(operatorIps())}::text[]))
+    and not exists (
+      select 1 from prospect_outreach_sends s
+      where s.prospect_id = va.prospect_id and s.allowed
+        and v.viewed_at >= s.sent_at
+        and v.viewed_at < s.sent_at + make_interval(secs => ${SCANNER_WINDOW_SECONDS})
+    )
 `;
 
 export async function engagementNow(): Promise<EngagementNow> {
   const [row] = await sql`
-    with human_views as (${HUMAN_VIEWS})
+    with human_views as (${humanViews()})
     select
       (select count(*)::int from outreach_email_opens where opened_at > now() - interval '24 hours') as opens24h,
       (select count(*)::int from outreach_email_opens) as opens_total,
@@ -119,7 +140,7 @@ export async function engagementNow(): Promise<EngagementNow> {
 
 export async function eventFunnel(): Promise<FunnelStep[]> {
   const [row] = await sql`
-    with human_views as (${HUMAN_VIEWS})
+    with human_views as (${humanViews()})
     select
       (select count(*)::int from prospects where archived_at is null) as prospects,
       (select count(distinct a.prospect_id)::int from prospect_audits a
@@ -150,7 +171,7 @@ export async function eventFunnel(): Promise<FunnelStep[]> {
     { key: "published", label: "Audit published", count: n(row?.published), basis: "published, unexpired audits" },
     { key: "contacted", label: "Contacted", count: n(row?.contacted), basis: "allowed sends in the ledger" },
     { key: "opened", label: "Email opened", count: n(row?.opened), basis: "open events — upper bound" },
-    { key: "viewed", label: "Audit viewed", count: n(row?.viewed), basis: "human-like external views, contacted prospects" },
+    { key: "viewed", label: "Audit viewed", count: n(row?.viewed), basis: "human-like external views (scanner window after each send excluded), contacted prospects" },
     { key: "replied", label: "Replied", count: n(row?.replied), basis: "recorded stage history" },
     { key: "meetings", label: "Meeting+", count: n(row?.meetings), basis: "recorded stage history" },
     { key: "contracted", label: "Contracted", count: n(row?.contracted), basis: "recorded stage history" },
@@ -159,7 +180,7 @@ export async function eventFunnel(): Promise<FunnelStep[]> {
 
 export async function actionQueues(): Promise<ActionQueues> {
   const hot = await sql`
-    with human_views as (${HUMAN_VIEWS})
+    with human_views as (${humanViews()})
     select p.id as prospect_id, p.business_name,
       count(hv.audit_id)::int as views, max(hv.viewed_at) as last_view_at,
       (select count(o.id)::int from outreach_email_opens o
@@ -176,7 +197,7 @@ export async function actionQueues(): Promise<ActionQueues> {
     limit 8
   `;
   const stalled = await sql`
-    with human_views as (${HUMAN_VIEWS})
+    with human_views as (${humanViews()})
     select p.id as prospect_id, p.business_name, max(s.sent_at) as last_sent_at,
       floor(extract(epoch from (now() - max(s.sent_at))) / 86400)::int as days_since_send
     from prospect_outreach_sends s

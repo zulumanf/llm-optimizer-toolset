@@ -1365,15 +1365,23 @@ export async function getAuditByToken(
   `;
   const row = rows[0];
   if (!row) return null;
-  // internal = a signed-in staff session opened it (plan 3.6): the
-  // operator's own QA pass must not read as prospect interest.
+  // internal = a signed-in staff session opened it (plan 3.6) OR the view
+  // came from a declared operator IP (INTERNAL_VIEW_IPS, comma-separated) —
+  // logged-out and incognito opens from the operator's own machines must
+  // not read as prospect interest either.
+  const operatorIps = (process.env.INTERNAL_VIEW_IPS ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const internal =
+    (meta.internal ?? false) || (meta.ip != null && operatorIps.includes(meta.ip));
   await sql.begin(async (tx) => {
     await tx`
       insert into prospect_audit_views (audit_id, ip, user_agent, is_internal)
       values (${row.id}, ${meta.ip ?? null}, ${meta.userAgent ?? null},
-        ${meta.internal ?? false})
+        ${internal})
     `;
-    if (!meta.internal) {
+    if (!internal) {
       await logActivity(tx, row.prospectId as string, "audit_viewed", { auditId: row.id }, null);
     }
   });

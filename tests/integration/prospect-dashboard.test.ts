@@ -64,16 +64,29 @@ describe.skipIf(!TEST_URL)("prospecting dashboard (integration)", () => {
     // one internal.
     await sql`insert into outreach_drafts (id, prospect_id, finding_id, channel, body, generated_by, status)
       values ('ffffffff-0000-4000-8000-000000000001', ${P1}, 'dddddddd-0000-4000-8000-000000000008', 'email', 'b', 'operator', 'approved')`;
+    // sent_at set at insert (the ledger is insert-only) and backdated an
+    // hour so the human view below lands outside the scanner window.
     await sql`insert into prospect_outreach_sends (id, draft_id, prospect_id, channel, recipient_email,
-        body_hash, business_purpose, gate_verdict, allowed, sent_by)
+        body_hash, business_purpose, gate_verdict, allowed, sent_by, sent_at)
       values ('ffffffff-0000-4000-8000-000000000002', 'ffffffff-0000-4000-8000-000000000001', ${P1},
-        'gmail', 'x@y.com', 'h', 'purpose purpose', '{}', true, '00000000-0000-4000-8000-000000000001')`;
+        'gmail', 'x@y.com', 'h', 'purpose purpose', '{}', true, '00000000-0000-4000-8000-000000000001',
+        now() - interval '1 hour')`;
     await sql`insert into outreach_email_opens (send_id, ip, user_agent)
       values ('ffffffff-0000-4000-8000-000000000002', '1.2.3.4', 'GoogleImageProxy')`;
-    await sql`insert into prospect_audit_views (audit_id, user_agent, is_internal) values
-      ('eeeeeeee-0000-4000-8000-000000000001', 'Mozilla/5.0 (iPhone; like Mac OS X) Safari', false),
-      ('eeeeeeee-0000-4000-8000-000000000001', 'curl/8.4.0', false),
-      ('eeeeeeee-0000-4000-8000-000000000001', 'Mozilla/5.0', true)`;
+    await sql`insert into prospect_audit_views (audit_id, viewed_at, user_agent, is_internal) values
+      ('eeeeeeee-0000-4000-8000-000000000001', now(), 'Mozilla/5.0 (iPhone; like Mac OS X) Safari', false),
+      ('eeeeeeee-0000-4000-8000-000000000001', now(), 'curl/8.4.0', false),
+      ('eeeeeeee-0000-4000-8000-000000000001', now(), 'Mozilla/5.0', true)`;
+    // A view from the operator's declared IP: internal by definition.
+    process.env.INTERNAL_VIEW_IPS = "203.0.113.99";
+    await sql`insert into prospect_audit_views (audit_id, viewed_at, ip, user_agent, is_internal) values
+      ('eeeeeeee-0000-4000-8000-000000000001', now(), '203.0.113.99', 'Mozilla/5.0 (Macintosh) Safari', false)`;
+    // A browser-UA view seconds after the send: a mail-provider link
+    // scanner, never prospect interest (the send above is stamped now()).
+    await sql`insert into prospect_audit_views (audit_id, viewed_at, user_agent, is_internal)
+      select 'eeeeeeee-0000-4000-8000-000000000001', s.sent_at + interval '10 seconds',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126', false
+      from prospect_outreach_sends s where s.id = 'ffffffff-0000-4000-8000-000000000002'`;
   });
 
   afterAll(async () => {
@@ -91,9 +104,10 @@ describe.skipIf(!TEST_URL)("prospecting dashboard (integration)", () => {
     expect(byKey.replied).toBe(0);
   });
 
-  it("script and internal views never count as prospect interest", async () => {
+  it("script, internal, scanner-window, and operator-IP views never count as prospect interest", async () => {
     const e = await dash.engagementNow();
-    // Three view rows exist; only the human-like external one counts.
+    // Five view rows exist; only the human-like external one outside the
+    // post-send scanner window and off the operator's declared IPs counts.
     expect(e.viewsTotal).toBe(1);
     expect(e.viewedProspects).toBe(1);
     expect(e.opensTotal).toBe(1);
