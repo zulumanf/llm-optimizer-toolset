@@ -70,6 +70,9 @@ export interface ProspectBehaviorFacts {
   views: AuditViewFact[];
   hasEmail: boolean;
   auditPublished: boolean;
+  /** External view rows rejected by the human-like filter (scripts,
+   * operator IPs, scanner window). Observed behavior ≠ usable intent. */
+  unqualifiedViews: number;
 }
 
 // ---------------------------------------------------------------------------

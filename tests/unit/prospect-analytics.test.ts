@@ -28,7 +28,7 @@ const view = (viewedAt: Date, over: Partial<AuditViewFact> = {}): AuditViewFact 
 let seq = 0;
 const facts = (over: Partial<ProspectBehaviorFacts>): ProspectBehaviorFacts => ({
   prospectId: `p${++seq}`, businessName: `P${seq}`, launchId: "L1", launchName: "Jersey City", qualityScore: 75, stage: "contacted", visitedStages: ["contacted"],
-  sentAts: [T1], sends: [send(T1, 1)], prospectType: "team", repliedAt: null, meetingAt: null, opens: 0, views: [], hasEmail: true, auditPublished: true, ...over,
+  sentAts: [T1], sends: [send(T1, 1)], prospectType: "team", repliedAt: null, meetingAt: null, opens: 0, views: [], hasEmail: true, auditPublished: true, unqualifiedViews: 0, ...over,
 });
 const P = (over: Partial<ProspectBehaviorFacts> = {}) => deriveIntent(facts(over), NOW);
 

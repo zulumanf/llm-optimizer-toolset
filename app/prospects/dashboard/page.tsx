@@ -184,7 +184,11 @@ function nextActionShort(p: ProspectIntent, now: Date): string {
 function auditCell(p: ProspectIntent): string {
   const e = p.engagement;
   if (e.outsideLedger) return `${e.sessions} external · unqualified`;
-  if (e.postOutreachViews === 0) return e.preOutreachViews > 0 ? `${e.preOutreachViews} external · pre-contact` : "—";
+  if (e.postOutreachViews === 0) {
+    if (e.preOutreachViews > 0) return `${e.preOutreachViews} external · pre-contact`;
+    if (p.unqualifiedViews > 0) return `${p.unqualifiedViews} external · unqualified`;
+    return "—";
+  }
   if (e.ctaClicked) return `${e.sessions} session${e.sessions === 1 ? "" : "s"} · CTA`;
   if (e.meaningfullyEngaged && e.maxScrollPercent >= ENGAGEMENT_RULES.deepScrollPercent) return `${e.sessions} session${e.sessions === 1 ? "" : "s"} · deep`;
   if (e.meaningfullyEngaged) return `${e.sessions} session${e.sessions === 1 ? "" : "s"} · engaged`;

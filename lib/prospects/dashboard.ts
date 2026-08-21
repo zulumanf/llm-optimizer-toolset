@@ -148,7 +148,15 @@ export async function prospectFacts(filter: CockpitFilter = {}): Promise<Prospec
           'ctaClicked', coalesce(vs.cta_clicked, false)) order by hv.viewed_at)
         from human_views hv left join view_signals vs on vs.view_id = hv.id
         where hv.prospect_id = p.id
-          and (${since}::timestamptz is null or hv.viewed_at >= ${since})), '[]') as views
+          and (${since}::timestamptz is null or hv.viewed_at >= ${since})), '[]') as views,
+      -- Observed but not qualifying: external rows the human filter rejects
+      -- (script UA, operator IP, mail-scanner window). Shown as fact, never
+      -- used for intent.
+      (select count(*)::int from prospect_audit_views v
+        join prospect_audits a2 on a2.id = v.audit_id
+        where a2.prospect_id = p.id and not v.is_internal
+          and v.id not in (select id from human_views)
+          and (${since}::timestamptz is null or v.viewed_at >= ${since})) as unqualified_views
     from prospects p
     join market_launches l on l.id = p.launch_id
     where p.archived_at is null
@@ -176,6 +184,7 @@ export async function prospectFacts(filter: CockpitFilter = {}): Promise<Prospec
     meetingAt: r.meetingAt ? new Date(r.meetingAt as Date) : null,
     opens: Number(r.opens ?? 0),
     hasEmail: Boolean(r.hasEmail),
+    unqualifiedViews: Number(r.unqualifiedViews ?? 0),
     auditPublished: Boolean(r.auditPublished),
     views: ((r.views as ViewRow[]) ?? []).map(
       (v): AuditViewFact => ({
