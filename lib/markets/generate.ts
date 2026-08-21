@@ -48,6 +48,20 @@ export function packNeighborhoods(pack: MarketPackDefinition): string[] {
   return out;
 }
 
+/** "{city}" as an assistant would need to hear it. Ambiguous city names
+ * (Wilmington DE vs NC, Portland, Springfield…) must carry their state, or
+ * both discovery and the benchmark silently measure the wrong market —
+ * found live 2026-08-21 when "Wilmington" returned North Carolina teams.
+ * The pack's hierarchy root is the state/region; it qualifies the city
+ * whenever it is not the city itself. */
+export function placeLabel(pack: Pick<MarketPackDefinition, "cityName" | "hierarchy">): string {
+  const root = pack.hierarchy;
+  if (root.kind === "region" && root.name.trim().toLowerCase() !== pack.cityName.trim().toLowerCase()) {
+    return `${pack.cityName}, ${root.name}`;
+  }
+  return pack.cityName;
+}
+
 export function expandMarketPack(
   pack: MarketPackDefinition,
   options: { templateKeys?: string[]; neighborhoods?: string[]; cap?: number } = {}
@@ -69,8 +83,9 @@ export function expandMarketPack(
     else prompts.push(p);
   };
 
+  const place = placeLabel(pack);
   for (const template of templates) {
-    const areas = template.scope === "city" ? [pack.cityName] : neighborhoods;
+    const areas = template.scope === "city" ? [place] : neighborhoods;
     const propertyTypes =
       template.expand === "propertyType"
         ? pack.propertyTypes
@@ -82,7 +97,7 @@ export function expandMarketPack(
       for (const propertyType of propertyTypes) {
         for (const priceTier of priceTiers) {
           const text = template.text
-            .replaceAll("{city}", pack.cityName)
+            .replaceAll("{city}", place)
             .replaceAll("{area}", area)
             .replaceAll("{propertyType}", propertyType ?? "")
             .replaceAll("{priceTier}", priceTier ?? "")
