@@ -17,7 +17,8 @@ import { Newsreader } from "next/font/google";
 import { ChevronRight } from "lucide-react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { getAuditByToken } from "@/lib/prospects/service";
+import { getAuditPageByToken } from "@/lib/prospects/service";
+import { EngagementBeacon } from "@/components/audit/engagement-beacon";
 import { visibilityThreshold } from "@/lib/prospects/constants";
 import { formatVerifiedProduction } from "@/lib/prospects/realtrends";
 import { getCurrentUserOrNull, isStaff } from "@/lib/auth";
@@ -100,12 +101,22 @@ function RateBar({
 function Drawer({
   summary,
   children,
+  signalSection,
+  signalEvidence,
 }: {
   summary: string;
   children: React.ReactNode;
+  /** Engagement beacon keys (spec 098): opening reports a section view or
+   * an evidence expansion. Presentation-neutral data attributes only. */
+  signalSection?: string;
+  signalEvidence?: string;
 }) {
   return (
-    <details className="group py-4">
+    <details
+      className="group py-4"
+      data-signal-section={signalSection}
+      data-signal-evidence={signalEvidence}
+    >
       <summary className="flex cursor-pointer list-none items-center gap-2 rounded-sm text-sm font-medium transition-colors duration-200 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
         <ChevronRight className="size-4 shrink-0 transition-transform duration-200 group-open:rotate-90" />
         {summary}
@@ -121,20 +132,25 @@ export default async function ProspectAuditPage({
   // The segment is [handle] so the branded sibling [handle]/[key] can
   // coexist (Next.js requires one param name per level). For this legacy
   // route the handle IS the 43-char access token; URLs are unchanged.
-  params: Promise<{ handle: string }>;
+  // linkKey is set by the branded sibling route (spec 076) so the view row
+  // records which emailed link brought the visit (spec 098 attribution).
+  params: Promise<{ handle: string; linkKey?: string }>;
 }) {
-  const { handle: token } = await params;
+  const { handle: token, linkKey } = await params;
   const hdrs = await headers();
   // Session read is only to LABEL the view (plan 3.6): an operator's QA
   // open must not count as prospect interest. Content still comes solely
   // from the snapshot; anonymous visitors take the same path as ever.
   const viewer = await getCurrentUserOrNull();
-  const snapshot = await getAuditByToken(token, {
+  const page = await getAuditPageByToken(token, {
     ip: hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: hdrs.get("user-agent"),
     internal: viewer !== null && isStaff(viewer),
+    linkKey: linkKey ?? null,
+    referrer: hdrs.get("referer"),
   });
-  if (!snapshot) notFound();
+  if (!page) notFound();
+  const { snapshot, viewId } = page;
 
   // Receipt-link health (2026-08-19): a known-dead evidence link must not
   // render as a live one. Unknown URLs (never checked) render as-is; a
@@ -254,6 +270,7 @@ export default async function ProspectAuditPage({
   const ctaButton = mailto && (
     <a
       href={mailto}
+      data-signal-cta="walkthrough"
       className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto"
     >
       Review the captured answers — 15-minute walkthrough
@@ -262,6 +279,7 @@ export default async function ProspectAuditPage({
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
+      <EngagementBeacon viewId={viewId} />
       {/* ============================================= the first screen */}
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         Private AI visibility report · {snapshot.marketName} · for {snapshot.prospectName}
@@ -564,7 +582,7 @@ export default async function ProspectAuditPage({
 
       {/* ================================================== the receipt */}
       {snapshot.comparison.length > 0 && (
-        <section className="mt-14">
+        <section className="mt-14" data-signal-section="competitors">
           <h2 className="text-lg font-medium">
             Teams and brands named in {snapshot.benchmark.responseCount}{" "}
             captured AI answers
@@ -848,7 +866,7 @@ export default async function ProspectAuditPage({
         </Drawer>
 
         {snapshot.promptEvidence.length > 0 && (
-          <Drawer summary="The questions we asked — and who was named">
+          <Drawer summary="The questions we asked — and who was named" signalEvidence="prompts">
             <ul className="space-y-3">
               {snapshot.promptEvidence.map((e) => (
                 <li key={e.responseId} className="max-w-[65ch] text-sm">
@@ -872,7 +890,7 @@ export default async function ProspectAuditPage({
         )}
 
         {gap && gap.signals.length > 0 && (
-          <Drawer summary="Your track record — the part AI is missing">
+          <Drawer summary="Your track record — the part AI is missing" signalSection="authority">
             <ul className="space-y-1.5 text-sm">
               {gap.signals.map((s, i) => {
                 const link = receiptHref(s.sourceUrl);
@@ -908,7 +926,7 @@ export default async function ProspectAuditPage({
           </Drawer>
         )}
 
-        <Drawer summary="How this was measured">
+        <Drawer summary="How this was measured" signalSection="methodology">
           <p className="mb-3 max-w-[65ch] text-sm">
             In plain terms: we asked the same questions many times, saved every
             answer untouched, and counted the names. The details below are for

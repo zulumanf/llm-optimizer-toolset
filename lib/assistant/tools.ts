@@ -20,9 +20,7 @@ import { runProspectDiscovery } from "@/lib/prospects/discovery";
 import { draftMarketPack, installMarketPackDraft } from "@/lib/markets/research";
 import { bootstrapMarketBenchmark } from "@/lib/markets/bootstrap";
 import {
-  actionQueues,
-  engagementNow,
-  eventFunnel,
+  cockpit,
   machineHealth,
 } from "@/lib/prospects/dashboard";
 import { invokeTool } from "@/lib/mcp/tools";
@@ -53,17 +51,45 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   {
     name: "pipeline_dashboard",
     description:
-      "The prospecting pipeline at a glance: engagement since yesterday (opens are an upper bound; audit views are human-like external only), the event-derived funnel, the action queues, and machine health (send cap, gmail status).",
+      "The prospecting cockpit: the cohort funnel (contacted → audit viewers → meaningfully engaged → replied → meeting), the prospects to act on first (priority order: conversation, CTA, high authority + high intent, repeat activity, deep engagement, single visit, follow-up due), the possible-bottleneck diagnosis, and machine health (send cap, gmail status, research queue). Audit activity describes what the AUDIT PAGE received — never who viewed it. Opens are an upper bound.",
     tier: "read",
-    schema: z.object({}),
-    run: async () => {
-      const [engagement, funnel, queues, health] = await Promise.all([
-        engagementNow(),
-        eventFunnel(),
-        actionQueues(),
+    schema: z.object({ launchId: z.string().uuid().optional() }),
+    run: async (_user, input) => {
+      const [c, health] = await Promise.all([
+        cockpit({ launchId: typeof input.launchId === "string" ? input.launchId : undefined }),
         machineHealth(),
       ]);
-      return { engagement, funnel, queues, health };
+      return {
+        cohort: c.cohort,
+        stageDrift: c.stageDrift,
+        actToday: c.prospects
+          .filter((p) => p.priorityTier <= 7)
+          .slice(0, 15)
+          .map((p) => ({
+            prospectId: p.prospectId,
+            businessName: p.businessName,
+            qualityScore: p.qualityScore,
+            intentLabel: p.intentLabel,
+            intentScore: p.intentScore,
+            priority: p.priorityTier,
+            stage: p.stage,
+            touches: p.sales.touches,
+            auditSessions: p.engagement.sessions,
+            meaningfullyEngaged: p.engagement.meaningfullyEngaged,
+            attribution: p.engagement.attribution,
+            lastActivityAt: p.engagement.lastActivityAt,
+            recommendedAction: p.recommendedAction,
+          })),
+        health: {
+          gmailStatus: health.gmailStatus,
+          capUsed24h: health.capUsed24h,
+          capLimit: health.capLimit,
+          scheduledPending: health.scheduledPending,
+          activeSuppressions: health.activeSuppressions,
+          parkedSends: health.parkedSends,
+          researchQueue: health.researchQueue.length,
+        },
+      };
     },
   },
   {

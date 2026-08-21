@@ -1353,10 +1353,30 @@ export async function revokeAudit(
  * tokens, revoked tokens, and nonexistent tokens are indistinguishable.
  * Every hit is recorded (insert-only) and surfaces on the timeline.
  */
+export interface AuditViewMeta {
+  ip?: string | null;
+  userAgent?: string | null;
+  internal?: boolean;
+  /** Branded-link key the visit arrived through (spec 076) — attribution
+   * evidence stamped on the view row at insert. */
+  linkKey?: string | null;
+  referrer?: string | null;
+}
+
 export async function getAuditByToken(
   token: string,
-  meta: { ip?: string | null; userAgent?: string | null; internal?: boolean } = {}
+  meta: AuditViewMeta = {}
 ): Promise<AuditSnapshot | null> {
+  const page = await getAuditPageByToken(token, meta);
+  return page?.snapshot ?? null;
+}
+
+/** Same as getAuditByToken, plus the id of the view row just recorded — the
+ * handle the page's engagement beacon reports against. */
+export async function getAuditPageByToken(
+  token: string,
+  meta: AuditViewMeta = {}
+): Promise<{ snapshot: AuditSnapshot; viewId: string } | null> {
   if (!token || token.length < 20 || token.length > 100) return null;
   const rows = await sql`
     select id, prospect_id, snapshot from prospect_audits
@@ -1375,15 +1395,17 @@ export async function getAuditByToken(
     .filter(Boolean);
   const internal =
     (meta.internal ?? false) || (meta.ip != null && operatorIps.includes(meta.ip));
-  await sql.begin(async (tx) => {
-    await tx`
-      insert into prospect_audit_views (audit_id, ip, user_agent, is_internal)
+  const viewId = await sql.begin(async (tx) => {
+    const [view] = await tx`
+      insert into prospect_audit_views (audit_id, ip, user_agent, is_internal, link_key, referrer)
       values (${row.id}, ${meta.ip ?? null}, ${meta.userAgent ?? null},
-        ${internal})
+        ${internal}, ${meta.linkKey ?? null}, ${meta.referrer?.slice(0, 500) ?? null})
+      returning id
     `;
     if (!internal) {
       await logActivity(tx, row.prospectId as string, "audit_viewed", { auditId: row.id }, null);
     }
+    return view?.id as string;
   });
-  return row.snapshot as AuditSnapshot;
+  return { snapshot: row.snapshot as AuditSnapshot, viewId };
 }

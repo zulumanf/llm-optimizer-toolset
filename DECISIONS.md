@@ -2496,3 +2496,34 @@ tracking outage undercounts, which the metric already admits.
 **Tracking never gates.** No APP_URL → the send transmits untracked
 (token null); old ledger rows with null tokens render as "not tracked",
 never as zero opens (absence of data is not a zero).
+
+## 2026-08-20 — Prospecting cockpit: derive, don't persist (spec 098)
+
+**Intent, labels, follow-up state, funnel, and diagnostics are pure
+functions over ledgers, recomputed on every read.** No `intent_score`
+column, no materialized funnel. Changing a weight re-derives every batch
+identically (Batch 1 stays comparable to Batch 2); nothing historical is
+rewritten because nothing derived is stored.
+
+**Engagement events are raw, insert-only, and tied to the view row that
+rendered the page.** `prospect_audit_views` is immutable, so the beacon
+cannot enrich it; it appends to `prospect_audit_engagement_events`
+instead and the read side aggregates per view. Thresholds (30s/60s/75%)
+are read-time rules in `INTENT_WEIGHTS`/`ENGAGEMENT_RULES`.
+
+**Attribution is link-level, not send-level.** The branded link (076) is
+the one we email, so a view carrying its key is "arrived via the emailed
+link"; bare-token views are "unattributed external". We do not put
+per-send tokens in audit URLs — the link must survive resends and
+forwards, and identity claims ("their director opened it") are off the
+table by design. Session/visitor ids are random browser-stored values.
+
+**Uncontacted prospects with human-like views are ranked, not counted.**
+Team Moza's audit received 4 external views with no ledgered send (it went
+out by hand). That activity belongs in "Act today" as "no recorded send —
+unattributed", and must stay out of the contacted→viewed funnel, whose
+denominator is the ledger.
+
+**Gmail reconnect stays CLI-only for now** (`scripts/connect-gmail.ts`);
+the dashboard states it plainly in a P0 banner rather than pretending an
+in-app flow exists.

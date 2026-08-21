@@ -27,7 +27,7 @@ import { devAuthRefusalReason, publicOrigin } from "@/lib/env";
 // clients and image proxies, never by a session — the auth redirect was
 // silently eating every open event (found live: zero opens ever recorded
 // while the endpoint 307'd to /login).
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/api/open", "/audit"];
+const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/api/open", "/api/audit-signal", "/audit"];
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   if (process.env.AUTH_MODE !== "supabase") {

@@ -88,6 +88,8 @@ import {
 import { listExhibits } from "@/lib/prospects/exhibits";
 import { FRESHNESS_WINDOWS_DAYS, staleness } from "@/lib/prospects/constants";
 import { CONFIDENCE_REVIEW_THRESHOLD } from "@/lib/constants";
+import { prospectIntent, prospectTimeline } from "@/lib/prospects/dashboard";
+import { AuditEngagementSection } from "@/components/prospects/audit-engagement";
 
 const rate = (v: number | null): string =>
   v === null ? "not measured" : `${Math.round(v * 100)}%`;
@@ -145,6 +147,8 @@ export default async function ProspectDetailPage({
   const enrichmentProposals = await listEnrichmentProposals(id);
   // Branded share link (spec 076) — preferred over the raw token URL.
   const brandedLink = await auditLinkForProspect(id);
+  // Behavioral summary + evidence timeline (spec 098) — derived on read.
+  const [intent, timeline] = await Promise.all([prospectIntent(id), prospectTimeline(id)]);
   const brandedUrl = brandedLink
     ? brandedAuditUrl(brandedLink.slug, brandedLink.key)
     : null;
@@ -1037,6 +1041,8 @@ export default async function ProspectDetailPage({
           </ul>
         )}
       </Section>
+
+      {intent && <AuditEngagementSection intent={intent} timeline={timeline} />}
 
       <Section title="Stage history">
         {history.length === 0 ? (
