@@ -188,6 +188,9 @@ export const HIGH_QUALITY_SCORE = 70;
 /** Below this many contacted prospects, or this young, conversion
  * diagnostics say "not enough data" instead of guessing. */
 export const DIAGNOSTIC_MIN_CONTACTED = 10;
+/** Below this many contacted, the cohort renders as a compact arrow strip
+ * instead of the full bar funnel — five prospects do not need bars. */
+export const FULL_FUNNEL_MIN_CONTACTED = 25;
 export const DIAGNOSTIC_MIN_COHORT_AGE_DAYS = 2;
 
 const DAY_MS = 86_400_000;
@@ -468,6 +471,28 @@ export function recommendedAction(
   if (s.touches >= FOLLOW_UP_RULES.maxTouches) return "Max touches reached without activity — park or try another channel.";
   if (followUpDue) return "Follow up with a new reason to inspect the finding.";
   return "Wait — the send is recent; no activity yet.";
+}
+
+/** When a contacted, silent prospect becomes follow-up eligible under
+ * FOLLOW_UP_RULES; null when no follow-up is ever due (replied, won, lost,
+ * max touches). Pure companion to isFollowUpDue — "what will the OS do in
+ * the next 24 hours" reads from this. */
+export function followUpDueAt(e: EngagementSummary, s: SalesFacts): Date | null {
+  if (!s.contacted || s.replied || s.lost || s.won || !s.lastSentAt) return null;
+  if (s.touches >= FOLLOW_UP_RULES.maxTouches) return null;
+  const lastActivity = e.lastActivityAt;
+  if (lastActivity && lastActivity.getTime() > s.lastSentAt.getTime()) {
+    return addBusinessDays(lastActivity, FOLLOW_UP_RULES.engagedCadenceBusinessDays);
+  }
+  return addBusinessDays(s.lastSentAt, FOLLOW_UP_RULES.silentCadenceBusinessDays);
+}
+
+/** Inverse of businessDaysBetween: the first instant at which `n` business
+ * days have elapsed (weekends skipped, same operator-day convention). */
+export function addBusinessDays(from: Date, n: number): Date {
+  let t = from.getTime();
+  while (businessDaysBetween(from, new Date(t)) < n) t += DAY_MS;
+  return new Date(t);
 }
 
 export function isFollowUpDue(e: EngagementSummary, s: SalesFacts, now: Date): boolean {
