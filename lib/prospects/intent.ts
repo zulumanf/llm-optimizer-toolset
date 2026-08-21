@@ -33,6 +33,18 @@ export interface AuditViewFact {
   ctaClicked: boolean;
 }
 
+export interface SendFact {
+  sentAt: Date;
+  /** 1-based position among the prospect's allowed sends. */
+  touch: number;
+  subject: string | null;
+  /** outreach_drafts.channel: email | followup_email | … */
+  draftChannel: string | null;
+  opens: number;
+  /** A bounce suppression exists for the recipient. */
+  bounced: boolean;
+}
+
 export interface ProspectBehaviorFacts {
   prospectId: string;
   businessName: string;
@@ -47,6 +59,12 @@ export interface ProspectBehaviorFacts {
    * written only after dispatch succeeded (gmail/mock) or a human recorded
    * a manual send — never approved/scheduled/attempted. */
   sentAts: Date[];
+  /** Per-send facts for touch/subject/timing analytics (same ledger rows). */
+  sends: SendFact[];
+  prospectType: string | null;
+  /** First recorded reply / meeting stage change. */
+  repliedAt: Date | null;
+  meetingAt: Date | null;
   opens: number;
   /** Human-like external views only (dashboard.ts humanViews filter). */
   views: AuditViewFact[];

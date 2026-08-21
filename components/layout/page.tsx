@@ -168,7 +168,7 @@ export function Stat({
   value,
   hint,
 }: {
-  label: string;
+  label: ReactNode;
   /** Pass the string "not measured" rather than 0 when nothing was observed. */
   value: ReactNode;
   hint?: ReactNode;

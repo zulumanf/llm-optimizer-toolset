@@ -2592,3 +2592,21 @@ review work and never sits beside replies or CTA clicks. Under 25
 contacted the funnel is an arrow strip; definitions live in tooltips.
 "Next 24 hours" reads only from existing drafts and the follow-up cadence
 — no automation engine was added.
+
+## 2026-08-21 — Operate + Analyze share one metric module (spec 101)
+
+`lib/prospects/analytics.ts` is the only place outreach rates are defined;
+Operate's cohort snapshot and Analyze's scorecard/tables call the same
+functions over the same `ProspectIntent[]`, so denominators cannot drift.
+Rules worth remembering: delivered = sent minus bounce-suppressed
+recipients; all conversion rates are per delivered prospect, engaged and
+multiple-session rates per audit viewer; open signal is reported but
+starred "directional" and never feeds intent; **positive reply rate is
+null** until a reply classification is recorded anywhere (we do not infer
+sentiment from stage changes); a send earns the outcomes that occur after
+it and before the next send to the same prospect (touch/subject/timing
+tables); "strategy" is the draft channel until a finer enum exists; every
+comparison carries n and a central sample label (10 / 30) and insights
+emit only when both sides clear the floor — directional, never "winner".
+Manual-ready drafts are operator work (Needs your attention); only
+scheduled/eligible automation appears under Next 24 hours.

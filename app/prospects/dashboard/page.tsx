@@ -35,6 +35,8 @@ import {
 } from "@/components/layout/page";
 import { cockpit, machineHealth, upcomingAutomation, WINDOWS, type UpcomingSend, type Window } from "@/lib/prospects/dashboard";
 import { dashboardHref, type DashboardFilters } from "@/lib/prospects/dashboard-url";
+import { outreachMetrics, type Rate } from "@/lib/prospects/analytics";
+import { AnalyzeView, OPEN_SIGNAL_CAVEAT, POSITIVE_REPLY_CAVEAT } from "@/components/prospects/analyze-view";
 import { formatOperatorTime } from "@/lib/format";
 import {
   DIAGNOSTIC_MIN_CONTACTED,
@@ -154,11 +156,40 @@ function Help({ text }: { text: string }) {
 }
 
 const stateLabel: Record<UpcomingSend["state"], string> = {
-  auto_send: "Auto-send",
+  auto_send: "AUTO",
   manual_send: "Manual send — ready",
-  approval_required: "Approval required",
+  approval_required: "Approval",
   blocked: "Blocked",
 };
+
+const ratePct = (r: Rate): string => (r.rate === null ? "—" : `${Math.round(r.rate * 1000) / 10}%`);
+
+/** Short, scannable next action for the pipeline table; prose lives on the
+ * prospect page. */
+function nextActionShort(p: ProspectIntent, now: Date): string {
+  const s = p.sales, e = p.engagement;
+  if (s.won) return "Onboard";
+  if (s.lost) return "—";
+  if (s.meeting) return "Prepare meeting";
+  if (s.replied) return "Review reply";
+  if (e.outsideLedger) return "Resolve attribution";
+  if (!s.contacted) return p.auditPublished ? (p.hasEmail ? "Ready to send" : "Research email") : "Publish audit";
+  if (e.ctaClicked) return "Reach out now";
+  if (p.followUpDue) return "Follow-up due";
+  const due = followUpDueAt(e, s);
+  if (due === null) return "Park";
+  return `Wait until ${new Date(due).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: OPERATOR_TIMEZONE })}${due.getTime() < now.getTime() ? "" : ""}`;
+}
+
+function auditCell(p: ProspectIntent): string {
+  const e = p.engagement;
+  if (e.outsideLedger) return `${e.sessions} external · unqualified`;
+  if (e.postOutreachViews === 0) return e.preOutreachViews > 0 ? `${e.preOutreachViews} external · pre-contact` : "—";
+  if (e.ctaClicked) return `${e.sessions} session${e.sessions === 1 ? "" : "s"} · CTA`;
+  if (e.meaningfullyEngaged && e.maxScrollPercent >= ENGAGEMENT_RULES.deepScrollPercent) return `${e.sessions} session${e.sessions === 1 ? "" : "s"} · deep`;
+  if (e.meaningfullyEngaged) return `${e.sessions} session${e.sessions === 1 ? "" : "s"} · engaged`;
+  return `${e.sessions} session${e.sessions === 1 ? "" : "s"}`;
+}
 
 function Chip({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
   return (
@@ -178,6 +209,7 @@ export default async function ProspectingDashboardPage({
 }) {
   const filters = await searchParams;
   const now = new Date();
+  const view = filters.view === "analyze" ? "analyze" : "operate";
   const window: Window = (WINDOWS.find((w) => w.key === filters.window)?.key ?? "batch") as Window;
   const requestedLaunch = filters.launch && /^[0-9a-f-]{36}$/i.test(filters.launch) ? filters.launch : undefined;
   const zoomOut = filters.launch === ALL_COHORTS;
@@ -191,8 +223,13 @@ export default async function ProspectingDashboardPage({
       launchId = c.activeLaunchId;
       c = await cockpit({ launchId, window }, now);
     }
-    const [health, upcoming] = await Promise.all([machineHealth(), upcomingAutomation(launchId)]);
-    data = { c, health, upcoming, launchId };
+    const [health, upcoming, all] = await Promise.all([
+      machineHealth(),
+      upcomingAutomation(launchId),
+      // Analyze compares batches: it needs every cohort in the same window.
+      view === "analyze" && launchId ? cockpit({ window }, now) : Promise.resolve(null),
+    ]);
+    data = { c, health, upcoming, launchId, all };
   } catch {
     return (
       <PageShell>
@@ -201,7 +238,7 @@ export default async function ProspectingDashboardPage({
       </PageShell>
     );
   }
-  const { c, health, upcoming, launchId } = data;
+  const { c, health, upcoming, launchId, all } = data;
   const { cohort } = c;
   const launch = c.launches.find((l) => l.id === launchId);
   const cohortName = launch ? `${launch.name} · Batch 1` : "All active cohorts";
@@ -234,6 +271,7 @@ export default async function ProspectingDashboardPage({
   const meetings = c.prospects.filter((p) => p.sales.meeting && !p.sales.won && !p.sales.lost).length;
   const review = c.prospects.filter((p) => p.engagement.outsideLedger);
   const reviewCount = review.length + blocked.length + health.expiringAudits.length;
+  const rates = outreachMetrics(c.prospects);
   const upcomingCount = scheduled24h.length + eligible24h.length;
 
   const earlySample =
@@ -270,10 +308,11 @@ export default async function ProspectingDashboardPage({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <Link href={`/prospects/${u.prospectId}`} className="font-medium underline-offset-2 hover:underline">{u.businessName}</Link>
-          <span className="text-xs text-muted-foreground">Touch {u.touch}{u.subject ? ` · ${u.subject}` : ""}</span>
+          <span className="text-xs text-muted-foreground">Touch {u.touch} · {u.touch === 1 ? "Initial audit email" : "Follow-up"}{u.subject ? ` · "${u.subject}"` : ""}</span>
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
           {u.scheduledAt ? when(u.scheduledAt) : u.state === "approval_required" ? "after approval" : u.state === "blocked" ? (u.error ?? "blocked").slice(0, 90) : "when you press send"}
+          {" · Reason: "}{u.state === "auto_send" ? "scheduled by operator" : u.state === "blocked" ? "transport error — parked" : u.state === "approval_required" ? "awaiting approval" : "awaiting manual send"}
           {" · "}
           <Badge variant={u.state === "blocked" ? "destructive" : u.state === "auto_send" ? "default" : "outline"}>{stateLabel[u.state]}</Badge>
         </p>
@@ -318,6 +357,31 @@ export default async function ProspectingDashboardPage({
         }
       />
 
+      <div className="-mt-3 mb-6 flex gap-1 border-b">
+        {(["operate", "analyze"] as const).map((v) => (
+          <Link
+            key={v}
+            href={href({ view: v === "operate" ? undefined : v })}
+            className={`-mb-px border-b-2 px-3 py-1.5 text-sm capitalize ${view === v ? "border-foreground font-medium" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            aria-current={view === v ? "page" : undefined}
+          >
+            {v}
+          </Link>
+        ))}
+      </div>
+
+      {view === "analyze" && (
+        <AnalyzeView
+          prospects={c.prospects}
+          allProspects={(all ?? c).prospects}
+          cohortName={cohortName}
+          metricKey={filters.metric ?? "view"}
+          segmentKey={filters.segment ?? "quality"}
+          href={(patch) => href(patch)}
+        />
+      )}
+
+      {view === "operate" && (<>
       {/* ===================== critical transport issues break the order */}
       {criticalBlock && (
         <div className="mb-6 max-w-[65ch] rounded-md border border-destructive/40 bg-destructive/5 p-4">
@@ -337,8 +401,8 @@ export default async function ProspectingDashboardPage({
         {[
           ["Replies to answer", repliesWaiting],
           ["Meetings to prepare", meetings],
-          ["Approvals", approvals.length],
-          ["Upcoming follow-ups", upcomingCount],
+          [manualReady.length > 0 || approvals.length === 0 ? "Ready to send" : "Approvals", manualReady.length > 0 || approvals.length === 0 ? manualReady.length : approvals.length],
+          ["Auto follow-ups", upcomingCount],
           ["Needs review", reviewCount],
         ].map(([label, n]) => (
           <div key={String(label)} className="flex items-baseline gap-1.5">
@@ -353,10 +417,28 @@ export default async function ProspectingDashboardPage({
         title="Needs your attention"
         description={<>Revenue actions only. <Help text="Ranked: replies and meetings → CTA clicks → high authority with verified high intent → follow-ups the cadence says are due. Unresolved attribution never appears here; it goes to Needs review." /></>}
       >
-        {revenue.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing needs your attention right now.</p>
+        {revenue.length === 0 && manualReady.length === 0 && approvals.length === 0 ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground"><CheckCircle2 className="size-4" /> Nothing needs your attention right now.</p>
         ) : (
           <ul className="divide-y rounded-md border">
+            {manualReady.length > 0 && (
+              <li className="flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{manualReady.length} initial email{manualReady.length === 1 ? "" : "s"} ready to send</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Top prospects: {manualReady.slice(0, 3).map((u) => u.businessName).join(" · ")}</p>
+                </div>
+                <Link href={href({ outreach: "not", intent: undefined, activity: undefined, sales: undefined })} className="mt-1 text-xs text-muted-foreground hover:text-foreground">Review queue →</Link>
+              </li>
+            )}
+            {approvals.length > 0 && (
+              <li className="flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{approvals.length} draft{approvals.length === 1 ? "" : "s"} awaiting your approval</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{approvals.slice(0, 3).map((u) => u.businessName).join(" · ")}</p>
+                </div>
+                <Link href={`/prospects/${approvals[0]!.prospectId}`} className="mt-1 text-xs text-muted-foreground hover:text-foreground">Review →</Link>
+              </li>
+            )}
             {revenue.slice(0, 8).map((p) => (
               <li key={p.prospectId} className="flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-3">
                 <div className="min-w-0 flex-1">
@@ -384,11 +466,11 @@ export default async function ProspectingDashboardPage({
         title="Next 24 hours"
         description={<>What the OS does without you. <Help text={`Scheduled sends transmit at their named time. Follow-ups become eligible ${FOLLOW_UP_RULES.silentCadenceBusinessDays} business days after a silent send (${FOLLOW_UP_RULES.engagedCadenceBusinessDays} after audit activity), up to ${FOLLOW_UP_RULES.maxTouches} touches; nothing sends without an approved draft.`} /></>}
       >
-        <p className="mb-3 text-xs text-muted-foreground tabular-nums">
-          {scheduled24h.length} scheduled send{scheduled24h.length === 1 ? "" : "s"} · {eligible24h.length} follow-up{eligible24h.length === 1 ? "" : "s"} becoming eligible · {approvals.length} awaiting approval · {manualReady.length} ready for manual send · {blocked.length} blocked
-          {scheduledLater.length > 0 ? ` · ${scheduledLater.length} scheduled later` : ""}
+        <p className="mb-3 text-sm font-medium tabular-nums">
+          {scheduled24h.length} scheduled send{scheduled24h.length === 1 ? "" : "s"} · {eligible24h.length} follow-up{eligible24h.length === 1 ? "" : "s"} becoming eligible · {approvals.length} awaiting approval · {blocked.length} blocked
+          {scheduledLater.length > 0 ? <span className="font-normal text-muted-foreground"> · {scheduledLater.length} scheduled later</span> : null}
         </p>
-        {scheduled24h.length + eligible24h.length + approvals.length + manualReady.length === 0 ? (
+        {scheduled24h.length + eligible24h.length === 0 ? (
           <p className="text-sm text-muted-foreground">No automated outreach scheduled in the next 24 hours.</p>
         ) : (
           <ul className="divide-y rounded-md border">
@@ -398,17 +480,15 @@ export default async function ProspectingDashboardPage({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <Link href={`/prospects/${p.prospectId}`} className="font-medium underline-offset-2 hover:underline">{p.businessName}</Link>
-                    <span className="text-xs text-muted-foreground">Touch {p.sales.touches + 1} · {p.engagement.postOutreachViews > 0 ? "audit-specific follow-up" : "no-view value reframe"}</span>
+                    <span className="text-xs text-muted-foreground">Touch {p.sales.touches + 1} · {p.engagement.postOutreachViews > 0 ? "Audit-specific follow-up" : "No-view value reframe"}</span>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                    eligible {when(at)} · <Badge variant="outline">Draft needed</Badge>
+                    eligible {when(at)} · Reason: {p.engagement.postOutreachViews > 0 ? "qualifying audit engagement + no reply" : `no audit activity after Touch ${p.sales.touches}`} · <Badge variant="outline">ELIGIBLE · draft needed</Badge>
                   </p>
                 </div>
                 <Link href={`/prospects/${p.prospectId}`} className="mt-1 text-xs text-muted-foreground hover:text-foreground">Review →</Link>
               </li>
             ))}
-            {approvals.slice(0, 3).map((u) => <UpcomingRow key={u.draftId} u={u} />)}
-            {manualReady.slice(0, 2).map((u) => <UpcomingRow key={u.draftId} u={u} />)}
           </ul>
         )}
       </Section>
@@ -421,7 +501,7 @@ export default async function ProspectingDashboardPage({
               <li key={p.prospectId} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5">
                 <div className="min-w-0 flex-1">
                   <Link href={`/prospects/${p.prospectId}`} className="font-medium underline-offset-2 hover:underline">{p.businessName}</Link>
-                  <span className="text-muted-foreground"> — audit activity exists ({p.engagement.sessions} external session{p.engagement.sessions === 1 ? "" : "s"}), outbound attribution unresolved. Record the send if it went out another way.</span>
+                  <span className="text-muted-foreground"> — {p.engagement.sessions} external audit session{p.engagement.sessions === 1 ? "" : "s"}, but no corresponding outbound send is recorded. Attribution unresolved.</span>
                 </div>
                 <Link href={`/prospects/${p.prospectId}`} className="text-xs text-muted-foreground hover:text-foreground">Resolve →</Link>
               </li>
@@ -491,6 +571,25 @@ export default async function ProspectingDashboardPage({
             </ul>
           </>
         )}
+        <dl className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs tabular-nums">
+          {(
+            [
+              ["Delivery", rates.delivery, undefined],
+              ["Open signal", rates.openSignal, OPEN_SIGNAL_CAVEAT],
+              ["Audit view", rates.auditView, undefined],
+              ["Engaged view", rates.engagedView, undefined],
+              ["Reply", rates.reply, undefined],
+              ["Positive reply", rates.positiveReply, POSITIVE_REPLY_CAVEAT],
+              ["Meeting", rates.meeting, undefined],
+            ] as const
+          ).map(([label, r, caveat]) => (
+            <div key={label} title={caveat ?? (r.of ? `${r.n} of ${r.of}` : "no data")}>
+              <dt className="inline text-muted-foreground">{label} </dt>
+              <dd className="inline font-medium">{ratePct(r)}{caveat && r.rate !== null ? "*" : ""}</dd>
+            </div>
+          ))}
+          <span className="text-muted-foreground">* directional only</span>
+        </dl>
         <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
           {cohort.proposal > 0 || cohort.client > 0 ? `${cohort.proposal} proposal${cohort.proposal === 1 ? "" : "s"} · ${cohort.client} client${cohort.client === 1 ? "" : "s"} · ` : ""}
           {earlySample ? (
@@ -541,7 +640,7 @@ export default async function ProspectingDashboardPage({
                   <TableHead>Audit</TableHead>
                   <TableHead>Intent</TableHead>
                   <TableHead>Reply</TableHead>
-                  <TableHead>Stage</TableHead>
+                  <TableHead>Sales stage</TableHead>
                   <TableHead>Next action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -554,20 +653,14 @@ export default async function ProspectingDashboardPage({
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{p.qualityScore ?? "—"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground tabular-nums">
-                      {p.sales.contacted ? `${when(p.sales.lastSentAt)} · ${p.sales.touches}×` : p.engagement.outsideLedger ? "no recorded send" : "—"}
+                      {p.sales.contacted ? `${when(p.sales.lastSentAt)} · Touch ${p.sales.touches}` : p.engagement.outsideLedger ? "no recorded send" : "—"}
                       {p.followUpDue && <span className="block text-foreground">follow-up due</span>}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground tabular-nums">
-                      {p.engagement.postOutreachViews > 0
-                        ? `${p.engagement.sessions} session${p.engagement.sessions === 1 ? "" : "s"}${p.engagement.meaningfullyEngaged ? " · engaged" : ""}${p.engagement.repeat ? " · multiple sessions" : ""}`
-                        : p.engagement.preOutreachViews > 0
-                          ? "pre-outreach only"
-                          : "—"}
-                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground tabular-nums">{auditCell(p)}</TableCell>
                     <TableCell><Badge variant={intentVariant(p.intentLabel)}>{p.intentLabel}</Badge></TableCell>
                     <TableCell className="text-xs text-muted-foreground">{p.sales.meeting ? "meeting" : p.sales.replied ? "replied" : p.sales.contacted ? "none" : "—"}</TableCell>
                     <TableCell><Badge variant="secondary">{p.stage.replaceAll("_", " ")}</Badge></TableCell>
-                    <TableCell className="max-w-[28ch] text-xs text-muted-foreground">{p.recommendedAction}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground" title={p.recommendedAction}>{nextActionShort(p, now)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -584,7 +677,7 @@ export default async function ProspectingDashboardPage({
         {gmailHealthy && !capNearLimit && blocked.length === 0 ? (
           <details>
             <summary className="flex cursor-pointer list-none items-center gap-2 text-sm [&::-webkit-details-marker]:hidden">
-              <CheckCircle2 className="size-4" /> Healthy · Gmail active · {health.capUsed24h}/{health.capLimit} sends (24h) · {health.scheduledPending} scheduled · {health.activeSuppressions} suppressed
+              <CheckCircle2 className="size-4" /> Machine healthy · Gmail active · reply sync manual · {health.capUsed24h}/{health.capLimit} sends used · {blocked.length} blocked · {health.activeSuppressions} suppressed
               <span className="text-xs text-muted-foreground">details</span>
             </summary>
             <div className="mt-3">
@@ -644,7 +737,7 @@ export default async function ProspectingDashboardPage({
             ) : (
               <span className="font-medium">High confidence</span>
             )}
-            <span className="ml-2 text-xs text-muted-foreground">human-like external views only · QA, internal traffic, and known scanner activity excluded · details</span>
+            <span className="ml-2 text-xs text-muted-foreground">Human-like traffic only · internal QA/scripts/known scanners excluded · {review.length} attribution issue{review.length === 1 ? "" : "s"} · details</span>
           </summary>
           <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground tabular-nums">
             <li>
@@ -663,6 +756,7 @@ export default async function ProspectingDashboardPage({
           </ul>
         </details>
       </Section>
+      </>)}
     </PageShell>
   );
 }
