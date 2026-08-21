@@ -7,6 +7,11 @@
 export const DASHBOARD_PATH = "/prospects/dashboard";
 
 export type DashboardFilters = {
+  /** operate (default) | analyze */
+  view?: string;
+  /** Analyze: over-time metric and segment dimension. */
+  metric?: string;
+  segment?: string;
   window?: string;
   launch?: string;
   intent?: string;
@@ -16,6 +21,9 @@ export type DashboardFilters = {
 };
 
 export const DASHBOARD_FILTER_KEYS = [
+  "view",
+  "metric",
+  "segment",
   "window",
   "launch",
   "intent",

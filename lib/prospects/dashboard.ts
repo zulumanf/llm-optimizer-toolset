@@ -120,6 +120,20 @@ export async function prospectFacts(filter: CockpitFilter = {}): Promise<Prospec
       coalesce((select array_agg(s.sent_at order by s.sent_at) from prospect_outreach_sends s
         where s.prospect_id = p.id and s.allowed
           and (${since}::timestamptz is null or s.sent_at >= ${since})), '{}') as sent_ats,
+      p.prospect_type,
+      (select min(h.changed_at) from prospect_stage_history h where h.prospect_id = p.id
+        and h.to_stage in ('replied','discovery_scheduled','discovery_completed','proposal_sent','negotiation','verbal_yes','contracted')) as replied_at,
+      (select min(h.changed_at) from prospect_stage_history h where h.prospect_id = p.id
+        and h.to_stage in ('discovery_scheduled','discovery_completed','proposal_sent','negotiation','verbal_yes','contracted')) as meeting_at,
+      coalesce((select json_agg(json_build_object(
+          'sentAt', s.sent_at, 'subject', d.subject, 'draftChannel', d.channel,
+          'opens', (select count(*)::int from outreach_email_opens o where o.send_id = s.id),
+          'bounced', exists (select 1 from suppression_entries se
+            where se.lifted_at is null and se.reason ilike '%bounce%'
+              and se.normalized_value = lower(s.recipient_email))) order by s.sent_at)
+        from prospect_outreach_sends s left join outreach_drafts d on d.id = s.draft_id
+        where s.prospect_id = p.id and s.allowed
+          and (${since}::timestamptz is null or s.sent_at >= ${since})), '[]') as sends,
       (select count(*)::int from outreach_email_opens o
         join prospect_outreach_sends s on s.id = o.send_id
         where s.prospect_id = p.id
@@ -149,6 +163,17 @@ export async function prospectFacts(filter: CockpitFilter = {}): Promise<Prospec
     stage: r.stage as ProspectStage,
     visitedStages: (r.visitedStages as ProspectStage[]) ?? [],
     sentAts: ((r.sentAts as (Date | string)[]) ?? []).map((d) => new Date(d)),
+    sends: ((r.sends as { sentAt: string; subject: string | null; draftChannel: string | null; opens: number; bounced: boolean }[]) ?? []).map((x, i) => ({
+      sentAt: new Date(x.sentAt),
+      touch: i + 1,
+      subject: x.subject ?? null,
+      draftChannel: x.draftChannel ?? null,
+      opens: Number(x.opens ?? 0),
+      bounced: Boolean(x.bounced),
+    })),
+    prospectType: (r.prospectType as string | null) ?? null,
+    repliedAt: r.repliedAt ? new Date(r.repliedAt as Date) : null,
+    meetingAt: r.meetingAt ? new Date(r.meetingAt as Date) : null,
     opens: Number(r.opens ?? 0),
     hasEmail: Boolean(r.hasEmail),
     auditPublished: Boolean(r.auditPublished),
