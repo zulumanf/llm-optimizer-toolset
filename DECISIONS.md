@@ -2579,3 +2579,16 @@ pair 252 s after a send). Rules tightened rather than data patched:
   two "sessions", the second unattributed.
 - Early-sample flag also fires under two days of cohort age; machine-health
   queries run sequentially (five concurrent ones tripped the pooler cap).
+
+## 2026-08-21 — Cockpit hierarchy: operations first, analytics last (spec 100)
+
+The dashboard order is now what-requires-me → what-the-OS-does-next →
+needs-review → cohort performance → pipeline → machine health → backlog
+→ data confidence. Critical transport failures jump to the top. The
+default cohort is DERIVED (launch with the most recent allowed send), the
+zoom-out is explicit (`launch=all`), and every filter link merges the
+current query (`dashboardHref`, unit-tested). Unresolved attribution is
+review work and never sits beside replies or CTA clicks. Under 25
+contacted the funnel is an arrow strip; definitions live in tooltips.
+"Next 24 hours" reads only from existing drafts and the follow-up cadence
+— no automation engine was added.

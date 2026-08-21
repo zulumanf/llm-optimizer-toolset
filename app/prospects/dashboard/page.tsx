@@ -1,13 +1,21 @@
 /**
- * Prospecting cockpit (spec 095 → 098). The operator's screen, in the order
- * the questions get asked: who needs my attention → what happened in this
- * cohort → where is it leaking → is the machine healthy → the pipeline.
- * Server component, one load; every number derives from measured events
- * with its basis stated. Audit activity is described as what the AUDIT PAGE
- * received — "4 external sessions" — never as who did it.
+ * Prospecting command center (spec 095 → 098 → 100). The operator's screen
+ * in the order the questions get asked: what requires me → what is the OS
+ * about to do → what needs review → is the strategy working → who is in the
+ * pipeline → is the machine healthy → backlog → data confidence. A critical
+ * transport failure jumps to the top. Server component, one load; every
+ * number derives from measured events. Audit activity is described as what
+ * the AUDIT PAGE received — "4 external sessions" — never as who did it.
+ *
+ * Operator reading of the numbers (kept here so headings stay short):
+ * Contacted = transmitted sends in the ledger (gmail/mock dispatched, or a
+ * human-recorded manual send) — never the stage field alone, never approved
+ * or scheduled drafts. Viewers = contacted prospects whose audit received
+ * human-like external views after the first send (our QA, operator IPs,
+ * scripts, scanners excluded). Email opens are an upper bound.
  */
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, CheckCircle2, Flame } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Flame, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -25,14 +33,17 @@ import {
   Stat,
   StatGrid,
 } from "@/components/layout/page";
-import { cockpit, machineHealth, WINDOWS, type Window } from "@/lib/prospects/dashboard";
+import { cockpit, machineHealth, upcomingAutomation, WINDOWS, type UpcomingSend, type Window } from "@/lib/prospects/dashboard";
+import { dashboardHref, type DashboardFilters } from "@/lib/prospects/dashboard-url";
 import { formatOperatorTime } from "@/lib/format";
 import {
   DIAGNOSTIC_MIN_CONTACTED,
   DIAGNOSTIC_MIN_COHORT_AGE_DAYS,
   ENGAGEMENT_RULES,
   FOLLOW_UP_RULES,
+  FULL_FUNNEL_MIN_CONTACTED,
   LATENCY_MIN_SAMPLE,
+  followUpDueAt,
   OPERATOR_TIMEZONE,
   PRIORITY_TIERS,
   type IntentLabel,
@@ -41,14 +52,10 @@ import {
 
 export const dynamic = "force-dynamic";
 
-type Filters = {
-  window?: string;
-  launch?: string;
-  intent?: string;
-  activity?: string;
-  outreach?: string;
-  sales?: string;
-};
+type Filters = DashboardFilters;
+/** `launch=all` is the explicit zoom-out; no param = the active cohort. */
+const ALL_COHORTS = "all";
+const DAY_MS = 86_400_000;
 
 const INTENT_FILTERS: { key: string; label: string; test: (p: ProspectIntent) => boolean }[] = [
   { key: "cold", label: "Cold", test: (p) => p.intentLabel === "Cold" },
@@ -137,6 +144,22 @@ function FunnelBar({ count, max }: { count: number; max: number }) {
   );
 }
 
+/** Heading-level help without a paragraph: an info glyph carrying the rule. */
+function Help({ text }: { text: string }) {
+  return (
+    <span title={text} className="inline-flex align-middle text-muted-foreground" aria-label={text}>
+      <Info className="size-3.5" />
+    </span>
+  );
+}
+
+const stateLabel: Record<UpcomingSend["state"], string> = {
+  auto_send: "Auto-send",
+  manual_send: "Manual send — ready",
+  approval_required: "Approval required",
+  blocked: "Blocked",
+};
+
 function Chip({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
   return (
     <Link
@@ -154,49 +177,76 @@ export default async function ProspectingDashboardPage({
   searchParams: Promise<Filters>;
 }) {
   const filters = await searchParams;
+  const now = new Date();
   const window: Window = (WINDOWS.find((w) => w.key === filters.window)?.key ?? "batch") as Window;
-  const launchId = filters.launch && /^[0-9a-f-]{36}$/i.test(filters.launch) ? filters.launch : undefined;
+  const requestedLaunch = filters.launch && /^[0-9a-f-]{36}$/i.test(filters.launch) ? filters.launch : undefined;
+  const zoomOut = filters.launch === ALL_COHORTS;
 
   let data;
   try {
-    const [c, health] = await Promise.all([cockpit({ launchId, window }), machineHealth()]);
-    data = { c, health };
+    // Two passes only when the default cohort must be derived first.
+    let c = await cockpit({ launchId: requestedLaunch, window }, now);
+    let launchId = requestedLaunch;
+    if (!requestedLaunch && !zoomOut && c.activeLaunchId) {
+      launchId = c.activeLaunchId;
+      c = await cockpit({ launchId, window }, now);
+    }
+    const [health, upcoming] = await Promise.all([machineHealth(), upcomingAutomation(launchId)]);
+    data = { c, health, upcoming, launchId };
   } catch {
     return (
       <PageShell>
-        <PageHeader crumbs={[{ label: "Prospects", href: "/prospects" }]} title="Pipeline dashboard" />
+        <PageHeader crumbs={[{ label: "Prospects", href: "/prospects" }]} title="Prospecting" />
         <EmptyState message="The dashboard queries failed — check the database connection and reload." />
       </PageShell>
     );
   }
-  const { c, health } = data;
+  const { c, health, upcoming, launchId } = data;
   const { cohort } = c;
-  const launchName = c.launches.find((l) => l.id === launchId)?.name ?? "All markets";
-  // "Batch" only names a cohort once a launch is chosen; across all markets
-  // it is every recorded send (spec 099).
-  const windowLabel =
-    window === "batch" && !launchId ? "all recorded sends" : (WINDOWS.find((w) => w.key === window)?.label ?? "Batch");
-  const href = (patch: Partial<Filters>): string => {
-    const q = new URLSearchParams();
-    const merged = { ...filters, ...patch };
-    for (const [k, v] of Object.entries(merged)) if (v) q.set(k, v);
-    const s = q.toString();
-    return `/prospects/dashboard${s ? `?${s}` : ""}`;
-  };
+  const launch = c.launches.find((l) => l.id === launchId);
+  const cohortName = launch ? `${launch.name} · Batch 1` : "All active cohorts";
+  const windowLabel = WINDOWS.find((w) => w.key === window)?.label ?? "Batch";
+  const href = (patch: Partial<Filters>): string => dashboardHref(filters, patch);
 
+  // ---------------------------------------------------------------- derive
   const gmailHealthy = health.gmailStatus === "active";
   const capNearLimit = health.capUsed24h >= health.capLimit - 3;
-  const actToday = c.prospects.filter((p) => p.priorityTier <= 6).slice(0, 8);
+  const blocked = upcoming.filter((u) => u.state === "blocked");
+  const approvals = upcoming.filter((u) => u.state === "approval_required");
+  const manualReady = upcoming.filter((u) => u.state === "manual_send");
+  const in24h = (d: Date | null): boolean => d !== null && d.getTime() <= now.getTime() + DAY_MS;
+  const scheduled24h = upcoming.filter((u) => u.state === "auto_send" && in24h(u.scheduledAt));
+  const scheduledLater = upcoming.filter((u) => u.state === "auto_send" && !in24h(u.scheduledAt));
+  const withDraft = new Set(upcoming.map((u) => u.prospectId));
+  // Follow-ups the cadence makes eligible within 24h and nobody has drafted.
+  const eligible24h = c.prospects
+    .map((p) => ({ p, at: followUpDueAt(p.engagement, p.sales) }))
+    .filter((x): x is { p: ProspectIntent; at: Date } => x.at !== null && in24h(x.at) && !withDraft.has(x.p.prospectId))
+    .sort((a, b) => a.at.getTime() - b.at.getTime());
+  const criticalBlock = !gmailHealthy;
+
+  // Revenue actions: only what deserves a human now. Unresolved attribution
+  // is review work, not intent (spec 100) — it is excluded here.
+  const revenue = c.prospects.filter(
+    (p) => !p.engagement.outsideLedger && (p.priorityTier <= 3 || p.followUpDue)
+  );
+  const repliesWaiting = c.prospects.filter((p) => p.sales.replied && !p.sales.meeting && !p.sales.won && !p.sales.lost).length;
+  const meetings = c.prospects.filter((p) => p.sales.meeting && !p.sales.won && !p.sales.lost).length;
+  const review = c.prospects.filter((p) => p.engagement.outsideLedger);
+  const reviewCount = review.length + blocked.length + health.expiringAudits.length;
+  const upcomingCount = scheduled24h.length + eligible24h.length;
+
   const earlySample =
     cohort.contacted < DIAGNOSTIC_MIN_CONTACTED ||
     cohort.cohortAgeDays === null ||
     cohort.cohortAgeDays < DIAGNOSTIC_MIN_COHORT_AGE_DAYS;
+  const compactFunnel = cohort.contacted < FULL_FUNNEL_MIN_CONTACTED;
   const batchAge =
     cohort.cohortAgeDays === null
       ? null
       : cohort.cohortAgeDays < 1
-        ? "under 1 day"
-        : `${Math.floor(cohort.cohortAgeDays)} day${Math.floor(cohort.cohortAgeDays) === 1 ? "" : "s"}`;
+        ? "under 1 day old"
+        : `${Math.floor(cohort.cohortAgeDays)} day${Math.floor(cohort.cohortAgeDays) === 1 ? "" : "s"} old`;
 
   const active = {
     intent: INTENT_FILTERS.find((f) => f.key === filters.intent),
@@ -213,91 +263,114 @@ export default async function ProspectingDashboardPage({
   );
   const TABLE_LIMIT = 60;
   const researchTop = health.researchQueue.slice(0, 3);
+  const cohortOptions = c.launches.filter((l) => l.prospectCount > 0);
+
+  const UpcomingRow = ({ u }: { u: UpcomingSend }) => (
+    <li className="flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/prospects/${u.prospectId}`} className="font-medium underline-offset-2 hover:underline">{u.businessName}</Link>
+          <span className="text-xs text-muted-foreground">Touch {u.touch}{u.subject ? ` · ${u.subject}` : ""}</span>
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+          {u.scheduledAt ? when(u.scheduledAt) : u.state === "approval_required" ? "after approval" : u.state === "blocked" ? (u.error ?? "blocked").slice(0, 90) : "when you press send"}
+          {" · "}
+          <Badge variant={u.state === "blocked" ? "destructive" : u.state === "auto_send" ? "default" : "outline"}>{stateLabel[u.state]}</Badge>
+        </p>
+      </div>
+      <Link href={`/prospects/${u.prospectId}`} className="mt-1 text-xs text-muted-foreground hover:text-foreground">Review →</Link>
+    </li>
+  );
 
   return (
     <PageShell>
       <PageHeader
         crumbs={[{ label: "Prospects", href: "/prospects" }]}
-        title="Pipeline dashboard"
-        description="Who to act on, what this cohort did, where it leaks, whether the machine can send — every number derived from captured events, with its basis stated."
+        title="Prospecting"
         actions={
-          <div className="flex flex-wrap items-center gap-1.5">
-            {WINDOWS.map((w) => (
-              <Chip key={w.key} href={href({ window: w.key })} active={window === w.key}>
-                {w.label}
-              </Chip>
-            ))}
-            <span className="mx-1 text-xs text-muted-foreground">·</span>
-            <Chip href={href({ launch: undefined })} active={!launchId}>
-              All markets
-            </Chip>
-            {c.launches
-              .filter((l) => l.prospectCount > 0)
-              .map((l) => (
-                <Chip key={l.id} href={href({ launch: l.id })} active={launchId === l.id}>
-                  {l.name}
+          <div className="flex flex-wrap items-center gap-2">
+            <details className="relative">
+              <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md border px-2.5 py-1 text-sm font-medium hover:bg-muted [&::-webkit-details-marker]:hidden">
+                {cohortName} <ChevronDown className="size-3.5" />
+              </summary>
+              <ul className="absolute right-0 z-10 mt-1 min-w-56 rounded-md border bg-background p-1 text-sm shadow-sm">
+                {cohortOptions.map((l) => (
+                  <li key={l.id}>
+                    <Link href={href({ launch: l.id })} className={`block rounded px-2 py-1 hover:bg-muted ${launchId === l.id ? "font-medium" : ""}`}>
+                      {l.name} · Batch 1
+                      <span className="ml-2 text-xs text-muted-foreground tabular-nums">{l.contactedCount}/{l.prospectCount} contacted</span>
+                    </Link>
+                  </li>
+                ))}
+                <li>
+                  <Link href={href({ launch: ALL_COHORTS })} className={`block rounded px-2 py-1 hover:bg-muted ${!launchId ? "font-medium" : ""}`}>All active cohorts</Link>
+                </li>
+              </ul>
+            </details>
+            <span className="flex items-center gap-1">
+              {WINDOWS.map((w) => (
+                <Chip key={w.key} href={href({ window: w.key })} active={window === w.key}>
+                  {w.key === "batch" ? "Batch" : w.label.replace(" days", "D")}
                 </Chip>
               ))}
+            </span>
           </div>
         }
       />
 
-      {/* ============================== P0: can we send? */}
-      {!gmailHealthy && (
+      {/* ===================== critical transport issues break the order */}
+      {criticalBlock && (
         <div className="mb-6 max-w-[65ch] rounded-md border border-destructive/40 bg-destructive/5 p-4">
           <p className="flex items-center gap-2 text-sm font-medium">
-            <AlertTriangle className="size-4 text-destructive" /> Outreach blocked
+            <AlertTriangle className="size-4 text-destructive" /> Outbound automation blocked
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Gmail connection is{" "}
-            <span className="font-medium text-foreground">
-              {(health.gmailStatus ?? "not connected").replaceAll("_", " ")}
-            </span>
-            . Scheduled and manual gmail sends will refuse until it is reconnected.
-            Reconnect is a one-time terminal step on the operator machine:{" "}
-            <code className="rounded bg-muted px-1 text-xs">npx tsx scripts/connect-gmail.ts</code>{" "}
-            — no in-app flow exists yet.
+            Gmail connection is <span className="font-medium text-foreground">{(health.gmailStatus ?? "not connected").replaceAll("_", " ")}</span>
+            {health.scheduledPending > 0 ? ` · ${health.scheduledPending} scheduled send${health.scheduledPending === 1 ? "" : "s"} waiting` : ""}.
+            Reconnect from the operator machine: <code className="rounded bg-muted px-1 text-xs">npx tsx scripts/connect-gmail.ts</code> — no in-app flow yet.
           </p>
         </div>
       )}
 
-      {/* ============================== 1. Who needs my attention? */}
+      {/* ===================== today strip */}
+      <dl className="mb-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        {[
+          ["Replies to answer", repliesWaiting],
+          ["Meetings to prepare", meetings],
+          ["Approvals", approvals.length],
+          ["Upcoming follow-ups", upcomingCount],
+          ["Needs review", reviewCount],
+        ].map(([label, n]) => (
+          <div key={String(label)} className="flex items-baseline gap-1.5">
+            <dd className="text-lg font-medium tabular-nums">{String(n)}</dd>
+            <dt className="text-xs text-muted-foreground">{String(label)}</dt>
+          </div>
+        ))}
+      </dl>
+
+      {/* ===================== 1. what requires me */}
       <Section
-        title="Act today"
-        description="High-value prospects showing the strongest behavior, ranked: conversation → CTA → high authority + high intent → deep engagement → multiple sessions / unresolved attribution → one visit. Facts describe what the audit page received, never who opened it."
+        title="Needs your attention"
+        description={<>Revenue actions only. <Help text="Ranked: replies and meetings → CTA clicks → high authority with verified high intent → follow-ups the cadence says are due. Unresolved attribution never appears here; it goes to Needs review." /></>}
       >
-        {actToday.length === 0 ? (
-          <EmptyState
-            message={
-              cohort.contacted === 0
-                ? "Nothing contacted in this window. Approve and send drafts, then activity lands here."
-                : "No replies or audit activity in this window yet. When a contacted prospect's audit receives a human-like visit, it appears here first."
-            }
-          />
+        {revenue.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nothing needs your attention right now.</p>
         ) : (
           <ul className="divide-y rounded-md border">
-            {actToday.map((p) => (
+            {revenue.slice(0, 8).map((p) => (
               <li key={p.prospectId} className="flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     {p.priorityTier <= 3 && <Flame className="size-4 shrink-0" aria-label="priority" />}
-                    <Link href={`/prospects/${p.prospectId}`} className="font-medium underline-offset-2 hover:underline">
-                      {p.businessName}
-                    </Link>
+                    <Link href={`/prospects/${p.prospectId}`} className="font-medium underline-offset-2 hover:underline">{p.businessName}</Link>
                     {p.highQuality && <Badge variant="outline">High authority{p.qualityScore !== null ? ` · ${p.qualityScore}` : ""}</Badge>}
                     <Badge variant={intentVariant(p.intentLabel)}>{p.intentLabel}</Badge>
-                    <span className="text-xs text-muted-foreground">{PRIORITY_TIERS[p.priorityTier - 1]}</span>
+                    <span className="text-xs text-muted-foreground">{p.followUpDue && p.priorityTier > 3 ? "follow-up due" : PRIORITY_TIERS[p.priorityTier - 1]}</span>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground tabular-nums">{activityFacts(p)}</p>
-                  <p className="mt-1 text-sm">
-                    <span className="text-muted-foreground">Recommended:</span> {p.recommendedAction}
-                  </p>
+                  <p className="mt-1 text-sm"><span className="text-muted-foreground">Recommended:</span> {p.recommendedAction}</p>
                 </div>
-                <Link
-                  href={`/prospects/${p.prospectId}`}
-                  className="mt-1 text-muted-foreground hover:text-foreground"
-                  aria-label={`Open ${p.businessName}`}
-                >
+                <Link href={`/prospects/${p.prospectId}`} className="mt-1 text-muted-foreground hover:text-foreground" aria-label={`Open ${p.businessName}`}>
                   <ArrowRight className="size-4" />
                 </Link>
               </li>
@@ -306,183 +379,137 @@ export default async function ProspectingDashboardPage({
         )}
       </Section>
 
-      {/* ============================== 2. What happened in this cohort? */}
+      {/* ===================== 2. what the OS is about to do */}
       <Section
-        title={`${launchName} — ${windowLabel}`}
-        description={
-          <>
-            {batchAge ? `Batch age: ${batchAge}. ` : "No sends in this window. "}
-            Contacted = transmitted sends in the ledger (gmail/mock dispatched, or a human-recorded manual send) — never the stage field alone, never approved or scheduled drafts.
-            Viewers = contacted prospects whose audit received ≥1 human-like external view after the first send.
-          </>
-        }
+        title="Next 24 hours"
+        description={<>What the OS does without you. <Help text={`Scheduled sends transmit at their named time. Follow-ups become eligible ${FOLLOW_UP_RULES.silentCadenceBusinessDays} business days after a silent send (${FOLLOW_UP_RULES.engagedCadenceBusinessDays} after audit activity), up to ${FOLLOW_UP_RULES.maxTouches} touches; nothing sends without an approved draft.`} /></>}
       >
-        <StatGrid columns={4}>
-          <Stat label="Contacted" value={String(cohort.contacted)} hint={`${cohort.notContacted} not yet contacted · ${cohort.followUpDue} follow-up${cohort.followUpDue === 1 ? "" : "s"} due`} />
-          <Stat
-            label="Audit viewers"
-            value={`${cohort.viewed} / ${cohort.contacted}`}
-            hint={`${pct(cohort.funnel[1]?.rate ?? null)} of contacted · ${cohort.auditViews} view${cohort.auditViews === 1 ? "" : "s"}, ${cohort.auditSessions} session${cohort.auditSessions === 1 ? "" : "s"}`}
-          />
-          <Stat
-            label="Meaningfully engaged"
-            value={`${cohort.engaged} / ${cohort.viewed}`}
-            hint={`${pct(cohort.funnel[2]?.rate ?? null)} of viewers · ≥${ENGAGEMENT_RULES.engagedSecondsMeaningful}s engaged, ≥${ENGAGEMENT_RULES.deepScrollPercent}% depth, CTA, or an interaction with ≥${ENGAGEMENT_RULES.interactionMinEngagedSeconds}s engaged`}
-          />
-          <Stat
-            label="Replies"
-            value={`${cohort.replied} / ${cohort.contacted}`}
-            hint={`${cohort.meeting} meeting${cohort.meeting === 1 ? "" : "s"} · ${cohort.proposal} proposal${cohort.proposal === 1 ? "" : "s"} · ${cohort.client} client${cohort.client === 1 ? "" : "s"} — recorded on the prospect page`}
-          />
-        </StatGrid>
-
-        <ul className="mt-5 max-w-prose space-y-2">
-          {cohort.funnel.map((step) => (
-            <li key={step.key} className="flex items-center gap-3 text-sm">
-              <span className="w-40 shrink-0 text-muted-foreground">{step.label}</span>
-              <FunnelBar count={step.count} max={cohort.contacted} />
-              <span className="w-10 text-right font-medium tabular-nums">{step.count}</span>
-              <span className="w-24 text-right text-xs text-muted-foreground tabular-nums" title={step.basis}>
-                {step.of !== null && step.of > 0 ? `${pct(step.rate)} of ${step.of}` : ""}
-              </span>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
-          {earlySample && <span className="font-medium text-foreground">Early sample — directional only. </span>}
-          Hover a rate for its basis.{" "}
-          {cohort.medianSecondsToFirstView === null
-            ? "No qualifying audit visit yet."
-            : cohort.viewed >= LATENCY_MIN_SAMPLE
-              ? <>Median time from first send to first qualifying audit visit: <span className="tabular-nums">{duration(cohort.medianSecondsToFirstView)}</span> · n={cohort.viewed}.</>
-              : <>Time to first view: <span className="tabular-nums">{duration(cohort.medianSecondsToFirstView)}</span> · n={cohort.viewed} — no median until {LATENCY_MIN_SAMPLE} viewers.</>}
+        <p className="mb-3 text-xs text-muted-foreground tabular-nums">
+          {scheduled24h.length} scheduled send{scheduled24h.length === 1 ? "" : "s"} · {eligible24h.length} follow-up{eligible24h.length === 1 ? "" : "s"} becoming eligible · {approvals.length} awaiting approval · {manualReady.length} ready for manual send · {blocked.length} blocked
+          {scheduledLater.length > 0 ? ` · ${scheduledLater.length} scheduled later` : ""}
         </p>
-
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-md border p-4">
-            <p className="text-sm font-medium">Where it might be leaking</p>
-            {cohort.diagnosis.verdict === "not_enough_data" ? (
-              <p className="mt-1 text-sm text-muted-foreground">Not enough data yet. {cohort.diagnosis.reason}</p>
-            ) : cohort.diagnosis.verdict === "healthy" ? (
-              <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                <CheckCircle2 className="size-4" /> {cohort.diagnosis.reason}
-              </p>
-            ) : (
-              <>
-                <p className="mt-1 text-sm">
-                  Possible bottleneck: <span className="font-medium">{cohort.diagnosis.bottleneck?.replaceAll("_", " ")}</span>
-                  <span className="text-muted-foreground"> — {cohort.diagnosis.reason}</span>
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">Review: {cohort.diagnosis.review.join(", ")}.</p>
-              </>
-            )}
-          </div>
-          <div className="rounded-md border p-4">
-            <p className="text-sm font-medium">Data confidence</p>
-            <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground tabular-nums">
-              <li>
-                {cohort.auditViews} human-like external views · {cohort.auditSessions} sessions ·{" "}
-                {cohort.auditVisitorIdentities} known browser identit{cohort.auditVisitorIdentities === 1 ? "y" : "ies"} (our QA, operator IPs, scripts, link scanners excluded)
+        {scheduled24h.length + eligible24h.length + approvals.length + manualReady.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No automated outreach scheduled in the next 24 hours.</p>
+        ) : (
+          <ul className="divide-y rounded-md border">
+            {scheduled24h.slice(0, 5).map((u) => <UpcomingRow key={u.draftId} u={u} />)}
+            {eligible24h.slice(0, Math.max(0, 5 - scheduled24h.length)).map(({ p, at }) => (
+              <li key={p.prospectId} className="flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link href={`/prospects/${p.prospectId}`} className="font-medium underline-offset-2 hover:underline">{p.businessName}</Link>
+                    <span className="text-xs text-muted-foreground">Touch {p.sales.touches + 1} · {p.engagement.postOutreachViews > 0 ? "audit-specific follow-up" : "no-view value reframe"}</span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                    eligible {when(at)} · <Badge variant="outline">Draft needed</Badge>
+                  </p>
+                </div>
+                <Link href={`/prospects/${p.prospectId}`} className="mt-1 text-xs text-muted-foreground hover:text-foreground">Review →</Link>
               </li>
-              <li>
-                {cohort.attributedLinkProspects} viewer{cohort.attributedLinkProspects === 1 ? "" : "s"} arrived via the emailed link · {cohort.unattributedProspects} unattributed external · {cohort.preOutreachViews} view{cohort.preOutreachViews === 1 ? "" : "s"} before outreach (not counted)
-              </li>
-              <li>
-                {cohort.prospectsWithAnyView} prospect{cohort.prospectsWithAnyView === 1 ? "" : "s"} with any audit view, contacted or not ·{" "}
-                {cohort.unresolvedSessions} session{cohort.unresolvedSessions === 1 ? "" : "s"} on never-contacted audits excluded from campaign metrics (no recorded send)
-              </li>
-              <li title="Mail clients prefetch images and privacy proxies fetch pixels; security scanners open links. Not a human-intent metric and not used in intent scoring.">
-                Open signal: {cohort.opens} opens on {cohort.openedProspects} prospect{cohort.openedProspects === 1 ? "" : "s"} — upper bound, diagnostics only
-              </li>
-            </ul>
-          </div>
-        </div>
+            ))}
+            {approvals.slice(0, 3).map((u) => <UpcomingRow key={u.draftId} u={u} />)}
+            {manualReady.slice(0, 2).map((u) => <UpcomingRow key={u.draftId} u={u} />)}
+          </ul>
+        )}
       </Section>
 
-      {/* ============================== 3. Is the machine healthy? */}
-      <Section title="Machine health" description="Transport telemetry — separate from campaign counts above.">
-        <StatGrid columns={4}>
-          <Stat
-            label="Gmail connection"
-            value={gmailHealthy ? "active" : (health.gmailStatus ?? "not connected").replaceAll("_", " ")}
-            hint={gmailHealthy ? "token refresh verified" : "sends refuse until reconnected (see alert above)"}
-          />
-          <Stat
-            label="Send capacity (24h)"
-            value={`${health.capUsed24h} / ${health.capLimit}`}
-            hint={capNearLimit ? "near the cap — further gmail sends refuse until the window clears" : "gmail messages transmitted in the trailing 24 hours, including follow-ups"}
-          />
-          <Stat label="Scheduled sends" value={String(health.scheduledPending)} hint="approved drafts the worker will transmit at their named time" />
-          <Stat label="Suppression list" value={String(health.activeSuppressions)} hint="opt-outs and bounces — enforced on every send, forever" />
-        </StatGrid>
-
-        {(health.parkedSends.length > 0 || health.expiringAudits.length > 0 || health.draftsAwaitingApproval > 0 || c.stageDrift > 0) && (
-          <ul className="mt-4 max-w-[65ch] space-y-1.5 text-sm text-muted-foreground">
-            {health.parkedSends.map((p) => (
-              <li key={p.prospectId} className="flex items-center gap-2">
-                <AlertTriangle className="size-4 shrink-0" />
-                <span>
-                  <Link href={`/prospects/${p.prospectId}`} className="text-foreground underline-offset-2 hover:underline">{p.businessName}</Link>: send parked — {p.error.slice(0, 90)}
-                </span>
+      {/* ===================== 3. needs review — hidden when clean */}
+      {reviewCount > 0 && (
+        <Section title="Needs review" description={<>Data and state anomalies, not buyer intent. <Help text="Audit activity with no recorded send, parked sends, audits about to expire. Resolve these so campaign metrics stay honest." /></>}>
+          <ul className="divide-y rounded-md border text-sm">
+            {review.map((p) => (
+              <li key={p.prospectId} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <Link href={`/prospects/${p.prospectId}`} className="font-medium underline-offset-2 hover:underline">{p.businessName}</Link>
+                  <span className="text-muted-foreground"> — audit activity exists ({p.engagement.sessions} external session{p.engagement.sessions === 1 ? "" : "s"}), outbound attribution unresolved. Record the send if it went out another way.</span>
+                </div>
+                <Link href={`/prospects/${p.prospectId}`} className="text-xs text-muted-foreground hover:text-foreground">Resolve →</Link>
+              </li>
+            ))}
+            {blocked.map((u) => (
+              <li key={u.draftId} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <Link href={`/prospects/${u.prospectId}`} className="font-medium underline-offset-2 hover:underline">{u.businessName}</Link>
+                  <span className="text-muted-foreground"> — send parked: {(u.error ?? "").slice(0, 90)}</span>
+                </div>
+                <Link href={`/prospects/${u.prospectId}`} className="text-xs text-muted-foreground hover:text-foreground">Resolve →</Link>
               </li>
             ))}
             {health.expiringAudits.map((e) => (
-              <li key={e.prospectId}>
-                <Link href={`/prospects/${e.prospectId}`} className="text-foreground underline-offset-2 hover:underline">{e.businessName}</Link>: audit expires {new Date(e.expiresAt).toLocaleDateString()} — republish or let it lapse
+              <li key={e.prospectId} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <Link href={`/prospects/${e.prospectId}`} className="font-medium underline-offset-2 hover:underline">{e.businessName}</Link>
+                  <span className="text-muted-foreground"> — audit expires {when(e.expiresAt)}; republish or let it lapse.</span>
+                </div>
               </li>
             ))}
-            {health.draftsAwaitingApproval > 0 && (
-              <li>{health.draftsAwaitingApproval} draft{health.draftsAwaitingApproval === 1 ? "" : "s"} awaiting approval</li>
-            )}
-            {c.stageDrift > 0 && (
-              <li>
-                {c.stageDrift} contacted prospect{c.stageDrift === 1 ? "" : "s"} still recorded at a pre-contact stage — this page derives contact from the ledger, so nothing here is wrong; advance them when convenient.
-              </li>
-            )}
           </ul>
-        )}
+        </Section>
+      )}
 
-        <div className="mt-4 max-w-[65ch] rounded-md border p-4">
-          <p className="text-sm font-medium">
-            Research queue · {health.researchQueue.length} prospect{health.researchQueue.length === 1 ? "" : "s"} need{health.researchQueue.length === 1 ? "s" : ""} a contact email
-          </p>
-          {health.researchQueue.length === 0 ? (
-            <p className="mt-1 text-xs text-muted-foreground">Every published audit has a contact — nothing to research.</p>
+      {/* ===================== 4. is the strategy working */}
+      <Section
+        title={cohortName}
+        description={
+          <>
+            {batchAge ?? "no sends yet"} · {cohort.contacted} contacted{window !== "batch" ? ` · ${windowLabel}` : ""}{" "}
+            <Help text="Contacted counts only after an outbound message is transmitted or a human records a manual send; scheduled or approved drafts do not count. Viewers = contacted prospects whose audit received ≥1 human-like external view after the first send. Engaged = ≥30s engaged, ≥75% depth, CTA, or an interaction with engaged time. Replies and meetings come from recorded stage changes." />
+          </>
+        }
+      >
+        {compactFunnel ? (
+          <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
+            {cohort.funnel.slice(0, 5).map((step, i) => (
+              <div key={step.key} className="flex items-end gap-2">
+                {i > 0 && <span className="pb-1 text-muted-foreground">→</span>}
+                <div title={step.basis}>
+                  <p className="text-2xl font-medium tabular-nums">{step.count}</p>
+                  <p className="text-xs text-muted-foreground">{step.label}{step.of !== null && step.of > 0 && step.count > 0 ? ` · ${pct(step.rate)}` : ""}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            <StatGrid columns={4}>
+              <Stat label="Contacted" value={String(cohort.contacted)} hint={`${cohort.notContacted} not yet contacted`} />
+              <Stat label="Audit viewers" value={`${cohort.viewed} / ${cohort.contacted}`} hint={`${pct(cohort.funnel[1]?.rate ?? null)} of contacted`} />
+              <Stat label="Meaningfully engaged" value={`${cohort.engaged} / ${cohort.viewed}`} hint={`${pct(cohort.funnel[2]?.rate ?? null)} of viewers · ≥${ENGAGEMENT_RULES.engagedSecondsMeaningful}s, ≥${ENGAGEMENT_RULES.deepScrollPercent}% depth, CTA, or interaction`} />
+              <Stat label="Replies" value={`${cohort.replied} / ${cohort.contacted}`} hint={`${cohort.meeting} meeting${cohort.meeting === 1 ? "" : "s"}`} />
+            </StatGrid>
+            <ul className="mt-5 max-w-prose space-y-2">
+              {cohort.funnel.map((step) => (
+                <li key={step.key} className="flex items-center gap-3 text-sm">
+                  <span className="w-40 shrink-0 text-muted-foreground">{step.label}</span>
+                  <FunnelBar count={step.count} max={cohort.contacted} />
+                  <span className="w-10 text-right font-medium tabular-nums">{step.count}</span>
+                  <span className="w-24 text-right text-xs text-muted-foreground tabular-nums" title={step.basis}>
+                    {step.of !== null && step.of > 0 ? `${pct(step.rate)} of ${step.of}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
+          {cohort.proposal > 0 || cohort.client > 0 ? `${cohort.proposal} proposal${cohort.proposal === 1 ? "" : "s"} · ${cohort.client} client${cohort.client === 1 ? "" : "s"} · ` : ""}
+          {earlySample ? (
+            <span className="font-medium text-foreground">Early sample — do not diagnose yet.</span>
+          ) : cohort.diagnosis.verdict === "healthy" ? (
+            <span className="inline-flex items-center gap-1"><CheckCircle2 className="size-3.5" /> {cohort.diagnosis.reason}</span>
+          ) : cohort.diagnosis.verdict === "possible_bottleneck" ? (
+            <>Possible bottleneck: <span className="font-medium text-foreground">{cohort.diagnosis.bottleneck?.replaceAll("_", " ")}</span> — {cohort.diagnosis.reason} Review {cohort.diagnosis.review.join(", ")}.</>
           ) : (
-            <>
-              <ul className="mt-1 space-y-0.5 text-sm text-muted-foreground">
-                {researchTop.map((r) => (
-                  <li key={r.prospectId}>
-                    <Link href={`/prospects/${r.prospectId}`} className="text-foreground underline-offset-2 hover:underline">{r.businessName}</Link>
-                    {r.qualityScore !== null && <span className="tabular-nums"> · score {r.qualityScore}</span>}
-                  </li>
-                ))}
-              </ul>
-              {health.researchQueue.length > researchTop.length && (
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-                    View all {health.researchQueue.length} →
-                  </summary>
-                  <ul className="mt-1 space-y-0.5 text-sm text-muted-foreground">
-                    {health.researchQueue.slice(researchTop.length).map((r) => (
-                      <li key={r.prospectId}>
-                        <Link href={`/prospects/${r.prospectId}`} className="text-foreground underline-offset-2 hover:underline">{r.businessName}</Link>
-                        {r.qualityScore !== null && <span className="tabular-nums"> · score {r.qualityScore}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </>
+            cohort.diagnosis.reason
           )}
-        </div>
+          {cohort.medianSecondsToFirstView !== null && cohort.viewed >= LATENCY_MIN_SAMPLE && (
+            <> Median time to first audit visit <span className="tabular-nums">{duration(cohort.medianSecondsToFirstView)}</span> (n={cohort.viewed}).</>
+          )}
+        </p>
       </Section>
 
-      {/* ============================== 4. The pipeline */}
-      <Section
-        title="Pipeline"
-        description={`Every active prospect in ${launchName}, ranked by commercial opportunity — not by created date. Follow-up due after ${FOLLOW_UP_RULES.silentCadenceBusinessDays} silent business days (${FOLLOW_UP_RULES.engagedCadenceBusinessDays} after audit activity — behavior raises priority, not frequency), capped at ${FOLLOW_UP_RULES.maxTouches} touches. Times in ${OPERATOR_TIMEZONE}.`}
-      >
+      {/* ===================== 5. pipeline */}
+      <Section title="Pipeline" description={<>Ranked by commercial opportunity. <Help text="Order: conversation → CTA → high authority + high intent → depth → sessions → one visit → follow-up due → contacted, silent → not contacted. Filters compose; each link keeps the others." /></>}>
         <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
           {(
             [
@@ -494,13 +521,9 @@ export default async function ProspectingDashboardPage({
           ).map(([dim, opts]) => (
             <div key={dim} className="flex flex-wrap items-center gap-1">
               <span className="mr-1 text-muted-foreground capitalize">{dim}</span>
-              <Chip href={href({ [dim]: undefined })} active={!filters[dim]}>
-                any
-              </Chip>
+              <Chip href={href({ [dim]: undefined })} active={!filters[dim]}>any</Chip>
               {opts.map((o) => (
-                <Chip key={o.key} href={href({ [dim]: o.key })} active={filters[dim] === o.key}>
-                  {o.label}
-                </Chip>
+                <Chip key={o.key} href={href({ [dim]: o.key })} active={filters[dim] === o.key}>{o.label}</Chip>
               ))}
             </div>
           ))}
@@ -536,32 +559,109 @@ export default async function ProspectingDashboardPage({
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground tabular-nums">
                       {p.engagement.postOutreachViews > 0
-                        ? `${p.engagement.sessions} session${p.engagement.sessions === 1 ? "" : "s"}${p.engagement.meaningfullyEngaged ? " · engaged" : ""}${p.engagement.repeat ? " · repeat" : ""}`
+                        ? `${p.engagement.sessions} session${p.engagement.sessions === 1 ? "" : "s"}${p.engagement.meaningfullyEngaged ? " · engaged" : ""}${p.engagement.repeat ? " · multiple sessions" : ""}`
                         : p.engagement.preOutreachViews > 0
                           ? "pre-outreach only"
                           : "—"}
                     </TableCell>
-                    <TableCell>
-                      <Badge variant={intentVariant(p.intentLabel)}>{p.intentLabel}</Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {p.sales.meeting ? "meeting" : p.sales.replied ? "replied" : p.sales.contacted ? "none" : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{p.stage.replaceAll("_", " ")}</Badge>
-                    </TableCell>
+                    <TableCell><Badge variant={intentVariant(p.intentLabel)}>{p.intentLabel}</Badge></TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{p.sales.meeting ? "meeting" : p.sales.replied ? "replied" : p.sales.contacted ? "none" : "—"}</TableCell>
+                    <TableCell><Badge variant="secondary">{p.stage.replaceAll("_", " ")}</Badge></TableCell>
                     <TableCell className="max-w-[28ch] text-xs text-muted-foreground">{p.recommendedAction}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
             {table.length > TABLE_LIMIT && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Showing the top {TABLE_LIMIT} of {table.length} — narrow with a filter.
-              </p>
+              <p className="mt-2 text-xs text-muted-foreground">Showing the top {TABLE_LIMIT} of {table.length} — narrow with a filter.</p>
             )}
           </div>
         )}
+      </Section>
+
+      {/* ===================== 6. machine health — compact when healthy */}
+      <Section title="Machine health">
+        {gmailHealthy && !capNearLimit && blocked.length === 0 ? (
+          <details>
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-sm [&::-webkit-details-marker]:hidden">
+              <CheckCircle2 className="size-4" /> Healthy · Gmail active · {health.capUsed24h}/{health.capLimit} sends (24h) · {health.scheduledPending} scheduled · {health.activeSuppressions} suppressed
+              <span className="text-xs text-muted-foreground">details</span>
+            </summary>
+            <div className="mt-3">
+              <StatGrid columns={4}>
+                <Stat label="Gmail connection" value="active" hint="token refresh verified" />
+                <Stat label="Send capacity (24h)" value={`${health.capUsed24h} / ${health.capLimit}`} hint="gmail messages transmitted in the trailing 24 hours, including follow-ups" />
+                <Stat label="Scheduled sends" value={String(health.scheduledPending)} hint="approved drafts the worker will transmit at their named time" />
+                <Stat label="Suppression list" value={String(health.activeSuppressions)} hint="opt-outs and bounces — enforced on every send, forever" />
+              </StatGrid>
+            </div>
+          </details>
+        ) : (
+          <StatGrid columns={4}>
+            <Stat label="Gmail connection" value={gmailHealthy ? "active" : (health.gmailStatus ?? "not connected").replaceAll("_", " ")} hint={gmailHealthy ? "token refresh verified" : "sends refuse until reconnected (see alert above)"} />
+            <Stat label="Send capacity (24h)" value={`${health.capUsed24h} / ${health.capLimit}`} hint={capNearLimit ? "near the cap — further gmail sends refuse until the window clears" : "gmail messages transmitted in the trailing 24 hours"} />
+            <Stat label="Blocked sends" value={String(blocked.length)} hint="parked after a transport error — see Needs review" />
+            <Stat label="Suppression list" value={String(health.activeSuppressions)} hint="opt-outs and bounces — enforced on every send, forever" />
+          </StatGrid>
+        )}
+        {c.stageDrift > 0 && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {c.stageDrift} contacted prospect{c.stageDrift === 1 ? "" : "s"} still recorded at a pre-contact stage — contact derives from the ledger, so nothing here is wrong; new sends advance the stage automatically.
+          </p>
+        )}
+      </Section>
+
+      {/* ===================== 7. backlog */}
+      <Section title="Research queue">
+        {health.researchQueue.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Every published audit has a contact — nothing to research.</p>
+        ) : (
+          <details>
+            <summary className="cursor-pointer list-none text-sm [&::-webkit-details-marker]:hidden">
+              {health.researchQueue.length} prospect{health.researchQueue.length === 1 ? "" : "s"} need{health.researchQueue.length === 1 ? "s" : ""} contact enrichment
+              <span className="ml-2 text-xs text-muted-foreground">
+                {researchTop.map((r) => r.businessName).join(" · ")}{health.researchQueue.length > researchTop.length ? " · view all →" : ""}
+              </span>
+            </summary>
+            <ul className="mt-2 space-y-0.5 text-sm text-muted-foreground">
+              {health.researchQueue.map((r) => (
+                <li key={r.prospectId}>
+                  <Link href={`/prospects/${r.prospectId}`} className="text-foreground underline-offset-2 hover:underline">{r.businessName}</Link>
+                  {r.qualityScore !== null && <span className="tabular-nums"> · score {r.qualityScore}</span>}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </Section>
+
+      {/* ===================== 8. data confidence — collapsed */}
+      <Section title="Data confidence">
+        <details>
+          <summary className="cursor-pointer list-none text-sm [&::-webkit-details-marker]:hidden">
+            {review.length > 0 ? (
+              <span className="font-medium">{review.length} attribution issue{review.length === 1 ? "" : "s"} require{review.length === 1 ? "s" : ""} review</span>
+            ) : (
+              <span className="font-medium">High confidence</span>
+            )}
+            <span className="ml-2 text-xs text-muted-foreground">human-like external views only · QA, internal traffic, and known scanner activity excluded · details</span>
+          </summary>
+          <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground tabular-nums">
+            <li>
+              {cohort.auditViews} human-like external views · {cohort.auditSessions} sessions · {cohort.auditVisitorIdentities} known browser identit{cohort.auditVisitorIdentities === 1 ? "y" : "ies"} (our QA, operator IPs, scripts, link scanners excluded)
+            </li>
+            <li>
+              {cohort.attributedLinkProspects} viewer{cohort.attributedLinkProspects === 1 ? "" : "s"} arrived via the emailed link · {cohort.unattributedProspects} unattributed external · {cohort.preOutreachViews} view{cohort.preOutreachViews === 1 ? "" : "s"} before outreach (not counted)
+            </li>
+            <li>
+              {cohort.prospectsWithAnyView} prospect{cohort.prospectsWithAnyView === 1 ? "" : "s"} with any audit view, contacted or not · {cohort.unresolvedSessions} session{cohort.unresolvedSessions === 1 ? "" : "s"} on never-contacted audits excluded from campaign metrics (no recorded send)
+            </li>
+            <li title="Mail clients prefetch images and privacy proxies fetch pixels; security scanners open links. Not a human-intent metric and not used in intent scoring.">
+              Open signal: {cohort.opens} opens on {cohort.openedProspects} prospect{cohort.openedProspects === 1 ? "" : "s"} — upper bound, diagnostics only
+            </li>
+            <li>Times shown in {OPERATOR_TIMEZONE.replace("America/", "").replace("_", " ")}.</li>
+          </ul>
+        </details>
       </Section>
     </PageShell>
   );

@@ -175,36 +175,124 @@ export function windowStart(window: Window, now: Date = new Date()): Date | null
   return new Date(now.getTime() - days * 86_400_000);
 }
 
+export interface CockpitLaunch {
+  id: string;
+  name: string;
+  prospectCount: number;
+  /** Prospects with ≥1 allowed send. */
+  contactedCount: number;
+  lastSentAt: Date | null;
+}
+
 export interface Cockpit {
   prospects: ProspectIntent[];
   cohort: CohortSummary;
   /** Contacted per the ledger but still recorded at a pre-contact stage. */
   stageDrift: number;
-  launches: { id: string; name: string; prospectCount: number }[];
+  launches: CockpitLaunch[];
+  /** The cohort the operator is most likely working: the launch with the
+   * most recent allowed send. Null when nothing has ever been sent. */
+  activeLaunchId: string | null;
+}
+
+/** Most recently contacted launch wins — derived, never configured. */
+export function pickActiveLaunch(launches: CockpitLaunch[]): string | null {
+  const sent = launches.filter((l) => l.lastSentAt !== null);
+  if (sent.length === 0) return null;
+  return sent.sort((a, b) => b.lastSentAt!.getTime() - a.lastSentAt!.getTime())[0]!.id;
 }
 
 export async function cockpit(filter: CockpitFilter = {}, now: Date = new Date()): Promise<Cockpit> {
-  const [facts, launches] = await Promise.all([
+  const [facts, launchRows] = await Promise.all([
     prospectFacts(filter),
     sql`
-      select l.id, l.name, count(p.id)::int as prospect_count
+      select l.id, l.name, count(p.id)::int as prospect_count,
+        count(p.id) filter (where exists (select 1 from prospect_outreach_sends s
+          where s.prospect_id = p.id and s.allowed))::int as contacted_count,
+        (select max(s.sent_at) from prospect_outreach_sends s
+          join prospects p2 on p2.id = s.prospect_id
+          where p2.launch_id = l.id and s.allowed) as last_sent_at
       from market_launches l
       left join prospects p on p.launch_id = l.id and p.archived_at is null
+      where l.archived_at is null
       group by l.id, l.name order by l.created_at desc
     `,
   ]);
+  const launches: CockpitLaunch[] = launchRows.map((l) => ({
+    id: l.id as string,
+    name: l.name as string,
+    prospectCount: Number(l.prospectCount ?? 0),
+    contactedCount: Number(l.contactedCount ?? 0),
+    lastSentAt: l.lastSentAt ? new Date(l.lastSentAt as Date) : null,
+  }));
   const prospects = facts.map((f) => deriveIntent(f, now)).sort(compareByPriority);
   const preContact: readonly ProspectStage[] = ["identified", "researching", "benchmarking", "qualified", "outreach_ready"];
   return {
     prospects,
     cohort: summarizeCohort(prospects, now),
     stageDrift: prospects.filter((p) => p.sales.contacted && preContact.includes(p.stage)).length,
-    launches: launches.map((l) => ({
-      id: l.id as string,
-      name: l.name as string,
-      prospectCount: Number(l.prospectCount ?? 0),
-    })),
+    launches,
+    activeLaunchId: pickActiveLaunch(launches),
   };
+}
+
+export interface UpcomingSend {
+  draftId: string;
+  prospectId: string;
+  businessName: string;
+  launchId: string;
+  subject: string | null;
+  channel: string;
+  /** Touch number = prior allowed sends + 1. */
+  touch: number;
+  scheduledAt: Date | null;
+  /** approved + scheduled → the worker sends it; approved + unscheduled →
+   * a human must press send; draft → approval required; parked → blocked. */
+  state: "auto_send" | "manual_send" | "approval_required" | "blocked";
+  error: string | null;
+}
+
+/** What the OS is about to do without the operator: approved drafts with a
+ * send time, approved drafts waiting on a human, drafts awaiting approval,
+ * and parked (blocked) sends. Read from outreach_drafts — no new tables. */
+export async function upcomingAutomation(launchId?: string): Promise<UpcomingSend[]> {
+  const rows = await sql`
+    select d.id as draft_id, d.prospect_id, p.business_name, p.launch_id, d.subject, d.channel,
+      d.scheduled_send_at, d.status, d.last_send_error,
+      (select count(*)::int from prospect_outreach_sends s
+        where s.prospect_id = p.id and s.allowed) as prior_sends
+    from outreach_drafts d
+    join prospects p on p.id = d.prospect_id
+    where p.archived_at is null and d.sent_recorded_at is null
+      and d.status in ('draft', 'approved')
+      and (${launchId ?? null}::uuid is null or p.launch_id = ${launchId ?? null})
+    order by d.scheduled_send_at asc nulls last, d.created_at asc
+    limit 50
+  `;
+  return rows.map((r) => {
+    const status = r.status as string;
+    const parked = r.lastSendError !== null && r.scheduledSendAt === null;
+    const state: UpcomingSend["state"] =
+      status === "draft"
+        ? "approval_required"
+        : parked
+          ? "blocked"
+          : r.scheduledSendAt
+            ? "auto_send"
+            : "manual_send";
+    return {
+      draftId: r.draftId as string,
+      prospectId: r.prospectId as string,
+      businessName: r.businessName as string,
+      launchId: r.launchId as string,
+      subject: (r.subject as string | null) ?? null,
+      channel: r.channel as string,
+      touch: Number(r.priorSends ?? 0) + 1,
+      scheduledAt: r.scheduledSendAt ? new Date(r.scheduledSendAt as Date) : null,
+      state,
+      error: (r.lastSendError as string | null) ?? null,
+    };
+  });
 }
 
 /** Facts + derivations for one prospect (detail page). */
