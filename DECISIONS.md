@@ -2556,3 +2556,26 @@ above one deep read. Decisions:
 - **"Contacted = allowed" was correctly computed but mislabeled.** Allowed
   rows are written after dispatch succeeds in the same transaction, so the
   label now says "transmitted".
+
+## 2026-08-21 — Cockpit QA: count less, not more
+
+A read-only QA pass against production found every "Act today" entry was
+our own traffic (operator IPs, `Claude-User`, a same-IP two-UA scanner
+pair 252 s after a send). Rules tightened rather than data patched:
+
+- **Beacon-less views are one visit per 30 minutes, never "repeat".** Only
+  beacon sessions are individually trusted. A scanner burst collapses to
+  one unverified session; a genuine no-JS return next day still counts.
+- **Scanner window 120 s → 600 s.** Found live: mail-provider scanners
+  fetch links up to five minutes after delivery. A human clicking inside
+  ten minutes is still seen through the beacon sessions that follow.
+- **AI agents are scripts.** `claude|chatgpt|openai|anthropic|perplexity|
+  gptbot` join the excluded user agents — an assistant reading the audit
+  is not the prospect reading it.
+- **An allowed send advances the recorded stage to `contacted`** inside
+  the send transaction, with a history row. The ledger already was the
+  truth; the stage column now follows it instead of a hand edit.
+- **The answers page keeps the branded key.** Otherwise one reader =
+  two "sessions", the second unattributed.
+- Early-sample flag also fires under two days of cohort age; machine-health
+  queries run sequentially (five concurrent ones tripped the pooler cap).

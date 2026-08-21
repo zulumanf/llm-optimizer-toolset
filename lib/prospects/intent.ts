@@ -191,6 +191,8 @@ export const DIAGNOSTIC_MIN_CONTACTED = 10;
 export const DIAGNOSTIC_MIN_COHORT_AGE_DAYS = 2;
 
 const DAY_MS = 86_400_000;
+/** Beacon-less views closer together than this are one visit. */
+export const NO_BEACON_SESSION_GAP_MS = 30 * 60_000;
 
 // Sales facts from the stage ladder. audit_sent / audit_viewed are NOT
 // replies — the old dashboard counted them as such.
@@ -336,8 +338,23 @@ export function summarizeEngagement(
   let cta = false;
   let first: Date | null = null;
   let last: Date | null = null;
-  post.forEach((v, i) => {
-    const key = v.sessionId ?? `view:${i}:${v.viewedAt.getTime()}`;
+  // Beacon-less views (no JS ran: bounces, link scanners, no-script
+  // fetches) must not each become a "session" — QA 2026-08-21 saw one IP
+  // hit twice 74 s apart with two OS user agents and read as "repeat".
+  // They collapse into one unverified session per NO_BEACON_SESSION_GAP_MS
+  // gap; only beacon sessions are individually trusted.
+  let lastNoBeaconAt = -Infinity;
+  let noBeaconBucket = 0;
+  const sorted = [...post].sort((a, b) => a.viewedAt.getTime() - b.viewedAt.getTime());
+  sorted.forEach((v) => {
+    let key: string;
+    if (v.sessionId) key = v.sessionId;
+    else {
+      const t = v.viewedAt.getTime();
+      if (t - lastNoBeaconAt > NO_BEACON_SESSION_GAP_MS) noBeaconBucket += 1;
+      lastNoBeaconAt = t;
+      key = `nobeacon:${noBeaconBucket}`;
+    }
     sessionKeys.add(key);
     if (v.visitorId) visitors.add(v.visitorId);
     else unknownIdentity += 1;

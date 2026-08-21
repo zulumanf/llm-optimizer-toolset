@@ -30,13 +30,16 @@ import {
 /** Script/bot user agents recorded on audit views by our own QA sweeps and
  * crawlers. A NULL user agent is also treated as non-human. */
 const SCRIPT_UA =
-  "(curl|wget|python|node|undici|go-http|okhttp|bot|crawler|spider|headless|monitor|preview|slack|facebookexternalhit|whatsapp|telegram)";
+  "(curl|wget|python|node|undici|go-http|okhttp|bot|crawler|spider|headless|monitor|preview|slack|facebookexternalhit|whatsapp|telegram|claude|chatgpt|openai|anthropic|perplexity|gptbot|linkcheck|httpclient|java/|axios)";
 
 /** Mail-provider link scanners fetch every URL in a delivered email within
  * seconds, wearing real-browser user agents (found live: audit "views" 7-40
- * seconds after each send, multiple IPs). A view inside this window after a
- * send to the same prospect is counted as a scan, not interest. */
-export const SCANNER_WINDOW_SECONDS = 120;
+ * seconds after each send, multiple IPs; QA 2026-08-21 found a same-IP pair
+ * with two different OS user agents at 252 s and 326 s). A view inside this
+ * window after a send to the same prospect is counted as a scan, not
+ * interest — a human who clicks inside ten minutes is still caught by the
+ * beacon-bearing sessions that follow. */
+export const SCANNER_WINDOW_SECONDS = 600;
 
 const operatorIps = (): string[] =>
   (process.env.INTERNAL_VIEW_IPS ?? "")
@@ -283,8 +286,9 @@ export interface MachineHealth {
 }
 
 export async function machineHealth(): Promise<MachineHealth> {
-  const [[row], parked, [draftCount], expiring, research] = await Promise.all([
-    sql`
+  // Sequential on purpose: five concurrent queries per page load tripped
+  // the pooler's session cap (EMAXCONNSESSION) alongside the worker.
+  const [row] = await sql`
       select
         (select count(*)::int from prospect_outreach_sends
           where channel = 'gmail' and allowed and sent_at > now() - interval '24 hours') as cap_used,
@@ -295,28 +299,28 @@ export async function machineHealth(): Promise<MachineHealth> {
           where status = 'approved' and sent_recorded_at is null
             and scheduled_send_at is not null) as scheduled_pending,
         (select count(*)::int from suppression_entries where lifted_at is null) as suppressions
-    `,
-    sql`
+    `;
+  const parked = await sql`
       select p.id as prospect_id, p.business_name, d.last_send_error as error
       from outreach_drafts d join prospects p on p.id = d.prospect_id
       where d.status = 'approved' and d.sent_recorded_at is null
         and d.last_send_error is not null and d.scheduled_send_at is null
         and p.archived_at is null
       limit 8
-    `,
-    sql`
+    `;
+  const [draftCount] = await sql`
       select count(*)::int as n from outreach_drafts d
       join prospects p on p.id = d.prospect_id
       where d.status = 'draft' and p.archived_at is null
-    `,
-    sql`
+    `;
+  const expiring = await sql`
       select p.id as prospect_id, p.business_name, a.expires_at
       from prospect_audits a join prospects p on p.id = a.prospect_id
       where a.status = 'published' and p.archived_at is null
         and a.expires_at between now() and now() + interval '7 days'
       order by a.expires_at asc limit 10
-    `,
-    sql`
+    `;
+  const research = await sql`
       select p.id as prospect_id, p.business_name,
         coalesce(p.qualification_override, p.qualification_score) as quality_score
       from prospects p
@@ -327,8 +331,7 @@ export async function machineHealth(): Promise<MachineHealth> {
           where c.prospect_id = p.id and c.archived_at is null
             and not c.do_not_contact and c.email is not null)
       order by coalesce(p.qualification_override, p.qualification_score) desc nulls last, p.business_name
-    `,
-  ]);
+    `;
   return {
     capUsed24h: Number(row?.capUsed ?? 0),
     capLimit: GMAIL_DAILY_SEND_CAP,

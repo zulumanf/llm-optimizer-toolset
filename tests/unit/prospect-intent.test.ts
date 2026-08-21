@@ -161,14 +161,25 @@ describe("intent score — known answers", () => {
     expect(p.intentScore).toBe(2 + INTENT_WEIGHTS.repeatSession + INTENT_WEIGHTS.possibleSecondVisitor);
   });
 
-  it("views without a session id each count as their own session; missing identities are reported", () => {
-    const p = deriveIntent(
-      facts({ views: [view({ sessionId: null, visitorId: null }), view({ sessionId: null, visitorId: null, viewedAt: h(2) })] }),
+  it("beacon-less views collapse into one session per 30-minute gap — scanner pairs never read as repeat", () => {
+    const pair = deriveIntent(
+      facts({ views: [view({ sessionId: null, visitorId: null }), view({ sessionId: null, visitorId: null, viewedAt: new Date(h(0.15).getTime() + 74_000) })] }),
       NOW
     );
-    expect(p.engagement.sessions).toBe(2);
-    expect(p.engagement.visitorIdentities).toBe(0);
-    expect(p.engagement.unknownIdentityViews).toBe(2);
+    expect(pair.engagement.sessions).toBe(1);
+    expect(pair.engagement.repeat).toBe(false);
+    expect(pair.engagement.visitorIdentities).toBe(0);
+    expect(pair.engagement.unknownIdentityViews).toBe(2);
+    const nextDay = deriveIntent(
+      facts({ views: [view({ sessionId: null, visitorId: null }), view({ sessionId: null, visitorId: null, viewedAt: h(26) })] }),
+      NOW
+    );
+    expect(nextDay.engagement.sessions).toBe(2);
+    const mixed = deriveIntent(
+      facts({ views: [view({ sessionId: null, visitorId: null }), view({ sessionId: "s9", viewedAt: new Date(h(0.15).getTime() + 60_000) })] }),
+      NOW
+    );
+    expect(mixed.engagement.sessions).toBe(2);
   });
 
   it("CTA click: +3 and tier 2, reach out promptly", () => {

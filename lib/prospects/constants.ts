@@ -123,6 +123,16 @@ export const CONFLICT_GATE_STAGE = "outreach_ready" satisfies ProspectStage;
  * forbidden for do-not-contact prospects. */
 export const CONTACT_GATE_STAGE = "contacted" satisfies ProspectStage;
 
+/** Stages before any outreach — an allowed send advances these to
+ * CONTACT_GATE_STAGE automatically (spec 098). */
+export const PRE_CONTACT_STAGES = [
+  "identified",
+  "researching",
+  "benchmarking",
+  "qualified",
+  "outreach_ready",
+] as const satisfies readonly ProspectStage[];
+
 export const CONFLICT_STATUSES = [
   "unchecked",
   "clear",

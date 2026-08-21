@@ -29,6 +29,7 @@ import { cockpit, machineHealth, WINDOWS, type Window } from "@/lib/prospects/da
 import { formatOperatorTime } from "@/lib/format";
 import {
   DIAGNOSTIC_MIN_CONTACTED,
+  DIAGNOSTIC_MIN_COHORT_AGE_DAYS,
   ENGAGEMENT_RULES,
   FOLLOW_UP_RULES,
   LATENCY_MIN_SAMPLE,
@@ -186,7 +187,10 @@ export default async function ProspectingDashboardPage({
   const gmailHealthy = health.gmailStatus === "active";
   const capNearLimit = health.capUsed24h >= health.capLimit - 3;
   const actToday = c.prospects.filter((p) => p.priorityTier <= 6).slice(0, 8);
-  const earlySample = cohort.contacted < DIAGNOSTIC_MIN_CONTACTED;
+  const earlySample =
+    cohort.contacted < DIAGNOSTIC_MIN_CONTACTED ||
+    cohort.cohortAgeDays === null ||
+    cohort.cohortAgeDays < DIAGNOSTIC_MIN_COHORT_AGE_DAYS;
   const batchAge =
     cohort.cohortAgeDays === null
       ? null

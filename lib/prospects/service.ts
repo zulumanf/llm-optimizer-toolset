@@ -47,6 +47,8 @@ import {
   GMAIL_DAILY_SEND_CAP,
   SCHEDULED_SEND_MAX_DAYS_AHEAD,
   UNATTENDED_SEND_BLOCKED_STAGES,
+  CONTACT_GATE_STAGE,
+  PRE_CONTACT_STAGES,
 } from "@/lib/prospects/constants";
 import { validateTransition } from "@/lib/prospects/stages";
 import {
@@ -2305,6 +2307,25 @@ export async function sendProspectDraft(
         update outreach_drafts set sent_recorded_at = now(), sent_recorded_by = ${user.id}
         where id = ${draft.id}
       `;
+      // A transmitted send is a machine-observable fact: the recorded stage
+      // follows the ledger instead of waiting for a hand edit (spec 098 —
+      // 12 contacted prospects sat at "identified" for a day). Only the
+      // pre-contact stages move; later stages are the operator's.
+      const [stageRow] = await tx`
+        select stage from prospects where id = ${draft.prospectId}
+      `;
+      const currentStage = stageRow?.stage as ProspectStage | undefined;
+      if (currentStage && (PRE_CONTACT_STAGES as readonly string[]).includes(currentStage)) {
+        await tx`
+          update prospects set stage = ${CONTACT_GATE_STAGE}, updated_at = now()
+          where id = ${draft.prospectId}
+        `;
+        await tx`
+          insert into prospect_stage_history (prospect_id, from_stage, to_stage, reason, changed_by)
+          values (${draft.prospectId}, ${currentStage}, ${CONTACT_GATE_STAGE},
+            ${"Advanced automatically: allowed send recorded in the ledger"}, ${user.id})
+        `;
+      }
       await writeAudit(tx, {
         userId: user.id,
         action: "prospect.draft_sent",
