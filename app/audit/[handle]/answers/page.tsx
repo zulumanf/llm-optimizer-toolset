@@ -9,7 +9,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { getAuditByToken } from "@/lib/prospects/service";
+import { getAuditPageByToken } from "@/lib/prospects/service";
+import { EngagementBeacon } from "@/components/audit/engagement-beacon";
 import { getCurrentUserOrNull, isStaff } from "@/lib/auth";
 import { TranscriptAnswer } from "@/components/audit/transcript-answer";
 
@@ -24,17 +25,20 @@ export default async function AuditAnswersPage({
   // The segment is [handle] so the branded sibling [handle]/[key] can
   // coexist (Next.js requires one param name per level). For this legacy
   // route the handle IS the 43-char access token; URLs are unchanged.
-  params: Promise<{ handle: string }>;
+  params: Promise<{ handle: string; linkKey?: string }>;
 }) {
-  const { handle: token } = await params;
+  const { handle: token, linkKey } = await params;
   const hdrs = await headers();
   const viewer = await getCurrentUserOrNull();
-  const snapshot = await getAuditByToken(token, {
+  const page = await getAuditPageByToken(token, {
     ip: hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: hdrs.get("user-agent"),
     internal: viewer !== null && isStaff(viewer),
+    linkKey: linkKey ?? null,
+    referrer: hdrs.get("referer"),
   });
-  if (!snapshot?.transcripts || snapshot.transcripts.length === 0) notFound();
+  const snapshot = page?.snapshot;
+  if (!page || !snapshot?.transcripts || snapshot.transcripts.length === 0) notFound();
 
   // Completeness is claimed only when provable (launch fix 2026-08-14):
   // "all N answers" appears solely when the snapshot holds every qualifying
@@ -57,6 +61,7 @@ export default async function AuditAnswersPage({
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
+      <EngagementBeacon viewId={page.viewId} initialEvidence="answers" />
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         Appendix · {complete ? "every captured answer" : "captured answers"}, verbatim
         · prepared for {snapshot.prospectName}
