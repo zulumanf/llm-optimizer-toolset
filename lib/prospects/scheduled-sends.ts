@@ -168,6 +168,7 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
       draftId: draft.id,
       channel: "gmail",
       businessPurpose: draft.businessPurpose ?? "",
+      unattended: true,
     });
 
     if (result.ok) {

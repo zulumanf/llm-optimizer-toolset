@@ -8,10 +8,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Section, Stat, StatGrid } from "@/components/layout/page";
 import type { TimelineEvent } from "@/lib/prospects/dashboard";
+import { formatOperatorTime as when } from "@/lib/format";
 import { INTENT_WEIGHTS, type ProspectIntent } from "@/lib/prospects/intent";
-
-const when = (d: Date | null): string =>
-  d ? new Date(d).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
 
 const duration = (seconds: number | null): string => {
   if (seconds === null) return "—";
@@ -59,7 +57,7 @@ export function AuditEngagementSection({
         <StatGrid columns={4}>
           <Stat label={e.outsideLedger ? "First external view" : "First post-outreach view"} value={when(e.firstPostOutreachViewAt)} hint={e.secondsToFirstView !== null ? `${duration(e.secondsToFirstView)} after the first send (${when(s.firstSentAt)})` : e.outsideLedger ? "no allowed send in the ledger" : `first send ${when(s.firstSentAt)}`} />
           <Stat label="Last activity" value={when(e.lastActivityAt)} hint={e.preOutreachViews > 0 ? `${e.preOutreachViews} view(s) before outreach not counted` : undefined} />
-          <Stat label="Sessions" value={String(e.sessions)} hint={e.repeat ? "repeat activity on this audit" : e.sessions === 1 ? "single visit" : "none"} />
+          <Stat label="Sessions" value={String(e.sessions)} hint={e.repeat ? `multiple sessions · ${e.visitorIdentities} known browser identit${e.visitorIdentities === 1 ? "y" : "ies"} — not a claim the same person returned` : e.sessions === 1 ? "single visit" : "none"} />
           <Stat
             label="Browser identities"
             value={e.visitorIdentities === 0 ? (e.postOutreachViews > 0 ? "unknown" : "—") : String(e.visitorIdentities)}
@@ -68,7 +66,7 @@ export function AuditEngagementSection({
           <Stat label="Engaged time" value={duration(e.engagedSeconds) === "0s" ? "not measured" : duration(e.engagedSeconds)} hint="active, tab-visible seconds summed across sessions" />
           <Stat label="Max scroll" value={e.maxScrollPercent > 0 ? `${e.maxScrollPercent}%` : "not measured"} />
           <Stat label="Competitor section" value={e.competitorSectionViewed ? "Viewed" : "Not viewed"} hint={e.authoritySectionViewed ? "track-record section opened" : undefined} />
-          <Stat label="Evidence expanded · CTA" value={`${yesNo(e.evidenceExpanded)} · ${yesNo(e.ctaClicked)}`} hint={`repeat +${INTENT_WEIGHTS.repeatSession}, CTA +${INTENT_WEIGHTS.ctaClicked}, reply +${INTENT_WEIGHTS.reply} in the score`} />
+          <Stat label="Evidence expanded · CTA" value={`${yesNo(e.evidenceExpanded)} · ${yesNo(e.ctaClicked)}`} hint={`multiple sessions +${INTENT_WEIGHTS.repeatSession}, CTA +${INTENT_WEIGHTS.ctaClicked}, reply +${INTENT_WEIGHTS.reply} in the score; High intent needs meaningful engagement or a CTA`} />
         </StatGrid>
       )}
 

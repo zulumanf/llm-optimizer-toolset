@@ -2527,3 +2527,55 @@ denominator is the ledger.
 **Gmail reconnect stays CLI-only for now** (`scripts/connect-gmail.ts`);
 the dashboard states it plainly in a P0 banner rather than pretending an
 in-app flow exists.
+
+## 2026-08-20 — Intent guardrails before automation (spec 099)
+
+An operator review caught the cockpit promoting Team Moza's four
+unattributed sessions to "High intent" and ranking two shallow sessions
+above one deep read. Decisions:
+
+- **Unattributed activity is `Unresolved`, never intent.** A prospect
+  with no transmitted send cannot carry an intent label, whatever it
+  scores; it ranks for a human to fix the ledger. The fix for a manual
+  send is recording it through the manual channel — until Gmail sent-mail
+  reconciliation exists (deferred, named in 099).
+- **Strong labels need a verified strong signal.** `High intent` /
+  `Engaged` require meaningful engagement or a CTA. Session weights fell
+  to +1/+1 so pageviews alone top out at `Interested`.
+- **Cadence in operator business days, cap 5 touches.** Behavior raises
+  priority and personalization, not frequency: 3 silent / 2 after
+  activity. Still recommendation only.
+- **Unattended sends are stage-gated; human sends are not.** The worker
+  passes `unattended: true` and the gate refuses past a recorded reply or
+  exit. Human sends stay free because the ladder sends the audit after a
+  reply. This is the minimum reply safety; Gmail inbound ingestion is a
+  prerequisite for autonomous follow-ups and is not built.
+- **Times render in `OPERATOR_TIMEZONE` with the zone spelled out.** The
+  server is UTC; an unzoned `toLocaleString` showed 3:05 PM for an
+  11:05 AM ET send. Storage remains UTC.
+- **"Contacted = allowed" was correctly computed but mislabeled.** Allowed
+  rows are written after dispatch succeeds in the same transaction, so the
+  label now says "transmitted".
+
+## 2026-08-21 — Cockpit QA: count less, not more
+
+A read-only QA pass against production found every "Act today" entry was
+our own traffic (operator IPs, `Claude-User`, a same-IP two-UA scanner
+pair 252 s after a send). Rules tightened rather than data patched:
+
+- **Beacon-less views are one visit per 30 minutes, never "repeat".** Only
+  beacon sessions are individually trusted. A scanner burst collapses to
+  one unverified session; a genuine no-JS return next day still counts.
+- **Scanner window 120 s → 600 s.** Found live: mail-provider scanners
+  fetch links up to five minutes after delivery. A human clicking inside
+  ten minutes is still seen through the beacon sessions that follow.
+- **AI agents are scripts.** `claude|chatgpt|openai|anthropic|perplexity|
+  gptbot` join the excluded user agents — an assistant reading the audit
+  is not the prospect reading it.
+- **An allowed send advances the recorded stage to `contacted`** inside
+  the send transaction, with a history row. The ledger already was the
+  truth; the stage column now follows it instead of a hand edit.
+- **The answers page keeps the branded key.** Otherwise one reader =
+  two "sessions", the second unattributed.
+- Early-sample flag also fires under two days of cohort age; machine-health
+  queries run sequentially (five concurrent ones tripped the pooler cap).

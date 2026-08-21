@@ -46,6 +46,9 @@ import {
   BROKERAGE_SEND_CAP_30D,
   GMAIL_DAILY_SEND_CAP,
   SCHEDULED_SEND_MAX_DAYS_AHEAD,
+  UNATTENDED_SEND_BLOCKED_STAGES,
+  CONTACT_GATE_STAGE,
+  PRE_CONTACT_STAGES,
 } from "@/lib/prospects/constants";
 import { validateTransition } from "@/lib/prospects/stages";
 import {
@@ -2008,6 +2011,9 @@ export async function sendProspectDraft(
       draftId: z.string().uuid(),
       channel: z.string().min(1),
       businessPurpose: z.string().trim().min(10).max(1000),
+      /** True when a worker, not a human, is dispatching (scheduled send).
+       * Adds the conversation-state gate: no transmit after a recorded reply. */
+      unattended: z.boolean().optional(),
     })
     .safeParse(raw);
   if (!parsed.success) {
@@ -2067,6 +2073,22 @@ export async function sendProspectDraft(
         prospect.doNotContact ? "The prospect account is flagged do-not-contact." : "clear"
       );
       check("contact_do_not_contact", contactBlocked === null, contactBlocked ?? "clear");
+
+      // Spec 099: a queued draft must never transmit past a recorded reply
+      // or exit. Human sends stay free (the ladder sends the audit after a
+      // reply); the worker is not a human.
+      const stageBlocksUnattended = (
+        UNATTENDED_SEND_BLOCKED_STAGES as readonly ProspectStage[]
+      ).includes(prospect.stage);
+      check(
+        "conversation_state",
+        !(input.unattended && stageBlocksUnattended),
+        input.unattended
+          ? stageBlocksUnattended
+            ? `Prospect stage is "${prospect.stage}" — an unattended send would continue a sequence past a recorded reply or exit.`
+            : `stage "${prospect.stage}" allows unattended outreach`
+          : "human-initiated send — not gated on stage"
+      );
 
       if ((email || phone) && !prospect.doNotContact && contactBlocked === null) {
         const suppression = await checkSuppression({ email, phone, projectId: null });
@@ -2285,6 +2307,25 @@ export async function sendProspectDraft(
         update outreach_drafts set sent_recorded_at = now(), sent_recorded_by = ${user.id}
         where id = ${draft.id}
       `;
+      // A transmitted send is a machine-observable fact: the recorded stage
+      // follows the ledger instead of waiting for a hand edit (spec 098 —
+      // 12 contacted prospects sat at "identified" for a day). Only the
+      // pre-contact stages move; later stages are the operator's.
+      const [stageRow] = await tx`
+        select stage from prospects where id = ${draft.prospectId}
+      `;
+      const currentStage = stageRow?.stage as ProspectStage | undefined;
+      if (currentStage && (PRE_CONTACT_STAGES as readonly string[]).includes(currentStage)) {
+        await tx`
+          update prospects set stage = ${CONTACT_GATE_STAGE}, updated_at = now()
+          where id = ${draft.prospectId}
+        `;
+        await tx`
+          insert into prospect_stage_history (prospect_id, from_stage, to_stage, reason, changed_by)
+          values (${draft.prospectId}, ${currentStage}, ${CONTACT_GATE_STAGE},
+            ${"Advanced automatically: allowed send recorded in the ledger"}, ${user.id})
+        `;
+      }
       await writeAudit(tx, {
         userId: user.id,
         action: "prospect.draft_sent",

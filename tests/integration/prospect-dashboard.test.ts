@@ -7,6 +7,7 @@
  */
 import { execSync } from "node:child_process";
 import { join } from "node:path";
+import { startOfOperatorDay } from "@/lib/prospects/intent";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedTestActors } from "../helpers/actors";
 
@@ -172,14 +173,17 @@ describe.skipIf(!TEST_URL)("prospecting dashboard (integration)", () => {
     expect(first!.engagement.possibleAdditionalVisitor).toBe(true);
     expect(first!.engagement.attribution).toBe("attributed_link");
     expect(first!.intentLabel).toBe("Engaged");
-    expect(first!.intentScore).toBe(12);
+    expect(first!.intentScore).toBe(10); // spec 099: multiple sessions +1, not +3
     expect(second!.businessName).toBe("Cold Co");
     expect(second!.priorityTier).toBe(9);
   });
 
   it("the window lens cuts sends and views; the timeline labels pre-outreach and repeat visits", async () => {
     const today = await dash.cockpit({ window: "today" });
-    expect(today.cohort.contacted).toBe(1);
+    // The seeded send is an hour old; "today" is the operator's (ET) day,
+    // so within the first hour after midnight ET it legitimately falls out.
+    const sentAt = new Date(Date.now() - 3_600_000);
+    expect(today.cohort.contacted).toBe(sentAt >= startOfOperatorDay(new Date()) ? 1 : 0);
     const timeline = await dash.prospectTimeline(P1);
     const labels = timeline.map((t) => t.label);
     expect(labels[0]).toBe("Audit visit (before outreach)");

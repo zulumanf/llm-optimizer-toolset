@@ -24,5 +24,5 @@ export default async function BrandedAuditPage({
   if (slug !== resolved.canonicalSlug) {
     permanentRedirect(`/audit/${resolved.canonicalSlug}/${key}`);
   }
-  return AuditTokenPage({ params: Promise.resolve({ handle: resolved.token, linkKey: key }) });
+  return AuditTokenPage({ params: Promise.resolve({ handle: resolved.token, linkKey: key, slug: resolved.canonicalSlug }) });
 }

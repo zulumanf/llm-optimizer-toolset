@@ -26,9 +26,14 @@ import {
   StatGrid,
 } from "@/components/layout/page";
 import { cockpit, machineHealth, WINDOWS, type Window } from "@/lib/prospects/dashboard";
+import { formatOperatorTime } from "@/lib/format";
 import {
   DIAGNOSTIC_MIN_CONTACTED,
+  DIAGNOSTIC_MIN_COHORT_AGE_DAYS,
+  ENGAGEMENT_RULES,
   FOLLOW_UP_RULES,
+  LATENCY_MIN_SAMPLE,
+  OPERATOR_TIMEZONE,
   PRIORITY_TIERS,
   type IntentLabel,
   type ProspectIntent,
@@ -49,11 +54,12 @@ const INTENT_FILTERS: { key: string; label: string; test: (p: ProspectIntent) =>
   { key: "cold", label: "Cold", test: (p) => p.intentLabel === "Cold" },
   { key: "interested", label: "Interested+", test: (p) => ["Interested", "High intent", "Engaged", "Opportunity"].includes(p.intentLabel) },
   { key: "high", label: "High intent+", test: (p) => ["High intent", "Engaged", "Opportunity"].includes(p.intentLabel) },
+  { key: "unresolved", label: "Unresolved", test: (p) => p.intentLabel === "Unresolved" },
 ];
 const ACTIVITY_FILTERS: { key: string; label: string; test: (p: ProspectIntent) => boolean }[] = [
   { key: "never", label: "Never viewed", test: (p) => p.engagement.postOutreachViews === 0 },
   { key: "viewed", label: "Viewed", test: (p) => p.engagement.postOutreachViews > 0 },
-  { key: "repeat", label: "Repeat", test: (p) => p.engagement.repeat },
+  { key: "repeat", label: "Multiple sessions", test: (p) => p.engagement.repeat },
   { key: "deep", label: "Deep engagement", test: (p) => p.engagement.meaningfullyEngaged },
   { key: "cta", label: "CTA", test: (p) => p.engagement.ctaClicked },
 ];
@@ -71,10 +77,7 @@ const SALES_FILTERS: { key: string; label: string; test: (p: ProspectIntent) => 
   { key: "lost", label: "Lost", test: (p) => p.sales.lost },
 ];
 
-const when = (d: Date | null | undefined): string =>
-  d
-    ? new Date(d).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
-    : "—";
+const when = formatOperatorTime;
 
 const duration = (seconds: number | null): string => {
   if (seconds === null) return "—";
@@ -91,7 +94,7 @@ const pct = (rate: number | null): string => (rate === null ? "—" : `${Math.ro
 const intentVariant = (label: IntentLabel): "default" | "secondary" | "outline" =>
   label === "Opportunity" || label === "Engaged" || label === "High intent"
     ? "default"
-    : label === "Cold"
+    : label === "Cold" || label === "Unresolved"
       ? "outline"
       : "secondary";
 
@@ -106,7 +109,7 @@ function activityFacts(p: ProspectIntent): string {
         : "not contacted";
   }
   const parts = [`${e.sessions} external session${e.sessions === 1 ? "" : "s"}`];
-  if (e.repeat) parts.push("repeat activity");
+  if (e.repeat) parts.push("multiple sessions");
   if (e.possibleAdditionalVisitor) parts.push(`${e.visitorIdentities} browser identities — possible additional visitor`);
   if (e.engagedSeconds > 0) parts.push(`engaged ${duration(e.engagedSeconds)}`);
   if (e.maxScrollPercent > 0) parts.push(`${e.maxScrollPercent}% depth`);
@@ -115,7 +118,7 @@ function activityFacts(p: ProspectIntent): string {
   if (e.ctaClicked) parts.push("CTA clicked");
   parts.push(
     e.outsideLedger
-      ? "no recorded send — unattributed"
+      ? "no recorded send — attribution unresolved"
       : e.attribution === "attributed_link"
         ? "via emailed link"
         : "unattributed external"
@@ -169,7 +172,10 @@ export default async function ProspectingDashboardPage({
   const { c, health } = data;
   const { cohort } = c;
   const launchName = c.launches.find((l) => l.id === launchId)?.name ?? "All markets";
-  const windowLabel = WINDOWS.find((w) => w.key === window)?.label ?? "Batch";
+  // "Batch" only names a cohort once a launch is chosen; across all markets
+  // it is every recorded send (spec 099).
+  const windowLabel =
+    window === "batch" && !launchId ? "all recorded sends" : (WINDOWS.find((w) => w.key === window)?.label ?? "Batch");
   const href = (patch: Partial<Filters>): string => {
     const q = new URLSearchParams();
     const merged = { ...filters, ...patch };
@@ -181,7 +187,10 @@ export default async function ProspectingDashboardPage({
   const gmailHealthy = health.gmailStatus === "active";
   const capNearLimit = health.capUsed24h >= health.capLimit - 3;
   const actToday = c.prospects.filter((p) => p.priorityTier <= 6).slice(0, 8);
-  const earlySample = cohort.contacted < DIAGNOSTIC_MIN_CONTACTED;
+  const earlySample =
+    cohort.contacted < DIAGNOSTIC_MIN_CONTACTED ||
+    cohort.cohortAgeDays === null ||
+    cohort.cohortAgeDays < DIAGNOSTIC_MIN_COHORT_AGE_DAYS;
   const batchAge =
     cohort.cohortAgeDays === null
       ? null
@@ -255,7 +264,7 @@ export default async function ProspectingDashboardPage({
       {/* ============================== 1. Who needs my attention? */}
       <Section
         title="Act today"
-        description="High-value prospects showing the strongest behavior, ranked: conversation → CTA → high authority + high intent → repeat activity → deep engagement → one visit. Facts describe what the audit page received, never who opened it."
+        description="High-value prospects showing the strongest behavior, ranked: conversation → CTA → high authority + high intent → deep engagement → multiple sessions / unresolved attribution → one visit. Facts describe what the audit page received, never who opened it."
       >
         {actToday.length === 0 ? (
           <EmptyState
@@ -303,7 +312,7 @@ export default async function ProspectingDashboardPage({
         description={
           <>
             {batchAge ? `Batch age: ${batchAge}. ` : "No sends in this window. "}
-            Contacted = allowed sends in the ledger — never the stage field alone.
+            Contacted = transmitted sends in the ledger (gmail/mock dispatched, or a human-recorded manual send) — never the stage field alone, never approved or scheduled drafts.
             Viewers = contacted prospects whose audit received ≥1 human-like external view after the first send.
           </>
         }
@@ -318,7 +327,7 @@ export default async function ProspectingDashboardPage({
           <Stat
             label="Meaningfully engaged"
             value={`${cohort.engaged} / ${cohort.viewed}`}
-            hint={`${pct(cohort.funnel[2]?.rate ?? null)} of viewers · ≥30s engaged, ≥75% depth, evidence, competitor section, or CTA`}
+            hint={`${pct(cohort.funnel[2]?.rate ?? null)} of viewers · ≥${ENGAGEMENT_RULES.engagedSecondsMeaningful}s engaged, ≥${ENGAGEMENT_RULES.deepScrollPercent}% depth, CTA, or an interaction with ≥${ENGAGEMENT_RULES.interactionMinEngagedSeconds}s engaged`}
           />
           <Stat
             label="Replies"
@@ -341,8 +350,12 @@ export default async function ProspectingDashboardPage({
         </ul>
         <p className="mt-3 max-w-[65ch] text-xs text-muted-foreground">
           {earlySample && <span className="font-medium text-foreground">Early sample — directional only. </span>}
-          Hover a rate for its basis. Median time from first send to first qualifying audit visit:{" "}
-          <span className="tabular-nums">{duration(cohort.medianSecondsToFirstView)}</span>.
+          Hover a rate for its basis.{" "}
+          {cohort.medianSecondsToFirstView === null
+            ? "No qualifying audit visit yet."
+            : cohort.viewed >= LATENCY_MIN_SAMPLE
+              ? <>Median time from first send to first qualifying audit visit: <span className="tabular-nums">{duration(cohort.medianSecondsToFirstView)}</span> · n={cohort.viewed}.</>
+              : <>Time to first view: <span className="tabular-nums">{duration(cohort.medianSecondsToFirstView)}</span> · n={cohort.viewed} — no median until {LATENCY_MIN_SAMPLE} viewers.</>}
         </p>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
@@ -375,7 +388,8 @@ export default async function ProspectingDashboardPage({
                 {cohort.attributedLinkProspects} viewer{cohort.attributedLinkProspects === 1 ? "" : "s"} arrived via the emailed link · {cohort.unattributedProspects} unattributed external · {cohort.preOutreachViews} view{cohort.preOutreachViews === 1 ? "" : "s"} before outreach (not counted)
               </li>
               <li>
-                {cohort.prospectsWithAnyView} prospect{cohort.prospectsWithAnyView === 1 ? "" : "s"} with any audit view, contacted or not
+                {cohort.prospectsWithAnyView} prospect{cohort.prospectsWithAnyView === 1 ? "" : "s"} with any audit view, contacted or not ·{" "}
+                {cohort.unresolvedSessions} session{cohort.unresolvedSessions === 1 ? "" : "s"} on never-contacted audits excluded from campaign metrics (no recorded send)
               </li>
               <li title="Mail clients prefetch images and privacy proxies fetch pixels; security scanners open links. Not a human-intent metric and not used in intent scoring.">
                 Open signal: {cohort.opens} opens on {cohort.openedProspects} prospect{cohort.openedProspects === 1 ? "" : "s"} — upper bound, diagnostics only
@@ -467,7 +481,7 @@ export default async function ProspectingDashboardPage({
       {/* ============================== 4. The pipeline */}
       <Section
         title="Pipeline"
-        description={`Every active prospect in ${launchName}, ranked by commercial opportunity — not by created date. Follow-up due after ${FOLLOW_UP_RULES.silentCadenceDays} silent days (${FOLLOW_UP_RULES.engagedCadenceDays} after audit activity), capped at ${FOLLOW_UP_RULES.maxTouches} touches.`}
+        description={`Every active prospect in ${launchName}, ranked by commercial opportunity — not by created date. Follow-up due after ${FOLLOW_UP_RULES.silentCadenceBusinessDays} silent business days (${FOLLOW_UP_RULES.engagedCadenceBusinessDays} after audit activity — behavior raises priority, not frequency), capped at ${FOLLOW_UP_RULES.maxTouches} touches. Times in ${OPERATOR_TIMEZONE}.`}
       >
         <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
           {(

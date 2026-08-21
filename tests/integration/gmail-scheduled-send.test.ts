@@ -494,6 +494,33 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     expect(refusal).toBeDefined();
   });
 
+  it("spec 099: a reply recorded after approval parks the scheduled draft — an unattended send never continues past a reply", async () => {
+    const { prospectId, draftId } = await seedApprovedDraft();
+    executeCapability.mockResolvedValue(sendOk);
+    await scheduleAndBackdate(draftId);
+    await sql`update prospects set stage = 'replied' where id = ${prospectId}`;
+
+    const report = await drain.drainScheduledSends();
+    expect(report).toMatchObject({ due: 1, sent: 0, parked: 1 });
+    expect(executeCapability).not.toHaveBeenCalled();
+
+    const [draft] = await sql`
+      select sent_recorded_at, scheduled_send_at, last_send_error from outreach_drafts where id = ${draftId}
+    `;
+    expect(draft?.sentRecordedAt).toBeNull();
+    expect(draft?.scheduledSendAt).toBeNull();
+    expect(draft?.lastSendError).toMatch(/recorded reply/i);
+    const [refusal] = await sql`
+      select gate_verdict from prospect_outreach_sends where draft_id = ${draftId} and not allowed
+    `;
+    expect(refusal).toBeDefined();
+
+    // A human-initiated send on the same prospect is NOT stage-gated: the
+    // ladder sends the audit after a reply.
+    const human = await svc.sendProspectDraft(operator, { draftId, channel: "gmail", businessPurpose: PURPOSE });
+    expect(human.ok).toBe(true);
+  });
+
   it("drain: clean transport failures retry, then park at the attempt cap", async () => {
     const { draftId } = await seedApprovedDraft();
     executeCapability.mockResolvedValue(sendHttp500);

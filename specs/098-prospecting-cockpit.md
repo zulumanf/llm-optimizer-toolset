@@ -1,5 +1,9 @@
 # Spec 098 — Prospecting Cockpit (intent, attribution, engagement)
 
+> Amended by spec 099 (intent guardrails): weights, labels, cadence in
+> business days, the Unresolved label, and the unattended send gate. Where
+> the two disagree, 099 wins.
+
 **Status:** Implemented 2026-08-20
 **Branch:** `feat/097-city-pipeline` (stacked on spec 097's uncommitted work)
 **Supersedes:** the hero/queue/funnel sections of spec 095; keeps its

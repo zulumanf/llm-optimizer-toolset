@@ -134,9 +134,13 @@ export default async function ProspectAuditPage({
   // route the handle IS the 43-char access token; URLs are unchanged.
   // linkKey is set by the branded sibling route (spec 076) so the view row
   // records which emailed link brought the visit (spec 098 attribution).
-  params: Promise<{ handle: string; linkKey?: string }>;
+  params: Promise<{ handle: string; linkKey?: string; slug?: string }>;
 }) {
-  const { handle: token, linkKey } = await params;
+  const { handle: token, linkKey, slug } = await params;
+  // Keep the reader on the branded link so the answers view is attributed
+  // to the same emailed key instead of landing as a bare-token "session".
+  const answersHref =
+    linkKey && slug ? `/audit/${slug}/${linkKey}/answers` : `/audit/${token}/answers`;
   const hdrs = await headers();
   // Session read is only to LABEL the view (plan 3.6): an operator's QA
   // open must not count as prospect interest. Content still comes solely
@@ -333,7 +337,7 @@ export default async function ProspectAuditPage({
           <>
             {" "}
             <Link
-              href={`/audit/${token}/answers`}
+              href={answersHref}
               className="underline underline-offset-2 transition-colors hover:text-foreground"
             >
               View the {transcriptsComplete ? "complete " : ""}captured-answer
@@ -726,7 +730,7 @@ export default async function ProspectAuditPage({
             <p className="mt-3 text-xs text-muted-foreground">
               Don&apos;t take the table&apos;s word —{" "}
               <Link
-                href={`/audit/${token}/answers`}
+                href={answersHref}
                 className="underline underline-offset-2 transition-colors hover:text-foreground"
               >
                 read{" "}
@@ -1107,7 +1111,7 @@ export default async function ProspectAuditPage({
           skepticism welcome.{" "}
           {snapshot.transcripts && snapshot.transcripts.length > 0 && (
             <Link
-              href={`/audit/${token}/answers`}
+              href={answersHref}
               className="underline underline-offset-2 transition-colors hover:text-foreground"
             >
               Read the answers first
