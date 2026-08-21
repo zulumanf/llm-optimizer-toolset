@@ -2527,3 +2527,32 @@ denominator is the ledger.
 **Gmail reconnect stays CLI-only for now** (`scripts/connect-gmail.ts`);
 the dashboard states it plainly in a P0 banner rather than pretending an
 in-app flow exists.
+
+## 2026-08-20 — Intent guardrails before automation (spec 099)
+
+An operator review caught the cockpit promoting Team Moza's four
+unattributed sessions to "High intent" and ranking two shallow sessions
+above one deep read. Decisions:
+
+- **Unattributed activity is `Unresolved`, never intent.** A prospect
+  with no transmitted send cannot carry an intent label, whatever it
+  scores; it ranks for a human to fix the ledger. The fix for a manual
+  send is recording it through the manual channel — until Gmail sent-mail
+  reconciliation exists (deferred, named in 099).
+- **Strong labels need a verified strong signal.** `High intent` /
+  `Engaged` require meaningful engagement or a CTA. Session weights fell
+  to +1/+1 so pageviews alone top out at `Interested`.
+- **Cadence in operator business days, cap 5 touches.** Behavior raises
+  priority and personalization, not frequency: 3 silent / 2 after
+  activity. Still recommendation only.
+- **Unattended sends are stage-gated; human sends are not.** The worker
+  passes `unattended: true` and the gate refuses past a recorded reply or
+  exit. Human sends stay free because the ladder sends the audit after a
+  reply. This is the minimum reply safety; Gmail inbound ingestion is a
+  prerequisite for autonomous follow-ups and is not built.
+- **Times render in `OPERATOR_TIMEZONE` with the zone spelled out.** The
+  server is UTC; an unzoned `toLocaleString` showed 3:05 PM for an
+  11:05 AM ET send. Storage remains UTC.
+- **"Contacted = allowed" was correctly computed but mislabeled.** Allowed
+  rows are written after dispatch succeeds in the same transaction, so the
+  label now says "transmitted".

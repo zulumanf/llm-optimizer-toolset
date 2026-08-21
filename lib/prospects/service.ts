@@ -46,6 +46,7 @@ import {
   BROKERAGE_SEND_CAP_30D,
   GMAIL_DAILY_SEND_CAP,
   SCHEDULED_SEND_MAX_DAYS_AHEAD,
+  UNATTENDED_SEND_BLOCKED_STAGES,
 } from "@/lib/prospects/constants";
 import { validateTransition } from "@/lib/prospects/stages";
 import {
@@ -2008,6 +2009,9 @@ export async function sendProspectDraft(
       draftId: z.string().uuid(),
       channel: z.string().min(1),
       businessPurpose: z.string().trim().min(10).max(1000),
+      /** True when a worker, not a human, is dispatching (scheduled send).
+       * Adds the conversation-state gate: no transmit after a recorded reply. */
+      unattended: z.boolean().optional(),
     })
     .safeParse(raw);
   if (!parsed.success) {
@@ -2067,6 +2071,22 @@ export async function sendProspectDraft(
         prospect.doNotContact ? "The prospect account is flagged do-not-contact." : "clear"
       );
       check("contact_do_not_contact", contactBlocked === null, contactBlocked ?? "clear");
+
+      // Spec 099: a queued draft must never transmit past a recorded reply
+      // or exit. Human sends stay free (the ladder sends the audit after a
+      // reply); the worker is not a human.
+      const stageBlocksUnattended = (
+        UNATTENDED_SEND_BLOCKED_STAGES as readonly ProspectStage[]
+      ).includes(prospect.stage);
+      check(
+        "conversation_state",
+        !(input.unattended && stageBlocksUnattended),
+        input.unattended
+          ? stageBlocksUnattended
+            ? `Prospect stage is "${prospect.stage}" — an unattended send would continue a sequence past a recorded reply or exit.`
+            : `stage "${prospect.stage}" allows unattended outreach`
+          : "human-initiated send — not gated on stage"
+      );
 
       if ((email || phone) && !prospect.doNotContact && contactBlocked === null) {
         const suppression = await checkSuppression({ email, phone, projectId: null });

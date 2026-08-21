@@ -43,7 +43,9 @@ export interface ProspectBehaviorFacts {
   stage: ProspectStage;
   /** Every stage the prospect ever entered (history). */
   visitedStages: ProspectStage[];
-  /** Allowed sends from the ledger, ascending. */
+  /** Transmitted sends from the ledger, ascending. `allowed` rows are
+   * written only after dispatch succeeded (gmail/mock) or a human recorded
+   * a manual send — never approved/scheduled/attempted. */
   sentAts: Date[];
   opens: number;
   /** Human-like external views only (dashboard.ts humanViews filter). */
@@ -61,6 +63,9 @@ export const ENGAGEMENT_RULES = {
   engagedSecondsDeep: 60,
   /** Scroll depth that counts as "read it". */
   deepScrollPercent: 75,
+  /** An interaction (evidence, competitor section) only counts as
+   * meaningful with at least this much dwell (spec 099 rule 5). */
+  interactionMinEngagedSeconds: 10,
   /** Section keys emitted by the audit page beacon. */
   competitorSection: "competitors",
   authoritySection: "authority",
@@ -77,8 +82,11 @@ export const INTENT_WEIGHTS = {
   competitorSection: 1,
   evidenceExpanded: 1,
   ctaClicked: 3,
-  repeatSession: 3,
-  manySessions: 2, // additional, at 3+
+  // Spec 099 rule 3: depth outranks repetition. Sessions without dwell are
+  // weak evidence (bots, refreshes, a shared link) and can never reach
+  // High intent on their own (2 + 1 + 1 = 4 < 6).
+  repeatSession: 1,
+  manySessions: 1, // additional, at 3+
   possibleSecondVisitor: 1,
   reply: 5,
   meeting: 10,
@@ -91,6 +99,9 @@ export const INTENT_LABELS = [
   "High intent",
   "Engaged",
   "Opportunity",
+  /** External activity on an audit with no recorded send (spec 099 rule 1):
+   * real, ranked for a human to resolve the ledger, never an intent claim. */
+  "Unresolved",
 ] as const;
 export type IntentLabel = (typeof INTENT_LABELS)[number];
 
@@ -103,14 +114,73 @@ const LABEL_FLOORS: { label: IntentLabel; min: number }[] = [
   { label: "Aware", min: 1 },
 ];
 
+/** Labels that assert strong intent — gated on a verified strong signal
+ * (meaningful engagement or CTA), never on session count (spec 099 rule 2). */
+const STRONG_INTENT_LABELS: readonly IntentLabel[] = ["High intent", "Engaged"];
+const STRONG_SIGNAL_CAP: IntentLabel = "Interested";
+
 export const FOLLOW_UP_RULES = {
-  /** Days after the last touch before a silent prospect is due a follow-up. */
-  silentCadenceDays: 3,
-  /** Days to wait after audit activity before a personalized follow-up. */
-  engagedCadenceDays: 1,
-  /** Stop recommending follow-ups after this many touches without a reply. */
-  maxTouches: 3,
+  /** Business days after the last touch before a silent prospect is due. */
+  silentCadenceBusinessDays: 3,
+  /** Business days to wait after audit activity before a personalized
+   * follow-up. Behavior raises priority and personalization, not frequency
+   * — a next-morning email after a Thursday read feels triggered. */
+  engagedCadenceBusinessDays: 2,
+  /** Stop recommending follow-ups after this many touches without a reply:
+   * initial + 3 follow-ups + close-loop. */
+  maxTouches: 5,
 } as const;
+
+/** Below this many qualifying viewers, latency aggregates (median time to
+ * first view) are shown with n or hidden — a median of one is not a median. */
+export const LATENCY_MIN_SAMPLE = 5;
+
+/** Follow-up cadence is counted in operator business days (spec 099 rule 6). */
+export const OPERATOR_TIMEZONE = "America/New_York";
+const WEEKDAY_FORMAT = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: OPERATOR_TIMEZONE });
+const SATURDAY = "Sat";
+const SUNDAY = "Sun";
+
+const isBusinessDay = (d: Date): boolean => {
+  const day = WEEKDAY_FORMAT.format(d);
+  return day !== SATURDAY && day !== SUNDAY;
+};
+
+const OFFSET_FORMAT = new Intl.DateTimeFormat("en-US", {
+  timeZone: OPERATOR_TIMEZONE,
+  hourCycle: "h23",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+/** Midnight of the current calendar day in OPERATOR_TIMEZONE, as an
+ * instant. A UTC server's local midnight is 8 PM ET — "today" must mean the
+ * operator's day (spec 099). */
+export function startOfOperatorDay(now: Date): Date {
+  const part = (type: string): number =>
+    Number(OFFSET_FORMAT.formatToParts(now).find((p) => p.type === type)?.value ?? "0");
+  // Wall-clock time in the operator zone, read back as if it were UTC…
+  const wall = Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"), part("second"));
+  // …so the zone offset at this instant is the difference to the real instant.
+  const offsetMs = wall - Math.floor(now.getTime() / 1000) * 1000;
+  const wallMidnight = Date.UTC(part("year"), part("month") - 1, part("day"));
+  return new Date(wallMidnight - offsetMs);
+}
+
+/** Whole business days (Mon–Fri in OPERATOR_TIMEZONE) elapsed from `from`
+ * to `to`: counts each 24h step whose end falls on a business day. */
+export function businessDaysBetween(from: Date, to: Date): number {
+  if (to.getTime() <= from.getTime()) return 0;
+  let count = 0;
+  for (let t = from.getTime() + DAY_MS; t <= to.getTime(); t += DAY_MS) {
+    if (isBusinessDay(new Date(t))) count += 1;
+  }
+  return count;
+}
 
 /** Quality score at/above this reads as "high authority" in the cockpit. */
 export const HIGH_QUALITY_SCORE = 70;
@@ -184,7 +254,8 @@ export interface EngagementSummary {
   attribution: Attribution;
   /** No allowed send in the ledger, yet the audit received external
    * activity — it went out another way (manual, LinkedIn, forwarded). The
-   * activity is real and ranked; it is NOT funnel evidence. */
+   * activity is real and ranked; it is NOT funnel evidence and NOT intent
+   * (label "Unresolved") until the send is recorded (spec 099 rule 1). */
   outsideLedger: boolean;
 }
 
@@ -216,8 +287,8 @@ export const PRIORITY_TIERS = [
   "active conversation",
   "CTA clicked",
   "high authority + high intent",
-  "repeat audit activity",
   "deep audit engagement",
+  "multiple sessions or unresolved attribution",
   "one audit visit",
   "follow-up due",
   "contacted, no activity",
@@ -281,12 +352,14 @@ export function summarizeEngagement(
   const engagedSeconds = [...engagedBySession.values()].reduce((a, b) => a + b, 0);
   const competitor = sections.has(ENGAGEMENT_RULES.competitorSection);
   const authority = sections.has(ENGAGEMENT_RULES.authoritySection);
+  // Spec 099 rule 5: an interaction without dwell is not meaningful.
+  const interactionWithDwell =
+    (evidence || competitor) && engagedSeconds >= ENGAGEMENT_RULES.interactionMinEngagedSeconds;
   const meaningful =
     engagedSeconds >= ENGAGEMENT_RULES.engagedSecondsMeaningful ||
     maxScroll >= ENGAGEMENT_RULES.deepScrollPercent ||
-    evidence ||
-    competitor ||
-    cta;
+    cta ||
+    interactionWithDwell;
   const attribution: Attribution =
     post.length === 0
       ? pre > 0
@@ -340,10 +413,15 @@ export function intentScore(e: EngagementSummary, s: SalesFacts): number {
   return score;
 }
 
-export function intentLabel(score: number, s: SalesFacts): IntentLabel {
+export function intentLabel(score: number, s: SalesFacts, e: EngagementSummary): IntentLabel {
   if (s.replied || s.meeting) return "Opportunity";
-  for (const band of LABEL_FLOORS) if (score >= band.min) return band.label;
-  return "Cold";
+  // Rule 1: no recorded send → the activity cannot be read as intent.
+  if (e.outsideLedger) return "Unresolved";
+  const band = LABEL_FLOORS.find((b) => score >= b.min)?.label ?? "Cold";
+  // Rule 2: strong labels need a verified strong signal, not session count.
+  const strongSignal = e.meaningfullyEngaged || e.ctaClicked;
+  if (STRONG_INTENT_LABELS.includes(band) && !strongSignal) return STRONG_SIGNAL_CAP;
+  return band;
 }
 
 /** Decision support only — never outreach copy, never a claim about who
@@ -365,8 +443,10 @@ export function recommendedAction(
     return "Ready to contact — draft and approve the first email.";
   }
   if (e.ctaClicked) return "Reach out promptly — the audit's call to action was used.";
-  if (e.repeat) return "High-priority personalized follow-up.";
+  // Spec 099 rule 3: depth outranks repetition.
+  if (e.meaningfullyEngaged && e.repeat) return "High-priority personalized follow-up — the audit was read, more than once.";
   if (e.meaningfullyEngaged) return "Prioritize a personalized follow-up.";
+  if (e.repeat) return "Multiple short sessions — follow up with the strongest finding; depth not yet shown.";
   if (e.postOutreachViews > 0) return "Lead the follow-up with the strongest specific audit finding.";
   if (s.touches >= FOLLOW_UP_RULES.maxTouches) return "Max touches reached without activity — park or try another channel.";
   if (followUpDue) return "Follow up with a new reason to inspect the finding.";
@@ -376,13 +456,12 @@ export function recommendedAction(
 export function isFollowUpDue(e: EngagementSummary, s: SalesFacts, now: Date): boolean {
   if (!s.contacted || s.replied || s.lost || s.won || !s.lastSentAt) return false;
   if (s.touches >= FOLLOW_UP_RULES.maxTouches) return false;
-  const lastTouchMs = s.lastSentAt.getTime();
-  const lastActivityMs = e.lastActivityAt?.getTime() ?? 0;
-  if (lastActivityMs > lastTouchMs) {
-    // They looked after our last email: wait the short cadence, then follow up.
-    return now.getTime() - lastActivityMs >= FOLLOW_UP_RULES.engagedCadenceDays * DAY_MS;
+  const lastActivity = e.lastActivityAt;
+  if (lastActivity && lastActivity.getTime() > s.lastSentAt.getTime()) {
+    // They looked after our last email: wait the engaged cadence, then follow up.
+    return businessDaysBetween(lastActivity, now) >= FOLLOW_UP_RULES.engagedCadenceBusinessDays;
   }
-  return now.getTime() - lastTouchMs >= FOLLOW_UP_RULES.silentCadenceDays * DAY_MS;
+  return businessDaysBetween(s.lastSentAt, now) >= FOLLOW_UP_RULES.silentCadenceBusinessDays;
 }
 
 export function priorityTier(
@@ -394,9 +473,12 @@ export function priorityTier(
 ): number {
   if (s.replied || s.meeting) return 1;
   if (e.ctaClicked) return 2;
-  if (highQuality && (label === "High intent" || label === "Engaged")) return 3;
-  if (e.repeat) return 4;
-  if (e.meaningfullyEngaged) return 5;
+  if (highQuality && STRONG_INTENT_LABELS.includes(label)) return 3;
+  // Spec 099 rule 3: depth outranks repetition. Unresolved (no recorded
+  // send) sits with multiple sessions so a human resolves the ledger.
+  if (e.outsideLedger) return 5; // resolve the ledger before reading depth as intent
+  if (e.meaningfullyEngaged) return 4;
+  if (e.repeat) return 5;
   if (e.postOutreachViews > 0) return 6;
   if (followUpDue) return 7;
   if (s.contacted) return 8;
@@ -407,7 +489,7 @@ export function deriveIntent(f: ProspectBehaviorFacts, now: Date): ProspectInten
   const sales = salesFacts(f);
   const engagement = summarizeEngagement(f.views, sales.firstSentAt);
   const score = intentScore(engagement, sales);
-  const label = intentLabel(score, sales);
+  const label = intentLabel(score, sales, engagement);
   const highQuality = (f.qualityScore ?? 0) >= HIGH_QUALITY_SCORE;
   const followUpDue = isFollowUpDue(engagement, sales, now);
   return {
@@ -471,6 +553,9 @@ export interface CohortSummary {
   openedProspects: number;
   cohortAgeDays: number | null;
   medianSecondsToFirstView: number | null;
+  /** Sessions on never-contacted audits — real activity, excluded from
+   * every campaign metric because no send is recorded (spec 099). */
+  unresolvedSessions: number;
   funnel: CohortFunnelStep[];
   diagnosis: Diagnosis;
 }
@@ -513,7 +598,7 @@ export function summarizeCohort(items: ProspectIntent[], now: Date): CohortSumma
   const funnel: CohortFunnelStep[] = [
     { key: "contacted", label: "Contacted", count: contacted.length, of: null, rate: null, basis: "prospects with ≥1 allowed send in the ledger" },
     { key: "viewed", label: "Audit viewers", count: viewed.length, of: contacted.length, rate: rate(viewed.length, contacted.length), basis: "contacted prospects whose audit received ≥1 human-like external view after the first send" },
-    { key: "engaged", label: "Meaningfully engaged", count: engaged.length, of: viewed.length, rate: rate(engaged.length, viewed.length), basis: `viewers with ≥${ENGAGEMENT_RULES.engagedSecondsMeaningful}s engaged, ≥${ENGAGEMENT_RULES.deepScrollPercent}% depth, evidence expanded, competitor section viewed, or CTA clicked` },
+    { key: "engaged", label: "Meaningfully engaged", count: engaged.length, of: viewed.length, rate: rate(engaged.length, viewed.length), basis: `viewers with ≥${ENGAGEMENT_RULES.engagedSecondsMeaningful}s engaged, ≥${ENGAGEMENT_RULES.deepScrollPercent}% depth, CTA clicked, or evidence/competitor interaction with ≥${ENGAGEMENT_RULES.interactionMinEngagedSeconds}s engaged` },
     { key: "replied", label: "Replied", count: replied.length, of: contacted.length, rate: rate(replied.length, contacted.length), basis: "recorded stage ≥ replied (audit_sent / audit_viewed are not replies)" },
     { key: "meeting", label: "Meeting", count: meeting.length, of: contacted.length, rate: rate(meeting.length, contacted.length), basis: "recorded stage ≥ discovery_scheduled" },
     { key: "proposal", label: "Proposal", count: proposal.length, of: contacted.length, rate: rate(proposal.length, contacted.length), basis: "recorded stage ≥ proposal_sent" },
@@ -538,6 +623,7 @@ export function summarizeCohort(items: ProspectIntent[], now: Date): CohortSumma
     unattributedProspects: viewed.filter((p) => p.engagement.attribution === "unattributed_external").length,
     opens: contacted.reduce((n, p) => n + p.opens, 0),
     openedProspects: contacted.filter((p) => p.opens > 0).length,
+    unresolvedSessions: items.filter((p) => p.engagement.outsideLedger).reduce((n, p) => n + p.engagement.sessions, 0),
     cohortAgeDays,
     medianSecondsToFirstView: median(
       viewed.map((p) => p.engagement.secondsToFirstView).filter((s): s is number => s !== null)

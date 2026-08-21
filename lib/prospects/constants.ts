@@ -91,6 +91,21 @@ export const PROSPECT_STAGES = [
 /** Terminal / parked stages sit outside the ordered ladder. */
 export const PROSPECT_EXIT_STAGES = ["closed_lost", "waitlisted", "conflict_blocked"] as const;
 
+/** Stages in which an UNATTENDED (worker-dispatched) send must refuse: a
+ * reply or exit was recorded and no queued draft may transmit past it
+ * (spec 099). Human-initiated sends are not gated on this — the ladder
+ * legitimately sends the audit after a reply. */
+export const UNATTENDED_SEND_BLOCKED_STAGES = [
+  "replied",
+  "discovery_scheduled",
+  "discovery_completed",
+  "proposal_sent",
+  "negotiation",
+  "verbal_yes",
+  "contracted",
+  ...PROSPECT_EXIT_STAGES,
+] as const;
+
 export type ProspectStage =
   | (typeof PROSPECT_STAGES)[number]
   | (typeof PROSPECT_EXIT_STAGES)[number];

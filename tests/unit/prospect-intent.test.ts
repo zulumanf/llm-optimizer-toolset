@@ -6,8 +6,11 @@
 import { describe, expect, it } from "vitest";
 import {
   DIAGNOSTIC_MIN_CONTACTED,
+  FOLLOW_UP_RULES,
   INTENT_WEIGHTS,
+  businessDaysBetween,
   compareByPriority,
+  startOfOperatorDay,
   deriveIntent,
   diagnose,
   summarizeCohort,
@@ -85,7 +88,50 @@ describe("intent score — known answers", () => {
     expect(p.recommendedAction).toMatch(/personalized follow-up/);
   });
 
-  it("repeat sessions: +3, three sessions +2 more; the engaged time of one session is not the max of another", () => {
+  it("spec 099: session count alone never reaches High intent — four shallow sessions cap at Interested", () => {
+    const p = deriveIntent(
+      facts({
+        views: [1, 2, 3, 4].map((i) => view({ sessionId: `s${i}`, visitorId: null, viewedAt: h(i), engagedSeconds: 5 })),
+      }),
+      NOW
+    );
+    expect(p.engagement.sessions).toBe(4);
+    expect(p.engagement.meaningfullyEngaged).toBe(false);
+    // 2 view + 1 multiple sessions + 1 many sessions
+    expect(p.intentScore).toBe(2 + INTENT_WEIGHTS.repeatSession + INTENT_WEIGHTS.manySessions);
+    expect(p.intentLabel).toBe("Interested");
+    expect(p.priorityTier).toBe(5);
+    expect(p.recommendedAction).toMatch(/Multiple short sessions/);
+  });
+
+  it("spec 099: even a high raw score is capped at Interested without meaningful engagement or a CTA", () => {
+    // Two browser identities + many sessions + scroll just under the bar: 2+1+1+1 = 5 anyway,
+    // so force the cap path with evidence expanded and no dwell (+1 → 6).
+    const p = deriveIntent(
+      facts({
+        views: [
+          view({ sessionId: "s1", visitorId: "v1", evidenceExpanded: true, engagedSeconds: 3 }),
+          view({ sessionId: "s2", visitorId: "v2", viewedAt: h(2), engagedSeconds: 3 }),
+          view({ sessionId: "s3", visitorId: "v2", viewedAt: h(4), engagedSeconds: 3 }),
+        ],
+      }),
+      NOW
+    );
+    expect(p.intentScore).toBeGreaterThanOrEqual(6);
+    expect(p.engagement.meaningfullyEngaged).toBe(false);
+    expect(p.intentLabel).toBe("Interested");
+  });
+
+  it("spec 099: an interaction only counts as meaningful with ≥10s dwell", () => {
+    const noDwell = deriveIntent(facts({ views: [view({ evidenceExpanded: true, engagedSeconds: 4 })] }), NOW);
+    expect(noDwell.engagement.meaningfullyEngaged).toBe(false);
+    const dwell = deriveIntent(facts({ views: [view({ sectionsViewed: ["competitors"], engagedSeconds: 12 })] }), NOW);
+    expect(dwell.engagement.meaningfullyEngaged).toBe(true);
+    const cta = deriveIntent(facts({ views: [view({ ctaClicked: true })] }), NOW);
+    expect(cta.engagement.meaningfullyEngaged).toBe(true);
+  });
+
+  it("multiple sessions: +1, three sessions +1 more; the engaged time of one session is not the max of another", () => {
     const p = deriveIntent(
       facts({
         views: [
@@ -99,9 +145,10 @@ describe("intent score — known answers", () => {
     expect(p.engagement.sessions).toBe(3);
     expect(p.engagement.engagedSeconds).toBe(65);
     expect(p.engagement.repeat).toBe(true);
-    // 2 view + 2 (≥60s summed) + 3 repeat + 2 many
-    expect(p.intentScore).toBe(9);
-    expect(p.recommendedAction).toBe("High-priority personalized follow-up.");
+    // 2 view + 2 (≥60s summed) + 1 multiple + 1 many
+    expect(p.intentScore).toBe(6);
+    expect(p.intentLabel).toBe("High intent"); // 65s engaged is a verified strong signal
+    expect(p.recommendedAction).toMatch(/High-priority personalized follow-up/);
   });
 
   it("a second browser identity is a possible additional visitor, never a claim", () => {
@@ -111,7 +158,7 @@ describe("intent score — known answers", () => {
     );
     expect(p.engagement.visitorIdentities).toBe(2);
     expect(p.engagement.possibleAdditionalVisitor).toBe(true);
-    expect(p.intentScore).toBe(2 + 3 + INTENT_WEIGHTS.possibleSecondVisitor);
+    expect(p.intentScore).toBe(2 + INTENT_WEIGHTS.repeatSession + INTENT_WEIGHTS.possibleSecondVisitor);
   });
 
   it("views without a session id each count as their own session; missing identities are reported", () => {
@@ -170,12 +217,27 @@ describe("attribution — pre vs post outreach, link vs unattributed", () => {
     expect(p.engagement.outsideLedger).toBe(true);
     expect(p.engagement.sessions).toBe(2);
     expect(p.engagement.attribution).toBe("unattributed_external");
-    expect(p.priorityTier).toBe(4);
+    expect(p.priorityTier).toBe(5);
     expect(p.recommendedAction).toMatch(/no recorded send/);
     const c = summarizeCohort([p], NOW);
     expect(c.contacted).toBe(0);
     expect(c.viewed).toBe(0);
     expect(c.prospectsWithAnyView).toBe(1);
+    expect(c.unresolvedSessions).toBe(2);
+  });
+
+  it("spec 099: unattributed activity is labeled Unresolved, never High intent — whatever it scores", () => {
+    const teamMoza = deriveIntent(
+      facts({
+        sentAts: [],
+        views: [1, 2, 3, 4].map((i) => view({ sessionId: `s${i}`, visitorId: null, viewedAt: h(i), engagedSeconds: 90, maxScrollPercent: 95 })),
+      }),
+      NOW
+    );
+    expect(teamMoza.engagement.sessions).toBe(4);
+    expect(teamMoza.intentScore).toBeGreaterThanOrEqual(6);
+    expect(teamMoza.intentLabel).toBe("Unresolved");
+    expect(teamMoza.priorityTier).toBe(5);
   });
 });
 
@@ -186,34 +248,56 @@ describe("contacted state and follow-up cadence derive from the ledger", () => {
     expect(p.sales.touches).toBe(1);
   });
 
-  it("silent cadence: due after 3 days, not before; capped at max touches", () => {
+  // NOW is Friday 2026-08-21 12:00Z (08:00 ET). Business days are Mon–Fri ET.
+  it("business days: weekends do not count", () => {
+    const thu = new Date("2026-08-20T16:00:00Z");
+    expect(businessDaysBetween(thu, new Date("2026-08-21T16:00:00Z"))).toBe(1); // Fri
+    expect(businessDaysBetween(thu, new Date("2026-08-23T16:00:00Z"))).toBe(1); // Fri, Sat, Sun → 1
+    expect(businessDaysBetween(thu, new Date("2026-08-25T16:00:00Z"))).toBe(3); // + Mon, Tue
+    expect(businessDaysBetween(thu, thu)).toBe(0);
+  });
+
+  it("startOfOperatorDay: midnight ET, not server-local midnight (EDT and EST)", () => {
+    expect(startOfOperatorDay(new Date("2026-08-21T04:03:58Z")).toISOString()).toBe("2026-08-21T04:00:00.000Z"); // 00:03 EDT
+    expect(startOfOperatorDay(new Date("2026-08-21T03:30:00Z")).toISOString()).toBe("2026-08-20T04:00:00.000Z"); // 23:30 EDT prev day
+    expect(startOfOperatorDay(new Date("2026-01-15T12:00:00Z")).toISOString()).toBe("2026-01-15T05:00:00.000Z"); // EST
+  });
+
+  it("silent cadence: due after 3 business days, not before; capped at max touches", () => {
     const fresh = deriveIntent(facts({ sentAts: [new Date(NOW.getTime() - 2 * 86_400_000)] }), NOW);
     expect(fresh.followUpDue).toBe(false);
     expect(fresh.priorityTier).toBe(8);
-    const stale = deriveIntent(facts({ sentAts: [new Date(NOW.getTime() - 4 * 86_400_000)] }), NOW);
+    // Sent Saturday → Mon, Tue, Wed, Thu, Fri = 5 business days by Friday.
+    const stale = deriveIntent(facts({ sentAts: [new Date(NOW.getTime() - 6 * 86_400_000)] }), NOW);
     expect(stale.followUpDue).toBe(true);
     expect(stale.priorityTier).toBe(7);
     expect(stale.recommendedAction).toMatch(/new reason/);
+    // Sent Monday evening ET: Tue, Wed, Thu = 3 → due Thursday evening, not Wednesday.
+    const mon = new Date("2026-08-17T22:00:00Z");
+    expect(deriveIntent(facts({ sentAts: [mon] }), new Date("2026-08-19T23:00:00Z")).followUpDue).toBe(false);
+    expect(deriveIntent(facts({ sentAts: [mon] }), new Date("2026-08-20T23:00:00Z")).followUpDue).toBe(true);
     const maxed = deriveIntent(
-      facts({ sentAts: [new Date(NOW.getTime() - 20 * 86_400_000), new Date(NOW.getTime() - 12 * 86_400_000), new Date(NOW.getTime() - 5 * 86_400_000)] }),
+      facts({ sentAts: [20, 16, 12, 9, 6].map((d) => new Date(NOW.getTime() - d * 86_400_000)) }),
       NOW
     );
+    expect(maxed.sales.touches).toBe(FOLLOW_UP_RULES.maxTouches);
     expect(maxed.followUpDue).toBe(false);
     expect(maxed.recommendedAction).toMatch(/Max touches/);
   });
 
-  it("engaged cadence: a view after the last send waits one day, then is due", () => {
-    const sent = new Date(NOW.getTime() - 5 * 86_400_000);
-    const viewedRecently = deriveIntent(
-      facts({ sentAts: [sent], views: [view({ viewedAt: new Date(NOW.getTime() - 3_600_000) })] }),
-      NOW
-    );
-    expect(viewedRecently.followUpDue).toBe(false);
+  it("engaged cadence: a view after the last send waits two business days — never the next morning", () => {
+    const sent = new Date(NOW.getTime() - 10 * 86_400_000);
     const viewedYesterday = deriveIntent(
       facts({ sentAts: [sent], views: [view({ viewedAt: new Date(NOW.getTime() - 30 * 3_600_000) })] }),
       NOW
     );
-    expect(viewedYesterday.followUpDue).toBe(true);
+    expect(viewedYesterday.followUpDue).toBe(false);
+    // Viewed Tuesday: Wed, Thu = 2 business days → due Thursday.
+    const viewedTue = deriveIntent(
+      facts({ sentAts: [sent], views: [view({ viewedAt: new Date("2026-08-18T15:00:00Z") })] }),
+      new Date("2026-08-20T16:00:00Z")
+    );
+    expect(viewedTue.followUpDue).toBe(true);
   });
 
   it("replied prospects are never follow-up due", () => {
@@ -226,11 +310,11 @@ describe("contacted state and follow-up cadence derive from the ledger", () => {
 });
 
 describe("priority order and cohort funnel", () => {
-  it("ranks conversation > CTA > high authority+intent > repeat > deep > single > due > silent > uncontacted", () => {
+  it("ranks conversation > CTA > high authority+intent > deep > multiple sessions > single > due > silent > uncontacted", () => {
     const items = [
       deriveIntent(facts({ prospectId: "uncontacted", sentAts: [] }), NOW),
       deriveIntent(facts({ prospectId: "silent" }), NOW),
-      deriveIntent(facts({ prospectId: "due", sentAts: [new Date(NOW.getTime() - 4 * 86_400_000)] }), NOW),
+      deriveIntent(facts({ prospectId: "due", sentAts: [new Date(NOW.getTime() - 6 * 86_400_000)] }), NOW),
       deriveIntent(facts({ prospectId: "single", views: [view()] }), NOW),
       deriveIntent(facts({ prospectId: "deep", qualityScore: 20, views: [view({ engagedSeconds: 45 })] }), NOW),
       deriveIntent(facts({ prospectId: "repeat", qualityScore: 20, views: [view(), view({ sessionId: "s2", viewedAt: h(5) })] }), NOW),
@@ -239,7 +323,7 @@ describe("priority order and cohort funnel", () => {
       deriveIntent(facts({ prospectId: "replied", stage: "replied", visitedStages: ["replied"] }), NOW),
     ];
     const order = [...items].sort(compareByPriority).map((p) => p.prospectId);
-    expect(order).toEqual(["replied", "cta", "hq-hi", "repeat", "deep", "single", "due", "silent", "uncontacted"]);
+    expect(order).toEqual(["replied", "cta", "hq-hi", "deep", "repeat", "single", "due", "silent", "uncontacted"]);
   });
 
   it("funnel denominators: viewers / contacted, engaged / viewers; uncontacted views never count", () => {
@@ -272,7 +356,7 @@ describe("priority order and cohort funnel", () => {
   });
 
   it("diagnostics stay silent on small or young cohorts, then say 'possible bottleneck'", () => {
-    const base = { viewed: 0, engaged: 0, replied: 0, meeting: 0, proposal: 0, client: 0, followUpDue: 0, notContacted: 0, auditViews: 0, auditSessions: 0, auditVisitorIdentities: 0, prospectsWithAnyView: 0, preOutreachViews: 0, attributedLinkProspects: 0, unattributedProspects: 0, opens: 0, openedProspects: 0, medianSecondsToFirstView: null, funnel: [] };
+    const base = { viewed: 0, engaged: 0, replied: 0, meeting: 0, proposal: 0, client: 0, followUpDue: 0, notContacted: 0, auditViews: 0, auditSessions: 0, auditVisitorIdentities: 0, prospectsWithAnyView: 0, preOutreachViews: 0, attributedLinkProspects: 0, unattributedProspects: 0, opens: 0, openedProspects: 0, unresolvedSessions: 0, medianSecondsToFirstView: null, funnel: [] };
     expect(diagnose({ ...base, contacted: DIAGNOSTIC_MIN_CONTACTED, cohortAgeDays: 0.5 }).verdict).toBe("not_enough_data");
     expect(diagnose({ ...base, contacted: 5, cohortAgeDays: 10 }).verdict).toBe("not_enough_data");
     const outreach = diagnose({ ...base, contacted: 20, viewed: 1, cohortAgeDays: 5 });

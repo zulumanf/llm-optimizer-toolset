@@ -19,6 +19,7 @@ import { GMAIL_DAILY_SEND_CAP, type ProspectStage } from "@/lib/prospects/consta
 import {
   compareByPriority,
   deriveIntent,
+  startOfOperatorDay,
   summarizeCohort,
   type AuditViewFact,
   type CohortSummary,
@@ -166,11 +167,7 @@ export async function prospectFacts(filter: CockpitFilter = {}): Promise<Prospec
 
 export function windowStart(window: Window, now: Date = new Date()): Date | null {
   if (window === "batch") return null;
-  if (window === "today") {
-    const d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
+  if (window === "today") return startOfOperatorDay(now);
   const days = window === "7d" ? 7 : 30;
   return new Date(now.getTime() - days * 86_400_000);
 }
