@@ -2679,3 +2679,18 @@ logged; the turn always completes and persists). The dock falls back to
 the server action only when the stream fails before ANY event arrived:
 after the first event the turn may already have completed server-side,
 and an automatic retry could execute it twice.
+
+## 2026-08-24 — Operator preferences + catalog ratchet raise (specs 113-114)
+
+Preferences are rendered prompt context, never configuration: the ONLY
+reader is the prompt renderer, so standing instructions cannot override
+tiers, gates, budgets, or validation by construction — and the block
+itself says gates always win. Learning "injection" is deliberately a
+prompt rule pointing at the existing search_learnings tool, not an
+automatic retrieval layer (deterministic, zero new moving parts).
+The spec-107 catalog ratchet was raised 11k → 12k at 81 tools: three
+rounds of first-sentence trims established ~135 chars/line as the honest
+floor, so the old limit had stopped guarding compaction and started
+taxing every new tool. Also: analytics tools reuse the metric module
+verbatim, and `send_outcomes` was named `outreach_sends` because the
+`send_` prefix is reserved by the confirm-tier catalog invariant.

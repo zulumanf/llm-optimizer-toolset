@@ -249,3 +249,7 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 ## Assistant Analytics Reads
 
 **Purpose:** "analyze X" answers from the sanctioned metric module (`specs/113-assistant-analytics-reads.md`): `outreach_scorecard` (rates/funnel/diagnostic/insights), `outreach_breakdown` (bySegment with n + sample labels), `acquisition_funnel`, `outreach_sends` (compact per-send outcome rows, newest first). Assembly is the dashboard's own `prospectFacts → deriveIntent` glue; null rates pass through as null, never zero.
+
+## Assistant Operator Preferences
+
+**Purpose:** the assistant remembers how you work (`specs/114-assistant-operator-preferences.md`): a per-operator standing-preferences block (≤2000 chars, migration 092) rendered into every turn's prompt with "platform rules and confirmation gates always win"; set/cleared through confirm-gated `set_my_preferences`, read via `get_my_preferences`. Prompt v4 also tells the model to consult `search_learnings` before advising on approach. Preferences are prompt context only — nothing else reads them, so they can never override tiers or gates by construction.

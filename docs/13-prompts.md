@@ -192,3 +192,4 @@ prompt forces an answer.
 | 2026-08-02 | workspace-assistant-v1 | Initial. |
 | 2026-08-20 | workspace-assistant-v2 | Spec 096: the assistant may act — direct staging tools plus confirm-gated consequential ones; MAX_TOOL_CALLS raised to 10; self-healing validation shapes. |
 | 2026-08-24 | workspace-assistant-v3 | Spec 107: grouped compact catalog (name + first sentence, confirm markers); full guidance and input shapes moved behind the describe_tools meta-tool. |
+| 2026-08-24 | workspace-assistant-v4 | Spec 114: operator standing-preferences block (gates always win); consult search_learnings before advising on approach. |

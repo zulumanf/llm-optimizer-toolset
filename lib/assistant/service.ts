@@ -25,6 +25,7 @@ import {
   runAssistantTool,
 } from "@/lib/assistant/tools";
 import { mintPendingAction } from "@/lib/assistant/confirm";
+import { getPreferences } from "@/lib/assistant/preferences";
 import {
   ASSISTANT_PROMPT_VERSION,
   assistantSystemPrompt,
@@ -235,6 +236,7 @@ export async function askAssistant(
       today: new Date().toISOString().slice(0, 10),
       pathname: input.pathname,
       toolCatalog: compactCatalog(),
+      preferences: await getPreferences(user),
     });
 
     const toolCalls: AssistantToolCall[] = [];

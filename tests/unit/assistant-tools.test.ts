@@ -43,6 +43,8 @@ const MUST_CONFIRM = [
   "record_learning",
   // Spec 111: the close creates a client project and an ACTIVE agreement.
   "promote_prospect_to_client",
+  // Spec 114: standing preferences steer all future turns.
+  "set_my_preferences",
 ];
 
 describe("assistant tool catalog", () => {
@@ -100,8 +102,11 @@ describe("catalog compaction (spec 107)", () => {
     const { compactCatalog } = await import("@/lib/assistant/tools");
     const { MCP_TOOLS } = await import("@/lib/mcp/tools");
     const catalog = compactCatalog();
-    // The whole point of spec 107: raise this consciously or not at all.
-    expect(catalog.length).toBeLessThan(11_000);
+    // The spec-107 ratchet. Raised 11k → 12k with spec 114 (81 tools):
+    // three rounds of first-sentence trims established ~135 chars/line as
+    // the honest floor, so the old limit had become a per-tool tax, not a
+    // compaction guard. Next conscious review when this fires again.
+    expect(catalog.length).toBeLessThan(12_000);
     for (const tool of ASSISTANT_TOOLS) {
       expect(catalog).toContain(`- ${tool.name}`);
     }

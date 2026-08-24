@@ -86,6 +86,7 @@ import {
   prepareAuditRefreshCandidates,
 } from "@/lib/prospects/refresh";
 import { assertRole } from "@/lib/auth";
+import { getPreferences, setPreferences, PREFERENCES_MAX } from "@/lib/assistant/preferences";
 import { invokeTool } from "@/lib/mcp/tools";
 import { ClassifiedError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/actions/result";
@@ -1186,6 +1187,29 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     run: async (user, input) => invokeTool(user, "record_learning", input),
   },
   {
+    name: "get_my_preferences",
+    description:
+      "The operator's saved standing-preferences text. Rendered into your system prompt each turn; null means none are set.",
+    tier: "read",
+    schema: z.object({}),
+    run: async (user) => ({ content: await getPreferences(user) }),
+  },
+  {
+    name: "set_my_preferences",
+    description:
+      "Replace the operator's standing preferences (≤2000 chars; empty clears them). They render into every future turn's prompt as standing instructions — platform rules and confirmation gates always win. Confirmation required.",
+    tier: "confirm",
+    schema: z.object({ content: z.string().trim().max(PREFERENCES_MAX) }),
+    summarize: (i) => {
+      const text = String(i.content);
+      return text.length === 0
+        ? "Clear my standing assistant preferences"
+        : `Set standing preferences: "${text.slice(0, 80)}${text.length > 80 ? "…" : ""}"`;
+    },
+    run: async (user, input) =>
+      unwrapResult(await setPreferences(user, { content: input.content })),
+  },
+  {
     name: "describe_tools",
     description:
       "Full guidance and exact input shape for up to 8 tools from the catalog — call this before first use of a tool whose input you don't already know from this conversation. Free lookup, no data access.",
@@ -1283,6 +1307,8 @@ export const TOOL_GROUPS: Record<string, AssistantToolGroup> = {
   approve_audit_refresh: "audits",
   dismiss_audit_refresh: "audits",
   describe_tools: "meta",
+  get_my_preferences: "meta",
+  set_my_preferences: "meta",
   import_prompts: "runs",
   create_experiment: "visibility",
   record_learning: "visibility",

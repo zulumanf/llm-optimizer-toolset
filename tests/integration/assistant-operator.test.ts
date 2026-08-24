@@ -647,6 +647,40 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect(reply.toolCalls[1]!.summary).toContain("omitted");
   });
 
+  it("spec 114: confirmed preferences render into the next turn's prompt; clearing removes them", async () => {
+    const conversationId = await newConversation(operator);
+    const pending = await confirm.mintPendingAction(operator, conversationId, "set_my_preferences", {
+      content: "Default run budget is $7. Always sense-check before proposing publish.",
+    });
+    unwrap(await confirm.confirmAssistantAction(operator, { token: pending.token }));
+
+    let captured = "";
+    const capturing: AgentCaller = async (args) => {
+      captured = args.system;
+      return {
+        text: JSON.stringify({ action: "answer", answer: "ok" }),
+        tokensIn: 1,
+        tokensOut: 1,
+      };
+    };
+    unwrap(await assistant.askAssistant(operator, { message: "hi" }, capturing));
+    expect(captured).toContain("OPERATOR STANDING PREFERENCES");
+    expect(captured).toContain("budget is $7");
+    expect(captured).toContain("confirmation gates above always win");
+
+    const clear = await confirm.mintPendingAction(operator, conversationId, "set_my_preferences", {
+      content: "",
+    });
+    unwrap(await confirm.confirmAssistantAction(operator, { token: clear.token }));
+    captured = "";
+    unwrap(await assistant.askAssistant(operator, { message: "hi again" }, capturing));
+    expect(captured).not.toContain("OPERATOR STANDING PREFERENCES");
+    const [audits] = await sql`
+      select count(*)::int as n from audit_log where action = 'assistant.preferences_set'
+    `;
+    expect(audits?.n).toBe(2);
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(
