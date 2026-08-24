@@ -1,6 +1,6 @@
 # Spec 110 — Assistant Streaming Progress ("what is it doing right now?")
 
-> Status: ready
+> Status: done
 > Depends on: specs/044, specs/096, specs/107
 > Branch: feat/110-assistant-streaming-progress
 

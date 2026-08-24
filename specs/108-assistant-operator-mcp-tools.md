@@ -1,6 +1,6 @@
 # Spec 108 — Assistant Operator MCP Tools (experiments, prompt import, learnings)
 
-> Status: ready
+> Status: done
 > Depends on: specs/033, specs/096, specs/107
 > Branch: feat/108-assistant-operator-mcp-tools
 
