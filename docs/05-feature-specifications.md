@@ -219,3 +219,7 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** summaries derive from descriptions (`summaryOf`) so they cannot drift; unknown names return `unknown` rows, never a dead step; the self-healing validation shape on a wrong-input attempt remains the alternative to describing first; an 11,000-char ratchet test fails the suite when growth erodes the compaction.
 
 **Acceptance criteria:** every tool mapped to exactly one group (unit-enforced); describe-then-call round trip through the loop; prompt bumped to workspace-assistant-v3 and registered in docs/13.
+
+## Assistant Operator MCP Tools
+
+**Purpose:** the three operator-group MCP tools reach chat (`specs/108-assistant-operator-mcp-tools.md`): `import_prompts` (direct — dry-run-first bulk import of pre-freeze artifacts), `create_experiment` and `record_learning` (confirm — a measurement commitment with future spend, and a durable never-auto-generated learning where the confirm click is the explicit operator act). Schemas imported verbatim from `lib/mcp/schemas.ts`; execution rides `invokeTool`'s existing mutation gates.
