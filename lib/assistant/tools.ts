@@ -55,6 +55,12 @@ import {
   setSenderIdentity,
 } from "@/lib/outreach/sender-identity";
 import { stopSequence } from "@/lib/outreach/sequences";
+import {
+  approveAuditRefresh,
+  dismissAuditRefresh,
+  listAuditRefreshCandidates,
+  prepareAuditRefreshCandidates,
+} from "@/lib/prospects/refresh";
 import { assertRole } from "@/lib/auth";
 import { invokeTool } from "@/lib/mcp/tools";
 import { ClassifiedError } from "@/lib/errors";
@@ -332,6 +338,37 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     },
   },
   {
+    name: "list_audit_refresh_candidates",
+    description:
+      "The audit refresh queue: published audits whose project has a newer weekly run, with the metric delta, the new finding, preflight pass/warn counts, and the prior human finding (the pre-fill approve_audit_refresh requires). needs_attention rows must be resolved from the prospect page.",
+    tier: "read",
+    schema: z.object({}),
+    run: async () => {
+      const rows = await listAuditRefreshCandidates();
+      // Compact rows: counts instead of preflight bodies, title without
+      // the full explanation — transcript-budget discipline.
+      return rows.map((r) => ({
+        candidateId: r.id,
+        status: r.status,
+        error: r.error,
+        businessName: r.businessName,
+        launchName: r.launchName,
+        prospectId: r.prospectId,
+        runLabel: r.runLabel,
+        runStartedAt: r.runStartedAt,
+        findingTitle: r.findingTitle,
+        delta: r.delta,
+        preflight: {
+          checks: r.preflight.length,
+          failing: r.preflight.filter((c) => !c.ok).length,
+        },
+        publishedAt: r.publishedAt,
+        viewCount: r.viewCount,
+        priorHumanFinding: r.priorHumanFinding,
+      }));
+    },
+  },
+  {
     name: "list_launches",
     description:
       "Market launches with their market names and prospect counts — CHECK THIS BEFORE research_market: an existing launch means the city is already installed and discovery/bootstrap can run on it directly. Optional name filter.",
@@ -437,6 +474,18 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     schema: z.object({ benchmark_id: uuid }),
     run: async (user, input) =>
       unwrapResult(await svc.generateFindings(user, { benchmarkId: input.benchmark_id })),
+  },
+  {
+    name: "prepare_audit_refresh",
+    description:
+      "Stage refresh candidates from a finished run for every published audit its project feeds — idempotent per (prospect, run); nothing prospect-visible changes. Scheduled runs stage by default; pass force for a manual run (the documented backfill path). Returns prepared/needsAttention counts or notApplicable with why.",
+    tier: "direct",
+    schema: z.object({ run_id: uuid, force: z.boolean().optional() }),
+    run: async (_user, input) =>
+      prepareAuditRefreshCandidates({
+        runId: input.run_id as string,
+        ...(input.force === true ? { force: true } : {}),
+      }),
   },
   {
     name: "run_sense_check",
@@ -706,6 +755,73 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     summarize: (i) => `Retry failed cells of run ${String(i.run_id).slice(0, 8)}…`,
     run: async (user, input) =>
       unwrapResult(await retryFailedCells(user, { runId: input.run_id })),
+  },
+  {
+    name: "approve_audit_refresh",
+    description:
+      "Approve a refresh candidate: the prospect's published audit republishes from the new run under the SAME link. Requires the human-finding attestation (text + source label/url/date) — list_audit_refresh_candidates carries the prior one as pre-fill; only reuse it after confirming it still holds. A stale run needs acknowledge_stale; preflight warnings need acknowledge_warnings.reason. Confirmation required.",
+    tier: "confirm",
+    schema: z.object({
+      candidate_id: uuid,
+      human_finding: z.object({
+        text: z.string().trim().min(20).max(600),
+        source_label: z.string().trim().min(2).max(120),
+        source_url: z.string().trim().url().max(1000),
+        source_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      }),
+      adoption_stat: z
+        .object({
+          text: z.string().trim().min(20).max(600),
+          source_label: z.string().trim().min(2).max(120),
+          source_url: z.string().trim().url().max(1000),
+          source_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        })
+        .optional(),
+      acknowledge_stale: z.boolean().optional(),
+      acknowledge_warnings: z
+        .object({ reason: z.string().trim().min(10).max(500) })
+        .optional(),
+    }),
+    summarize: (i) => `Approve audit refresh ${String(i.candidate_id).slice(0, 8)}… (republishes)`,
+    run: async (user, input) => {
+      const observation = (o: Record<string, unknown>) => ({
+        text: o.text,
+        sourceLabel: o.source_label,
+        sourceUrl: o.source_url,
+        sourceDate: o.source_date,
+      });
+      return unwrapResult(
+        await approveAuditRefresh(user, {
+          candidateId: input.candidate_id,
+          humanFinding: observation(input.human_finding as Record<string, unknown>),
+          ...(input.adoption_stat
+            ? { adoptionStat: observation(input.adoption_stat as Record<string, unknown>) }
+            : {}),
+          ...(input.acknowledge_stale === true ? { acknowledgeStale: true } : {}),
+          ...(input.acknowledge_warnings
+            ? { acknowledgeWarnings: input.acknowledge_warnings }
+            : {}),
+        })
+      );
+    },
+  },
+  {
+    name: "dismiss_audit_refresh",
+    description:
+      "Dismiss a refresh candidate — the published audit stays as it is; the next weekly run stages a fresh candidate. Confirmation required.",
+    tier: "confirm",
+    schema: z.object({
+      candidate_id: uuid,
+      reason: z.string().trim().max(500).optional(),
+    }),
+    summarize: (i) => `Dismiss audit refresh ${String(i.candidate_id).slice(0, 8)}…`,
+    run: async (user, input) =>
+      unwrapResult(
+        await dismissAuditRefresh(user, {
+          candidateId: input.candidate_id,
+          ...(input.reason ? { reason: input.reason } : {}),
+        })
+      ),
   },
   {
     name: "suppress_contact",

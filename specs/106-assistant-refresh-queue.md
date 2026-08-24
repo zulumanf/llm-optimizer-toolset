@@ -1,6 +1,6 @@
 # Spec 106 — Assistant Refresh Queue (weekly audit refreshes from chat)
 
-> Status: ready
+> Status: done
 > Depends on: specs/075, specs/096, specs/102
 > Branch: feat/106-assistant-refresh-queue
 

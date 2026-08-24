@@ -203,3 +203,11 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** already-suppressed and already-stopped report honestly instead of erroring; lifting is admin-only (a non-admin's confirmed lift records the role failure in-thread and lifts nothing); chat stops are always reason `manual` — `opted_out`/`bounced` stay inbound-signal semantics; sequence rows never include message bodies.
 
 **Acceptance criteria:** all four mutations confirm-tier (catalog regex extended to `suppress_`/`lift_`/`stop_`/`set_`); suppression and sequence round trips through the confirm gate in integration tests.
+
+## Assistant Refresh Queue
+
+**Purpose:** the weekly audit-refresh loop from chat (`specs/106-assistant-refresh-queue.md`): `list_audit_refresh_candidates` (compact rows with delta, preflight counts, and the prior-human-finding pre-fill), `prepare_audit_refresh` (direct — idempotent staging, force for manual-run backfill), and confirm-gated `approve_audit_refresh` (republishes under the same link; requires the human-finding attestation, acknowledge_stale / acknowledge_warnings pass through) and `dismiss_audit_refresh`.
+
+**Edge cases:** needs_attention candidates refuse approval and point at the prospect page; a manual run without force reports notApplicable; a fixture published without a human finding lists a null pre-fill honestly.
+
+**Acceptance criteria:** catalog regex extended to `dismiss_`; approve and dismiss round-trip through the confirm gate against the audit-refresh harness, republish landing on the new run.

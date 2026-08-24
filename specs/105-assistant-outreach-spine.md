@@ -1,6 +1,6 @@
 # Spec 105 — Assistant Outreach Spine (suppression, sender identity, sequences)
 
-> Status: ready
+> Status: done
 > Depends on: specs/096, specs/102, docs/10
 > Branch: feat/105-assistant-outreach-spine
 

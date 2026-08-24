@@ -1,6 +1,6 @@
 # Spec 104 — Assistant Run Management (cancel / retry a benchmark)
 
-> Status: ready
+> Status: done
 > Depends on: specs/096, specs/102
 > Branch: feat/104-assistant-run-management
 
