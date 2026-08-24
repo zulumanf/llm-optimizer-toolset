@@ -2667,3 +2667,15 @@ annotations. The 11k-char catalog ratchet is deliberate: raising it
 requires a commit that says why. Alternatives rejected: embedding-based
 tool retrieval (nondeterministic, hides capabilities) and hand-written
 short summaries (drift).
+
+## 2026-08-24 — SSE route for assistant streaming (spec 110)
+
+Exception to "route handlers only for webhooks/cron": server actions
+cannot stream, and the value here is observation (live step progress),
+not new mutation surface — `app/api/assistant/stream/route.ts` makes the
+exact `askAssistant` call the server action makes, with an event callback
+the service treats as fire-and-forget (a callback throw is swallowed and
+logged; the turn always completes and persists). The dock falls back to
+the server action only when the stream fails before ANY event arrived:
+after the first event the turn may already have completed server-side,
+and an automatic retry could execute it twice.

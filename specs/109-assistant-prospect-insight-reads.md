@@ -1,6 +1,6 @@
 # Spec 109 — Assistant Prospect Insight Reads (diagnose, timeline, intent, upcoming)
 
-> Status: ready
+> Status: done
 > Depends on: specs/096, specs/098, specs/107
 > Branch: feat/109-assistant-prospect-insight-reads
 
