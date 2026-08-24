@@ -235,3 +235,7 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** an event-callback throw is logged and never fails the turn; the client falls back to the action only when the stream fails before any event arrived (afterwards a retry could run the turn twice — it shows a reconnect hint instead); a client disconnect never cancels the turn server-side.
 
 **Acceptance criteria:** ordered event sequence asserted in integration; no change to loop semantics, tiers, or the confirm gate; the route is a thin adapter over the same service call the action makes.
+
+## Assistant Close the Loop
+
+**Purpose:** both ends of the prospect lifecycle from chat (`specs/111-assistant-close-the-loop.md`): `import_prospects_csv` (direct — ≤200 rows, per-row errors reported, provenance stamped, rows stay behind every downstream gate) and `promote_prospect_to_client` (confirm — the close creates a client project and by default an ACTIVE exclusivity agreement; the summary states whether one is created). Catalog regex extended to `promote_`.

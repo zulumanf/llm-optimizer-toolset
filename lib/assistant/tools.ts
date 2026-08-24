@@ -47,6 +47,7 @@ import {
   upcomingAutomation,
 } from "@/lib/prospects/dashboard";
 import { diagnoseProspect } from "@/lib/prospects/diagnose";
+import { PROVENANCE_LABELS } from "@/lib/prospects/constants";
 import { cancelRun, retryFailedCells } from "@/lib/runs/service";
 import { MCP_TOOLS } from "@/lib/mcp/tools";
 import {
@@ -567,6 +568,27 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
       ),
   },
   {
+    name: "import_prospects_csv",
+    description:
+      "Bulk-import a CSV of prospects into a launch (≤200 rows; per-row errors reported, never silently dropped). Every fact the file populates carries the given provenance; rows become ordinary prospects still behind every downstream gate.",
+    tier: "direct",
+    schema: z.object({
+      launch_id: uuid,
+      csv: z.string().min(1).max(500_000),
+      provenance: z.enum(PROVENANCE_LABELS).default("publicly_sourced"),
+      source_url: z.string().trim().url().max(1000).optional(),
+    }),
+    run: async (user, input) =>
+      unwrapResult(
+        await svc.importProspects(user, {
+          launchId: input.launch_id,
+          csv: input.csv,
+          provenance: input.provenance,
+          ...(input.source_url ? { sourceUrl: input.source_url } : {}),
+        })
+      ),
+  },
+  {
     name: "add_contact",
     description:
       "Record a contact (name/email) on a prospect. Provide the source in notes — provenance is recorded as ai_inferred unless operator-verified elsewhere.",
@@ -750,6 +772,31 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
           prospectId: input.prospect_id,
           toStage: input.stage,
           ...(input.reason ? { reason: input.reason } : {}),
+        })
+      ),
+  },
+  {
+    name: "promote_prospect_to_client",
+    description:
+      "The close: promote a won prospect to a client project, by default creating an ACTIVE exclusivity agreement scoped to the launch market (declinable via create_agreement: false for engagements sold without exclusivity). The platform's most consequential single act. Confirmation required.",
+    tier: "confirm",
+    schema: z.object({
+      prospect_id: uuid,
+      create_agreement: z.boolean().default(true),
+      agreement_ends_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      grace_period_days: z.number().int().min(0).max(3650).default(0),
+    }),
+    summarize: (i) =>
+      `Promote prospect ${String(i.prospect_id).slice(0, 8)}… to client${i.create_agreement === false ? " (no exclusivity agreement)" : " + ACTIVE exclusivity agreement"}`,
+    run: async (user, input) =>
+      unwrapResult(
+        await svc.promoteProspectToClient(user, {
+          prospectId: input.prospect_id,
+          createAgreement: input.create_agreement !== false,
+          ...(input.agreement_ends_on ? { agreementEndsOn: input.agreement_ends_on } : {}),
+          ...(typeof input.grace_period_days === "number"
+            ? { gracePeriodDays: input.grace_period_days }
+            : {}),
         })
       ),
   },
@@ -1145,6 +1192,8 @@ export const TOOL_GROUPS: Record<string, AssistantToolGroup> = {
   import_prompts: "runs",
   create_experiment: "visibility",
   record_learning: "visibility",
+  import_prospects_csv: "prospecting",
+  promote_prospect_to_client: "prospecting",
   diagnose_prospect: "prospecting",
   prospect_timeline: "prospecting",
   prospect_intent: "prospecting",
