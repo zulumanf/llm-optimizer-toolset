@@ -19,9 +19,8 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { runAgent, type AgentCaller } from "@/lib/ai/agent";
 import { MCP_TOOLS, invokeTool } from "@/lib/mcp/tools";
 import {
-  ASSISTANT_TOOLS,
   CONFIRM_REQUIRED,
-  describeSchema,
+  compactCatalog,
   getAssistantTool,
   runAssistantTool,
 } from "@/lib/assistant/tools";
@@ -182,20 +181,7 @@ export async function askAssistant(
       userName: user.name,
       today: new Date().toISOString().slice(0, 10),
       pathname: input.pathname,
-      toolCatalog: [
-        ...OBSERVER_TOOLS.map((t) => ({
-          name: t.name,
-          description: `${t.description} Input: ${describeSchema(t.schema)}`,
-        })),
-        ...ASSISTANT_TOOLS.map((t) => ({
-          name: t.name,
-          description: `${
-            t.tier === "confirm"
-              ? `${t.description} [REQUIRES OPERATOR CONFIRMATION — calling this stages a Confirm button; it never executes directly]`
-              : t.description
-          } Input: ${describeSchema(t.schema)}`,
-        })),
-      ],
+      toolCatalog: compactCatalog(),
     });
 
     const toolCalls: AssistantToolCall[] = [];

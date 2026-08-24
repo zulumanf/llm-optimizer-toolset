@@ -67,6 +67,63 @@ describe("assistant tool catalog", () => {
   });
 });
 
+describe("catalog compaction (spec 107)", () => {
+  it("every tool is mapped to exactly one group, and every mapping names a real tool", async () => {
+    const { TOOL_GROUPS } = await import("@/lib/assistant/tools");
+    const { MCP_TOOLS } = await import("@/lib/mcp/tools");
+    for (const tool of ASSISTANT_TOOLS) {
+      expect(TOOL_GROUPS[tool.name], `${tool.name} needs a group in TOOL_GROUPS`).toBeDefined();
+    }
+    const known = new Set([
+      ...ASSISTANT_TOOLS.map((t) => t.name),
+      ...MCP_TOOLS.map((t) => t.name),
+    ]);
+    for (const name of Object.keys(TOOL_GROUPS)) {
+      expect(known.has(name), `TOOL_GROUPS names unknown tool "${name}"`).toBe(true);
+    }
+  });
+
+  it("summaryOf takes the first sentence, deterministically", async () => {
+    const { summaryOf } = await import("@/lib/assistant/tools");
+    expect(summaryOf("First thing. Second thing.")).toBe("First thing.");
+    expect(summaryOf("No trailing period at all")).toBe("No trailing period at all");
+    expect(summaryOf("One sentence only.")).toBe("One sentence only.");
+  });
+
+  it("the compact catalog stays under the ratchet and lists every tool once", async () => {
+    const { compactCatalog } = await import("@/lib/assistant/tools");
+    const { MCP_TOOLS } = await import("@/lib/mcp/tools");
+    const catalog = compactCatalog();
+    // The whole point of spec 107: raise this consciously or not at all.
+    expect(catalog.length).toBeLessThan(11_000);
+    for (const tool of ASSISTANT_TOOLS) {
+      expect(catalog).toContain(`- ${tool.name}`);
+    }
+    for (const tool of MCP_TOOLS.filter((t) => t.group === "observer")) {
+      expect(catalog).toContain(`- ${tool.name}`);
+    }
+    // Confirm markers present; input shapes absent.
+    expect(catalog).toContain("- send_draft (confirm):");
+    expect(catalog).not.toContain("Input: {");
+  });
+
+  it("describe_tools returns full guidance + shape for known names, unknown rows for misses", async () => {
+    const { runAssistantTool } = await import("@/lib/assistant/tools");
+    const user = { id: "u", email: "u@test", name: "U", role: "operator" as const };
+    const rows = (await runAssistantTool(user, "describe_tools", {
+      names: ["send_draft", "list_projects", "no_such_tool", "send_draft"],
+    })) as Array<Record<string, unknown>>;
+    expect(rows.length).toBe(3); // deduped
+    const send = rows.find((r) => r.name === "send_draft")!;
+    expect(String(send.description)).toContain("REQUIRES OPERATOR CONFIRMATION");
+    expect(String(send.input)).toContain('"business_purpose": string');
+    const observer = rows.find((r) => r.name === "list_projects")!;
+    expect(observer.tier).toBe("read");
+    expect(String(observer.input)).toBeTruthy();
+    expect(rows.find((r) => r.name === "no_such_tool")!.unknown).toBe(true);
+  });
+});
+
 describe("describeSchema — the catalog can never drift from validation", () => {
   it("renders research_market's exact shape", async () => {
     const { describeSchema, getAssistantTool } = await import("@/lib/assistant/tools");
