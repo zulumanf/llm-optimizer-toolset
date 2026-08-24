@@ -20,6 +20,10 @@ import { runProspectDiscovery } from "@/lib/prospects/discovery";
 import { draftMarketPack, installMarketPackDraft } from "@/lib/markets/research";
 import { bootstrapMarketBenchmark } from "@/lib/markets/bootstrap";
 import {
+  getCityProspecting,
+  startCityProspecting,
+} from "@/lib/prospects/city-pipeline";
+import {
   cockpit,
   machineHealth,
 } from "@/lib/prospects/dashboard";
@@ -51,7 +55,7 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   {
     name: "pipeline_dashboard",
     description:
-      "The prospecting cockpit: the cohort funnel (contacted → audit viewers → meaningfully engaged → replied → meeting), the prospects to act on first (priority order: conversation, CTA, high authority + high intent, repeat activity, deep engagement, single visit, follow-up due), the possible-bottleneck diagnosis, and machine health (send cap, gmail status, research queue). Audit activity describes what the AUDIT PAGE received — never who viewed it. Opens are an upper bound.",
+      "The prospecting cockpit: the cohort funnel (contacted → audit viewers → meaningfully engaged → replied → meeting), the prospects to act on first (priority order: conversation, CTA, high authority + high intent, deep engagement, multiple sessions or unresolved attribution, single visit, follow-up due), the possible-bottleneck diagnosis, and machine health (send cap, gmail status, research queue). Audit activity describes what the AUDIT PAGE received — never who viewed it. Opens are an upper bound.",
     tier: "read",
     schema: z.object({ launchId: z.string().uuid().optional() }),
     run: async (_user, input) => {
@@ -167,6 +171,18 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   },
 
   // ----------------------------------------------------------- direct
+  {
+    name: "get_city_prospecting",
+    description:
+      "Status and step-by-step log of a city prospecting pipeline (by city name or pipeline id) — answers 'how is X city going?'.",
+    tier: "read",
+    schema: z.object({ city: z.string().trim().min(2).max(120) }),
+    run: async (_user, input) => {
+      const row = await getCityProspecting(String(input.city));
+      if (!row) throw new ClassifiedError("not_found", "No pipeline found for that city.");
+      return row;
+    },
+  },
   {
     name: "list_launches",
     description:
@@ -330,6 +346,31 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   },
 
   // ---------------------------------------------------------- confirm
+  {
+    name: "run_city_prospecting",
+    description:
+      "THE A-to-Z command: research the city (Perplexity, RealTrends-focused), install its market, discover and auto-create high-confidence prospects, benchmark them across the LLMs within the stated budget, then score and stage findings — all advanced in the background by the worker; check progress with get_city_prospecting. Requires operator confirmation of the budget.",
+    tier: "confirm",
+    schema: z.object({
+      city_name: z.string().trim().min(2).max(120),
+      state: z.string().trim().min(2).max(60),
+      target_prospects: z.number().int().min(1).max(50).default(15),
+      budget_usd: z.number().positive().max(100),
+      segment: z.string().trim().max(160).optional(),
+    }),
+    summarize: (i) =>
+      `Run A→Z prospecting for ${String(i.city_name)}, ${String(i.state)}: up to ${String(i.target_prospects ?? 15)} prospects, one benchmark run ≤ $${String(i.budget_usd)}`,
+    run: async (user, input) =>
+      unwrapResult(
+        await startCityProspecting(user, {
+          cityName: input.city_name,
+          state: input.state,
+          targetProspects: input.target_prospects ?? 15,
+          budgetUsd: input.budget_usd,
+          ...(input.segment ? { segment: input.segment } : {}),
+        })
+      ),
+  },
   {
     name: "start_benchmark_run",
     description:

@@ -119,21 +119,33 @@ export async function bootstrapMarketBenchmark(
       name: projectName,
       description: `Market-level benchmark for ${marketName} prospecting (bootstrapped from the installed market pack). Subject anchor: ${anchorName}, a prominent local brokerage from the pack — not a client.`,
     });
-    if (!project.ok) return fail(project.error);
+    if (!project.ok) return project;
     await sql`update projects set kind = 'prospect' where id = ${project.data.id}`;
-    const anchor = await upsertCompany(user, { name: anchorName, aliases: [] });
-    if (!anchor.ok) return fail(anchor.error);
+    // The anchor may already exist — discovery seeds prospects' companies
+    // before the benchmark is bootstrapped, and a brokerage named in the
+    // pack is often one of them. Reuse by name; only mint when absent.
+    const [existingAnchor] = await sql`
+      select id from companies where lower(name) = lower(${anchorName}) and archived_at is null
+      limit 1
+    `;
+    let anchorId: string;
+    if (existingAnchor) anchorId = existingAnchor.id as string;
+    else {
+      const anchor = await upsertCompany(user, { name: anchorName, aliases: [] });
+      if (!anchor.ok) return anchor;
+      anchorId = anchor.data.id;
+    }
     const subject = await setSubjectCompany(user, {
       projectId: project.data.id,
-      companyId: anchor.data.id,
+      companyId: anchorId,
     });
-    if (!subject.ok) return fail(subject.error);
+    if (!subject.ok) return subject;
 
     const set = await createPromptSet(user, {
       projectId: project.data.id,
       name: `${marketName} market prompts`,
     });
-    if (!set.ok) return fail(set.error);
+    if (!set.ok) return set;
 
     const expansion = expandMarketPack(pack, { cap: parsed.data.cap });
     if (expansion.prompts.length === 0) {
@@ -165,7 +177,7 @@ export async function bootstrapMarketBenchmark(
     }
 
     const frozen = await freezePromptSet(user, { id: set.data.id });
-    if (!frozen.ok) return fail(frozen.error);
+    if (!frozen.ok) return frozen;
     const [version] = await sql`
       select id from prompt_set_versions
       where prompt_set_id = ${set.data.id}

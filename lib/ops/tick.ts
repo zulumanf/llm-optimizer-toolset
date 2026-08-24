@@ -30,6 +30,7 @@ export interface AutomationTickReport {
   outcomes: Record<string, unknown>;
   notifications: Record<string, unknown>;
   scheduledSends: Record<string, unknown>;
+  cityPipelines: Record<string, unknown>;
 }
 
 /**
@@ -176,6 +177,20 @@ export async function runAutomationTick(
     scheduledSends = { error: "scheduled-send drain failed; dispatch was unaffected" };
   }
 
+  // City prospecting pipelines (spec 097): advance each active pipeline's
+  // state machine — research → discovery → seeding → benchmark → scoring.
+  // Isolated: a pipeline failure never fails dispatch.
+  let cityPipelines: Record<string, unknown> = { skipped: true };
+  try {
+    const { advanceCityPipelines } = await import("@/lib/prospects/city-pipeline");
+    cityPipelines = { ...(await advanceCityPipelines()) };
+  } catch (err) {
+    log("error", "cron.city_pipelines_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    cityPipelines = { error: "city pipelines failed; dispatch was unaffected" };
+  }
+
   // Notification sync (docs/17 B2): derives the operator inbox from platform
   // state. It had no production scheduler at all once launchd retired — the
   // worker tick is what actually runs it now. Idempotent; isolated.
@@ -219,6 +234,7 @@ export async function runAutomationTick(
     outcomes,
     notifications,
     scheduledSends,
+    cityPipelines,
   };
 }
 
