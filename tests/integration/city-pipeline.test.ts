@@ -206,9 +206,10 @@ describe.skipIf(!TEST_URL)("city prospecting pipeline (integration)", () => {
     `;
     expect(prospects.map((p) => p.businessName)).toEqual(["Mockington Top Team"]);
     const [staged] = await sql`
-      select count(*)::int as n from prospect_discovery_candidates where status = 'pending'
+      select count(*)::int as n from prospect_discovery_candidates
+      where status = 'pending' and launch_id = 'cccccccc-0000-4000-8000-000000000041'
     `;
-    expect(staged?.n).toBe(1); // the 0.4 candidate awaits the human
+    expect(staged?.n).toBe(1); // the 0.4 candidate awaits the human (Failville's own stays on its launch)
 
     // The worker completes the run; the next ticks score and finish.
     await drainJobs();
@@ -218,11 +219,17 @@ describe.skipIf(!TEST_URL)("city prospecting pipeline (integration)", () => {
     expect(row?.log.map((l) => l.step)).toContain("scoring");
 
     const [linked] = await sql`
-      select count(*)::int as n from prospects
-      where launch_id = 'cccccccc-0000-4000-8000-000000000041'
-        and benchmark_project_id is not null
+      select count(*)::int as n from prospect_benchmarks b
+      join prospects p on p.id = b.prospect_id
+      where p.launch_id = 'cccccccc-0000-4000-8000-000000000041'
     `;
     expect(linked?.n).toBe(1);
+    const [findings] = await sql`
+      select count(*)::int as n from prospect_findings f
+      join prospects p on p.id = f.prospect_id
+      where p.launch_id = 'cccccccc-0000-4000-8000-000000000041' and f.status = 'candidate'
+    `;
+    expect(findings?.n).toBeGreaterThan(0);
 
     // Idempotent when done: another advance changes nothing.
     const report = await pipeline.advanceCityPipelines();

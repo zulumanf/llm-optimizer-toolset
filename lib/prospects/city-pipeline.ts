@@ -20,7 +20,13 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { log as logLine } from "@/lib/logger";
 import { draftMarketPack, installMarketPackDraft } from "@/lib/markets/research";
 import { bootstrapMarketBenchmark } from "@/lib/markets/bootstrap";
-import { runProspectDiscovery, reviewDiscoveryCandidate } from "@/lib/prospects/discovery";
+import {
+  confirmCompanyLink,
+  reviewDiscoveryCandidate,
+  runProspectDiscovery,
+  suggestCompanyForProspect,
+} from "@/lib/prospects/discovery";
+import { upsertCompany } from "@/lib/companies/service";
 import { addCompetitor } from "@/lib/competitors/service";
 import { estimateRunForVersion, startRun } from "@/lib/runs/service";
 import * as svc from "@/lib/prospects/service";
@@ -278,6 +284,28 @@ async function step(p: PipelineRow): Promise<"advanced" | "waiting" | "done"> {
         await bootstrapMarketBenchmark(user, { launchId: p.launchId! }),
         "bootstrap"
       );
+      // Every seeded prospect needs a canonical company before the run, or
+      // it is never scored and never links (Wilmington, 2026-08-21). Reuse
+      // a resolved match; otherwise mint the company from the business name.
+      const unlinked = await sql`
+        select id, business_name from prospects
+        where launch_id = ${p.launchId} and archived_at is null and company_id is null
+      `;
+      let linkedCompanies = 0;
+      for (const row of unlinked) {
+        const suggestion = await suggestCompanyForProspect(row.id as string);
+        let companyId = suggestion?.verdict === "match" ? suggestion.companyId : null;
+        if (!companyId) {
+          const minted = await upsertCompany(user, { name: row.businessName as string, aliases: [] });
+          if (!minted.ok) continue; // name collision with an archived/aliased company — stays manual
+          companyId = minted.data.id;
+        }
+        const link = await confirmCompanyLink(user, { prospectId: row.id as string, companyId });
+        if (link.ok) linkedCompanies += 1;
+      }
+      if (unlinked.length > 0) {
+        await appendLog(p.id, "benchmarking", `${linkedCompanies}/${unlinked.length} prospects linked to a canonical company.`);
+      }
       // Track every seeded prospect's company so the run scores THEM.
       const companies = await sql`
         select distinct company_id from prospects
@@ -357,10 +385,14 @@ async function step(p: PipelineRow): Promise<"advanced" | "waiting" | "done"> {
       return "advanced";
     }
     case "scoring": {
+      // "Unlinked" = no prospect_benchmarks row for THIS run (linkBenchmark
+      // records the link there; benchmark_project_id is the per-prospect
+      // project path and stays null here).
       const prospects = await sql`
-        select id, business_name from prospects
-        where launch_id = ${p.launchId} and archived_at is null
-          and benchmark_project_id is null
+        select id, business_name from prospects pr
+        where pr.launch_id = ${p.launchId} and pr.archived_at is null
+          and not exists (select 1 from prospect_benchmarks b
+            where b.prospect_id = pr.id and b.run_id = ${p.runId})
       `;
       let linked = 0;
       let findings = 0;
