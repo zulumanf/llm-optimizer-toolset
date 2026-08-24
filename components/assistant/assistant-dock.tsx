@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname } from "next/navigation";
-import { Check, ChevronDown, ChevronUp, Loader2, MessageCircle, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, History, Loader2, MessageCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,6 +11,7 @@ import {
   confirmAssistantAction,
   getAssistantConversation,
   getPendingAssistantActions,
+  listAssistantConversations,
 } from "@/app/assistant/actions";
 
 const STORAGE_KEY = "avos-assistant-conversation";
@@ -38,6 +39,13 @@ interface LiveStep {
   ok?: boolean;
 }
 
+interface ConversationSummary {
+  id: string;
+  title: string;
+  lastMessageAt: string | Date | null;
+  messageCount: number;
+}
+
 interface ReplyPayload {
   conversationId: string;
   reply: string;
@@ -60,6 +68,8 @@ export function AssistantDock() {
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
   const conversationId = useRef<string | null>(null);
   const loaded = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -234,6 +244,42 @@ export function AssistantDock() {
     });
   };
 
+  const toggleHistory = () => {
+    const next = !historyOpen;
+    setHistoryOpen(next);
+    if (next) {
+      setConversations(null); // loading state
+      void listAssistantConversations().then((result) => {
+        setConversations(result.ok ? (result.data as ConversationSummary[]) : []);
+      });
+    }
+  };
+
+  const openConversation = (id: string) => {
+    if (pending || busy) return;
+    setHistoryOpen(false);
+    conversationId.current = id;
+    window.localStorage.setItem(STORAGE_KEY, id);
+    loaded.current = true;
+    setMessages([]);
+    setPendingActions([]);
+    setError(null);
+    void getPendingAssistantActions(id).then((result) => {
+      if (result.ok) setPendingActions(result.data as PendingAction[]);
+    });
+    void getAssistantConversation(id).then((result) => {
+      if (result.ok) {
+        setMessages(
+          result.data.map((m) => ({
+            role: m.role,
+            content: m.content,
+            toolCalls: m.toolCalls,
+          }))
+        );
+      }
+    });
+  };
+
   const reset = () => {
     window.localStorage.removeItem(STORAGE_KEY);
     conversationId.current = null;
@@ -254,6 +300,14 @@ export function AssistantDock() {
                 answers from live data · consequential actions need your confirm
               </span>
               <div className="ml-auto flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleHistory}
+                  aria-label="Previous chats"
+                >
+                  <History className="size-4" />
+                </Button>
                 <Button variant="ghost" size="sm" onClick={reset}>
                   New chat
                 </Button>
@@ -267,6 +321,34 @@ export function AssistantDock() {
                 </Button>
               </div>
             </div>
+            {historyOpen && (
+              <div className="max-h-48 overflow-y-auto border-b p-1">
+                {conversations === null && (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">Loading…</p>
+                )}
+                {conversations !== null && conversations.length === 0 && (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                    No previous chats.
+                  </p>
+                )}
+                {conversations?.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => openConversation(c.id)}
+                    className="flex w-full items-baseline gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{c.title || "Untitled"}</span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                      {c.messageCount} msg
+                      {c.lastMessageAt
+                        ? ` · ${new Date(c.lastMessageAt).toLocaleDateString()}`
+                        : ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
             <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3 text-sm">
               {messages.length === 0 && (
                 <p className="text-muted-foreground">

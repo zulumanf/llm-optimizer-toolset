@@ -604,6 +604,31 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect((refused.result as { error?: string }).error).toMatch(/already promoted/);
   });
 
+  it("spec 112: listConversations returns only the caller's threads, newest activity first", async () => {
+    await sql`
+      insert into assistant_conversations (user_id, title, last_message_at)
+      values (${admin.id}, 'admin-only thread', now())
+    `;
+    const [older] = await sql`
+      insert into assistant_conversations (user_id, title, last_message_at)
+      values (${operator.id}, 'older thread', now() - interval '2 days') returning id
+    `;
+    await sql`
+      insert into assistant_messages (conversation_id, role, content)
+      values (${older!.id}, 'user', 'hello'), (${older!.id}, 'assistant', 'hi')
+    `;
+    const [newer] = await sql`
+      insert into assistant_conversations (user_id, title, last_message_at)
+      values (${operator.id}, 'newer thread', now()) returning id
+    `;
+    const list = await assistant.listConversations(operator, 50);
+    const titles = list.map((c) => c.title);
+    expect(titles).not.toContain("admin-only thread");
+    expect(titles.indexOf("newer thread")).toBeLessThan(titles.indexOf("older thread"));
+    expect(list.find((c) => c.id === older!.id)?.messageCount).toBe(2);
+    expect(list.find((c) => c.id === newer!.id)?.messageCount).toBe(0);
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(

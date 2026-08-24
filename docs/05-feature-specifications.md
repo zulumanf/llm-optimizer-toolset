@@ -239,3 +239,9 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 ## Assistant Close the Loop
 
 **Purpose:** both ends of the prospect lifecycle from chat (`specs/111-assistant-close-the-loop.md`): `import_prospects_csv` (direct — ≤200 rows, per-row errors reported, provenance stamped, rows stay behind every downstream gate) and `promote_prospect_to_client` (confirm — the close creates a client project and by default an ACTIVE exclusivity agreement; the summary states whether one is created). Catalog regex extended to `promote_`.
+
+## Assistant Conversation List
+
+**Purpose:** previous chats stop being orphans (`specs/112-assistant-conversation-list.md`): a History control in the dock header lists the operator's own conversations (newest activity first, title + message count + date) and reopens any of them with its messages and pending actions; "New chat" is unchanged, the old thread just stays reachable.
+
+**Edge cases:** own conversations only (ownership as `loadConversation` enforces); switching is blocked while a turn is in flight; loading and empty states present.

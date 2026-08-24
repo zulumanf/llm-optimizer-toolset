@@ -163,6 +163,36 @@ function emitEvent(
   }
 }
 
+export interface AssistantConversationSummary {
+  id: string;
+  title: string;
+  lastMessageAt: Date | null;
+  messageCount: number;
+}
+
+/** The caller's own conversations, newest activity first (spec 112). */
+export async function listConversations(
+  user: CurrentUser,
+  limit = 20
+): Promise<AssistantConversationSummary[]> {
+  assertStaff(user);
+  const rows = await sql`
+    select c.id, c.title, c.last_message_at,
+      (select count(*)::int from assistant_messages m
+        where m.conversation_id = c.id) as message_count
+    from assistant_conversations c
+    where c.user_id = ${user.id}
+    order by c.last_message_at desc nulls last
+    limit ${Math.min(Math.max(limit, 1), 50)}
+  `;
+  return rows.map((r) => ({
+    id: r.id as string,
+    title: (r.title as string) ?? "",
+    lastMessageAt: (r.lastMessageAt as Date | null) ?? null,
+    messageCount: Number(r.messageCount ?? 0),
+  }));
+}
+
 export async function askAssistant(
   user: CurrentUser,
   raw: unknown,
