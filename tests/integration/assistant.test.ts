@@ -214,6 +214,41 @@ describe.skipIf(!TEST_URL)("workspace assistant (integration)", () => {
     expect(row?.agentVersion).toBe("workspace-assistant-v4");
   });
 
+  it("persists the turn when the agent loop throws after tool calls — the thread stays the record", async () => {
+    let calls = 0;
+    const failing: AgentCaller = async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          text: JSON.stringify({ action: "tool", tool: "list_projects", input: {} }),
+          tokensIn: 100,
+          tokensOut: 20,
+        };
+      }
+      throw new Error("provider melted down");
+    };
+    const result = await assistant.askAssistant(
+      operator,
+      { message: "doomed turn", pathname: "/" },
+      failing
+    );
+    // The failure still surfaces to the caller…
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain("provider melted down");
+    // …but the turn was recorded first: user + assistant rows with the
+    // executed tool log, and the conversation's activity clock bumped.
+    const [conv] = await sql`
+      select id, last_message_at from assistant_conversations where title = 'doomed turn'
+    `;
+    expect(conv).toBeDefined();
+    expect(conv?.lastMessageAt).not.toBeNull();
+    const messages = await assistant.getConversationMessages(operator, conv!.id as string);
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(messages[0]?.content).toBe("doomed turn");
+    expect(messages[1]?.content).toContain("provider melted down");
+    expect(messages[1]?.toolCalls?.[0]).toMatchObject({ tool: "list_projects", ok: true });
+  });
+
   it("enforces the boundaries: staff-only, own conversations only, insert-only messages", async () => {
     const denied = await assistant.askAssistant(
       clientViewer,

@@ -325,57 +325,68 @@ export async function askAssistant(
     const pendingActions: AssistantPendingAction[] = [];
     let cost = 0;
     let reply: string | null = null;
+    /** A mid-turn agent failure (runAgent throwing after tool calls have
+     * executed and spent money). The turn is still the record: persist
+     * what happened, THEN surface the failure — never lose the thread. */
+    let agentFailure: unknown = null;
 
-    for (let step = 0; step <= MAX_TOOL_CALLS; step += 1) {
-      const mustAnswer = step === MAX_TOOL_CALLS;
-      const run = await runAgent({
-        agentVersion: ASSISTANT_PROMPT_VERSION,
-        model: modelForTask("workspace_assistant"),
-        system,
-        user:
-          transcript.join("\n\n") +
-          (mustAnswer
-            ? '\n\n(You have used every allowed lookup — respond with {"action":"answer",...} now.)'
-            : ""),
-        schema: stepSchema,
-        caller,
-      });
-      cost += run.costMicroUsd;
+    try {
+      for (let step = 0; step <= MAX_TOOL_CALLS; step += 1) {
+        const mustAnswer = step === MAX_TOOL_CALLS;
+        const run = await runAgent({
+          agentVersion: ASSISTANT_PROMPT_VERSION,
+          model: modelForTask("workspace_assistant"),
+          system,
+          user:
+            transcript.join("\n\n") +
+            (mustAnswer
+              ? '\n\n(You have used every allowed lookup — respond with {"action":"answer",...} now.)'
+              : ""),
+          schema: stepSchema,
+          caller,
+        });
+        cost += run.costMicroUsd;
 
-      const output = run.output;
-      if (output.action === "answer") {
-        reply = output.answer;
-        break;
+        const output = run.output;
+        if (output.action === "answer") {
+          reply = output.answer;
+          break;
+        }
+        if (mustAnswer) {
+          // The model asked for yet another tool after the hard stop.
+          reply =
+            "I hit the lookup limit for one question before reaching an answer — try asking something narrower.";
+          break;
+        }
+        const toolName = output.tool;
+        const toolInput = output.input;
+        // Three sources, in precedence order (spec 096): MCP observer tools,
+        // then the assistant belt — whose confirm tier NEVER executes from
+        // here: it mints a pending action for the operator's Confirm button.
+        emitEvent(onEvent, { type: "tool_start", tool: toolName });
+        const outcome = await dispatchToolCall(user, conversationId, toolName, toolInput, {
+          caller,
+        });
+        if (outcome.pendingAction) pendingActions.push(outcome.pendingAction);
+        toolCalls.push({
+          tool: toolName,
+          input: toolInput,
+          ok: outcome.ok,
+          summary: outcome.summary.slice(0, 400),
+        });
+        emitEvent(onEvent, {
+          type: "tool_end",
+          tool: toolName,
+          ok: outcome.ok,
+          summary: outcome.summary.slice(0, 400),
+        });
+        transcript.push(`TOOL ${toolName}(${JSON.stringify(toolInput)}) → ${outcome.summary}`);
       }
-      if (mustAnswer) {
-        // The model asked for yet another tool after the hard stop.
-        reply =
-          "I hit the lookup limit for one question before reaching an answer — try asking something narrower.";
-        break;
-      }
-      const toolName = output.tool;
-      const toolInput = output.input;
-      // Three sources, in precedence order (spec 096): MCP observer tools,
-      // then the assistant belt — whose confirm tier NEVER executes from
-      // here: it mints a pending action for the operator's Confirm button.
-      emitEvent(onEvent, { type: "tool_start", tool: toolName });
-      const outcome = await dispatchToolCall(user, conversationId, toolName, toolInput, {
-        caller,
-      });
-      if (outcome.pendingAction) pendingActions.push(outcome.pendingAction);
-      toolCalls.push({
-        tool: toolName,
-        input: toolInput,
-        ok: outcome.ok,
-        summary: outcome.summary.slice(0, 400),
-      });
-      emitEvent(onEvent, {
-        type: "tool_end",
-        tool: toolName,
-        ok: outcome.ok,
-        summary: outcome.summary.slice(0, 400),
-      });
-      transcript.push(`TOOL ${toolName}(${JSON.stringify(toolInput)}) → ${outcome.summary}`);
+    } catch (err) {
+      agentFailure = err;
+      reply = `The assistant failed mid-turn (${
+        err instanceof Error ? err.message : "unknown error"
+      }). The tool calls above are preserved in this thread — ask again to continue.`;
     }
 
     const finalReply = reply ?? "I could not produce an answer.";
@@ -400,6 +411,9 @@ export async function askAssistant(
       toolCalls: toolCalls.length,
       costMicroUsd: Math.round(cost),
     });
+    // The turn is recorded; NOW the failure surfaces. No "done" event — the
+    // streaming route emits its single error event from this refusal.
+    if (agentFailure !== null) return fail(agentFailure);
     const replyPayload: AssistantReply = {
       conversationId,
       reply: finalReply,
