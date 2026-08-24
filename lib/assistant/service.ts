@@ -44,7 +44,7 @@ const TITLE_MAX = 80;
  * Mutating tools never enter the catalog, so the model cannot even see them. */
 const OBSERVER_TOOLS = MCP_TOOLS.filter((t) => t.group === "observer");
 
-const stepSchema = z.union([
+export const stepSchema = z.union([
   z.object({
     action: z.literal("tool"),
     tool: z.string().min(1),
@@ -140,6 +140,88 @@ export async function getConversationMessages(
     toolCalls: (r.toolCalls as AssistantToolCall[]) ?? [],
     createdAt: r.createdAt as Date,
   }));
+}
+
+export interface DispatchOutcome {
+  ok: boolean;
+  /** Untruncated transcript summary; callers slice for storage. */
+  summary: string;
+  pendingAction: AssistantPendingAction | null;
+}
+
+/** The ONE tool-dispatch implementation (spec 115 extraction): observer
+ * tools, then the belt — whose confirm tier NEVER executes from here; it
+ * mints a pending action (task-linked when a task staged it). Used by
+ * both the chat loop and the task engine, so the gates cannot diverge. */
+export async function dispatchToolCall(
+  user: CurrentUser,
+  conversationId: string,
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  opts: { caller?: AgentCaller; taskId?: string; forbidden?: readonly string[] } = {}
+): Promise<DispatchOutcome> {
+  if (opts.forbidden?.includes(toolName)) {
+    return {
+      ok: false,
+      summary: `ERROR (validation): "${toolName}" cannot be used from inside a task.`,
+      pendingAction: null,
+    };
+  }
+  const isObserver = OBSERVER_TOOLS.some((t) => t.name === toolName);
+  const assistantTool = getAssistantTool(toolName);
+  let pendingAction: AssistantPendingAction | null = null;
+  let result: { ok: true; data: unknown } | { ok: false; error: { kind: string; message: string } };
+  if (isObserver) {
+    result = await invokeTool(user, toolName, toolInput);
+  } else if (assistantTool && CONFIRM_REQUIRED.has(toolName)) {
+    try {
+      const pending = await mintPendingAction(
+        user,
+        conversationId,
+        toolName,
+        toolInput,
+        opts.taskId
+      );
+      pendingAction = {
+        id: pending.id,
+        tool: pending.tool,
+        summary: pending.summary,
+        token: pending.token,
+      };
+      result = {
+        ok: true,
+        data: {
+          requires_confirmation: true,
+          summary: pending.summary,
+          note: "A Confirm button is now shown to the operator. Nothing has executed. Tell them what it will do and wait — do not retry this tool.",
+        },
+      };
+    } catch (err) {
+      result = {
+        ok: false,
+        error: {
+          kind: "validation",
+          message: err instanceof Error ? err.message : "could not stage the action",
+        },
+      };
+    }
+  } else if (assistantTool) {
+    try {
+      result = { ok: true, data: await runAssistantTool(user, toolName, toolInput, opts.caller) };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "tool failed";
+      result = { ok: false, error: { kind: "validation", message } };
+    }
+  } else {
+    result = {
+      ok: false,
+      error: { kind: "validation", message: `Unknown tool "${toolName}".` },
+    };
+  }
+  const summary = result.ok
+    ? toolResultForTranscript(result.data)
+    : `ERROR (${result.error.kind}): ${result.error.message}`;
+  return { ok: result.ok, summary, pendingAction };
 }
 
 /** Progress events for the streaming transport (spec 110). Emission is
@@ -277,64 +359,23 @@ export async function askAssistant(
       // then the assistant belt — whose confirm tier NEVER executes from
       // here: it mints a pending action for the operator's Confirm button.
       emitEvent(onEvent, { type: "tool_start", tool: toolName });
-      const isObserver = OBSERVER_TOOLS.some((t) => t.name === toolName);
-      const assistantTool = getAssistantTool(toolName);
-      let result: { ok: true; data: unknown } | { ok: false; error: { kind: string; message: string } };
-      if (isObserver) {
-        result = await invokeTool(user, toolName, toolInput);
-      } else if (assistantTool && CONFIRM_REQUIRED.has(toolName)) {
-        try {
-          const pending = await mintPendingAction(user, conversationId, toolName, toolInput);
-          pendingActions.push({ id: pending.id, tool: pending.tool, summary: pending.summary, token: pending.token });
-          result = {
-            ok: true,
-            data: {
-              requires_confirmation: true,
-              summary: pending.summary,
-              note: "A Confirm button is now shown to the operator. Nothing has executed. Tell them what it will do and wait — do not retry this tool.",
-            },
-          };
-        } catch (err) {
-          result = {
-            ok: false,
-            error: {
-              kind: "validation",
-              message: err instanceof Error ? err.message : "could not stage the action",
-            },
-          };
-        }
-      } else if (assistantTool) {
-        try {
-          result = { ok: true, data: await runAssistantTool(user, toolName, toolInput, caller) };
-        } catch (err) {
-          const message = err instanceof Error ? err.message : "tool failed";
-          result = { ok: false, error: { kind: "validation", message } };
-        }
-      } else {
-        result = {
-          ok: false,
-          error: {
-            kind: "validation",
-            message: `Unknown tool "${toolName}".`,
-          },
-        };
-      }
-      const summary = result.ok
-        ? toolResultForTranscript(result.data)
-        : `ERROR (${result.error.kind}): ${result.error.message}`;
+      const outcome = await dispatchToolCall(user, conversationId, toolName, toolInput, {
+        caller,
+      });
+      if (outcome.pendingAction) pendingActions.push(outcome.pendingAction);
       toolCalls.push({
         tool: toolName,
         input: toolInput,
-        ok: result.ok,
-        summary: summary.slice(0, 400),
+        ok: outcome.ok,
+        summary: outcome.summary.slice(0, 400),
       });
       emitEvent(onEvent, {
         type: "tool_end",
         tool: toolName,
-        ok: result.ok,
-        summary: summary.slice(0, 400),
+        ok: outcome.ok,
+        summary: outcome.summary.slice(0, 400),
       });
-      transcript.push(`TOOL ${toolName}(${JSON.stringify(toolInput)}) → ${summary}`);
+      transcript.push(`TOOL ${toolName}(${JSON.stringify(toolInput)}) → ${outcome.summary}`);
     }
 
     const finalReply = reply ?? "I could not produce an answer.";

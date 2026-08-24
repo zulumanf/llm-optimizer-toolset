@@ -35,6 +35,16 @@ export async function listAssistantConversations() {
   }
 }
 
+export async function listAssistantTasks() {
+  try {
+    const user = await getCurrentUser();
+    const { listTasks } = await import("@/lib/assistant/tasks");
+    return ok(await listTasks(user, "active"));
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 export async function confirmAssistantAction(input: unknown) {
   try {
     const user = await getCurrentUser();

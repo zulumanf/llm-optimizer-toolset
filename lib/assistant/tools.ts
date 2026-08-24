@@ -1187,6 +1187,81 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     run: async (user, input) => invokeTool(user, "record_learning", input),
   },
   {
+    name: "list_tasks",
+    description:
+      "The operator's delegated tasks (default: active) with status, budgets spent, and how many staged actions await them. get_task shows one in depth.",
+    tier: "read",
+    schema: z.object({
+      status: z.enum(["active", "completed", "failed", "cancelled", "all"]).default("active"),
+    }),
+    run: async (user, input) => {
+      const { listTasks } = await import("@/lib/assistant/tasks");
+      return listTasks(user, input.status as never);
+    },
+  },
+  {
+    name: "get_task",
+    description:
+      "One delegated task in depth: status, goal, budgets spent, the transcript tail, and the final report if done.",
+    tier: "read",
+    schema: z.object({ task_id: uuid }),
+    run: async (user, input) => {
+      const { getTask } = await import("@/lib/assistant/tasks");
+      const task = await getTask(user, input.task_id as string);
+      if (!task) throw new ClassifiedError("not_found", "Task not found.");
+      return {
+        taskId: task.id,
+        goal: task.goal,
+        status: task.status,
+        report: task.report,
+        stepsTaken: task.stepsTaken,
+        maxSteps: task.maxSteps,
+        costMicroUsd: task.costMicroUsd,
+        maxCostMicroUsd: task.maxCostMicroUsd,
+        lastError: task.lastError,
+        conversationId: task.conversationId,
+        transcriptTail: task.transcriptTail,
+      };
+    },
+  },
+  {
+    name: "create_task",
+    description:
+      "Delegate a multi-step goal: the worker advances it autonomously through read and direct tools within the stated step and cost budgets; confirm-tier actions stage for the operator and park the task; the report lands in its own conversation. Confirmation required — the click authorizes the autonomy and budgets.",
+    tier: "confirm",
+    schema: z.object({
+      goal: z.string().trim().min(10).max(2000),
+      max_steps: z.number().int().min(5).max(50).default(25),
+      max_cost_usd: z.number().min(0.1).max(10).default(2),
+    }),
+    summarize: (i) =>
+      `Start task "${String(i.goal).slice(0, 80)}${String(i.goal).length > 80 ? "…" : ""}" (≤${Number(i.max_steps ?? 25)} steps, ≤$${Number(i.max_cost_usd ?? 2).toFixed(2)})`,
+    run: async (user, input) => {
+      const { createTask } = await import("@/lib/assistant/tasks");
+      return unwrapResult(
+        await createTask(user, {
+          goal: input.goal,
+          maxSteps: input.max_steps ?? 25,
+          maxCostUsd: input.max_cost_usd ?? 2,
+        })
+      );
+    },
+  },
+  {
+    name: "cancel_task",
+    description:
+      "Cancel an active delegated task — its undecided staged actions are cancelled with it; the transcript is kept. Confirmation required.",
+    tier: "confirm",
+    schema: z.object({ task_id: uuid, reason: z.string().trim().min(5).max(500) }),
+    summarize: (i) => `Cancel task ${String(i.task_id).slice(0, 8)}… — ${String(i.reason)}`,
+    run: async (user, input) => {
+      const { cancelTask } = await import("@/lib/assistant/tasks");
+      return unwrapResult(
+        await cancelTask(user, { taskId: input.task_id, reason: input.reason })
+      );
+    },
+  },
+  {
     name: "get_my_preferences",
     description:
       "The operator's saved standing-preferences text. Rendered into your system prompt each turn; null means none are set.",
@@ -1244,6 +1319,7 @@ export type AssistantToolGroup =
   | "runs"
   | "outreach"
   | "audits"
+  | "tasks"
   | "meta";
 
 export const GROUP_HEADERS: Record<AssistantToolGroup, string> = {
@@ -1253,6 +1329,7 @@ export const GROUP_HEADERS: Record<AssistantToolGroup, string> = {
   runs: "BENCHMARK RUNS",
   outreach: "OUTREACH",
   audits: "AUDITS & FINDINGS",
+  tasks: "DELEGATED TASKS",
   meta: "META",
 };
 
@@ -1307,6 +1384,10 @@ export const TOOL_GROUPS: Record<string, AssistantToolGroup> = {
   approve_audit_refresh: "audits",
   dismiss_audit_refresh: "audits",
   describe_tools: "meta",
+  list_tasks: "tasks",
+  get_task: "tasks",
+  create_task: "tasks",
+  cancel_task: "tasks",
   get_my_preferences: "meta",
   set_my_preferences: "meta",
   import_prompts: "runs",

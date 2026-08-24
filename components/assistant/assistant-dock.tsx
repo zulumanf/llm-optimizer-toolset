@@ -12,6 +12,7 @@ import {
   getAssistantConversation,
   getPendingAssistantActions,
   listAssistantConversations,
+  listAssistantTasks,
 } from "@/app/assistant/actions";
 
 const STORAGE_KEY = "avos-assistant-conversation";
@@ -69,6 +70,7 @@ export function AssistantDock() {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [taskLine, setTaskLine] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
   const conversationId = useRef<string | null>(null);
   const loaded = useRef(false);
@@ -78,6 +80,17 @@ export function AssistantDock() {
   const loadHistory = () => {
     if (loaded.current) return;
     loaded.current = true;
+    void listAssistantTasks().then((result) => {
+      if (!result.ok) return;
+      const tasks = result.data as Array<{ status: string; undecided: number }>;
+      const running = tasks.filter((t) => t.status === "running").length;
+      const needYou = tasks.filter((t) => t.undecided > 0).length;
+      setTaskLine(
+        tasks.length === 0
+          ? null
+          : `Tasks: ${running} running${needYou > 0 ? ` · ${needYou} need you` : ""}`
+      );
+    });
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (!stored) return;
     conversationId.current = stored;
@@ -297,7 +310,7 @@ export function AssistantDock() {
               <MessageCircle className="size-4" />
               <span className="text-sm font-medium">AVOS assistant</span>
               <span className="text-xs text-muted-foreground">
-                answers from live data · consequential actions need your confirm
+                {taskLine ?? "answers from live data · consequential actions need your confirm"}
               </span>
               <div className="ml-auto flex items-center gap-1">
                 <Button

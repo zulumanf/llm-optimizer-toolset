@@ -34,7 +34,10 @@ export async function mintPendingAction(
   user: CurrentUser,
   conversationId: string,
   tool: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  /** Set when a delegated task staged this (spec 115) — the resume check
+   * counts undecided rows by task. */
+  taskId?: string
 ): Promise<PendingActionRow> {
   const def = getAssistantTool(tool);
   if (!def || !CONFIRM_REQUIRED.has(tool)) {
@@ -54,9 +57,9 @@ export async function mintPendingAction(
   const token = randomBytes(24).toString("hex");
   const [row] = await sql`
     insert into assistant_pending_actions
-      (conversation_id, user_id, tool, input, summary, token)
+      (conversation_id, user_id, tool, input, summary, token, task_id)
     values (${conversationId}, ${user.id}, ${tool},
-      ${sql.json(parsed.data as never)}, ${summary}, ${token})
+      ${sql.json(parsed.data as never)}, ${summary}, ${token}, ${taskId ?? null})
     returning id, tool, summary, token, status, created_at
   `;
   return {

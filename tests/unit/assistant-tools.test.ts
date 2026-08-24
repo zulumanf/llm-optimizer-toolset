@@ -45,6 +45,10 @@ const MUST_CONFIRM = [
   "promote_prospect_to_client",
   // Spec 114: standing preferences steer all future turns.
   "set_my_preferences",
+  // Spec 115: creating a task authorizes autonomous execution + budgets;
+  // cancelling reverses that authorization.
+  "create_task",
+  "cancel_task",
 ];
 
 describe("assistant tool catalog", () => {

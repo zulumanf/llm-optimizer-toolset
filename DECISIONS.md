@@ -2694,3 +2694,18 @@ floor, so the old limit had stopped guarding compaction and started
 taxing every new tool. Also: analytics tools reuse the metric module
 verbatim, and `send_outcomes` was named `outreach_sends` because the
 `send_` prefix is reserved by the confirm-tier catalog invariant.
+
+## 2026-08-24 — Delegated tasks lift the spec-096 deferral (spec 115)
+
+Spec 096's "no multi-step autonomous plans" is lifted with the trust
+model extended, not weakened: the create_task confirm click authorizes
+READ/DIRECT tools only, within hard step + LLM-cost budgets stated on
+the card; confirm-tier tools inside a task mint task-linked pending
+actions and PARK the task — the operator's decisions (or dismissals)
+enter the transcript verbatim before it resumes. The chat loop's
+dispatch was extracted (dispatchToolCall) so both paths share one gate
+implementation by construction. Task-state notifications deliberately
+skip the notifications feed (it is project-keyed; tasks are
+operator-keyed) — the surfaces are the task's own conversation and the
+dock header line. Budget exhaustion is status 'failed' with the budget
+named, never a trimmed "success".
