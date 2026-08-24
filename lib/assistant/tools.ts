@@ -20,9 +20,16 @@ import { runProspectDiscovery } from "@/lib/prospects/discovery";
 import { draftMarketPack, installMarketPackDraft } from "@/lib/markets/research";
 import { bootstrapMarketBenchmark } from "@/lib/markets/bootstrap";
 import {
+  cancelCityProspecting,
   getCityProspecting,
+  listCityPipelines,
+  retryCityProspecting,
   startCityProspecting,
+  type PipelineListFilter,
 } from "@/lib/prospects/city-pipeline";
+import { listScheduledOutbox } from "@/lib/prospects/scheduled-sends";
+import { runSenseCheck } from "@/lib/prospects/sense-check";
+import type { AgentCaller } from "@/lib/ai/agent";
 import {
   cockpit,
   machineHealth,
@@ -40,7 +47,13 @@ export interface AssistantToolDef {
   schema: z.ZodTypeAny;
   /** One line shown on the confirm button, built from validated input. */
   summarize?: (input: Record<string, unknown>) => string;
-  run: (user: CurrentUser, input: Record<string, unknown>) => Promise<unknown>;
+  /** The caller is the loop's injectable LLM transport (tests, CI) —
+   * only LLM-backed tools forward it; the confirm path omits it. */
+  run: (
+    user: CurrentUser,
+    input: Record<string, unknown>,
+    caller?: AgentCaller
+  ) => Promise<unknown>;
 }
 
 const unwrapResult = <T>(r: ActionResult<T>): T => {
@@ -184,6 +197,26 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     },
   },
   {
+    name: "list_city_pipelines",
+    description:
+      "Every city prospecting pipeline (default: active ones) with status, params, error, and the last log entries — answers 'what pipelines are running?'. Filter by status; failed rows show where they failed from (retry_city_pipeline resumes there).",
+    tier: "read",
+    schema: z.object({
+      status: z.enum(["active", "failed", "completed", "cancelled", "all"]).default("active"),
+      limit: z.number().int().min(1).max(50).default(20),
+    }),
+    run: async (_user, input) =>
+      listCityPipelines(input.status as PipelineListFilter, input.limit as number),
+  },
+  {
+    name: "list_scheduled_sends",
+    description:
+      "The outbox: scheduled Gmail sends (soonest first, with attempts and any last error) and parked sends with the reason they parked. A row marked inFlight holds an unresolved claim — the message may or may not have left; it is never auto-retried, verify in the Gmail Sent folder.",
+    tier: "read",
+    schema: z.object({ limit: z.number().int().min(1).max(50).default(20) }),
+    run: async (_user, input) => listScheduledOutbox(input.limit as number),
+  },
+  {
     name: "list_launches",
     description:
       "Market launches with their market names and prospect counts — CHECK THIS BEFORE research_market: an existing launch means the city is already installed and discovery/bootstrap can run on it directly. Optional name filter.",
@@ -289,6 +322,15 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     schema: z.object({ benchmark_id: uuid }),
     run: async (user, input) =>
       unwrapResult(await svc.generateFindings(user, { benchmarkId: input.benchmark_id })),
+  },
+  {
+    name: "run_sense_check",
+    description:
+      "Run the audit sense-check agent on a prospect's assembled audit content (evidence coherence, terminology, claims). Creates a reviewable check row — run this when publish_audit warns of a missing or stale sense-check, then publish.",
+    tier: "direct",
+    schema: z.object({ prospect_id: uuid }),
+    run: async (user, input, caller) =>
+      unwrapResult(await runSenseCheck(user, { prospectId: input.prospect_id }, caller)),
   },
   {
     name: "create_outreach_draft",
@@ -492,6 +534,45 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
         })
       ),
   },
+  {
+    name: "cancel_city_pipeline",
+    description:
+      "Cancel an active city prospecting pipeline. Confirmation required — it reverses the confirmed kickoff, and an in-flight benchmark run linked to it is cancelled too (captured cells are kept).",
+    tier: "confirm",
+    schema: z.object({
+      pipeline_id: uuid,
+      reason: z.string().trim().min(5).max(500),
+    }),
+    summarize: (i) =>
+      `Cancel city pipeline ${String(i.pipeline_id).slice(0, 8)}… — ${String(i.reason)}`,
+    run: async (user, input) =>
+      unwrapResult(
+        await cancelCityProspecting(user, {
+          pipelineId: input.pipeline_id,
+          reason: input.reason,
+        })
+      ),
+  },
+  {
+    name: "retry_city_pipeline",
+    description:
+      "Retry a FAILED city prospecting pipeline from the status it failed at (shown as failedFromStatus in list_city_pipelines). Confirmation required — resumed lanes can spend provider budget. The worker advances it next tick.",
+    tier: "confirm",
+    schema: z.object({ pipeline_id: uuid }),
+    summarize: (i) => `Retry failed city pipeline ${String(i.pipeline_id).slice(0, 8)}…`,
+    run: async (user, input) =>
+      unwrapResult(await retryCityProspecting(user, { pipelineId: input.pipeline_id })),
+  },
+  {
+    name: "cancel_scheduled_send",
+    description:
+      "Cancel a scheduled Gmail send before the worker claims it (idempotent on an unscheduled draft; refuses with a conflict while a claim is outstanding). The draft stays approved and can be rescheduled. Confirmation required — it reverses a confirmed schedule.",
+    tier: "confirm",
+    schema: z.object({ draft_id: uuid }),
+    summarize: (i) => `Cancel the scheduled send of draft ${String(i.draft_id).slice(0, 8)}…`,
+    run: async (user, input) =>
+      unwrapResult(await svc.cancelScheduledSend(user, { draftId: input.draft_id })),
+  },
 ];
 
 export const CONFIRM_REQUIRED = new Set(
@@ -507,7 +588,8 @@ export function getAssistantTool(name: string): AssistantToolDef | null {
 export async function runAssistantTool(
   user: CurrentUser,
   name: string,
-  rawInput: Record<string, unknown>
+  rawInput: Record<string, unknown>,
+  caller?: AgentCaller
 ): Promise<unknown> {
   const tool = getAssistantTool(name);
   if (!tool) throw new ClassifiedError("not_found", `Unknown assistant tool "${name}".`);
@@ -520,7 +602,7 @@ export async function runAssistantTool(
       `Invalid input for ${name} (${parsed.error.issues[0]?.message ?? "bad shape"}). Expected shape: ${describeSchema(tool.schema)} — fix the input and call the tool again.`
     );
   }
-  return tool.run(user, parsed.data as Record<string, unknown>);
+  return tool.run(user, parsed.data as Record<string, unknown>, caller);
 }
 
 // ------------------------------------------------------- schema describer

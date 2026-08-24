@@ -263,7 +263,7 @@ export async function askAssistant(
         }
       } else if (assistantTool) {
         try {
-          result = { ok: true, data: await runAssistantTool(user, toolName, toolInput) };
+          result = { ok: true, data: await runAssistantTool(user, toolName, toolInput, caller) };
         } catch (err) {
           const message = err instanceof Error ? err.message : "tool failed";
           result = { ok: false, error: { kind: "validation", message } };
