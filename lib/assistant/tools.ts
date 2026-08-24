@@ -43,6 +43,7 @@ import {
   cockpit,
   machineHealth,
 } from "@/lib/prospects/dashboard";
+import { cancelRun, retryFailedCells } from "@/lib/runs/service";
 import { invokeTool } from "@/lib/mcp/tools";
 import { ClassifiedError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/actions/result";
@@ -622,6 +623,25 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     summarize: (i) => `Cancel the scheduled send of draft ${String(i.draft_id).slice(0, 8)}…`,
     run: async (user, input) =>
       unwrapResult(await svc.cancelScheduledSend(user, { draftId: input.draft_id })),
+  },
+  {
+    name: "cancel_run",
+    description:
+      "Cancel a pending or running benchmark run — it ends partial/cancelled and stops further provider spend; captured cells are kept. Confirmation required.",
+    tier: "confirm",
+    schema: z.object({ run_id: uuid }),
+    summarize: (i) => `Cancel benchmark run ${String(i.run_id).slice(0, 8)}…`,
+    run: async (user, input) => unwrapResult(await cancelRun(user, { runId: input.run_id })),
+  },
+  {
+    name: "retry_failed_cells",
+    description:
+      "Re-execute a finished run's failed cells (run must be partial, completed, or failed — not still executing). The run re-enters the worker queue and spends provider budget on the retried cells. Confirmation required.",
+    tier: "confirm",
+    schema: z.object({ run_id: uuid }),
+    summarize: (i) => `Retry failed cells of run ${String(i.run_id).slice(0, 8)}…`,
+    run: async (user, input) =>
+      unwrapResult(await retryFailedCells(user, { runId: input.run_id })),
   },
   {
     name: "review_discovery_candidate",

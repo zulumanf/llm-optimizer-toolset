@@ -187,3 +187,11 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** already-decided candidates conflict; ambiguous company resolutions stay suggestions; decided proposals leave the review list by the service's contract.
 
 **Acceptance criteria:** catalog assertion extended to `review_`/`reject_` prefixes; approve and reject round-trip through the confirm gate in integration tests.
+
+## Assistant Run Management
+
+**Purpose:** the assistant manages the benchmark runs it starts (`specs/104-assistant-run-management.md`): confirm-gated `cancel_run` (ends partial/cancelled, captured cells kept, spend stops) and `retry_failed_cells` (partial/completed/failed runs re-enter the worker queue; live spend on retried cells).
+
+**Edge cases:** the services' guards surface verbatim — cancel conflicts unless pending/running; retry conflicts while still executing; a confirmed action that the service refuses is recorded in-thread as failed, never silently dropped.
+
+**Acceptance criteria:** both confirm-tier; mint executes nothing; integration round trips assert run status, the enqueued execute_run job, and the run.cancel / run.retry_failed audit rows.
