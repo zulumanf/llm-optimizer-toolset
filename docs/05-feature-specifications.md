@@ -245,3 +245,7 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Purpose:** previous chats stop being orphans (`specs/112-assistant-conversation-list.md`): a History control in the dock header lists the operator's own conversations (newest activity first, title + message count + date) and reopens any of them with its messages and pending actions; "New chat" is unchanged, the old thread just stays reachable.
 
 **Edge cases:** own conversations only (ownership as `loadConversation` enforces); switching is blocked while a turn is in flight; loading and empty states present.
+
+## Assistant Analytics Reads
+
+**Purpose:** "analyze X" answers from the sanctioned metric module (`specs/113-assistant-analytics-reads.md`): `outreach_scorecard` (rates/funnel/diagnostic/insights), `outreach_breakdown` (bySegment with n + sample labels), `acquisition_funnel`, `outreach_sends` (compact per-send outcome rows, newest first). Assembly is the dashboard's own `prospectFacts → deriveIntent` glue; null rates pass through as null, never zero.

@@ -629,6 +629,24 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect(list.find((c) => c.id === newer!.id)?.messageCount).toBe(0);
   });
 
+  it("spec 113: the scorecard and send outcomes answer from the metric module through the loop", async () => {
+    const reply = unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "how is outreach doing?" },
+        scripted([
+          { action: "tool", tool: "outreach_scorecard", input: {} },
+          { action: "tool", tool: "outreach_sends", input: { limit: 5 } },
+          { action: "answer", answer: "Insufficient sample so far." },
+        ])
+      )
+    );
+    expect(reply.toolCalls[0]!.ok).toBe(true);
+    expect(reply.toolCalls[0]!.summary).toContain('"metrics"');
+    expect(reply.toolCalls[1]!.ok).toBe(true);
+    expect(reply.toolCalls[1]!.summary).toContain("omitted");
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(

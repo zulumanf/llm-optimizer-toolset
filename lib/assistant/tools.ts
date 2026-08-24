@@ -42,12 +42,25 @@ import type { AgentCaller } from "@/lib/ai/agent";
 import {
   cockpit,
   machineHealth,
+  prospectFacts,
   prospectIntent,
   prospectTimeline,
   upcomingAutomation,
 } from "@/lib/prospects/dashboard";
 import { diagnoseProspect } from "@/lib/prospects/diagnose";
 import { PROVENANCE_LABELS } from "@/lib/prospects/constants";
+import { deriveIntent, type ProspectIntent } from "@/lib/prospects/intent";
+import {
+  bySegment,
+  funnelConversion,
+  funnelDiagnostic,
+  insights,
+  outreachMetrics,
+  sendOutcomes,
+  yieldPer100,
+  type SegmentDimension,
+} from "@/lib/prospects/analytics";
+import { acquisitionFunnel } from "@/lib/prospects/funnel";
 import { cancelRun, retryFailedCells } from "@/lib/runs/service";
 import { MCP_TOOLS } from "@/lib/mcp/tools";
 import {
@@ -93,6 +106,14 @@ export interface AssistantToolDef {
     input: Record<string, unknown>,
     caller?: AgentCaller
   ) => Promise<unknown>;
+}
+
+/** The Analyze/Operate views' own assembly (dashboard.ts precedent) —
+ * no metric is defined here. */
+async function intentItems(launchId?: string): Promise<ProspectIntent[]> {
+  const now = new Date();
+  const facts = await prospectFacts(launchId ? { launchId } : {});
+  return facts.map((f) => deriveIntent(f, now));
 }
 
 const unwrapResult = <T>(r: ActionResult<T>): T => {
@@ -340,6 +361,79 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     tier: "read",
     schema: z.object({ prospect_id: uuid }),
     run: async (_user, input) => listEnrichmentProposals(input.prospect_id as string),
+  },
+  {
+    name: "outreach_scorecard",
+    description:
+      "The outreach scorecard — rates, funnel, diagnostic verdict, insights. All from the platform's ONE metric module (spec 101): rates per delivered prospect, funnel conversion, yield per 100, floor-cleared insights. Null rates mean not yet measurable (e.g. positive reply rate before any reply classification) — report them as such, never as zero.",
+    tier: "read",
+    schema: z.object({ launch_id: uuid.optional() }),
+    run: async (_user, input) => {
+      const items = await intentItems(input.launch_id as string | undefined);
+      const metrics = outreachMetrics(items);
+      return {
+        metrics,
+        funnel: funnelConversion(metrics),
+        diagnostic: funnelDiagnostic(metrics),
+        yieldPer100: yieldPer100(metrics),
+        insights: insights(items),
+      };
+    },
+  },
+  {
+    name: "outreach_breakdown",
+    description:
+      "Outreach metrics segmented by quality band, market, or prospect type. The Analyze view's own bySegment rows, each carrying n and its sample label.",
+    tier: "read",
+    schema: z.object({
+      dimension: z.enum(["quality", "market", "type"]),
+      launch_id: uuid.optional(),
+    }),
+    run: async (_user, input) =>
+      bySegment(
+        await intentItems(input.launch_id as string | undefined),
+        input.dimension as SegmentDimension
+      ),
+  },
+  {
+    name: "acquisition_funnel",
+    description:
+      "The acquisition funnel (identified → contacted → engaged → replied → meeting → contracted) with per-stage counts and conversion, overall or per launch.",
+    tier: "read",
+    schema: z.object({ launch_id: uuid.optional() }),
+    run: async (_user, input) =>
+      acquisitionFunnel(typeof input.launch_id === "string" ? input.launch_id : undefined),
+  },
+  {
+    name: "outreach_sends",
+    description:
+      "Per-send outcome rows, newest first. Each row: subject, touch number, and what happened after it (before the next send) — the raw material for which-subject/which-touch questions; group and compare from these rows, quoting n.",
+    tier: "read",
+    schema: z.object({
+      launch_id: uuid.optional(),
+      limit: z.number().int().min(1).max(100).default(50),
+    }),
+    run: async (_user, input) => {
+      const rows = sendOutcomes(await intentItems(input.launch_id as string | undefined));
+      const limit = input.limit as number;
+      // Compact rows — the full ProspectIntent per send would blow the
+      // transcript budget.
+      const compact = rows
+        .map((r) => ({
+          businessName: r.p.businessName,
+          sentAt: r.send.sentAt,
+          touch: r.send.touch,
+          subject: r.send.subject,
+          channel: r.send.draftChannel,
+          delivered: r.delivered,
+          opened: r.opened,
+          viewedAfter: r.viewedAfter,
+          repliedAfter: r.repliedAfter,
+          meetingAfter: r.meetingAfter,
+        }))
+        .sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime());
+      return { sends: compact.slice(0, limit), omitted: Math.max(0, compact.length - limit) };
+    },
   },
   {
     name: "list_suppressions",
@@ -1192,6 +1286,10 @@ export const TOOL_GROUPS: Record<string, AssistantToolGroup> = {
   import_prompts: "runs",
   create_experiment: "visibility",
   record_learning: "visibility",
+  outreach_scorecard: "outreach",
+  outreach_breakdown: "outreach",
+  acquisition_funnel: "outreach",
+  outreach_sends: "outreach",
   import_prospects_csv: "prospecting",
   promote_prospect_to_client: "prospecting",
   diagnose_prospect: "prospecting",
