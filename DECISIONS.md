@@ -2652,3 +2652,18 @@ the lift's admin assertion) because those primitives take a `Tx` — the
 wrapper shape is the sanctioned one, not new business logic. Chat stops
 always use reason `manual`: `opted_out`/`bounced` carry global-suppression
 side effects and remain inbound-signal verbs, never operator chat verbs.
+
+## 2026-08-24 — Compact catalog + describe_tools (spec 107)
+
+At 64 tools the full catalog cost ~16.7k chars (~4k tokens) every turn.
+Chosen design: keep every tool NAME always visible (selection stays
+global and cheap — no retrieval, no hidden capabilities) but render only
+the derived first sentence per tool, grouped under seven headers; full
+guidance and input shapes moved behind a free `describe_tools` meta-tool.
+Summaries are derived (`summaryOf`), never a second hand-written string —
+the compact catalog cannot drift from the descriptions. Groups live in
+one `TOOL_GROUPS` map (unit-enforced coverage) instead of 46 field
+annotations. The 11k-char catalog ratchet is deliberate: raising it
+requires a commit that says why. Alternatives rejected: embedding-based
+tool retrieval (nondeterministic, hides capabilities) and hand-written
+short summaries (drift).

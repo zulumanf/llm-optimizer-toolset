@@ -44,6 +44,7 @@ import {
   machineHealth,
 } from "@/lib/prospects/dashboard";
 import { cancelRun, retryFailedCells } from "@/lib/runs/service";
+import { MCP_TOOLS } from "@/lib/mcp/tools";
 import {
   liftSuppression,
   listSuppressions,
@@ -962,7 +963,161 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
         })
       ),
   },
+  {
+    name: "describe_tools",
+    description:
+      "Full guidance and exact input shape for up to 8 tools from the catalog — call this before first use of a tool whose input you don't already know from this conversation. Free lookup, no data access.",
+    tier: "read",
+    schema: z.object({
+      names: z.array(z.string().trim().min(1)).min(1).max(8),
+    }),
+    run: async (_user, input) => {
+      const entries = allCatalogEntries();
+      const wanted = [...new Set(input.names as string[])];
+      return wanted.map((name) => {
+        const entry = entries.find((e) => e.name === name);
+        return entry
+          ? {
+              name: entry.name,
+              tier: entry.tier,
+              description: entry.description,
+              input: entry.input,
+            }
+          : { name, unknown: true };
+      });
+    },
+  },
 ];
+
+// --------------------------------------------- catalog compaction (spec 107)
+
+export type AssistantToolGroup =
+  | "visibility"
+  | "prospecting"
+  | "markets"
+  | "runs"
+  | "outreach"
+  | "audits"
+  | "meta";
+
+export const GROUP_HEADERS: Record<AssistantToolGroup, string> = {
+  visibility: "VISIBILITY & BENCHMARK DATA",
+  prospecting: "PROSPECTING",
+  markets: "MARKETS",
+  runs: "BENCHMARK RUNS",
+  outreach: "OUTREACH",
+  audits: "AUDITS & FINDINGS",
+  meta: "META",
+};
+
+/** One map instead of 46 annotations; the unit test asserts every belt
+ * tool is here and every name here exists. Observer tools are implicitly
+ * "visibility". */
+export const TOOL_GROUPS: Record<string, AssistantToolGroup> = {
+  pipeline_dashboard: "prospecting",
+  list_prospects: "prospecting",
+  get_prospect: "prospecting",
+  get_city_prospecting: "prospecting",
+  list_city_pipelines: "prospecting",
+  list_launches: "prospecting",
+  list_discovery_candidates: "prospecting",
+  run_discovery: "prospecting",
+  enrich_prospect: "prospecting",
+  list_enrichment_proposals: "prospecting",
+  add_contact: "prospecting",
+  advance_stage: "prospecting",
+  run_city_prospecting: "prospecting",
+  cancel_city_pipeline: "prospecting",
+  retry_city_pipeline: "prospecting",
+  review_discovery_candidate: "prospecting",
+  approve_enrichment: "prospecting",
+  reject_enrichment_proposal: "prospecting",
+  research_market: "markets",
+  install_market_pack: "markets",
+  bootstrap_market_benchmark: "markets",
+  estimate_benchmark_run: "runs",
+  start_benchmark_run: "runs",
+  cancel_run: "runs",
+  retry_failed_cells: "runs",
+  create_outreach_draft: "outreach",
+  approve_draft: "outreach",
+  send_draft: "outreach",
+  schedule_send: "outreach",
+  list_scheduled_sends: "outreach",
+  cancel_scheduled_send: "outreach",
+  list_suppressions: "outreach",
+  suppress_contact: "outreach",
+  lift_suppression: "outreach",
+  get_sender_identity: "outreach",
+  set_sender_identity: "outreach",
+  list_outreach_sequences: "outreach",
+  stop_sequence: "outreach",
+  generate_findings: "audits",
+  approve_finding: "audits",
+  publish_audit: "audits",
+  run_sense_check: "audits",
+  prepare_audit_refresh: "audits",
+  list_audit_refresh_candidates: "audits",
+  approve_audit_refresh: "audits",
+  dismiss_audit_refresh: "audits",
+  describe_tools: "meta",
+};
+
+/** First sentence of a description — derived, so the compact catalog can
+ * never drift from the full one. A description without a period is its
+ * own summary. */
+export function summaryOf(description: string): string {
+  const match = /^(.*?[.!?])\s+[A-Z"'`]/s.exec(description);
+  return (match ? match[1]! : description).trim();
+}
+
+const CONFIRM_SUFFIX =
+  " [REQUIRES OPERATOR CONFIRMATION — calling this stages a Confirm button; it never executes directly]";
+
+interface CatalogEntry {
+  name: string;
+  tier: AssistantToolTier;
+  group: AssistantToolGroup;
+  description: string;
+  input: string;
+}
+
+function allCatalogEntries(): CatalogEntry[] {
+  const observer = MCP_TOOLS.filter((t) => t.group === "observer").map((t) => ({
+    name: t.name,
+    tier: "read" as const,
+    group: "visibility" as const,
+    description: t.description,
+    input: describeSchema(t.schema),
+  }));
+  const belt = ASSISTANT_TOOLS.map((t) => ({
+    name: t.name,
+    tier: t.tier,
+    group: TOOL_GROUPS[t.name] ?? ("meta" as const),
+    description: t.tier === "confirm" ? `${t.description}${CONFIRM_SUFFIX}` : t.description,
+    input: describeSchema(t.schema),
+  }));
+  return [...observer, ...belt];
+}
+
+/** The grouped compact catalog rendered into every turn's system prompt:
+ * name, confirm marker, first sentence. Full guidance and input shapes
+ * live behind describe_tools. */
+export function compactCatalog(): string {
+  const entries = allCatalogEntries();
+  const groups = Object.keys(GROUP_HEADERS) as AssistantToolGroup[];
+  return groups
+    .map((g) => {
+      const rows = entries.filter((e) => e.group === g);
+      if (rows.length === 0) return null;
+      const lines = rows
+        .map((e) => `- ${e.name}${e.tier === "confirm" ? " (confirm)" : ""}: ${summaryOf(e.description)}`)
+        .join("\n");
+      return `${GROUP_HEADERS[g]}:\n${lines}`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
 
 export const CONFIRM_REQUIRED = new Set(
   ASSISTANT_TOOLS.filter((t) => t.tier === "confirm").map((t) => t.name)

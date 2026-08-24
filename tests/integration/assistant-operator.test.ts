@@ -444,6 +444,25 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect(reply.toolCalls[0]!.summary).toContain("fran@recommendedfirst.example");
   });
 
+  it("spec 107: the model learns a shape from describe_tools, then calls the tool with it", async () => {
+    const reply = unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "show me Gate Co" },
+        scripted([
+          { action: "tool", tool: "describe_tools", input: { names: ["get_prospect"] } },
+          { action: "tool", tool: "get_prospect", input: { prospect_id: P1 } },
+          { action: "answer", answer: "Found Gate Co after checking the shape." },
+        ])
+      )
+    );
+    expect(reply.toolCalls.length).toBe(2);
+    expect(reply.toolCalls[0]!.ok).toBe(true);
+    expect(reply.toolCalls[0]!.summary).toMatch(/prospect_id.+: uuid/);
+    expect(reply.toolCalls[1]!.ok).toBe(true);
+    expect(reply.toolCalls[1]!.summary).toContain("Gate Co");
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(

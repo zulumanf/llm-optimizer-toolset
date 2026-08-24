@@ -211,3 +211,11 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** needs_attention candidates refuse approval and point at the prospect page; a manual run without force reports notApplicable; a fixture published without a human finding lists a null pre-fill honestly.
 
 **Acceptance criteria:** catalog regex extended to `dismiss_`; approve and dismiss round-trip through the confirm gate against the audit-refresh harness, republish landing on the new run.
+
+## Assistant Catalog Compaction
+
+**Purpose:** the tool catalog stopped growing the per-turn prompt (`specs/107-assistant-catalog-compaction.md`): the system prompt now carries a grouped compact catalog (name, confirm marker, derived first sentence — ~10.0k chars vs ~16.7k before at 64 tools), and full guidance + input shapes moved behind the free `describe_tools` meta-tool (batch up to 8 names).
+
+**Edge cases:** summaries derive from descriptions (`summaryOf`) so they cannot drift; unknown names return `unknown` rows, never a dead step; the self-healing validation shape on a wrong-input attempt remains the alternative to describing first; an 11,000-char ratchet test fails the suite when growth erodes the compaction.
+
+**Acceptance criteria:** every tool mapped to exactly one group (unit-enforced); describe-then-call round trip through the loop; prompt bumped to workspace-assistant-v3 and registered in docs/13.
