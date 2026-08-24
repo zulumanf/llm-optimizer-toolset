@@ -167,3 +167,13 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** one run → no delta claimed; no runs → setup message; measurement unconfigured → "measurement paused", never a fake date; every number keeps its sample size.
 
 **Acceptance criteria:** deny-by-default reads unchanged; type-scale and phone fences pass on /portal.
+
+## Assistant Pipeline Operator
+
+**Purpose:** the workspace assistant manages what it starts (`specs/102-assistant-pipeline-operator.md`): list every city pipeline, cancel one, retry a failed one from the status it failed at, view the scheduled-send outbox (scheduled / parked / in-flight), cancel a scheduled send, and run the audit sense-check that `publish_audit` warns about — six thin-wrapper tools on the spec-096 belt.
+
+**User flow:** "what pipelines are running?" → `list_city_pipelines`; a stuck or mistaken one → confirm-gated cancel (an in-flight benchmark run is cancelled too, captured cells kept) or retry (resumes at `failed_from_status`, worker advances next tick). "What's in the outbox?" → `list_scheduled_sends`; a scheduled send is cancelled behind the confirm gate. A stale-sense-check warning on publish → `run_sense_check` (direct tier), then publish.
+
+**Edge cases:** cancelled pipelines are excluded from the tick's query and index and never block a fresh kickoff for the same city; pre-102 failures retry at a status derived from earned refs (run → running, version → benchmarking, launch → discovering, else installing); a worker-claimed send refuses cancellation with a conflict; parked rows keep their reason and in-flight claims are flagged, never auto-retried.
+
+**Acceptance criteria:** cancel/retry/cancel-send are confirm-tier (catalog assertion extended to `cancel_`/`retry_` prefixes); migration 091 is reversible with cancelled rows mapped to failed on the way down.

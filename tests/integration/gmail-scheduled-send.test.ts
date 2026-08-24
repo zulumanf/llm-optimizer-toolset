@@ -439,6 +439,40 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     if (!refused.ok) expect(refused.error.kind).toBe("conflict");
   });
 
+  it("spec 102: the outbox shows a draft as scheduled, in-flight, then parked with its reason", async () => {
+    const { draftId } = await seedApprovedDraft();
+    const sendAt = new Date(Date.now() + 60 * 60 * 1000);
+    unwrap(
+      await svc.scheduleDraftSend(operator, {
+        draftId,
+        sendAt: sendAt.toISOString(),
+        businessPurpose: PURPOSE,
+      })
+    );
+    let row = (await drain.listScheduledOutbox()).scheduled.find((r) => r.draftId === draftId);
+    expect(row).toBeDefined();
+    expect(new Date(row!.scheduledSendAt!).getTime()).toBe(sendAt.getTime());
+    expect(row!.businessName).toBe("Rivera Team");
+    expect(row!.inFlight).toBe(false);
+
+    // An unresolved claim marks the row in-flight while still scheduled.
+    await sql`update outreach_drafts set send_claimed_at = now() where id = ${draftId}`;
+    row = (await drain.listScheduledOutbox()).scheduled.find((r) => r.draftId === draftId);
+    expect(row!.inFlight).toBe(true);
+
+    // Parked the way the drain parks: schedule and claim cleared, reason kept.
+    await sql`
+      update outreach_drafts set scheduled_send_at = null, send_claimed_at = null,
+        last_send_error = 'Gate refused: recipient suppressed.'
+      where id = ${draftId}
+    `;
+    const outbox = await drain.listScheduledOutbox();
+    expect(outbox.scheduled.find((r) => r.draftId === draftId)).toBeUndefined();
+    const parked = outbox.parked.find((r) => r.draftId === draftId);
+    expect(parked!.lastSendError).toContain("suppressed");
+    expect(parked!.inFlight).toBe(false);
+  });
+
   it("drain: transmits a due approved draft through the full gate and clears its claim", async () => {
     const { draftId } = await seedApprovedDraft();
     executeCapability.mockResolvedValue(sendOk);

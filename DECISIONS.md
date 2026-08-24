@@ -2610,3 +2610,23 @@ comparison carries n and a central sample label (10 / 30) and insights
 emit only when both sides clear the floor — directional, never "winner".
 Manual-ready drafts are operator work (Needs your attention); only
 scheduled/eligible automation appears under Next 24 hours.
+
+## 2026-08-24 — The assistant manages what it starts (spec 102)
+
+Tier calls: `cancel_city_pipeline`, `retry_city_pipeline`, and
+`cancel_scheduled_send` are confirm-gated even though cancels stop spend
+rather than create it — they reverse a decision a human confirmed, and
+retry re-enters budget-spending lanes. `run_sense_check` is direct: it
+spends internal LLM tokens but only creates a reviewable artifact (the
+`research_market` precedent). Cancelling a pipeline also cancels its
+in-flight benchmark run — letting it keep spending after a cancel would
+surprise the operator; captured cells are kept (raw data is never
+deleted). Retry resumes at the new `failed_from_status` column (stamped by
+the tick at failure time); rows failed before 102 derive the resume status
+from earned refs (run → running, version → benchmarking, launch →
+discovering, else installing) — one step early is safe because steps reuse
+existing artifacts. Retry after the linked run itself failed deliberately
+re-fails with a clear log line instead of auto-skipping to benchmarking:
+each retry stays one bounded human decision. Tool `run` signatures now
+accept the loop's injectable `AgentCaller` so LLM-backed belt tools stay
+testable without network; the confirm path intentionally omits it.

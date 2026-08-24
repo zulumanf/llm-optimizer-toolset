@@ -172,6 +172,24 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect(reply.toolCalls[1]!.ok).toBe(true);
   });
 
+  it("spec 102: run_sense_check executes direct through the loop and reports the service's refusal honestly", async () => {
+    // Gate Co has no approved primary finding, so the service refuses
+    // before any LLM call — the loop must surface that, not fabricate.
+    const reply = unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "sense check Gate Co's audit" },
+        scripted([
+          { action: "tool", tool: "run_sense_check", input: { prospect_id: P1 } },
+          { action: "answer", answer: "There is no audit content to check yet." },
+        ])
+      )
+    );
+    expect(reply.pendingActions.length).toBe(0); // direct tier — no confirm card
+    expect(reply.toolCalls[0]!.ok).toBe(false);
+    expect(reply.toolCalls[0]!.summary).toContain("No primary approved finding");
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(
