@@ -227,3 +227,11 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 ## Assistant Prospect Insight Reads
 
 **Purpose:** four cockpit computations reach chat as pure reads (`specs/109-assistant-prospect-insight-reads.md`): `diagnose_prospect` (versioned deterministic rule set), `prospect_timeline` (merged evidence, newest-first with omitted count), `prospect_intent` (null → "not derivable", never a guess), `upcoming_automation` (what the machine does next, per launch or overall).
+
+## Assistant Streaming Progress
+
+**Purpose:** long research chains show what the assistant is doing right now (`specs/110-assistant-streaming-progress.md`): the loop emits tool_start/tool_end/done events, an SSE route streams them, and the dock renders live step lines (spinner → ✓/✗) before the reply. The blocking server action stays as the transparent fallback.
+
+**Edge cases:** an event-callback throw is logged and never fails the turn; the client falls back to the action only when the stream fails before any event arrived (afterwards a retry could run the turn twice — it shows a reconnect hint instead); a client disconnect never cancels the turn server-side.
+
+**Acceptance criteria:** ordered event sequence asserted in integration; no change to loop semantics, tiers, or the confirm gate; the route is a thin adapter over the same service call the action makes.

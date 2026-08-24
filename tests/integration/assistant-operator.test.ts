@@ -522,6 +522,32 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect(reply.toolCalls[1]!.ok).toBe(true);
   });
 
+  it("spec 110: the loop emits ordered progress events, and a callback throw never fails the turn", async () => {
+    const events: Array<{ type: string; tool?: string; ok?: boolean; summary?: string }> = [];
+    const reply = unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "list prospects named Gate" },
+        scripted([
+          { action: "tool", tool: "list_prospects", input: { name: "Gate" } },
+          { action: "answer", answer: "Found Gate Co." },
+        ]),
+        (e) => {
+          events.push(e as never);
+          throw new Error("observer misbehaves"); // must be swallowed
+        }
+      )
+    );
+    expect(reply.reply).toBe("Found Gate Co.");
+    expect(events.map((e) => e.type)).toEqual(["tool_start", "tool_end", "done"]);
+    expect(events[0]!.tool).toBe("list_prospects");
+    expect(events[1]!.ok).toBe(true);
+    expect((events[1]!.summary ?? "").length).toBeLessThanOrEqual(400);
+    expect((events[2] as { reply?: { conversationId?: string } }).reply?.conversationId).toBe(
+      reply.conversationId
+    );
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(

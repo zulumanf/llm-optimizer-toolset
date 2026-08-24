@@ -141,10 +141,33 @@ export async function getConversationMessages(
   }));
 }
 
+/** Progress events for the streaming transport (spec 110). Emission is
+ * observation only — a callback failure is logged and never fails the turn. */
+export type AssistantStreamEvent =
+  | { type: "tool_start"; tool: string }
+  | { type: "tool_end"; tool: string; ok: boolean; summary: string }
+  | { type: "done"; reply: AssistantReply };
+
+function emitEvent(
+  onEvent: ((e: AssistantStreamEvent) => void) | undefined,
+  event: AssistantStreamEvent
+): void {
+  if (!onEvent) return;
+  try {
+    onEvent(event);
+  } catch (err) {
+    log("warn", "assistant.event_callback_failed", {
+      type: event.type,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+  }
+}
+
 export async function askAssistant(
   user: CurrentUser,
   raw: unknown,
-  caller?: AgentCaller
+  caller?: AgentCaller,
+  onEvent?: (e: AssistantStreamEvent) => void
 ): Promise<ActionResult<AssistantReply>> {
   const parsed = askSchema.safeParse(raw);
   if (!parsed.success) {
@@ -221,6 +244,7 @@ export async function askAssistant(
       // Three sources, in precedence order (spec 096): MCP observer tools,
       // then the assistant belt — whose confirm tier NEVER executes from
       // here: it mints a pending action for the operator's Confirm button.
+      emitEvent(onEvent, { type: "tool_start", tool: toolName });
       const isObserver = OBSERVER_TOOLS.some((t) => t.name === toolName);
       const assistantTool = getAssistantTool(toolName);
       let result: { ok: true; data: unknown } | { ok: false; error: { kind: string; message: string } };
@@ -272,6 +296,12 @@ export async function askAssistant(
         ok: result.ok,
         summary: summary.slice(0, 400),
       });
+      emitEvent(onEvent, {
+        type: "tool_end",
+        tool: toolName,
+        ok: result.ok,
+        summary: summary.slice(0, 400),
+      });
       transcript.push(`TOOL ${toolName}(${JSON.stringify(toolInput)}) → ${summary}`);
     }
 
@@ -297,13 +327,15 @@ export async function askAssistant(
       toolCalls: toolCalls.length,
       costMicroUsd: Math.round(cost),
     });
-    return ok({
+    const replyPayload: AssistantReply = {
       conversationId,
       reply: finalReply,
       toolCalls,
       costMicroUsd: Math.round(cost),
       pendingActions,
-    });
+    };
+    emitEvent(onEvent, { type: "done", reply: replyPayload });
+    return ok(replyPayload);
   } catch (err) {
     return fail(err);
   }

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname } from "next/navigation";
-import { ChevronDown, ChevronUp, MessageCircle } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Loader2, MessageCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,6 +33,18 @@ interface PendingAction {
   token: string;
 }
 
+interface LiveStep {
+  tool: string;
+  ok?: boolean;
+}
+
+interface ReplyPayload {
+  conversationId: string;
+  reply: string;
+  toolCalls: ToolCall[];
+  pendingActions?: PendingAction[];
+}
+
 /**
  * The always-present assistant bar (spec 044): a composer docked at the
  * bottom of the workspace like ChatGPT/Claude — the input is always there;
@@ -42,6 +54,8 @@ export function AssistantDock() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [busy, setBusy] = useState(false);
+  const [steps, setSteps] = useState<LiveStep[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const [draft, setDraft] = useState("");
@@ -80,7 +94,7 @@ export function AssistantDock() {
     if (open) {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     }
-  }, [messages, open, pending]);
+  }, [messages, open, pending, busy, steps]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -90,44 +104,113 @@ export function AssistantDock() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const applyReply = (data: ReplyPayload) => {
+    conversationId.current = data.conversationId;
+    window.localStorage.setItem(STORAGE_KEY, data.conversationId);
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", content: data.reply, toolCalls: data.toolCalls },
+    ]);
+    if (data.pendingActions && data.pendingActions.length > 0) {
+      setPendingActions((prev) => [...prev, ...data.pendingActions!]);
+    }
+  };
+
+  /** The blocking server action — the fallback when streaming is unavailable. */
+  const sendViaAction = async (message: string) => {
+    const result = await askAssistant({
+      conversationId: conversationId.current ?? undefined,
+      message,
+      pathname,
+    });
+    if (result.ok) applyReply(result.data as ReplyPayload);
+    else setError(result.error.message);
+  };
+
+  /** Stream the turn's progress (spec 110): live tool steps, then the reply.
+   * Falls back to the server action ONLY if the stream fails before any
+   * event arrived — after that the turn may have completed server-side, so
+   * a retry could run it twice. */
+  const sendViaStream = async (message: string) => {
+    let sawEvent = false;
+    let settled = false;
+    const res = await fetch("/api/assistant/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conversationId: conversationId.current ?? undefined,
+        message,
+        pathname,
+      }),
+    });
+    if (!res.ok || !res.body) throw new Error("stream unavailable");
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        if (!frame.startsWith("data: ")) continue;
+        const event = JSON.parse(frame.slice(6)) as
+          | { type: "tool_start"; tool: string }
+          | { type: "tool_end"; tool: string; ok: boolean }
+          | { type: "done"; reply: ReplyPayload }
+          | { type: "error"; message: string };
+        sawEvent = true;
+        if (event.type === "tool_start") {
+          setSteps((prev) => [...prev, { tool: event.tool }]);
+        } else if (event.type === "tool_end") {
+          setSteps((prev) =>
+            prev.map((s, i) =>
+              i === prev.length - 1 && s.tool === event.tool && s.ok === undefined
+                ? { ...s, ok: event.ok }
+                : s
+            )
+          );
+        } else if (event.type === "done") {
+          settled = true;
+          applyReply(event.reply);
+        } else {
+          settled = true;
+          setError(event.message);
+        }
+      }
+    }
+    if (!settled) {
+      if (sawEvent) setError("The connection dropped mid-answer — reopen the chat to see the saved reply.");
+      else throw new Error("stream ended without events");
+    }
+  };
+
   const send = () => {
     const message = draft.trim();
-    if (!message || pending) return;
+    if (!message || pending || busy) return;
     loadHistory();
     setDraft("");
     setError(null);
     setOpen(true);
     setMessages((prev) => [...prev, { role: "user", content: message }]);
-    startTransition(async () => {
-      const result = await askAssistant({
-        conversationId: conversationId.current ?? undefined,
-        message,
-        pathname,
-      });
-      if (result.ok) {
-        const data = result.data as {
-          conversationId: string;
-          reply: string;
-          toolCalls: ToolCall[];
-          pendingActions?: PendingAction[];
-        };
-        conversationId.current = data.conversationId;
-        window.localStorage.setItem(STORAGE_KEY, data.conversationId);
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: data.reply, toolCalls: data.toolCalls },
-        ]);
-        if (data.pendingActions && data.pendingActions.length > 0) {
-          setPendingActions((prev) => [...prev, ...data.pendingActions!]);
-        }
-      } else {
-        setError(result.error.message);
+    setBusy(true);
+    setSteps([]);
+    void (async () => {
+      try {
+        await sendViaStream(message);
+      } catch {
+        await sendViaAction(message);
+      } finally {
+        setBusy(false);
+        setSteps([]);
       }
-    });
+    })();
   };
 
   const decide = (action: PendingAction, kind: "confirm" | "cancel") => {
-    if (pending) return;
+    if (pending || busy) return;
     startTransition(async () => {
       const result =
         kind === "confirm"
@@ -233,8 +316,30 @@ export function AssistantDock() {
                   </p>
                 </div>
               ))}
-              {pending && (
+              {busy && steps.length === 0 && (
                 <p className="text-xs text-muted-foreground">Looking things up…</p>
+              )}
+              {busy && steps.length > 0 && (
+                <div className="space-y-0.5">
+                  {steps.map((s, i) => (
+                    <p
+                      key={i}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                    >
+                      {s.ok === undefined ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : s.ok ? (
+                        <Check className="size-3" />
+                      ) : (
+                        <X className="size-3 text-destructive" />
+                      )}
+                      {s.tool}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {pending && !busy && (
+                <p className="text-xs text-muted-foreground">Working…</p>
               )}
               {error && <p className="text-xs text-destructive">{error}</p>}
             </div>
@@ -255,11 +360,11 @@ export function AssistantDock() {
           onChange={(e) => setDraft(e.target.value)}
           onFocus={loadHistory}
           placeholder="Ask AVOS about this workspace…"
-          disabled={pending}
+          disabled={pending || busy}
           className="h-9"
         />
-        <Button type="submit" size="sm" disabled={pending || !draft.trim()}>
-          {pending ? "…" : "Send"}
+        <Button type="submit" size="sm" disabled={pending || busy || !draft.trim()}>
+          {pending || busy ? "…" : "Send"}
         </Button>
         <Button
           type="button"
