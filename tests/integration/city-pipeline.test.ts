@@ -236,6 +236,139 @@ describe.skipIf(!TEST_URL)("city prospecting pipeline (integration)", () => {
     expect(report.advanced + report.waiting + report.failed).toBe(0);
   });
 
+  it("spec 102: retry resumes a failed pipeline at the status it failed from", async () => {
+    const failed = await pipeline.getCityProspecting("Failville");
+    expect(failed?.status).toBe("failed");
+    expect(failed?.failedFromStatus).toBe("benchmarking");
+
+    // Guard: a completed pipeline cannot be retried.
+    const done = await pipeline.getCityProspecting("Mockington");
+    const refused = await pipeline.retryCityProspecting(operator, { pipelineId: done!.id });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.kind).toBe("conflict");
+
+    const retried = unwrap(
+      await pipeline.retryCityProspecting(operator, { pipelineId: failed!.id })
+    );
+    expect(retried.resumedFrom).toBe("benchmarking");
+    const row = await pipeline.getCityProspecting(failed!.id);
+    expect(row?.status).toBe("benchmarking");
+    expect(row?.error).toBeNull();
+    expect(row?.failedFromStatus).toBeNull();
+    expect(row?.log.map((l) => l.step)).toContain("retried");
+  });
+
+  it("spec 102: a confirmed cancel ends the pipeline, and the city can start fresh afterwards", async () => {
+    const active = await pipeline.getCityProspecting("Failville");
+    expect(active?.status).toBe("benchmarking");
+
+    // Through the human gate, exactly as the dock's Confirm click executes it.
+    const confirm = await import("@/lib/assistant/confirm");
+    const [conv] = await sql`
+      insert into assistant_conversations (user_id, title)
+      values (${operator.id}, 'cancel test') returning id
+    `;
+    const pendingAction = await confirm.mintPendingAction(
+      operator,
+      conv!.id as string,
+      "cancel_city_pipeline",
+      { pipeline_id: active!.id, reason: "Budget was set far too low." }
+    );
+    // Minting executed nothing.
+    expect((await pipeline.getCityProspecting(active!.id))?.status).toBe("benchmarking");
+    unwrap(await confirm.confirmAssistantAction(operator, { token: pendingAction.token }));
+
+    const cancelled = await pipeline.getCityProspecting(active!.id);
+    expect(cancelled?.status).toBe("cancelled");
+    expect(cancelled?.error).toContain("too low");
+    expect(cancelled?.log.map((l) => l.step)).toContain("cancelled");
+
+    // Cancel is terminal: a second cancel refuses.
+    const again = await pipeline.cancelCityProspecting(operator, {
+      pipelineId: active!.id,
+      reason: "Cancelling twice.",
+    });
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.error.kind).toBe("conflict");
+
+    // A cancelled city no longer blocks a fresh kickoff.
+    const restarted = unwrap(
+      await pipeline.startCityProspecting(operator, {
+        cityName: "Failville",
+        state: "Delaware",
+        targetProspects: 5,
+        budgetUsd: 5,
+      })
+    );
+    unwrap(
+      await pipeline.cancelCityProspecting(operator, {
+        pipelineId: restarted.pipelineId,
+        reason: "Just proving restart works.",
+      })
+    );
+  });
+
+  it("spec 102: cancelling a running pipeline stops its in-flight benchmark run's spend", async () => {
+    await seedCompletedRun(
+      [{ provider: "mock", model: "mock-model", repetitions: 3 }],
+      "11111111-0000-4000-8000-000000000031"
+    );
+    const runId = "41111111-0000-4000-8000-000000000031";
+    await sql`update runs set status = 'running', completed_at = null where id = ${runId}`;
+    const [row] = await sql`
+      insert into city_prospecting_pipelines (city_name, state_name, status, run_id, requested_by)
+      values ('Runville', 'Delaware', 'running', ${runId}, ${operator.id})
+      returning id
+    `;
+    const cancelled = unwrap(
+      await pipeline.cancelCityProspecting(operator, {
+        pipelineId: row!.id as string,
+        reason: "Operator abort while running.",
+      })
+    );
+    expect(cancelled.runOutcome).toContain("cancelled");
+    const [run] = await sql`select status, status_detail from runs where id = ${runId}`;
+    expect(run?.status).toBe("partial");
+    expect(run?.statusDetail).toBe("cancelled");
+  });
+
+  it("spec 102: a pre-102 failure (no failed_from_status) retries at the derived status", async () => {
+    const [row] = await sql`
+      insert into city_prospecting_pipelines
+        (city_name, state_name, status, launch_id, error, requested_by)
+      values ('Legacyville', 'Delaware', 'failed', 'cccccccc-0000-4000-8000-000000000041',
+        'legacy failure', ${operator.id})
+      returning id
+    `;
+    const retried = unwrap(
+      await pipeline.retryCityProspecting(operator, { pipelineId: row!.id as string })
+    );
+    expect(retried.resumedFrom).toBe("discovering"); // launch exists, no version/run yet
+    unwrap(
+      await pipeline.cancelCityProspecting(operator, {
+        pipelineId: row!.id as string,
+        reason: "Cleanup after derivation check.",
+      })
+    );
+  });
+
+  it("spec 102: the list answers 'what pipelines are there?' and the tick ignores cancelled rows", async () => {
+    const all = await pipeline.listCityPipelines("all", 50);
+    expect(all.pipelines.length).toBeGreaterThanOrEqual(5);
+    expect(all.omitted).toBe(0);
+    const cancelled = await pipeline.listCityPipelines("cancelled", 50);
+    expect(cancelled.pipelines.length).toBeGreaterThanOrEqual(4);
+    expect(cancelled.pipelines.every((p) => p.status === "cancelled")).toBe(true);
+    expect(cancelled.pipelines[0]!.logTail.length).toBeGreaterThan(0);
+    const capped = await pipeline.listCityPipelines("all", 1);
+    expect(capped.pipelines.length).toBe(1);
+    expect(capped.omitted).toBe(all.pipelines.length - 1);
+
+    // Everything is now terminal — the tick has nothing to pick up.
+    const report = await pipeline.advanceCityPipelines();
+    expect(report.advanced + report.waiting + report.failed).toBe(0);
+  });
+
   it("the assistant confirm summary states city, target, and budget", async () => {
     const { getAssistantTool } = await import("@/lib/assistant/tools");
     const tool = getAssistantTool("run_city_prospecting")!;

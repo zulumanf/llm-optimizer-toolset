@@ -16,6 +16,11 @@ const MUST_CONFIRM = [
   "schedule_send",
   "approve_enrichment",
   "advance_stage",
+  // Spec 102: cancels reverse a human-confirmed decision; retry re-enters
+  // budget-spending lanes.
+  "cancel_city_pipeline",
+  "retry_city_pipeline",
+  "cancel_scheduled_send",
 ];
 
 describe("assistant tool catalog", () => {
@@ -25,11 +30,11 @@ describe("assistant tool catalog", () => {
     }
   });
 
-  it("no tool name that sends, publishes, approves, or starts a live run is direct", () => {
+  it("no tool name that sends, publishes, approves, cancels, retries, or starts a live run is direct", () => {
     for (const tool of ASSISTANT_TOOLS) {
       if (tool.tier === "confirm") continue;
       expect(tool.name, `${tool.name} looks consequential but is ${tool.tier}`).not.toMatch(
-        /^(send|publish|approve)_|^start_/
+        /^(send|publish|approve|cancel|retry)_|^start_/
       );
     }
   });
@@ -59,5 +64,18 @@ describe("describeSchema — the catalog can never drift from validation", () =>
     expect(describeSchema(getAssistantTool("schedule_send")!.schema)).toContain("iso-datetime");
     expect(describeSchema(getAssistantTool("start_benchmark_run")!.schema)).toContain('"providers": [{');
     expect(describeSchema(getAssistantTool("enrich_prospect")!.schema)).toContain('"force"?: boolean');
+  });
+
+  it("renders the spec-102 operator tools' shapes", async () => {
+    const { describeSchema, getAssistantTool } = await import("@/lib/assistant/tools");
+    expect(describeSchema(getAssistantTool("list_city_pipelines")!.schema)).toBe(
+      '{"status"?: "active"|"failed"|"completed"|"cancelled"|"all", "limit"?: number}'
+    );
+    expect(describeSchema(getAssistantTool("cancel_city_pipeline")!.schema)).toBe(
+      '{"pipeline_id": uuid, "reason": string}'
+    );
+    expect(describeSchema(getAssistantTool("run_sense_check")!.schema)).toBe(
+      '{"prospect_id": uuid}'
+    );
   });
 });
