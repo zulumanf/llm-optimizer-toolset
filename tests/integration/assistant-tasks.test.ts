@@ -170,6 +170,84 @@ describe.skipIf(!TEST_URL)("assistant delegated tasks (integration)", () => {
     expect(n?.n).toBe(0);
   });
 
+  it("the cost budget fails loudly with cost wording, distinct from the step wording", async () => {
+    const started = await startTask("Spend the whole cost budget.");
+    // Exhaust the cost budget directly — the pre-step check must catch it
+    // before any further model call.
+    await sql`
+      update assistant_tasks set cost_micro_usd = max_cost_micro_usd
+      where id = ${started.taskId}
+    `;
+    const report = await tasks.advanceAssistantTasks(
+      scripted([{ action: "answer", answer: "never reached" }])
+    );
+    expect(report.failed).toBe(1);
+    const task = (await tasks.getTask(operator, started.taskId))!;
+    expect(task.status).toBe("failed");
+    expect(task.lastError).toBe("cost budget exhausted");
+    const [message] = await sql`
+      select content from assistant_messages
+      where conversation_id = ${started.conversationId}
+      order by created_at desc limit 1
+    `;
+    expect(message?.content).toContain("the cost budget is exhausted");
+    expect(message?.content).not.toContain("step budget");
+  });
+
+  it("cancel_task inside a task is refused as an ERROR transcript line, not a throw", async () => {
+    const started = await startTask("Try to cancel yourself, then report.");
+    const report = await tasks.advanceAssistantTasks(
+      scripted([
+        {
+          action: "tool",
+          tool: "cancel_task",
+          input: { task_id: started.taskId, reason: "self-cancel attempt" },
+        },
+        { action: "answer", answer: "The cancel was refused; nothing else to do." },
+      ])
+    );
+    // The refusal surfaced in-transcript and the loop carried on to the answer.
+    expect(report.failed).toBe(0);
+    expect(report.completed).toBe(1);
+    const task = (await tasks.getTask(operator, started.taskId))!;
+    expect(task.status).toBe("completed"); // NOT cancelled — the tool never ran
+    expect(task.transcriptTail.join("\n")).toContain(
+      'ERROR (validation): "cancel_task" cannot be used from inside a task.'
+    );
+  });
+
+  it("a deactivated creator fails the task instead of running with stale privileges", async () => {
+    const started = await startTask("Run as a user who no longer exists.");
+    await sql`update users set active = false where id = ${operator.id}`;
+    try {
+      const report = await tasks.advanceAssistantTasks(
+        scripted([{ action: "answer", answer: "never reached" }])
+      );
+      expect(report.failed).toBe(1);
+    } finally {
+      await sql`update users set active = true where id = ${operator.id}`;
+    }
+    const task = (await tasks.getTask(operator, started.taskId))!;
+    expect(task.status).toBe("failed");
+    expect(task.lastError).toContain("no longer active");
+  });
+
+  it("a demoted creator's task fails on the re-hydrated role, not the role at creation", async () => {
+    const started = await startTask("Run as a demoted user.");
+    await sql`update users set role = 'client_viewer' where id = ${operator.id}`;
+    try {
+      const report = await tasks.advanceAssistantTasks(
+        scripted([{ action: "answer", answer: "never reached" }])
+      );
+      expect(report.failed).toBe(1);
+    } finally {
+      await sql`update users set role = 'admin' where id = ${operator.id}`;
+    }
+    const task = (await tasks.getTask(operator, started.taskId))!;
+    expect(task.status).toBe("failed");
+    expect(task.lastError).toContain("staff-only");
+  });
+
   it("cancel ends the task and its undecided stagings", async () => {
     const started = await startTask("Stage something then wait.");
     await tasks.advanceAssistantTasks(

@@ -152,6 +152,68 @@ describe.skipIf(!TEST_URL)("workspace assistant (integration)", () => {
     expect(reply.reply).toContain("lookup limit");
   });
 
+  it("sends only the last HISTORY_LIMIT messages, chronological, new user message last", async () => {
+    const [conv] = await sql`
+      insert into assistant_conversations (user_id, title)
+      values (${operator.id}, 'long thread') returning id
+    `;
+    const conversationId = conv!.id as string;
+    // 30 alternating messages, oldest first — msg-01 … msg-30.
+    for (let i = 1; i <= 30; i += 1) {
+      await sql`
+        insert into assistant_messages (conversation_id, role, content, created_at)
+        values (${conversationId}, ${i % 2 === 1 ? "user" : "assistant"},
+          ${"msg-" + String(i).padStart(2, "0")},
+          now() - make_interval(mins => ${60 - i}))
+      `;
+    }
+    let captured = "";
+    const capturing: AgentCaller = async (args) => {
+      captured = args.user;
+      return {
+        text: JSON.stringify({ action: "answer", answer: "ok" }),
+        tokensIn: 1,
+        tokensOut: 1,
+      };
+    };
+    unwrap(
+      await assistant.askAssistant(
+        operator,
+        { conversationId, message: "the newest question", pathname: "/" },
+        capturing
+      )
+    );
+    // Window: exactly the last 20 stored messages plus the new user turn.
+    const entries = captured.split("\n\n");
+    expect(entries.length).toBe(assistant.HISTORY_LIMIT + 1);
+    expect(captured).toContain("msg-11");
+    expect(captured).toContain("msg-30");
+    expect(captured).not.toContain("msg-10");
+    expect(captured).not.toContain("msg-01");
+    // Chronological, oldest of the window first.
+    expect(entries[0]).toBe("USER: msg-11");
+    expect(captured.indexOf("msg-11")).toBeLessThan(captured.indexOf("msg-12"));
+    expect(captured.indexOf("msg-29")).toBeLessThan(captured.indexOf("msg-30"));
+    // The new user message rides last.
+    expect(entries[entries.length - 1]).toBe("USER: the newest question");
+  });
+
+  it("attributes the turn to the current prompt version in the llm ledger", async () => {
+    const { ASSISTANT_PROMPT_VERSION } = await import("@/lib/assistant/prompt");
+    unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "version check", pathname: "/" },
+        scripted([{ action: "answer", answer: "ok" }])
+      )
+    );
+    const [row] = await sql`
+      select agent_version from llm_calls order by called_at desc limit 1
+    `;
+    expect(row?.agentVersion).toBe(ASSISTANT_PROMPT_VERSION);
+    expect(row?.agentVersion).toBe("workspace-assistant-v4");
+  });
+
   it("enforces the boundaries: staff-only, own conversations only, insert-only messages", async () => {
     const denied = await assistant.askAssistant(
       clientViewer,

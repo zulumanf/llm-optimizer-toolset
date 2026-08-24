@@ -681,6 +681,72 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect(audits?.n).toBe(2);
   });
 
+  it("a confirmed tool that throws still resolves the row and records the failure in-thread", async () => {
+    const conversationId = await newConversation(operator);
+    // A valid uuid no run owns — execution throws not_found AFTER the claim.
+    const missingRun = "dddddddd-0000-4000-8000-000000000999";
+    const pending = await confirm.mintPendingAction(operator, conversationId, "cancel_run", {
+      run_id: missingRun,
+    });
+    const res = await confirm.confirmAssistantAction(operator, { token: pending.token });
+    // The confirm call itself succeeds — the failure rides the payload.
+    expect(res.ok).toBe(true);
+    const payload = unwrap(res);
+    expect((payload.result as { error?: string }).error).toBeTruthy();
+    // The pending row resolved to confirmed (not stuck pending) with the
+    // error stored on it — the token is spent, no retry is possible.
+    const [row] = await sql`
+      select status, result from assistant_pending_actions where token = ${pending.token}
+    `;
+    expect(row?.status).toBe("confirmed");
+    expect((row?.result as { error?: string }).error).toBeTruthy();
+    const replay = await confirm.confirmAssistantAction(operator, { token: pending.token });
+    expect(replay.ok).toBe(false);
+    // The thread records the confirmed-but-failed outcome with ok:false.
+    const [message] = await sql`
+      select content, tool_calls from assistant_messages
+      where conversation_id = ${conversationId}
+      order by created_at desc limit 1
+    `;
+    expect(message?.content).toContain("Confirmed, but the action failed");
+    const calls = message?.toolCalls as Array<{ tool: string; ok: boolean }>;
+    expect(calls[0]).toMatchObject({ tool: "cancel_run", ok: false });
+  });
+
+  it("spec 114: preferences are size-capped and strictly per-operator", async () => {
+    const prefs = await import("@/lib/assistant/preferences");
+    // Beyond the cap: rejected outright, nothing stored.
+    const oversized = await prefs.setPreferences(operator, {
+      content: "x".repeat(prefs.PREFERENCES_MAX + 1),
+    });
+    expect(oversized.ok).toBe(false);
+    if (!oversized.ok) {
+      expect(oversized.error.message).toContain(String(prefs.PREFERENCES_MAX));
+    }
+    expect(await prefs.getPreferences(operator)).toBeNull();
+    // Exactly at the cap is accepted.
+    unwrap(await prefs.setPreferences(operator, { content: "n".repeat(prefs.PREFERENCES_MAX) }));
+    expect(await prefs.getPreferences(operator)).toBe("n".repeat(prefs.PREFERENCES_MAX));
+    // Reads and writes are keyed to the caller — another staff user cannot
+    // see the operator's block, and their own write does not touch it.
+    expect(await prefs.getPreferences(admin)).toBeNull();
+    unwrap(await prefs.setPreferences(admin, { content: "admin-only note" }));
+    expect(await prefs.getPreferences(operator)).not.toContain("admin-only note");
+    // Non-staff can neither read nor write.
+    const clientViewer: CurrentUser = {
+      id: "00000000-0000-4000-8000-000000000002",
+      email: "client@test.local",
+      name: "Client",
+      role: "client_viewer",
+    };
+    await expect(prefs.getPreferences(clientViewer)).rejects.toThrow(/staff-only/);
+    const denied = await prefs.setPreferences(clientViewer, { content: "client note" });
+    expect(denied.ok).toBe(false);
+    // Clear both so later turns render no stray preferences block.
+    unwrap(await prefs.setPreferences(operator, { content: "" }));
+    unwrap(await prefs.setPreferences(admin, { content: "" }));
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(

@@ -122,6 +122,29 @@ describe("catalog compaction (spec 107)", () => {
     expect(catalog).not.toContain("Input: {");
   });
 
+  it("every group renders non-empty — a header never dangles over nothing", async () => {
+    const { compactCatalog, GROUP_HEADERS } = await import("@/lib/assistant/tools");
+    const catalog = compactCatalog();
+    for (const header of Object.values(GROUP_HEADERS)) {
+      // The header appears, immediately followed by at least one tool line.
+      expect(catalog, `group "${header}" must render`).toContain(`${header}:\n- `);
+    }
+  });
+
+  it("every confirm-tier tool is marked (confirm) in the compact catalog", async () => {
+    const { compactCatalog } = await import("@/lib/assistant/tools");
+    const catalog = compactCatalog();
+    for (const tool of ASSISTANT_TOOLS.filter((t) => t.tier === "confirm")) {
+      expect(catalog, `${tool.name} must carry the confirm marker`).toContain(
+        `- ${tool.name} (confirm):`
+      );
+    }
+    // And no non-confirm tool wears the marker.
+    for (const tool of ASSISTANT_TOOLS.filter((t) => t.tier !== "confirm")) {
+      expect(catalog).not.toContain(`- ${tool.name} (confirm):`);
+    }
+  });
+
   it("describe_tools returns full guidance + shape for known names, unknown rows for misses", async () => {
     const { runAssistantTool } = await import("@/lib/assistant/tools");
     const user = { id: "u", email: "u@test", name: "U", role: "operator" as const };
