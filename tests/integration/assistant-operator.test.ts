@@ -288,6 +288,58 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect((await listEnrichmentProposals(P1)).find((p) => p.id === proposalId)).toBeUndefined();
   });
 
+  it("spec 104: cancel_run and retry_failed_cells execute only through the gate", async () => {
+    await sql`insert into projects (id, name) values ('99999999-0000-4000-8000-000000000001', 'Run mgmt')`;
+    await sql`insert into prompt_sets (id, project_id, name)
+      values ('99999999-0000-4000-8000-000000000002', '99999999-0000-4000-8000-000000000001', 'set')`;
+    await sql`insert into prompt_set_versions (id, prompt_set_id, version, frozen_prompts, frozen_by, frozen_at)
+      values ('99999999-0000-4000-8000-000000000003', '99999999-0000-4000-8000-000000000002', 1,
+        '[]'::jsonb, ${operator.id}, now())`;
+    const providers = [{ provider: "mock", model: "mock-model", repetitions: 1 }];
+    const seedRun = async (id: string, status: string) => sql`
+      insert into runs (id, project_id, prompt_set_version_id, label, providers, trigger, budget_usd, status)
+      values (${id}, '99999999-0000-4000-8000-000000000001', '99999999-0000-4000-8000-000000000003',
+        ${"mgmt " + status}, ${sql.json(providers as never)}, 'manual', 1, ${status})
+    `;
+    const runningId = "99999999-0000-4000-8000-000000000011";
+    const partialId = "99999999-0000-4000-8000-000000000012";
+    await seedRun(runningId, "running");
+    await seedRun(partialId, "partial");
+
+    const conversationId = await newConversation(operator);
+    const cancelPending = await confirm.mintPendingAction(operator, conversationId, "cancel_run", {
+      run_id: runningId,
+    });
+    let [run] = await sql`select status from runs where id = ${runningId}`;
+    expect(run?.status).toBe("running"); // minting executed nothing
+    unwrap(await confirm.confirmAssistantAction(operator, { token: cancelPending.token }));
+    [run] = await sql`select status, status_detail from runs where id = ${runningId}`;
+    expect(run?.status).toBe("partial");
+    expect(run?.statusDetail).toBe("cancelled");
+
+    const retryPending = await confirm.mintPendingAction(
+      operator,
+      conversationId,
+      "retry_failed_cells",
+      { run_id: partialId }
+    );
+    unwrap(await confirm.confirmAssistantAction(operator, { token: retryPending.token }));
+    [run] = await sql`select status from runs where id = ${partialId}`;
+    expect(run?.status).toBe("pending");
+    const [job] = await sql`
+      select id from jobs where type = 'execute_run' and payload->>'runId' = ${partialId}
+    `;
+    expect(job).toBeDefined();
+    // A still-executing run refuses retry through the same path.
+    const bad = await confirm.mintPendingAction(operator, conversationId, "retry_failed_cells", {
+      run_id: partialId,
+    });
+    const refused = unwrap(await confirm.confirmAssistantAction(operator, { token: bad.token }));
+    expect((refused.result as { error?: string }).error).toMatch(/still executing/);
+    [run] = await sql`select status from runs where id = ${partialId}`;
+    expect(run?.status).toBe("pending"); // unchanged by the refused retry
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(

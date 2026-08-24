@@ -25,6 +25,9 @@ const MUST_CONFIRM = [
   // approve twin.
   "review_discovery_candidate",
   "reject_enrichment_proposal",
+  // Spec 104: cancel reverses a confirmed start; retry re-spends budget.
+  "cancel_run",
+  "retry_failed_cells",
 ];
 
 describe("assistant tool catalog", () => {
