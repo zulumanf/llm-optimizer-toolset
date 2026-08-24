@@ -2630,3 +2630,13 @@ re-fails with a clear log line instead of auto-skipping to benchmarking:
 each retry stays one bounded human decision. Tool `run` signatures now
 accept the loop's injectable `AgentCaller` so LLM-backed belt tools stay
 testable without network; the confirm path intentionally omits it.
+
+## 2026-08-24 — The assistant decides its staged work (spec 103)
+
+`review_discovery_candidate` is confirm-tier for BOTH decisions — approval
+creates a prospect and dismissal discards staged research — and stays one
+tool because it mirrors one service function; `reject_enrichment_proposal`
+is confirm as the `approve_enrichment` twin. The candidate list strips the
+raw payload (compact rows only): the adapter's verbatim `RawProspect` can
+blow the 6,000-char transcript budget, and the review decision needs the
+envelope (confidence, provider, source, resolution), not the payload.
