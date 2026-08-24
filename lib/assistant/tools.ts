@@ -44,6 +44,18 @@ import {
   machineHealth,
 } from "@/lib/prospects/dashboard";
 import { cancelRun, retryFailedCells } from "@/lib/runs/service";
+import {
+  liftSuppression,
+  listSuppressions,
+  suppress,
+  SUPPRESSION_REASONS,
+} from "@/lib/outreach/suppression";
+import {
+  getActiveSenderIdentity,
+  setSenderIdentity,
+} from "@/lib/outreach/sender-identity";
+import { stopSequence } from "@/lib/outreach/sequences";
+import { assertRole } from "@/lib/auth";
 import { invokeTool } from "@/lib/mcp/tools";
 import { ClassifiedError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/actions/result";
@@ -266,6 +278,58 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     tier: "read",
     schema: z.object({ prospect_id: uuid }),
     run: async (_user, input) => listEnrichmentProposals(input.prospect_id as string),
+  },
+  {
+    name: "list_suppressions",
+    description:
+      "The do-not-contact list: active suppressions (email/phone/domain) with reason and date; include_lifted shows history. Every send re-checks this — a suppressed value never receives outreach.",
+    tier: "read",
+    schema: z.object({
+      scope: z.enum(["email", "phone", "domain"]).optional(),
+      include_lifted: z.boolean().default(false),
+      limit: z.number().int().min(1).max(100).default(30),
+    }),
+    run: async (_user, input) =>
+      listSuppressions({
+        ...(input.scope ? { scope: input.scope as "email" | "phone" | "domain" } : {}),
+        includeLifted: input.include_lifted === true,
+        limit: input.limit as number,
+      }),
+  },
+  {
+    name: "get_sender_identity",
+    description:
+      "The active legal sender of outbound email (name, company, postal address, reply-to) — CAN-SPAM identity. Null means not configured and sends will refuse.",
+    tier: "read",
+    schema: z.object({}),
+    run: async () => (await getActiveSenderIdentity()) ?? { configured: false },
+  },
+  {
+    name: "list_outreach_sequences",
+    description:
+      "Automation-driven outreach sequences with status, subject, recipient, step progress, and next send time. Never returns message bodies. stop_sequence halts one.",
+    tier: "read",
+    schema: z.object({
+      status: z.enum(["active", "stopped", "completed", "all"]).default("active"),
+      limit: z.number().int().min(1).max(50).default(20),
+    }),
+    run: async (_user, input) => {
+      const status = input.status as string;
+      const where =
+        status === "all"
+          ? sql`true`
+          : status === "stopped"
+            ? sql`status like 'stopped_%'`
+            : sql`status = ${status}`;
+      return sql`
+        select id, subject_kind, subject_ref, recipient_email, recipient_name,
+          status, stop_reason, current_step, max_steps, next_send_at
+        from outreach_sequences
+        where ${where}
+        order by coalesce(next_send_at, created_at) asc
+        limit ${input.limit as number}
+      `;
+    },
   },
   {
     name: "list_launches",
@@ -642,6 +706,106 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     summarize: (i) => `Retry failed cells of run ${String(i.run_id).slice(0, 8)}…`,
     run: async (user, input) =>
       unwrapResult(await retryFailedCells(user, { runId: input.run_id })),
+  },
+  {
+    name: "suppress_contact",
+    description:
+      "Add an email, phone, or domain to the do-not-contact list — no future outreach reaches it (lifting later is admin-only and permanently recorded). Confirmation required.",
+    tier: "confirm",
+    schema: z.object({
+      scope: z.enum(["email", "phone", "domain"]),
+      value: z.string().trim().min(1).max(320),
+      reason: z.enum(SUPPRESSION_REASONS),
+      detail: z.string().trim().max(500).optional(),
+      project_id: uuid.optional(),
+    }),
+    summarize: (i) => `Suppress ${String(i.scope)} "${String(i.value)}" (${String(i.reason)})`,
+    run: async (user, input) => {
+      // Mirrors app/automation/actions.ts#suppressContact — the primitive
+      // takes a tx; this adds no semantics of its own.
+      const result = await sql.begin((tx) =>
+        suppress(tx, {
+          scope: input.scope as "email" | "phone" | "domain",
+          value: input.value as string,
+          reason: input.reason as (typeof SUPPRESSION_REASONS)[number],
+          detail: (input.detail as string | undefined) ?? "",
+          projectId: (input.project_id as string | undefined) ?? null,
+          userId: user.id,
+        })
+      );
+      return { suppressed: true, alreadySuppressed: result.alreadySuppressed };
+    },
+  },
+  {
+    name: "lift_suppression",
+    description:
+      "Lift a suppression entry, reopening contact — admin only, and the reason is recorded permanently. Confirmation required.",
+    tier: "confirm",
+    schema: z.object({
+      suppression_id: uuid,
+      reason: z.string().trim().min(3).max(500),
+    }),
+    summarize: (i) =>
+      `Lift suppression ${String(i.suppression_id).slice(0, 8)}… — ${String(i.reason)}`,
+    run: async (user, input) => {
+      // Mirrors app/automation/actions.ts#liftContactSuppression: lifting
+      // a do-not-contact instruction is an admin decision, always.
+      assertRole(user, "admin");
+      const lifted = await sql.begin((tx) =>
+        liftSuppression(tx, {
+          id: input.suppression_id as string,
+          userId: user.id,
+          reason: input.reason as string,
+        })
+      );
+      return { lifted };
+    },
+  },
+  {
+    name: "set_sender_identity",
+    description:
+      "Replace the active legal sender of outbound email (CAN-SPAM: real name, company, physical postal address, reply-to). Admin only. Confirmation required.",
+    tier: "confirm",
+    schema: z.object({
+      sender_name: z.string().trim().min(2).max(120),
+      company_name: z.string().trim().min(2).max(120),
+      postal_address: z.string().trim().min(10).max(300),
+      reply_to_email: z.string().trim().email(),
+    }),
+    summarize: (i) =>
+      `Set sender identity to ${String(i.sender_name)} <${String(i.reply_to_email)}>, ${String(i.company_name)}`,
+    run: async (user, input) =>
+      unwrapResult(
+        await setSenderIdentity(user, {
+          senderName: input.sender_name,
+          companyName: input.company_name,
+          postalAddress: input.postal_address,
+          replyToEmail: input.reply_to_email,
+        })
+      ),
+  },
+  {
+    name: "stop_sequence",
+    description:
+      "Stop an active outreach sequence (operator decision — recorded as a manual stop); its queued draft messages are cancelled so nothing sendable remains. Confirmation required.",
+    tier: "confirm",
+    schema: z.object({
+      sequence_id: uuid,
+      detail: z.string().trim().min(5).max(500),
+    }),
+    summarize: (i) =>
+      `Stop outreach sequence ${String(i.sequence_id).slice(0, 8)}… — ${String(i.detail)}`,
+    run: async (user, input) =>
+      // Mirrors app/automation/actions.ts#stopOutreachSequence; chat stops
+      // are always 'manual' — opted_out/bounced stay inbound-signal verbs.
+      sql.begin((tx) =>
+        stopSequence(tx, {
+          sequenceId: input.sequence_id as string,
+          reason: "manual",
+          detail: input.detail as string,
+          userId: user.id,
+        })
+      ),
   },
   {
     name: "review_discovery_candidate",

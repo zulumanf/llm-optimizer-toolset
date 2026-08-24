@@ -28,6 +28,11 @@ const MUST_CONFIRM = [
   // Spec 104: cancel reverses a confirmed start; retry re-spends budget.
   "cancel_run",
   "retry_failed_cells",
+  // Spec 105: the outreach compliance spine.
+  "suppress_contact",
+  "lift_suppression",
+  "set_sender_identity",
+  "stop_sequence",
 ];
 
 describe("assistant tool catalog", () => {
@@ -41,7 +46,7 @@ describe("assistant tool catalog", () => {
     for (const tool of ASSISTANT_TOOLS) {
       if (tool.tier === "confirm") continue;
       expect(tool.name, `${tool.name} looks consequential but is ${tool.tier}`).not.toMatch(
-        /^(send|publish|approve|cancel|retry|review|reject)_|^start_/
+        /^(send|publish|approve|cancel|retry|review|reject|suppress|lift|stop|set)_|^start_/
       );
     }
   });

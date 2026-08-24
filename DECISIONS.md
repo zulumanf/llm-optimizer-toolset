@@ -2640,3 +2640,15 @@ is confirm as the `approve_enrichment` twin. The candidate list strips the
 raw payload (compact rows only): the adapter's verbatim `RawProspect` can
 blow the 6,000-char transcript budget, and the review decision needs the
 envelope (confidence, provider, source, resolution), not the payload.
+
+## 2026-08-24 — The outreach spine from chat (spec 105)
+
+Suppressing is confirm-tier even though it blocks (rather than causes)
+sends: for operators it is near-irreversible, since lifting is admin-only
+and permanently recorded. The belt wrappers for `suppress`,
+`liftSuppression`, and `stopSequence` mirror the existing server actions
+in `app/automation/actions.ts` byte-for-byte in semantics (`sql.begin` +
+the lift's admin assertion) because those primitives take a `Tx` — the
+wrapper shape is the sanctioned one, not new business logic. Chat stops
+always use reason `manual`: `opted_out`/`bounced` carry global-suppression
+side effects and remain inbound-signal verbs, never operator chat verbs.
