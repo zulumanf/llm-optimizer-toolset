@@ -28,7 +28,7 @@ import {
 } from "@/lib/prospects/discovery";
 import { upsertCompany } from "@/lib/companies/service";
 import { addCompetitor } from "@/lib/competitors/service";
-import { estimateRunForVersion, startRun } from "@/lib/runs/service";
+import { cancelRun, estimateRunForVersion, startRun } from "@/lib/runs/service";
 import * as svc from "@/lib/prospects/service";
 
 /** Candidates at or above this confidence auto-approve into prospects
@@ -48,6 +48,7 @@ export interface PipelineRow {
   runId: string | null;
   log: { at: string; step: string; detail: string }[];
   error: string | null;
+  failedFromStatus: string | null;
   requestedBy: string;
 }
 
@@ -80,6 +81,7 @@ function toRow(r: Record<string, unknown>): PipelineRow {
     runId: (r.runId as string | null) ?? null,
     log: (r.log as PipelineRow["log"]) ?? [],
     error: (r.error as string | null) ?? null,
+    failedFromStatus: (r.failedFromStatus as string | null) ?? null,
     requestedBy: r.requestedBy as string,
   };
 }
@@ -129,7 +131,7 @@ export async function startCityProspecting(
     const [active] = await sql`
       select id from city_prospecting_pipelines
       where lower(city_name) = ${input.cityName.toLowerCase()}
-        and status not in ('completed','failed')
+        and status not in ('completed','failed','cancelled')
     `;
     if (active) {
       throw new ClassifiedError(
@@ -175,6 +177,187 @@ export async function getCityProspecting(cityOrId: string): Promise<PipelineRow 
     order by created_at desc limit 1
   `;
   return rows[0] ? toRow(rows[0]) : null;
+}
+
+export type PipelineListFilter = "active" | "failed" | "completed" | "cancelled" | "all";
+
+export interface PipelineListRow {
+  id: string;
+  cityName: string;
+  stateName: string;
+  status: string;
+  params: PipelineRow["params"];
+  error: string | null;
+  failedFromStatus: string | null;
+  updatedAt: string;
+  logTail: PipelineRow["log"];
+}
+
+const TERMINAL_STATUSES = ["completed", "failed", "cancelled"] as const;
+
+/** Every pipeline, newest first — the "what's running?" view the
+ * per-city lookup cannot answer. Read-only. */
+export async function listCityPipelines(
+  filter: PipelineListFilter = "active",
+  limit = 20
+): Promise<{ pipelines: PipelineListRow[]; omitted: number }> {
+  const capped = Math.min(Math.max(limit, 1), 50);
+  const where =
+    filter === "all"
+      ? sql`true`
+      : filter === "active"
+        ? sql`status not in ('completed','failed','cancelled')`
+        : sql`status = ${filter}`;
+  const rows = await sql`
+    select *, count(*) over ()::int as total
+    from city_prospecting_pipelines
+    where ${where}
+    order by created_at desc
+    limit ${capped}
+  `;
+  const total = Number(rows[0]?.total ?? 0);
+  return {
+    pipelines: rows.map((raw) => {
+      const p = toRow(raw);
+      return {
+        id: p.id,
+        cityName: p.cityName,
+        stateName: p.stateName,
+        status: p.status,
+        params: p.params,
+        error: p.error,
+        failedFromStatus: p.failedFromStatus,
+        updatedAt: String(raw.updatedAt),
+        logTail: p.log.slice(-3),
+      };
+    }),
+    omitted: Math.max(0, total - rows.length),
+  };
+}
+
+const cancelSchema = z.object({
+  pipelineId: z.string().uuid(),
+  reason: z.string().trim().min(5).max(500),
+});
+
+/** Cancel an active pipeline. Confirm-gated in the assistant — it reverses
+ * the human's kickoff authorization. An in-flight linked benchmark run is
+ * cancelled too (its captured cells are kept; raw data is never deleted). */
+export async function cancelCityProspecting(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ pipelineId: string; runOutcome: string | null }>> {
+  const parsed = cancelSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "A pipeline id and a reason (5–500 chars) are required."));
+  }
+  const { pipelineId, reason } = parsed.data;
+  try {
+    assertCanWrite(user);
+    let runId: string | null = null;
+    await sql.begin(async (tx) => {
+      const [row] = await tx`
+        select id, status, run_id from city_prospecting_pipelines
+        where id = ${pipelineId} for update
+      `;
+      if (!row) throw new ClassifiedError("not_found", "Pipeline not found.");
+      if ((TERMINAL_STATUSES as readonly string[]).includes(row.status as string)) {
+        throw new ClassifiedError("conflict", `Pipeline is already ${String(row.status)}.`);
+      }
+      runId = (row.runId as string | null) ?? null;
+      await tx`
+        update city_prospecting_pipelines
+        set status = 'cancelled', error = ${reason}, updated_at = now()
+        where id = ${pipelineId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.city_pipeline_cancelled",
+        entity: "city_prospecting_pipeline",
+        entityId: pipelineId,
+        detail: { reason },
+      });
+    });
+    // Outside the row lock: stop the linked run's spend if it is still
+    // cancellable. The pipeline is cancelled regardless of this outcome.
+    let runOutcome: string | null = null;
+    if (runId) {
+      const cancelled = await cancelRun(user, { runId });
+      runOutcome = cancelled.ok
+        ? `run ${runId} cancelled`
+        : cancelled.error.kind === "conflict"
+          ? `run ${runId} already terminal`
+          : `run ${runId} cancel attempt failed: ${cancelled.error.message}`;
+    }
+    await appendLog(
+      pipelineId,
+      "cancelled",
+      `Cancelled by ${user.name}: ${reason}.${runOutcome ? ` ${runOutcome}.` : ""}`
+    );
+    return ok({ pipelineId, runOutcome });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Where a retry resumes when the failure predates failed_from_status:
+ * derived from which refs the pipeline had already earned. Resuming one
+ * step early is safe — steps detect and reuse existing artifacts. */
+function deriveResumeStatus(p: { runId: string | null; promptSetVersionId: string | null; launchId: string | null }): string {
+  if (p.runId) return "running";
+  if (p.promptSetVersionId) return "benchmarking";
+  if (p.launchId) return "discovering";
+  return "installing";
+}
+
+/** Retry a failed pipeline from the status it failed at. Confirm-gated —
+ * resumed lanes can spend provider budget (benchmarking starts a run). */
+export async function retryCityProspecting(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ pipelineId: string; resumedFrom: string }>> {
+  const parsed = z.object({ pipelineId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", "Invalid pipeline id."));
+  }
+  const { pipelineId } = parsed.data;
+  try {
+    assertCanWrite(user);
+    let resumedFrom = "";
+    await sql.begin(async (tx) => {
+      const [row] = await tx`
+        select * from city_prospecting_pipelines
+        where id = ${pipelineId} for update
+      `;
+      if (!row) throw new ClassifiedError("not_found", "Pipeline not found.");
+      if (row.status !== "failed") {
+        throw new ClassifiedError("conflict", `Only a failed pipeline can be retried (this one is ${String(row.status)}).`);
+      }
+      const p = toRow(row);
+      resumedFrom = p.failedFromStatus ?? deriveResumeStatus(p);
+      await tx`
+        update city_prospecting_pipelines
+        set status = ${resumedFrom}, error = null, failed_from_status = null,
+          updated_at = now()
+        where id = ${pipelineId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.city_pipeline_retried",
+        entity: "city_prospecting_pipeline",
+        entityId: pipelineId,
+        detail: { resumedFrom },
+      });
+    });
+    await appendLog(
+      pipelineId,
+      "retried",
+      `Retried by ${user.name}; resuming at "${resumedFrom}". The worker advances it next tick.`
+    );
+    return ok({ pipelineId, resumedFrom });
+  } catch (err) {
+    return fail(err);
+  }
 }
 
 const unwrapStep = <T>(r: ActionResult<T>, step: string): T => {
@@ -434,7 +617,7 @@ export async function advanceCityPipelines(): Promise<PipelineTickReport> {
   const report: PipelineTickReport = { advanced: 0, waiting: 0, failed: 0 };
   const rows = await sql`
     select * from city_prospecting_pipelines
-    where status not in ('completed','failed')
+    where status not in ('completed','failed','cancelled')
     order by created_at asc
     limit 5
   `;
@@ -456,7 +639,13 @@ export async function advanceCityPipelines(): Promise<PipelineTickReport> {
       } catch (err) {
         const message = err instanceof Error ? err.message : "unknown";
         await appendLog(p.id, "failed", message);
-        await setStatus(p.id, "failed", { error: message.slice(0, 500) });
+        // failed_from_status is what retryCityProspecting resumes at.
+        await sql`
+          update city_prospecting_pipelines
+          set status = 'failed', failed_from_status = ${p.status},
+            error = ${message.slice(0, 500)}, updated_at = now()
+          where id = ${p.id}
+        `;
         logLine("warn", "prospect.city_pipeline_failed", { pipelineId: p.id, message });
         report.failed += 1;
         break;
