@@ -195,3 +195,11 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** the services' guards surface verbatim — cancel conflicts unless pending/running; retry conflicts while still executing; a confirmed action that the service refuses is recorded in-thread as failed, never silently dropped.
 
 **Acceptance criteria:** both confirm-tier; mint executes nothing; integration round trips assert run status, the enqueued execute_run job, and the run.cancel / run.retry_failed audit rows.
+
+## Assistant Outreach Spine
+
+**Purpose:** the compliance layer under sending, visible and manageable from chat (`specs/105-assistant-outreach-spine.md`): suppression list (list/suppress/lift), CAN-SPAM sender identity (get/set), outreach sequences (list/stop) — thin wrappers mirroring the existing server actions' `sql.begin` + role-gate shapes.
+
+**Edge cases:** already-suppressed and already-stopped report honestly instead of erroring; lifting is admin-only (a non-admin's confirmed lift records the role failure in-thread and lifts nothing); chat stops are always reason `manual` — `opted_out`/`bounced` stay inbound-signal semantics; sequence rows never include message bodies.
+
+**Acceptance criteria:** all four mutations confirm-tier (catalog regex extended to `suppress_`/`lift_`/`stop_`/`set_`); suppression and sequence round trips through the confirm gate in integration tests.

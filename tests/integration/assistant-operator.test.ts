@@ -340,6 +340,110 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect(run?.status).toBe("pending"); // unchanged by the refused retry
   });
 
+  it("spec 105: the suppression round trip — suppress, list, admin-only lift", async () => {
+    const conversationId = await newConversation(operator);
+    const pending = await confirm.mintPendingAction(operator, conversationId, "suppress_contact", {
+      scope: "email",
+      value: "Stop@Example.COM",
+      reason: "client_request",
+      detail: "Asked us to stop at the conference.",
+    });
+    unwrap(await confirm.confirmAssistantAction(operator, { token: pending.token }));
+    const [entry] = await sql`
+      select id, normalized_value from suppression_entries
+      where normalized_value = 'stop@example.com' and lifted_at is null
+    `;
+    expect(entry).toBeDefined();
+
+    // The list through the loop shows it.
+    const reply = unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "who is suppressed?" },
+        scripted([
+          { action: "tool", tool: "list_suppressions", input: {} },
+          { action: "answer", answer: "One active suppression." },
+        ])
+      )
+    );
+    expect(reply.toolCalls[0]!.summary).toContain("stop@example.com");
+
+    // An operator confirming a lift fails at execution — recorded, not silent.
+    const opLift = await confirm.mintPendingAction(operator, conversationId, "lift_suppression", {
+      suppression_id: entry!.id as string,
+      reason: "They changed their mind.",
+    });
+    const refused = unwrap(await confirm.confirmAssistantAction(operator, { token: opLift.token }));
+    expect((refused.result as { error?: string }).error).toBeDefined();
+    let [row] = await sql`select lifted_at from suppression_entries where id = ${entry!.id}`;
+    expect(row?.liftedAt).toBeNull();
+
+    // The admin's own confirmed lift succeeds and records the reason.
+    const adminConversation = await newConversation(admin);
+    const adminLift = await confirm.mintPendingAction(admin, adminConversation, "lift_suppression", {
+      suppression_id: entry!.id as string,
+      reason: "They changed their mind.",
+    });
+    unwrap(await confirm.confirmAssistantAction(admin, { token: adminLift.token }));
+    [row] = await sql`
+      select lifted_at, lift_reason from suppression_entries where id = ${entry!.id}
+    `;
+    expect(row?.liftedAt).not.toBeNull();
+    expect(row?.liftReason).toContain("changed their mind");
+  });
+
+  it("spec 105: stopping a sequence cancels its queued drafts; identity is set then read", async () => {
+    const [sequence] = await sql`
+      insert into outreach_sequences
+        (subject_kind, subject_ref, recipient_email, recipient_name, status, max_steps)
+      values ('prospect', ${P1}, 'ana@rivera.example', 'Ana', 'active', 3)
+      returning id
+    `;
+    const sequenceId = sequence!.id as string;
+    await sql`
+      insert into outreach_messages (sequence_id, step, subject, body, body_hash, status)
+      values (${sequenceId}, 1, 'Hello', 'Queued body', 'hash-1', 'draft')
+    `;
+    const conversationId = await newConversation(operator);
+    const stop = await confirm.mintPendingAction(operator, conversationId, "stop_sequence", {
+      sequence_id: sequenceId,
+      detail: "Prospect asked for a pause.",
+    });
+    unwrap(await confirm.confirmAssistantAction(operator, { token: stop.token }));
+    const [seq] = await sql`select status from outreach_sequences where id = ${sequenceId}`;
+    expect(seq?.status).toBe("stopped_manual");
+    const [message] = await sql`
+      select status from outreach_messages where sequence_id = ${sequenceId}
+    `;
+    expect(message?.status).toBe("cancelled");
+
+    // Sender identity: admin sets, anyone reads.
+    const adminConversation = await newConversation(admin);
+    const setIdentity = await confirm.mintPendingAction(
+      admin,
+      adminConversation,
+      "set_sender_identity",
+      {
+        sender_name: "Fran Z",
+        company_name: "Recommended First",
+        postal_address: "123 Example Street, Wilmington, DE 19801",
+        reply_to_email: "fran@recommendedfirst.example",
+      }
+    );
+    unwrap(await confirm.confirmAssistantAction(admin, { token: setIdentity.token }));
+    const reply = unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "who is our email sender?" },
+        scripted([
+          { action: "tool", tool: "get_sender_identity", input: {} },
+          { action: "answer", answer: "Fran Z." },
+        ])
+      )
+    );
+    expect(reply.toolCalls[0]!.summary).toContain("fran@recommendedfirst.example");
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(
