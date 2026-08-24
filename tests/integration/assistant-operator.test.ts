@@ -190,6 +190,104 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect(reply.toolCalls[0]!.summary).toContain("No primary approved finding");
   });
 
+  it("spec 103: the discovery review loop — list through the loop, approve through the gate", async () => {
+    const [run] = await sql`
+      insert into prospect_discovery_runs (launch_id, provider, status, started_by)
+      values ('cccccccc-0000-4000-8000-000000000011', 'perplexity', 'completed', ${operator.id})
+      returning id
+    `;
+    const [candidate] = await sql`
+      insert into prospect_discovery_candidates
+        (discovery_run_id, launch_id, business_name, payload, provider, source_type,
+         source_url, retrieved_at, confidence, provenance)
+      values (${run!.id}, 'cccccccc-0000-4000-8000-000000000011', 'Fresh Find Co',
+        ${sql.json({ businessName: "Fresh Find Co" } as never)}, 'perplexity', 'search',
+        'https://example.test/source', now(), 0.65, 'ai_inferred')
+      returning id
+    `;
+    const candidateId = candidate!.id as string;
+
+    // The list through the loop: compact rows, no raw payload.
+    const reply = unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "what discovery candidates are waiting?" },
+        scripted([
+          { action: "tool", tool: "list_discovery_candidates", input: {} },
+          { action: "answer", answer: "One pending candidate." },
+        ])
+      )
+    );
+    expect(reply.toolCalls[0]!.ok).toBe(true);
+    expect(reply.toolCalls[0]!.summary).toContain("Fresh Find Co");
+    expect(reply.toolCalls[0]!.summary).not.toContain('"payload"');
+
+    // Approve through the human gate; the prospect exists only after.
+    const conversationId = await newConversation(operator);
+    const pending = await confirm.mintPendingAction(
+      operator,
+      conversationId,
+      "review_discovery_candidate",
+      { candidate_id: candidateId, decision: "approve" }
+    );
+    let [row] = await sql`select status from prospect_discovery_candidates where id = ${candidateId}`;
+    expect(row?.status).toBe("pending"); // minting executed nothing
+    unwrap(await confirm.confirmAssistantAction(operator, { token: pending.token }));
+    [row] = await sql`
+      select status, created_prospect_id from prospect_discovery_candidates
+      where id = ${candidateId}
+    `;
+    expect(row?.status).toBe("approved");
+    const [prospect] = await sql`
+      select business_name from prospects where id = ${row?.createdProspectId}
+    `;
+    expect(prospect?.businessName).toBe("Fresh Find Co");
+  });
+
+  it("spec 103: the enrichment review loop — list pending proposals, reject through the gate", async () => {
+    const [proposal] = await sql`
+      insert into enrichment_proposals
+        (prospect_id, kind, payload, citations, confidence, model, agent_version, created_by)
+      values (${P1}, 'contact_email',
+        ${sql.json({ email: "wrong@person.example" } as never)},
+        ${sql.json(["https://example.test/cite"] as never)}, 0.4, 'test', 'test-v1', ${operator.id})
+      returning id
+    `;
+    const proposalId = proposal!.id as string;
+
+    const reply = unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "what did enrichment find for Gate Co?" },
+        scripted([
+          { action: "tool", tool: "list_enrichment_proposals", input: { prospect_id: P1 } },
+          { action: "answer", answer: "One low-confidence email proposal." },
+        ])
+      )
+    );
+    expect(reply.toolCalls[0]!.ok).toBe(true);
+    expect(reply.toolCalls[0]!.summary).toContain("wrong@person.example");
+
+    const conversationId = await newConversation(operator);
+    const pending = await confirm.mintPendingAction(
+      operator,
+      conversationId,
+      "reject_enrichment_proposal",
+      { proposal_id: proposalId, reason: "Wrong person — different brokerage." }
+    );
+    unwrap(await confirm.confirmAssistantAction(operator, { token: pending.token }));
+    const [row] = await sql`select status from enrichment_proposals where id = ${proposalId}`;
+    expect(row?.status).toBe("rejected");
+    const [audit] = await sql`
+      select id from audit_log
+      where action = 'prospect.enrichment_reject' and entity_id = ${proposalId}
+    `;
+    expect(audit).toBeDefined();
+    // Rejected rows leave the review list.
+    const { listEnrichmentProposals } = await import("@/lib/prospects/enrichment");
+    expect((await listEnrichmentProposals(P1)).find((p) => p.id === proposalId)).toBeUndefined();
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(

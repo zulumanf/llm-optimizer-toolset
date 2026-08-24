@@ -177,3 +177,13 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** cancelled pipelines are excluded from the tick's query and index and never block a fresh kickoff for the same city; pre-102 failures retry at a status derived from earned refs (run → running, version → benchmarking, launch → discovering, else installing); a worker-claimed send refuses cancellation with a conflict; parked rows keep their reason and in-flight claims are flagged, never auto-retried.
 
 **Acceptance criteria:** cancel/retry/cancel-send are confirm-tier (catalog assertion extended to `cancel_`/`retry_` prefixes); migration 091 is reversible with cancelled rows mapped to failed on the way down.
+
+## Assistant Review Loop
+
+**Purpose:** the assistant decides the staged work it creates (`specs/103-assistant-review-loop.md`): list discovery candidates and a prospect's enrichment proposals, approve/dismiss a candidate, reject a proposal — four thin wrappers completing the loop `run_discovery` and `enrich_prospect` open.
+
+**User flow:** "what's waiting on me?" → `list_discovery_candidates` (pending by default, per launch or overall, compact rows without raw payloads) → confirm-gated `review_discovery_candidate` (approval creates the prospect through the provenance-stamped path; same-name conflicts record duplicate). "What did enrichment find for X?" → `list_enrichment_proposals` (pending/failed only) → `approve_enrichment` or the new confirm-gated `reject_enrichment_proposal` with an optional audited reason.
+
+**Edge cases:** already-decided candidates conflict; ambiguous company resolutions stay suggestions; decided proposals leave the review list by the service's contract.
+
+**Acceptance criteria:** catalog assertion extended to `review_`/`reject_` prefixes; approve and reject round-trip through the confirm gate in integration tests.
