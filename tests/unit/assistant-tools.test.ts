@@ -33,6 +33,10 @@ const MUST_CONFIRM = [
   "lift_suppression",
   "set_sender_identity",
   "stop_sequence",
+  // Spec 106: approving republishes a prospect-facing page; dismissing
+  // discards staged review work.
+  "approve_audit_refresh",
+  "dismiss_audit_refresh",
 ];
 
 describe("assistant tool catalog", () => {
@@ -46,7 +50,7 @@ describe("assistant tool catalog", () => {
     for (const tool of ASSISTANT_TOOLS) {
       if (tool.tier === "confirm") continue;
       expect(tool.name, `${tool.name} looks consequential but is ${tool.tier}`).not.toMatch(
-        /^(send|publish|approve|cancel|retry|review|reject|suppress|lift|stop|set)_|^start_/
+        /^(send|publish|approve|cancel|retry|review|reject|suppress|lift|stop|set|dismiss)_|^start_/
       );
     }
   });
@@ -99,5 +103,12 @@ describe("describeSchema — the catalog can never drift from validation", () =>
     expect(describeSchema(getAssistantTool("list_discovery_candidates")!.schema)).toContain(
       '"status"?: "pending"|"approved"|"dismissed"|"duplicate"|"all"'
     );
+  });
+
+  it("renders approve_audit_refresh's nested attestation shape", async () => {
+    const { describeSchema, getAssistantTool } = await import("@/lib/assistant/tools");
+    const shape = describeSchema(getAssistantTool("approve_audit_refresh")!.schema);
+    expect(shape).toContain('"human_finding": {"text": string');
+    expect(shape).toContain('"acknowledge_warnings"?: {"reason": string}');
   });
 });
