@@ -42,7 +42,11 @@ import type { AgentCaller } from "@/lib/ai/agent";
 import {
   cockpit,
   machineHealth,
+  prospectIntent,
+  prospectTimeline,
+  upcomingAutomation,
 } from "@/lib/prospects/dashboard";
+import { diagnoseProspect } from "@/lib/prospects/diagnose";
 import { cancelRun, retryFailedCells } from "@/lib/runs/service";
 import { MCP_TOOLS } from "@/lib/mcp/tools";
 import {
@@ -102,7 +106,7 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   {
     name: "pipeline_dashboard",
     description:
-      "The prospecting cockpit: the cohort funnel (contacted → audit viewers → meaningfully engaged → replied → meeting), the prospects to act on first (priority order: conversation, CTA, high authority + high intent, deep engagement, multiple sessions or unresolved attribution, single visit, follow-up due), the possible-bottleneck diagnosis, and machine health (send cap, gmail status, research queue). Audit activity describes what the AUDIT PAGE received — never who viewed it. Opens are an upper bound.",
+      "The prospecting cockpit — funnel, act-first list, bottleneck, machine health. Covers the cohort funnel (contacted → audit viewers → meaningfully engaged → replied → meeting), the prospects to act on first (priority order: conversation, CTA, high authority + high intent, deep engagement, multiple sessions or unresolved attribution, single visit, follow-up due), the possible-bottleneck diagnosis, and machine health (send cap, gmail status, research queue). Audit activity describes what the AUDIT PAGE received — never who viewed it. Opens are an upper bound.",
     tier: "read",
     schema: z.object({ launchId: z.string().uuid().optional() }),
     run: async (_user, input) => {
@@ -251,6 +255,51 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     run: async (_user, input) => listScheduledOutbox(input.limit as number),
   },
   {
+    name: "diagnose_prospect",
+    description:
+      "Deterministic diagnosis of why a prospect is where it is. A versioned rule set over their benchmark, site, and engagement facts; benchmarkRunId null means no scored benchmark is linked — run-derived diagnoses are absent, not zero.",
+    tier: "read",
+    schema: z.object({ prospect_id: uuid }),
+    run: async (_user, input) => diagnoseProspect(input.prospect_id as string),
+  },
+  {
+    name: "prospect_timeline",
+    description:
+      "One prospect's merged evidence timeline, newest first: sends, qualifying audit views, scroll/engagement, section and evidence interactions, CTA clicks, stage changes. Audit activity describes what the page received — never who viewed it.",
+    tier: "read",
+    schema: z.object({
+      prospect_id: uuid,
+      limit: z.number().int().min(1).max(50).default(25),
+    }),
+    run: async (_user, input) => {
+      const events = await prospectTimeline(input.prospect_id as string);
+      const limit = input.limit as number;
+      const newestFirst = [...events].sort((a, b) => b.at.getTime() - a.at.getTime());
+      return {
+        events: newestFirst.slice(0, limit),
+        omitted: Math.max(0, events.length - limit),
+      };
+    },
+  },
+  {
+    name: "prospect_intent",
+    description:
+      "The derived intent label and score for one prospect (the cockpit's own derivation). Null means no intent is derivable yet — report that, never a guess.",
+    tier: "read",
+    schema: z.object({ prospect_id: uuid }),
+    run: async (_user, input) =>
+      (await prospectIntent(input.prospect_id as string)) ?? { derivable: false },
+  },
+  {
+    name: "upcoming_automation",
+    description:
+      "What the machine does next: scheduled and eligible sends with subject, channel, timing, prior send count — overall or per launch.",
+    tier: "read",
+    schema: z.object({ launch_id: uuid.optional() }),
+    run: async (_user, input) =>
+      upcomingAutomation(typeof input.launch_id === "string" ? input.launch_id : undefined),
+  },
+  {
     name: "list_discovery_candidates",
     description:
       "Staged discovery candidates awaiting review (default: pending), overall or per launch — the queue run_discovery fills. Each row carries confidence, provider, source URL, and the company resolution; review_discovery_candidate decides one.",
@@ -286,7 +335,7 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   {
     name: "list_enrichment_proposals",
     description:
-      "A prospect's staged enrichment proposals still needing a decision (pending and failed only — decided ones leave this list), with payload, citations, and confidence. approve_enrichment or reject_enrichment_proposal decides one.",
+      "A prospect's staged enrichment proposals still needing a decision. Pending and failed only — decided ones leave this list; rows carry payload, citations, and confidence. approve_enrichment or reject_enrichment_proposal decides one.",
     tier: "read",
     schema: z.object({ prospect_id: uuid }),
     run: async (_user, input) => listEnrichmentProposals(input.prospect_id as string),
@@ -346,7 +395,7 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   {
     name: "list_audit_refresh_candidates",
     description:
-      "The audit refresh queue: published audits whose project has a newer weekly run, with the metric delta, the new finding, preflight pass/warn counts, and the prior human finding (the pre-fill approve_audit_refresh requires). needs_attention rows must be resolved from the prospect page.",
+      "The audit refresh queue — published audits whose project has a newer weekly run. Rows carry the metric delta, the new finding, preflight pass/warn counts, and the prior human finding (the pre-fill approve_audit_refresh requires). needs_attention rows must be resolved from the prospect page.",
     tier: "read",
     schema: z.object({}),
     run: async () => {
@@ -426,7 +475,7 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   {
     name: "bootstrap_market_benchmark",
     description:
-      "For an installed market launch: create (or find) its benchmark project, generate the prompt set from the installed pack, and freeze it — returns project_id, prompt_set_version_id, prompt count, and a suggestedProviders config copied from the most recent completed run. THE step between install_market_pack and estimate_benchmark_run; tell the operator to review the prompts before confirming a run.",
+      "Create (or find) an installed launch's benchmark project with a frozen prompt set. Returns project_id, prompt_set_version_id, prompt count, and a suggestedProviders config copied from the most recent completed run — THE step between install_market_pack and estimate_benchmark_run; tell the operator to review the prompts before confirming a run.",
     tier: "direct",
     schema: z.object({ launch_id: uuid, cap: z.number().int().min(4).max(200).optional() }),
     run: async (user, input) =>
@@ -1096,6 +1145,10 @@ export const TOOL_GROUPS: Record<string, AssistantToolGroup> = {
   import_prompts: "runs",
   create_experiment: "visibility",
   record_learning: "visibility",
+  diagnose_prospect: "prospecting",
+  prospect_timeline: "prospecting",
+  prospect_intent: "prospecting",
+  upcoming_automation: "prospecting",
 };
 
 /** First sentence of a description — derived, so the compact catalog can

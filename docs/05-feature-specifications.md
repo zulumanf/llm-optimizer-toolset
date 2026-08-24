@@ -223,3 +223,7 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 ## Assistant Operator MCP Tools
 
 **Purpose:** the three operator-group MCP tools reach chat (`specs/108-assistant-operator-mcp-tools.md`): `import_prompts` (direct — dry-run-first bulk import of pre-freeze artifacts), `create_experiment` and `record_learning` (confirm — a measurement commitment with future spend, and a durable never-auto-generated learning where the confirm click is the explicit operator act). Schemas imported verbatim from `lib/mcp/schemas.ts`; execution rides `invokeTool`'s existing mutation gates.
+
+## Assistant Prospect Insight Reads
+
+**Purpose:** four cockpit computations reach chat as pure reads (`specs/109-assistant-prospect-insight-reads.md`): `diagnose_prospect` (versioned deterministic rule set), `prospect_timeline` (merged evidence, newest-first with omitted count), `prospect_intent` (null → "not derivable", never a guess), `upcoming_automation` (what the machine does next, per launch or overall).
