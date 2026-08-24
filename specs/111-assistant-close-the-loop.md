@@ -1,6 +1,6 @@
 # Spec 111 — Assistant Close the Loop (bulk import + promote to client)
 
-> Status: ready
+> Status: done
 > Depends on: specs/096, specs/107
 > Branch: feat/111-assistant-close-the-loop
 

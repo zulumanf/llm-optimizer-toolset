@@ -26,6 +26,15 @@ export async function getAssistantConversation(
   }
 }
 
+export async function listAssistantConversations() {
+  try {
+    const user = await getCurrentUser();
+    return ok(await assistant.listConversations(user));
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 export async function confirmAssistantAction(input: unknown) {
   try {
     const user = await getCurrentUser();
