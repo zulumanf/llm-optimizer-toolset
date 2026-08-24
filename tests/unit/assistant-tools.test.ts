@@ -37,6 +37,10 @@ const MUST_CONFIRM = [
   // discards staged review work.
   "approve_audit_refresh",
   "dismiss_audit_refresh",
+  // Spec 108: an experiment commits future spend; a learning is durable
+  // and never auto-generated.
+  "create_experiment",
+  "record_learning",
 ];
 
 describe("assistant tool catalog", () => {

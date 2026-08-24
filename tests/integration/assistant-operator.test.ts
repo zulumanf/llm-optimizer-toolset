@@ -463,6 +463,48 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect(reply.toolCalls[1]!.summary).toContain("Gate Co");
   });
 
+  it("spec 108: import dry-run reports through the loop; a confirmed learning is durable", async () => {
+    // The spec-104 test seeded prompt set 99999999-…02 earlier in this file.
+    const reply = unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "what would this prompt import do?" },
+        scripted([
+          {
+            action: "tool",
+            tool: "import_prompts",
+            input: {
+              prompt_set_id: "99999999-0000-4000-8000-000000000002",
+              content: "best agent in mocktown?\nbest agent in mocktown?",
+              dry_run: true,
+            },
+          },
+          { action: "answer", answer: "One would import; one duplicate." },
+        ])
+      )
+    );
+    expect(reply.toolCalls[0]!.ok).toBe(true);
+    expect(reply.toolCalls[0]!.summary).toContain("dry_run");
+    expect(reply.pendingActions.length).toBe(0); // direct tier
+
+    const conversationId = await newConversation(operator);
+    const pending = await confirm.mintPendingAction(operator, conversationId, "record_learning", {
+      category: "process",
+      statement: "Chat-run city pipelines need a budget of at least $5 to clear estimates.",
+      confidence_label: "probable",
+      rationale: "Two Failville estimates refused under $1 caps.",
+    });
+    const [before] = await sql`
+      select count(*)::int as n from learnings where statement like 'Chat-run city pipelines%'
+    `;
+    expect(before?.n).toBe(0); // minting wrote nothing
+    unwrap(await confirm.confirmAssistantAction(operator, { token: pending.token }));
+    const [learning] = await sql`
+      select confidence_label from learnings where statement like 'Chat-run city pipelines%'
+    `;
+    expect(learning?.confidenceLabel).toBe("probable");
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(

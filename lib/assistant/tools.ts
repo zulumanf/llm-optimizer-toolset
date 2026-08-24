@@ -46,6 +46,11 @@ import {
 import { cancelRun, retryFailedCells } from "@/lib/runs/service";
 import { MCP_TOOLS } from "@/lib/mcp/tools";
 import {
+  createExperimentSchema,
+  importPromptsSchema,
+  recordLearningSchema,
+} from "@/lib/mcp/schemas";
+import {
   liftSuppression,
   listSuppressions,
   suppress,
@@ -964,6 +969,33 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
       ),
   },
   {
+    name: "import_prompts",
+    description:
+      "Bulk-import prompts into a set: plain lines or header-mapped CSV (text,category,language,tier). ALWAYS dry_run first — it returns the full parse/dedupe report and writes nothing; duplicates are skipped, uncategorized rows get a rule-based suggestion or are rejected, never guessed. Prompts go live only when the set is separately frozen and run.",
+    tier: "direct",
+    schema: importPromptsSchema,
+    run: async (user, input) => invokeTool(user, "import_prompts", input),
+  },
+  {
+    name: "create_experiment",
+    description:
+      "Register an intervention (experiment) on a project: links the strongest available baseline runs and schedules +2w/+6w/+12w retest runs of the same frozen prompt-set version — a measurement commitment with future provider spend. Confirmation required.",
+    tier: "confirm",
+    schema: createExperimentSchema,
+    summarize: (i) => `Register experiment "${String(i.title)}" (schedules retest runs)`,
+    run: async (user, input) => invokeTool(user, "create_experiment", input),
+  },
+  {
+    name: "record_learning",
+    description:
+      "Record a durable, confidence-labeled learning. 'confirmed'/'strongly_supported' require measured source action outcomes. Learnings are never auto-generated — the operator's confirmation IS the explicit act. Confirmation required.",
+    tier: "confirm",
+    schema: recordLearningSchema,
+    summarize: (i) =>
+      `Record ${String(i.confidence_label)} learning: ${String(i.statement).slice(0, 80)}`,
+    run: async (user, input) => invokeTool(user, "record_learning", input),
+  },
+  {
     name: "describe_tools",
     description:
       "Full guidance and exact input shape for up to 8 tools from the catalog — call this before first use of a tool whose input you don't already know from this conversation. Free lookup, no data access.",
@@ -1061,6 +1093,9 @@ export const TOOL_GROUPS: Record<string, AssistantToolGroup> = {
   approve_audit_refresh: "audits",
   dismiss_audit_refresh: "audits",
   describe_tools: "meta",
+  import_prompts: "runs",
+  create_experiment: "visibility",
+  record_learning: "visibility",
 };
 
 /** First sentence of a description — derived, so the compact catalog can
