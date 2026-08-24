@@ -505,6 +505,23 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     expect(learning?.confidenceLabel).toBe("probable");
   });
 
+  it("spec 109: timeline and intent read through the loop and report absence honestly", async () => {
+    const reply = unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "what happened with Gate Co and how warm are they?" },
+        scripted([
+          { action: "tool", tool: "prospect_timeline", input: { prospect_id: P1 } },
+          { action: "tool", tool: "prospect_intent", input: { prospect_id: P1 } },
+          { action: "answer", answer: "Stage changes only; no intent derivable yet." },
+        ])
+      )
+    );
+    expect(reply.toolCalls[0]!.ok).toBe(true);
+    expect(reply.toolCalls[0]!.summary).toContain('"omitted":0');
+    expect(reply.toolCalls[1]!.ok).toBe(true);
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(
