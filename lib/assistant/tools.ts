@@ -15,8 +15,17 @@ import { sql } from "@/db/client";
 import type { CurrentUser } from "@/lib/auth";
 import * as svc from "@/lib/prospects/service";
 import { publishAudit } from "@/lib/prospects/audits";
-import { enrichProspect, approveEnrichmentProposal } from "@/lib/prospects/enrichment";
-import { runProspectDiscovery } from "@/lib/prospects/discovery";
+import {
+  approveEnrichmentProposal,
+  enrichProspect,
+  listEnrichmentProposals,
+  rejectEnrichmentProposal,
+} from "@/lib/prospects/enrichment";
+import {
+  listDiscoveryCandidates,
+  reviewDiscoveryCandidate,
+  runProspectDiscovery,
+} from "@/lib/prospects/discovery";
 import { draftMarketPack, installMarketPackDraft } from "@/lib/markets/research";
 import { bootstrapMarketBenchmark } from "@/lib/markets/bootstrap";
 import {
@@ -215,6 +224,47 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     tier: "read",
     schema: z.object({ limit: z.number().int().min(1).max(50).default(20) }),
     run: async (_user, input) => listScheduledOutbox(input.limit as number),
+  },
+  {
+    name: "list_discovery_candidates",
+    description:
+      "Staged discovery candidates awaiting review (default: pending), overall or per launch — the queue run_discovery fills. Each row carries confidence, provider, source URL, and the company resolution; review_discovery_candidate decides one.",
+    tier: "read",
+    schema: z.object({
+      launch_id: uuid.optional(),
+      status: z
+        .enum(["pending", "approved", "dismissed", "duplicate", "all"])
+        .default("pending"),
+      limit: z.number().int().min(1).max(50).default(20),
+    }),
+    run: async (_user, input) => {
+      const rows = await listDiscoveryCandidates({
+        ...(typeof input.launch_id === "string" ? { launchId: input.launch_id } : {}),
+        ...(input.status !== "all" ? { status: input.status as string } : {}),
+        limit: input.limit as number,
+      });
+      // Compact rows only — the raw payload can blow the transcript budget.
+      return rows.map((r) => ({
+        candidateId: r.id,
+        launchName: r.launchName,
+        businessName: r.businessName,
+        provider: r.provider,
+        sourceUrl: r.sourceUrl,
+        confidence: r.confidence,
+        provenance: r.provenance,
+        status: r.status,
+        resolution: r.resolution,
+        retrievedAt: r.retrievedAt,
+      }));
+    },
+  },
+  {
+    name: "list_enrichment_proposals",
+    description:
+      "A prospect's staged enrichment proposals still needing a decision (pending and failed only — decided ones leave this list), with payload, citations, and confidence. approve_enrichment or reject_enrichment_proposal decides one.",
+    tier: "read",
+    schema: z.object({ prospect_id: uuid }),
+    run: async (_user, input) => listEnrichmentProposals(input.prospect_id as string),
   },
   {
     name: "list_launches",
@@ -572,6 +622,45 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
     summarize: (i) => `Cancel the scheduled send of draft ${String(i.draft_id).slice(0, 8)}…`,
     run: async (user, input) =>
       unwrapResult(await svc.cancelScheduledSend(user, { draftId: input.draft_id })),
+  },
+  {
+    name: "review_discovery_candidate",
+    description:
+      "Approve or dismiss a pending discovery candidate. Approval resolves the company and creates the prospect through the provenance-stamped path (a same-name conflict records it as duplicate); dismissal discards the staged research. Confirmation required either way.",
+    tier: "confirm",
+    schema: z.object({
+      candidate_id: uuid,
+      decision: z.enum(["approve", "dismiss"]),
+      company_id: uuid.optional(),
+    }),
+    summarize: (i) =>
+      `${i.decision === "approve" ? "Approve" : "Dismiss"} discovery candidate ${String(i.candidate_id).slice(0, 8)}…`,
+    run: async (user, input) =>
+      unwrapResult(
+        await reviewDiscoveryCandidate(user, {
+          candidateId: input.candidate_id,
+          decision: input.decision,
+          ...(typeof input.company_id === "string" ? { companyId: input.company_id } : {}),
+        })
+      ),
+  },
+  {
+    name: "reject_enrichment_proposal",
+    description:
+      "Reject a staged enrichment proposal (the approve_enrichment twin) — nothing it proposed is written, and the decision is audited with the optional reason. Confirmation required.",
+    tier: "confirm",
+    schema: z.object({
+      proposal_id: uuid,
+      reason: z.string().trim().max(500).optional(),
+    }),
+    summarize: (i) => `Reject enrichment proposal ${String(i.proposal_id).slice(0, 8)}…`,
+    run: async (user, input) =>
+      unwrapResult(
+        await rejectEnrichmentProposal(user, {
+          proposalId: input.proposal_id,
+          ...(input.reason ? { reason: input.reason } : {}),
+        })
+      ),
   },
 ];
 
