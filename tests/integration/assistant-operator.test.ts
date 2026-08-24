@@ -548,6 +548,62 @@ describe.skipIf(!TEST_URL)("assistant operator mode (integration)", () => {
     );
   });
 
+  it("spec 111: CSV import through the loop; the close only through the gate", async () => {
+    const reply = unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "import this list" },
+        scripted([
+          {
+            action: "tool",
+            tool: "import_prospects_csv",
+            input: {
+              launch_id: "cccccccc-0000-4000-8000-000000000011",
+              csv: "business_name,email\nImported Team One,one@teams.example\nImported Team Two,two@teams.example",
+            },
+          },
+          { action: "answer", answer: "Imported two prospects." },
+        ])
+      )
+    );
+    expect(reply.toolCalls[0]!.ok).toBe(true);
+    expect(reply.pendingActions.length).toBe(0); // direct tier
+    const [imported] = await sql`
+      select count(*)::int as n from prospects where business_name like 'Imported Team%'
+    `;
+    expect(imported?.n).toBe(2);
+
+    // The close: contracted + company-linked, sold without exclusivity.
+    const [company] = await sql`insert into companies (name) values ('Closed Co') returning id`;
+    const [prospect] = await sql`
+      insert into prospects (launch_id, business_name, prospect_type, stage, company_id)
+      values ('cccccccc-0000-4000-8000-000000000011', 'Closed Co', 'team', 'contracted', ${company!.id})
+      returning id
+    `;
+    const conversationId = await newConversation(operator);
+    const pending = await confirm.mintPendingAction(
+      operator,
+      conversationId,
+      "promote_prospect_to_client",
+      { prospect_id: prospect!.id as string, create_agreement: false }
+    );
+    let [row] = await sql`select promoted_project_id from prospects where id = ${prospect!.id}`;
+    expect(row?.promotedProjectId).toBeNull(); // minting executed nothing
+    unwrap(await confirm.confirmAssistantAction(operator, { token: pending.token }));
+    [row] = await sql`select promoted_project_id from prospects where id = ${prospect!.id}`;
+    expect(row?.promotedProjectId).toBeTruthy();
+
+    // Re-promoting conflicts, recorded in-thread as confirmed-but-failed.
+    const again = await confirm.mintPendingAction(
+      operator,
+      conversationId,
+      "promote_prospect_to_client",
+      { prospect_id: prospect!.id as string, create_agreement: false }
+    );
+    const refused = unwrap(await confirm.confirmAssistantAction(operator, { token: again.token }));
+    expect((refused.result as { error?: string }).error).toMatch(/already promoted/);
+  });
+
   it("a mint with invalid input refuses — a malformed proposal can never be confirmed later", async () => {
     const conversationId = await newConversation(operator);
     await expect(

@@ -41,6 +41,8 @@ const MUST_CONFIRM = [
   // and never auto-generated.
   "create_experiment",
   "record_learning",
+  // Spec 111: the close creates a client project and an ACTIVE agreement.
+  "promote_prospect_to_client",
 ];
 
 describe("assistant tool catalog", () => {
@@ -54,7 +56,7 @@ describe("assistant tool catalog", () => {
     for (const tool of ASSISTANT_TOOLS) {
       if (tool.tier === "confirm") continue;
       expect(tool.name, `${tool.name} looks consequential but is ${tool.tier}`).not.toMatch(
-        /^(send|publish|approve|cancel|retry|review|reject|suppress|lift|stop|set|dismiss)_|^start_/
+        /^(send|publish|approve|cancel|retry|review|reject|suppress|lift|stop|set|dismiss|promote)_|^start_/
       );
     }
   });
