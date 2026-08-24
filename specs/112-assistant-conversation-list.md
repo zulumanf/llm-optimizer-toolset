@@ -1,6 +1,6 @@
 # Spec 112 — Assistant Conversation List ("where did that chat go?")
 
-> Status: ready
+> Status: done
 > Depends on: specs/044, specs/096
 > Branch: feat/112-assistant-conversation-list
 
