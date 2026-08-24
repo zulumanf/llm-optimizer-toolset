@@ -1,6 +1,6 @@
 # Spec 107 — Assistant Catalog Compaction (grouped catalog + describe_tools)
 
-> Status: ready
+> Status: done
 > Depends on: specs/096, specs/102–106
 > Branch: feat/107-assistant-catalog-compaction
 
