@@ -44,6 +44,9 @@ import {
   type ProspectType,
   RECONTACT_PERSON_WINDOW_DAYS,
   BROKERAGE_SEND_CAP_30D,
+  BROKERAGE_CUT_COMMA,
+  BROKERAGE_CUT_SUFFIX,
+  normalizeBrokerage,
   GMAIL_DAILY_SEND_CAP,
   SCHEDULED_SEND_MAX_DAYS_AHEAD,
   UNATTENDED_SEND_BLOCKED_STAGES,
@@ -2129,19 +2132,23 @@ export async function sendProspectDraft(
       // row was already locked above, so re-selecting it was pure waste.
       const brokerage = prospect.brokerageAffiliation?.trim();
       if (brokerage) {
+        // Spec 120: scoped to this prospect's market (launch), matched on
+        // the normalized name so suffix variants share one cap bucket.
         const [{ n } = { n: 0 }] = await tx`
           select count(*)::int as n from prospect_outreach_sends s
           join prospects p on p.id = s.prospect_id
           where s.allowed
-            and lower(trim(p.brokerage_affiliation)) = ${brokerage.toLowerCase()}
+            and p.launch_id = ${prospect.launchId}
+            and trim(regexp_replace(regexp_replace(lower(trim(p.brokerage_affiliation)),
+                  ${BROKERAGE_CUT_COMMA}, ''), ${BROKERAGE_CUT_SUFFIX}, '')) = ${normalizeBrokerage(brokerage)}
             and s.sent_at > now() - interval '30 days'
         `;
         check(
           "recontact_brokerage",
           Number(n) < BROKERAGE_SEND_CAP_30D,
           Number(n) < BROKERAGE_SEND_CAP_30D
-            ? `${n} of ${BROKERAGE_SEND_CAP_30D} brokerage sends used this month`
-            : `${brokerage} already received ${n} sends in 30 days — the cap is ${BROKERAGE_SEND_CAP_30D}.`
+            ? `${n} of ${BROKERAGE_SEND_CAP_30D} brokerage sends used this month in this market`
+            : `${brokerage} already received ${n} sends in this market in 30 days — the cap is ${BROKERAGE_SEND_CAP_30D}.`
         );
       } else {
         check("recontact_brokerage", true, "no brokerage affiliation recorded");

@@ -362,7 +362,25 @@ export const SENDER_CREDENTIAL = process.env.SENDER_CREDENTIAL ?? null;
 // one week. Windows are deliberate constants, not config — changing them
 // is a policy decision that belongs in a diff.
 export const RECONTACT_PERSON_WINDOW_DAYS = 30;
+/** Per MARKET (launch) since spec 120 — the office-intrusion risk the cap
+ * guards against is local; a national brand's teams in different metros
+ * share only the name. Matching is on the normalized brokerage name. */
 export const BROKERAGE_SEND_CAP_30D = 3;
+
+/** Brokerage-name normalization (spec 120): naming variants must land in
+ * the same cap bucket. Cut everything from the first comma, then a trailing
+ * corporate-suffix token. The SAME patterns run in SQL (regexp_replace) and
+ * in TS so the two sides can never disagree. */
+export const BROKERAGE_CUT_COMMA = ",.*$";
+export const BROKERAGE_CUT_SUFFIX = "\\s+(inc|llc)\\.?$";
+export function normalizeBrokerage(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(new RegExp(BROKERAGE_CUT_COMMA), "")
+    .replace(new RegExp(BROKERAGE_CUT_SUFFIX), "")
+    .trim();
+}
 
 // Gmail transmission (spec 091). The cap is ours, far below Gmail's own
 // limits — a warming sender address, and a policy constant like the ones
