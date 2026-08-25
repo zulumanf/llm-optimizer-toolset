@@ -368,6 +368,10 @@ export const BROKERAGE_SEND_CAP_30D = 3;
 // limits — a warming sender address, and a policy constant like the ones
 // above: raising it is a diff, not a config edit.
 export const GMAIL_DAILY_SEND_CAP = 25;
+/** The operator's daily send commitment (spec 119) — the input scoreboard
+ * target, deliberately under the transport cap so follow-ups never compete
+ * with the quota for headroom. A policy constant like the cap above. */
+export const DAILY_SEND_QUOTA = 15;
 /** How far ahead a human may schedule an approved draft's transmission. */
 export const SCHEDULED_SEND_MAX_DAYS_AHEAD = 30;
 /** Transport-failure retries before a scheduled send parks as blocked. */

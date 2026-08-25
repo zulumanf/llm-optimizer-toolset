@@ -34,6 +34,9 @@ import {
   StatGrid,
 } from "@/components/layout/page";
 import { cockpit, machineHealth, upcomingAutomation, WINDOWS, type UpcomingSend, type Window } from "@/lib/prospects/dashboard";
+import { medianHoursToFirstReply, momentum, type Momentum } from "@/lib/prospects/momentum";
+import { MomentumSection } from "@/components/prospects/momentum-section";
+import { DAILY_SEND_QUOTA } from "@/lib/prospects/constants";
 import { dashboardHref, type DashboardFilters } from "@/lib/prospects/dashboard-url";
 import { outreachMetrics, type Rate } from "@/lib/prospects/analytics";
 import { AnalyzeView, OPEN_SIGNAL_CAVEAT, POSITIVE_REPLY_CAVEAT } from "@/components/prospects/analyze-view";
@@ -233,7 +236,9 @@ export default async function ProspectingDashboardPage({
       // Analyze compares batches: it needs every cohort in the same window.
       view === "analyze" && launchId ? cockpit({ window }, now) : Promise.resolve(null),
     ]);
-    data = { c, health, upcoming, launchId, all };
+    // After the batch, not inside it — the pooler's session cap is close.
+    const mo: Momentum | null = view === "operate" ? await momentum(now) : null;
+    data = { c, health, upcoming, launchId, all, mo };
   } catch {
     return (
       <PageShell>
@@ -242,7 +247,7 @@ export default async function ProspectingDashboardPage({
       </PageShell>
     );
   }
-  const { c, health, upcoming, launchId, all } = data;
+  const { c, health, upcoming, launchId, all, mo } = data;
   const { cohort } = c;
   const launch = c.launches.find((l) => l.id === launchId);
   const cohortName = launch ? `${launch.name} · Batch 1` : "All active cohorts";
@@ -415,6 +420,9 @@ export default async function ProspectingDashboardPage({
           </div>
         ))}
       </dl>
+
+      {/* ===================== 0. did we do the work (spec 119) */}
+      {mo && <MomentumSection momentum={mo} prospects={c.prospects} cohortName={cohortName} quota={DAILY_SEND_QUOTA} />}
 
       {/* ===================== 1. what requires me */}
       <Section
@@ -608,6 +616,12 @@ export default async function ProspectingDashboardPage({
           {cohort.medianSecondsToFirstView !== null && cohort.viewed >= LATENCY_MIN_SAMPLE && (
             <> Median time to first audit visit <span className="tabular-nums">{duration(cohort.medianSecondsToFirstView)}</span> (n={cohort.viewed}).</>
           )}
+          {(() => {
+            const r = medianHoursToFirstReply(c.prospects);
+            return r.hours !== null && r.n >= LATENCY_MIN_SAMPLE ? (
+              <> Median time to first reply <span className="tabular-nums">{duration(Math.round(r.hours * 3600))}</span> (n={r.n}).</>
+            ) : null;
+          })()}
         </p>
       </Section>
 

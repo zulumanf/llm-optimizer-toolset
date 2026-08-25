@@ -2734,3 +2734,14 @@ Platform gap to fix properly: score only after run completion (or step the
 scoring version on material sample change). Also: the 03:02 UTC compute_scores
 job executed on the OUTDATED deployed worker and wrote a 42-company-scoped
 pass — worker redeploy required before relying on job-queue scoring again.
+
+## 2026-08-25 — Momentum scoreboard is all-cohort; quota is a policy constant (spec 119)
+
+The Momentum section's volume metrics (sends today, streak, daily chart,
+throughput) deliberately ignore the cohort filter: effort is a global input
+the operator controls, and slicing it per cohort would let a quiet cohort
+hide a quiet week. Touch depth and replies-by-touch stay cohort-scoped like
+every other Operate section, and each half is labeled. DAILY_SEND_QUOTA (15)
+is a named policy constant next to GMAIL_DAILY_SEND_CAP, not config —
+changing the commitment is a diff. Reply/bounce ingestion stay out of scope
+(spec 118); the replies line reads recorded stage changes only.
