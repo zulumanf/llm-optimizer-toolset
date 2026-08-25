@@ -1748,6 +1748,16 @@ export async function approveOutreachDraft(
           `The draft contains prohibited wording ("${banned}") — remove it before approval.`
         );
       }
+      // Deterministic QA gate (spec 116): machine-checkable defects refuse
+      // approval with the full list, while a human is still looking.
+      const { qaDraft } = await import("@/lib/prospects/draft-qa");
+      const qaIssues = await qaDraft(draft.id as string);
+      if (qaIssues.length > 0) {
+        throw new ClassifiedError(
+          "validation",
+          `Draft QA failed: ${qaIssues.map((i) => `[${i.check}] ${i.detail}`).join(" ")}`
+        );
+      }
       // Superseding also clears any pending schedule (spec 091): the worker
       // only transmits status = 'approved' rows, but a dead schedule left on
       // a superseded draft would read as a send that is still coming.
@@ -2238,6 +2248,21 @@ export async function sendProspectDraft(
         banned === null,
         banned ? `Contains prohibited wording ("${banned}").` : "clean"
       );
+
+      // Deterministic QA re-check at dispatch (spec 116): a draft approved
+      // against one audit state must not transmit stale or inconsistent
+      // numbers after a republish. Aggregated as one ledgered verdict.
+      {
+        const { qaDraft } = await import("@/lib/prospects/draft-qa");
+        const qaIssues = await qaDraft(draft.id as string);
+        check(
+          "draft_qa",
+          qaIssues.length === 0,
+          qaIssues.length === 0
+            ? "all deterministic draft checks pass"
+            : qaIssues.map((i) => `[${i.check}] ${i.detail}`).join(" ")
+        );
+      }
 
       // body_hash stays on the PLAIN text — the human-approved artifact.
       // The HTML part (spec 092) is a mechanical rendering of that text
