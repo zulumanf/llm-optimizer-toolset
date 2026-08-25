@@ -2679,3 +2679,15 @@ logged; the turn always completes and persists). The dock falls back to
 the server action only when the stream fails before ANY event arrived:
 after the first event the turn may already have completed server-side,
 and an automatic retry could execute it twice.
+
+## 2026-08-25 — Brokerage send cap scoped per market (spec 120)
+
+The spec-052 cap (3/brokerage/30d) matched brokerage names globally; by
+08-25 Compass, Coldwell Banker Realty, and eXp were 3/3 nationwide and 14 of
+15 approved initial drafts were gate-blocked in markets those brands had
+never been contacted in. Operator decision: the intrusion risk is
+office-local, so the cap now counts sends within the prospect's launch
+(market) only. Same diff normalizes brokerage names (comma cut + trailing
+inc/llc) so suffix variants share one cap bucket — "Long & Foster Real
+Estate Inc." no longer dodges the plain form's count. Cap value and window
+unchanged; still a policy constant.
