@@ -61,9 +61,45 @@ async function main(): Promise<void> {
     return `n=${a.length} mean|Δ|=${(mean * 100).toFixed(1)}pp max=${(s[s.length - 1]! * 100).toFixed(1)}pp p90=${(s[Math.floor(s.length * 0.9)]! * 100).toFixed(1)}pp`;
   };
   console.log(`run ${run.label}: recommendation-rate deviation vs full 4 reps (mentioned companies only)`);
-  console.log(`1 rep : ${stat(diffs.r1!)}`);
-  console.log(`2 reps: ${stat(diffs.r2!)}`);
-  console.log(`3 reps: ${stat(diffs.r3!)}`);
+  console.log("per provider:");
+  console.log(`  1 rep : ${stat(diffs.r1!)}`);
+  console.log(`  2 reps: ${stat(diffs.r2!)}`);
+  console.log(`  3 reps: ${stat(diffs.r3!)}`);
+
+  // Pooled across providers — the number the audit page actually shows.
+  const pooledRec = new Map<string, number[]>();
+  const pooledN = new Map<string, number[]>();
+  for (const [key, arr] of byKey) {
+    const company = key.split("|")[0]!;
+    const nn = repsN.get(key)!;
+    const pr = pooledRec.get(company) ?? [0, 0, 0, 0];
+    const pn = pooledN.get(company) ?? [0, 0, 0, 0];
+    for (let i = 0; i < 4; i++) {
+      pr[i]! += arr[i]!;
+      pn[i]! += nn[i]!;
+    }
+    pooledRec.set(company, pr);
+    pooledN.set(company, pn);
+  }
+  const pooled: Record<string, number[]> = { r1: [], r2: [], r3: [] };
+  for (const [company, arr] of pooledRec) {
+    const nn = pooledN.get(company)!;
+    const totalN = nn.reduce((a, b) => a + b, 0);
+    if (totalN === 0) continue;
+    const full = arr.reduce((a, b) => a + b, 0) / totalN;
+    if (full === 0) continue;
+    const upto = (k: number): number => {
+      const n = nn.slice(0, k).reduce((a, b) => a + b, 0);
+      return n === 0 ? 0 : arr.slice(0, k).reduce((a, b) => a + b, 0) / n;
+    };
+    pooled.r1!.push(Math.abs(upto(1) - full));
+    pooled.r2!.push(Math.abs(upto(2) - full));
+    pooled.r3!.push(Math.abs(upto(3) - full));
+  }
+  console.log("pooled providers (page-facing rates):");
+  console.log(`  1 rep : ${stat(pooled.r1!)}`);
+  console.log(`  2 reps: ${stat(pooled.r2!)}`);
+  console.log(`  3 reps: ${stat(pooled.r3!)}`);
   await sql.end();
 }
 main().catch((e) => { console.error(e); process.exit(1); });
