@@ -59,7 +59,7 @@ export function generateReplyFirstEmail(input: OutreachDraftInput): GeneratedDra
   ].join("\n");
 
   return {
-    subject: `A ${input.marketName} benchmark result about ${input.prospectName}`,
+    subject: `${/^[AEIOU]/i.test(input.marketName) ? "An" : "A"} ${input.marketName} benchmark result about ${input.prospectName}`,
     body,
     tone: "curious, factual, low-pressure",
     cta,
