@@ -201,7 +201,7 @@ export function generateFindingCandidates(input: GeneratorInput): FindingCandida
       title:
         mentionCount === 0
           ? `${input.prospectName} is absent from all ${p.sampleSize} monitored AI answers`
-          : `${input.prospectName} appears in only ${mentionCount} of ${p.sampleSize} monitored AI answers`,
+          : `${input.prospectName} appears in ${mentionCount} of ${p.sampleSize} monitored AI answers`,
       explanation:
         `${input.prospectName} was mentioned in ` +
         `${countOf(p.mentionRate, p.sampleSize)} of ${p.sampleSize} monitored ` +
