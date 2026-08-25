@@ -83,8 +83,6 @@ export async function executeRun(runId: string): Promise<void> {
     return;
   }
 
-  await sql`update runs set status = 'running' where id = ${runId}`;
-
   const allCells = expandCells(
     version.frozenPrompts as FrozenPrompt[],
     run.providers
@@ -93,6 +91,27 @@ export async function executeRun(runId: string): Promise<void> {
   const pending = allCells.filter(
     (c) => !done.has(`${c.promptId}|${c.provider}|${c.model}|${c.repetition}`)
   );
+
+  // Pre-flight billing probe (spec 117): mid-run quota exhaustion is the
+  // platform's most expensive failure (partial runs scored then completed —
+  // the 2026-08-25 354/512 incident). One ~zero-cost call refuses the run
+  // BEFORE any cell spends money or ledger rows accrue.
+  if (pending.some((c) => c.provider === "openai")) {
+    const { probeOpenAIQuota } = await import("@/lib/ai/openai");
+    const probe = await probeOpenAIQuota();
+    if (!probe.ok) {
+      await sql`
+        update runs set status = ${done.size > 0 ? "partial" : "failed"},
+          status_detail = ${`provider quota exhausted (openai) — preflight probe refused (${probe.reason ?? "429"}); no cells attempted`},
+          completed_at = now()
+        where id = ${runId}
+      `;
+      log("warn", "run.preflight_quota_refused", { runId, reason: probe.reason });
+      return;
+    }
+  }
+
+  await sql`update runs set status = 'running' where id = ${runId}`;
 
   const state: ExecState = {
     cancelled: false,
