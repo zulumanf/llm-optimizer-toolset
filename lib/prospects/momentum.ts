@@ -144,10 +144,13 @@ export async function momentum(now: Date = new Date()): Promise<Momentum> {
   // Sequential on purpose — same pooler session cap machineHealth hit.
   const dailyRows = await sql`
     with ordered as (
+      -- Archived prospects (e.g. channel-test fixtures) are excluded here
+      -- and below, matching prospectFacts — their ledger rows remain.
       select s.sent_at,
         row_number() over (partition by s.prospect_id order by s.sent_at) as touch
       from prospect_outreach_sends s
-      where s.allowed
+      join prospects p on p.id = s.prospect_id
+      where s.allowed and p.archived_at is null
     ),
     sends_daily as (
       select (o.sent_at at time zone ${OPERATOR_TIMEZONE})::date::text as day,
@@ -159,7 +162,8 @@ export async function momentum(now: Date = new Date()): Promise<Momentum> {
     refused_daily as (
       select (s.sent_at at time zone ${OPERATOR_TIMEZONE})::date::text as day, count(*)::int as refused
       from prospect_outreach_sends s
-      where not s.allowed and s.sent_at >= ${since}
+      join prospects p on p.id = s.prospect_id
+      where not s.allowed and p.archived_at is null and s.sent_at >= ${since}
       group by 1
     ),
     first_reply as (
@@ -167,7 +171,9 @@ export async function momentum(now: Date = new Date()): Promise<Momentum> {
       -- means a conversation happened, so the first arrival is "first reply".
       select h.prospect_id, min(h.changed_at) as at
       from prospect_stage_history h
-      where h.to_stage in ('replied','discovery_scheduled','discovery_completed','proposal_sent','negotiation','verbal_yes','contracted')
+      join prospects p on p.id = h.prospect_id
+      where p.archived_at is null
+        and h.to_stage in ('replied','discovery_scheduled','discovery_completed','proposal_sent','negotiation','verbal_yes','contracted')
       group by h.prospect_id
     ),
     replies_daily as (
@@ -184,19 +190,32 @@ export async function momentum(now: Date = new Date()): Promise<Momentum> {
     full join refused_daily x using (day)
     full join replies_daily r using (day)
   `;
+  // Superseded rows are intermediate revisions of the same message —
+  // counting them would inflate created AND approved and overstate the
+  // approved-but-unsent backlog the throughput line exists to expose.
   const [t] = await sql`
     select
-      (select count(*)::int from outreach_drafts
-        where created_at >= now() - make_interval(days => ${THROUGHPUT_WINDOW_DAYS})) as created,
-      (select count(*)::int from outreach_drafts
-        where approved_at >= now() - make_interval(days => ${THROUGHPUT_WINDOW_DAYS})) as approved,
-      (select count(*)::int from prospect_outreach_sends
-        where allowed and sent_at >= now() - make_interval(days => ${THROUGHPUT_WINDOW_DAYS})) as sent,
-      (select count(*)::int from prospect_outreach_sends
-        where not allowed and sent_at >= now() - make_interval(days => ${THROUGHPUT_WINDOW_DAYS})) as refused,
-      (select percentile_cont(0.5) within group (order by extract(epoch from (approved_at - created_at)))
-        from outreach_drafts
-        where approved_at is not null and approved_at >= now() - interval '30 days') as median_approval_secs
+      (select count(*)::int from outreach_drafts d
+        join prospects p on p.id = d.prospect_id
+        where d.status != 'superseded' and p.archived_at is null
+          and d.created_at >= now() - make_interval(days => ${THROUGHPUT_WINDOW_DAYS})) as created,
+      (select count(*)::int from outreach_drafts d
+        join prospects p on p.id = d.prospect_id
+        where d.status != 'superseded' and p.archived_at is null
+          and d.approved_at >= now() - make_interval(days => ${THROUGHPUT_WINDOW_DAYS})) as approved,
+      (select count(*)::int from prospect_outreach_sends s
+        join prospects p on p.id = s.prospect_id
+        where s.allowed and p.archived_at is null
+          and s.sent_at >= now() - make_interval(days => ${THROUGHPUT_WINDOW_DAYS})) as sent,
+      (select count(*)::int from prospect_outreach_sends s
+        join prospects p on p.id = s.prospect_id
+        where not s.allowed and p.archived_at is null
+          and s.sent_at >= now() - make_interval(days => ${THROUGHPUT_WINDOW_DAYS})) as refused,
+      (select percentile_cont(0.5) within group (order by extract(epoch from (d.approved_at - d.created_at)))
+        from outreach_drafts d
+        join prospects p on p.id = d.prospect_id
+        where d.status != 'superseded' and p.archived_at is null
+          and d.approved_at is not null and d.approved_at >= now() - interval '30 days') as median_approval_secs
   `;
   return {
     days: fillDailySeries(
