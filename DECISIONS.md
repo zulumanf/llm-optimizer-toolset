@@ -2720,3 +2720,17 @@ presentation over the same counted numbers), and a bump 12 hours before the
 2026-08-25 send batch would have marked every shipped v2 primary stale and
 triggered cross-batch regeneration churn. Wilmington findings were
 regenerated under the same version before first publish.
+
+## 2026-08-25 — Wilmington audits ship on the 354-sample scoring basis (resume-after-scoring gap)
+Run 66af5cdb was scored while partial (354 captures), then completed to 512.
+The scores table is immutable (052) and deduped per (run, company, metric,
+provider, scoring_version), so the completed run can never be re-scored at
+the same version — findings remain on the 354 basis while the transcript
+appendix shows all 512 captures. Before shipping, every finding claim was
+verified directly against current mentions across the FULL 512: all twelve
+"absent from all 354" prospects have zero mentions in all 512; nonzero
+prospects only gained mentions (finding undersells, never overclaims).
+Platform gap to fix properly: score only after run completion (or step the
+scoring version on material sample change). Also: the 03:02 UTC compute_scores
+job executed on the OUTDATED deployed worker and wrote a 42-company-scoped
+pass — worker redeploy required before relying on job-queue scoring again.
