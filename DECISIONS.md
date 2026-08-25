@@ -2709,3 +2709,14 @@ skip the notifications feed (it is project-keyed; tasks are
 operator-keyed) — the surfaces are the task's own conversation and the
 dock header line. Budget exhaustion is status 'failed' with the budget
 named, never a trimmed "success".
+
+## 2026-08-24 — Absence finding title made count-exact without a generator version bump
+The sense-check agent flagged "absent from most monitored AI responses" as
+imprecise: it understates 0-of-N (absence from ALL) and overstates a nonzero
+mention count. The title now renders the exact count ("absent from all 354…"
+/ "appears in only 15 of 354…"). FINDING_GENERATOR_VERSION was deliberately
+NOT bumped: metrics, thresholds, and methodology are unchanged (title is
+presentation over the same counted numbers), and a bump 12 hours before the
+2026-08-25 send batch would have marked every shipped v2 primary stale and
+triggered cross-batch regeneration churn. Wilmington findings were
+regenerated under the same version before first publish.

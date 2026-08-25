@@ -192,9 +192,16 @@ export function generateFindingCandidates(input: GeneratorInput): FindingCandida
     p.mentionRate < 0.2 &&
     input.prospectAbsentResponseIds.length > 0
   ) {
+    // Count-exact title (sense-check 2026-08-24): "absent from most" both
+    // understates 0-of-N (that is ALL) and overstates a nonzero count — the
+    // title must say exactly what was counted.
+    const mentionCount = countOf(p.mentionRate, p.sampleSize);
     out.push({
       kind: "absence",
-      title: `${input.prospectName} is absent from most monitored AI responses`,
+      title:
+        mentionCount === 0
+          ? `${input.prospectName} is absent from all ${p.sampleSize} monitored AI answers`
+          : `${input.prospectName} appears in only ${mentionCount} of ${p.sampleSize} monitored AI answers`,
       explanation:
         `${input.prospectName} was mentioned in ` +
         `${countOf(p.mentionRate, p.sampleSize)} of ${p.sampleSize} monitored ` +
