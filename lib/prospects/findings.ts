@@ -203,10 +203,11 @@ export function generateFindingCandidates(input: GeneratorInput): FindingCandida
           ? `${input.prospectName} is absent from all ${p.sampleSize} monitored AI answers`
           : `${input.prospectName} appears in ${mentionCount} of ${p.sampleSize} monitored AI answers`,
       explanation:
-        `${input.prospectName} was mentioned in ` +
-        `${countOf(p.mentionRate, p.sampleSize)} of ${p.sampleSize} monitored ` +
-        `responses (${pct(p.mentionRate)}) — absent from the remaining ` +
-        `${p.sampleSize - countOf(p.mentionRate, p.sampleSize)}.`,
+        mentionCount === 0
+          ? `${input.prospectName} was not mentioned in any of the ${p.sampleSize} monitored responses.`
+          : `${input.prospectName} was mentioned in ${mentionCount} of ${p.sampleSize} monitored ` +
+            `responses (${pct(p.mentionRate)}) — absent from the remaining ` +
+            `${p.sampleSize - mentionCount}.`,
       metrics: { mention_rate: p.mentionRate, sample_size: p.sampleSize },
       signalIds: [],
       responseIds: input.prospectAbsentResponseIds,
