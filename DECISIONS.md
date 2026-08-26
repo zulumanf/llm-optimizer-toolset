@@ -2745,3 +2745,19 @@ every other Operate section, and each half is labeled. DAILY_SEND_QUOTA (15)
 is a named policy constant next to GMAIL_DAILY_SEND_CAP, not config —
 changing the commitment is a diff. Reply/bounce ingestion stay out of scope
 (spec 118); the replies line reads recorded stage changes only.
+
+## 2026-08-26 — Executive brief is deterministic synthesis, not an LLM call (spec 121)
+
+The cockpit's "Executive brief" is a pure function (lib/prospects/brief.ts,
+prospecting-brief-v1) over numbers the page already derives — headline
+priority, a hard cap of three ranked actions, observations with verbatim
+evidence counts. No LLM: the brief must be instant, free, reproducible, and
+incapable of fabricating a number, and its sample-size judgment is delegated
+to the cohort's existing diagnosis so it can never disagree with the funnel
+section rendered below it. Actions carry semantic targets (filter patches),
+not URLs, so the module stays URL-agnostic and unit-testable; the page maps
+targets through dashboardHref. Mobile: the PageHeader/Section actions slot
+now wraps (min-w-0 flex-wrap, was shrink-0 no-wrap) — the /prospects header
+stacks seven controls in that slot and overflowed at 390px; fixing the
+primitive fixed every page, and /prospects/dashboard (both views) joined the
+390px no-horizontal-scroll e2e fence.
