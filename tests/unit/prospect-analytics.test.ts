@@ -8,6 +8,7 @@ import {
   bySegment,
   bySubject,
   byTiming,
+  byArm,
   byTouch,
   funnelConversion,
   funnelDiagnostic,
@@ -23,7 +24,7 @@ import { summarizeCohort } from "@/lib/prospects/intent";
 const NOW = new Date("2026-08-28T12:00:00Z");
 const T1 = new Date("2026-08-18T13:00:00Z"); // Tue 9 AM ET
 const T2 = new Date("2026-08-21T13:00:00Z");
-const send = (sentAt: Date, touch: number, over: Partial<SendFact> = {}): SendFact => ({ sentAt, touch, subject: "S-A", draftChannel: touch === 1 ? "email" : "followup_email", opens: 0, bounced: false, ...over });
+const send = (sentAt: Date, touch: number, over: Partial<SendFact> = {}): SendFact => ({ sentAt, touch, subject: "S-A", draftChannel: touch === 1 ? "email" : "followup_email", opens: 0, bounced: false, hasLink: null, ...over });
 const view = (viewedAt: Date, over: Partial<AuditViewFact> = {}): AuditViewFact => ({ viewedAt, sessionId: `s${viewedAt.getTime()}`, visitorId: "v", linkKey: "k", engagedSeconds: 0, maxScrollPercent: 0, sectionsViewed: [], evidenceExpanded: false, ctaClicked: false, ...over });
 let seq = 0;
 const facts = (over: Partial<ProspectBehaviorFacts>): ProspectBehaviorFacts => ({
@@ -133,5 +134,37 @@ describe("segments and insights", () => {
     expect(s.evidence).toBe("6/12 vs 2/12 (50% vs 17%).");
     expect(s.confidence).toBe("Early directional signal");
     expect(insights(tier1.slice(0, 5).concat(tier2.slice(0, 5)))).toEqual([]);
+  });
+});
+
+describe("arm classification (spec 122)", () => {
+  it("classifies link bodies as Arm A, link-free as Arm B, and missing bodies as unclassified", () => {
+    const items = [
+      P({ sends: [send(T1, 1, { hasLink: true })] }),
+      P({ sends: [send(T1, 1, { hasLink: false })] }),
+      P({ sends: [send(T1, 1, { hasLink: null })] }),
+    ];
+    const rows = byArm(items);
+    expect(rows.map((r) => r.key)).toEqual(["A", "B", "unknown"]);
+    expect(rows.map((r) => r.sent)).toEqual([1, 1, 1]);
+  });
+
+  it("splits a mixed-arm prospect by send and credits the reply to the arm of the last touch before it", () => {
+    const replied = new Date(T2.getTime() + 3_600_000);
+    const items = [
+      P({
+        sentAts: [T1, T2],
+        sends: [send(T1, 1, { hasLink: true }), send(T2, 2, { hasLink: false })],
+        repliedAt: replied,
+        visitedStages: ["contacted", "replied"],
+      }),
+    ];
+    const rows = byArm(items);
+    const a = rows.find((r) => r.key === "A")!;
+    const b = rows.find((r) => r.key === "B")!;
+    expect(a.sent).toBe(1);
+    expect(b.sent).toBe(1);
+    expect(a.reply.n).toBe(0);
+    expect(b.reply.n).toBe(1);
   });
 });

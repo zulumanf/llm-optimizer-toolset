@@ -368,6 +368,11 @@ export const BROKERAGE_SEND_CAP_30D = 3;
 // limits — a warming sender address, and a policy constant like the ones
 // above: raising it is a diff, not a config edit.
 export const GMAIL_DAILY_SEND_CAP = 25;
+
+/** SQL regex (case-insensitive) that counts as "the body contains a link" —
+ * the Arm A / Arm B discriminator (spec 122). Matches scheme'd URLs and the
+ * naked branded domain some drafts use. */
+export const OUTREACH_LINK_PATTERN = "(https?://|recommendedfirst\\.com)";
 /** The operator's daily send commitment (spec 119) — the input scoreboard
  * target, deliberately under the transport cap so follow-ups never compete
  * with the quota for headroom. A policy constant like the cap above. */

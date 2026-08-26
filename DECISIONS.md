@@ -2761,3 +2761,16 @@ now wraps (min-w-0 flex-wrap, was shrink-0 no-wrap) — the /prospects header
 stacks seven controls in that slot and overflowed at 390px; fixing the
 primitive fixed every page, and /prospects/dashboard (both views) joined the
 390px no-horizontal-scroll e2e fence.
+
+## 2026-08-26 — Arm A/B is derived from the sent body, not stored (spec 122)
+
+The Analyze tab's "Arm A vs Arm B" readout classifies every send at read
+time: a link in the sent draft's body (OUTREACH_LINK_PATTERN) is Arm A,
+link-free is Arm B, no draft body is "Unclassified", never guessed. No arm
+column: the 55 historical sends classify themselves retroactively, the
+2026-08-26 all-B conversion needs no backfill, and a future style change
+can't strand stale labels — same derive-on-read discipline as every other
+cockpit number. Context: the operator retired the planned concurrent A/B
+split (all upcoming sends converted to Arm B), so the readout compares
+against the historical all-A baseline; send-level attribution (groupSends)
+handles mixed-arm prospects.

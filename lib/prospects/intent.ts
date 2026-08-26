@@ -43,6 +43,9 @@ export interface SendFact {
   opens: number;
   /** A bounce suppression exists for the recipient. */
   bounced: boolean;
+  /** The sent draft's body contained a link (Arm A, spec 122); false = Arm B
+   * (reply CTA); null when no draft body is on file for the send. */
+  hasLink: boolean | null;
 }
 
 export interface ProspectBehaviorFacts {

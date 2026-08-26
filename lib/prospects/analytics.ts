@@ -306,6 +306,23 @@ export const byStrategy = (items: ProspectIntent[]): SendGroupRow[] =>
     return { key: ch, label: STRATEGY_LABELS[ch] ?? ch };
   }).sort((a, b) => (b.meeting.rate ?? b.reply.rate ?? 0) - (a.meeting.rate ?? a.reply.rate ?? 0));
 
+/** Arm = message style, derived from the sent body at read time (spec 122):
+ * a link in the body is Arm A, no link is Arm B (reply CTA). A send with no
+ * draft body on file is reported as unclassified, never guessed. */
+export const ARM_LABELS = {
+  A: "Arm A · link CTA",
+  B: "Arm B · reply CTA",
+  unknown: "Unclassified (no draft body on file)",
+} as const;
+export const byArm = (items: ProspectIntent[]): SendGroupRow[] =>
+  groupSends(sendOutcomes(items), (s) =>
+    s.send.hasLink === null
+      ? { key: "unknown", label: ARM_LABELS.unknown }
+      : s.send.hasLink
+        ? { key: "A", label: ARM_LABELS.A }
+        : { key: "B", label: ARM_LABELS.B }
+  ).sort((a, b) => a.key.localeCompare(b.key));
+
 export const bySubject = (items: ProspectIntent[]): SendGroupRow[] =>
   groupSends(sendOutcomes(items), (s) => (s.send.subject ? { key: s.send.subject, label: s.send.subject } : null)).sort((a, b) => b.delivered - a.delivered);
 

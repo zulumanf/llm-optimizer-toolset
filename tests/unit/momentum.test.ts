@@ -16,7 +16,7 @@ import { deriveIntent, type ProspectBehaviorFacts, type SendFact } from "@/lib/p
 const NOW = new Date("2026-08-28T12:00:00Z"); // Friday, 8 AM ET
 const T1 = new Date("2026-08-18T13:00:00Z"); // Tue 9 AM ET
 
-const send = (sentAt: Date, touch: number): SendFact => ({ sentAt, touch, subject: "S", draftChannel: touch === 1 ? "email" : "followup_email", opens: 0, bounced: false });
+const send = (sentAt: Date, touch: number): SendFact => ({ sentAt, touch, subject: "S", draftChannel: touch === 1 ? "email" : "followup_email", opens: 0, bounced: false, hasLink: null });
 let seq = 0;
 const facts = (over: Partial<ProspectBehaviorFacts>): ProspectBehaviorFacts => ({
   prospectId: `p${++seq}`, businessName: `P${seq}`, launchId: "L1", launchName: "Jersey City", qualityScore: 75, stage: "contacted", visitedStages: ["contacted"],

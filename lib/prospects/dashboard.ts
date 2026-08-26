@@ -15,7 +15,7 @@
  *   diagnostics, never an intent input.
  */
 import { sql } from "@/db/client";
-import { GMAIL_DAILY_SEND_CAP, type ProspectStage } from "@/lib/prospects/constants";
+import { GMAIL_DAILY_SEND_CAP, OUTREACH_LINK_PATTERN, type ProspectStage } from "@/lib/prospects/constants";
 import {
   compareByPriority,
   deriveIntent,
@@ -127,6 +127,7 @@ export async function prospectFacts(filter: CockpitFilter = {}): Promise<Prospec
         and h.to_stage in ('discovery_scheduled','discovery_completed','proposal_sent','negotiation','verbal_yes','contracted')) as meeting_at,
       coalesce((select json_agg(json_build_object(
           'sentAt', s.sent_at, 'subject', d.subject, 'draftChannel', d.channel,
+          'hasLink', (d.body ~* ${OUTREACH_LINK_PATTERN}),
           'opens', (select count(*)::int from outreach_email_opens o where o.send_id = s.id),
           'bounced', exists (select 1 from suppression_entries se
             where se.lifted_at is null and se.reason ilike '%bounce%'
@@ -171,13 +172,14 @@ export async function prospectFacts(filter: CockpitFilter = {}): Promise<Prospec
     stage: r.stage as ProspectStage,
     visitedStages: (r.visitedStages as ProspectStage[]) ?? [],
     sentAts: ((r.sentAts as (Date | string)[]) ?? []).map((d) => new Date(d)),
-    sends: ((r.sends as { sentAt: string; subject: string | null; draftChannel: string | null; opens: number; bounced: boolean }[]) ?? []).map((x, i) => ({
+    sends: ((r.sends as { sentAt: string; subject: string | null; draftChannel: string | null; opens: number; bounced: boolean; hasLink: boolean | null }[]) ?? []).map((x, i) => ({
       sentAt: new Date(x.sentAt),
       touch: i + 1,
       subject: x.subject ?? null,
       draftChannel: x.draftChannel ?? null,
       opens: Number(x.opens ?? 0),
       bounced: Boolean(x.bounced),
+      hasLink: x.hasLink ?? null,
     })),
     prospectType: (r.prospectType as string | null) ?? null,
     repliedAt: r.repliedAt ? new Date(r.repliedAt as Date) : null,

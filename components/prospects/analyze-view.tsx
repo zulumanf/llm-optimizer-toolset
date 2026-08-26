@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  byArm,
   byCohort,
   bySegment,
   byStrategy,
@@ -202,6 +203,7 @@ export function AnalyzeView({
   const diag = funnelDiagnostic(m);
   const cohorts = byCohort(allProspects);
   const touches = byTouch(prospects);
+  const arms = byArm(prospects);
   const strategies = byStrategy(prospects);
   const subjects = bySubject(prospects);
   const dim = (SEGMENT_DIMENSIONS.find((d) => d.key === segmentKey)?.key ?? "quality") as SegmentDimension;
@@ -271,6 +273,13 @@ export function AnalyzeView({
 
       <Section title="Message strategy" description={<>By the strategy the data records today (initial vs follow-up). <Help text="A finer follow-up strategy (no-view reframe, competitor gap, authority mismatch…) is not recorded on drafts yet, so it is not reported." /></>}>
         {strategies.length === 0 ? <p className="text-sm text-muted-foreground">No sends yet.</p> : <SendGroupTable rows={strategies} firstHeader="Strategy" />}
+      </Section>
+
+      <Section
+        title="Arm A vs Arm B"
+        description={<>Link CTA vs reply CTA, classified from each sent body. <Help text="A link in the sent body is Arm A; no link is Arm B (reply CTA). Arm B recipients only get the link on request, so audit views under B lag by design — compare arms on replies first and open signal directionally." /></>}
+      >
+        {arms.length === 0 ? <p className="text-sm text-muted-foreground">No sends yet.</p> : <SendGroupTable rows={arms} firstHeader="Arm" showOpen />}
       </Section>
 
       <Section title="Subject performance" description="Where open signal is most useful — still directional.">
