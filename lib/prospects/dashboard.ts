@@ -55,7 +55,7 @@ const humanViews = () => sql`
   where not v.is_internal
     and v.user_agent is not null
     and v.user_agent !~* ${SCRIPT_UA}
-    and (v.ip is null or v.ip != all(${sql.array(operatorIps())}::text[]))
+    and (v.ip is null or v.ip != all(coalesce(string_to_array(nullif(${operatorIps().join(",")}, ''), ','), '{}'::text[])))
     and not exists (
       select 1 from prospect_outreach_sends s
       where s.prospect_id = va.prospect_id and s.allowed
