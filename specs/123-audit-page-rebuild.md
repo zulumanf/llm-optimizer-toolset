@@ -1,6 +1,6 @@
 # Spec 123 — Public Audit Page Rebuild (first-principles prospect story)
 
-> Status: in-progress
+> Status: done
 > Depends on: specs/032/045/048/076/086/090/093 (audit page lineage), spec 122 (Arm B-v3 outreach the page must corroborate)
 > Branch: feat/123-audit-page-rebuild
 
