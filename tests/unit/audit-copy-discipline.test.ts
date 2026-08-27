@@ -21,6 +21,7 @@ const ROOT = join(__dirname, "..", "..");
 const SURFACES = [
   "app/audit/[handle]/page.tsx",
   "app/audit/[handle]/answers/page.tsx",
+  "components/audit/narrative.ts",
   "lib/prospects/audits.ts",
   "lib/prospects/diagnose.ts",
   // terminology.ts is deliberately absent: it QUOTES the banned phrases in
