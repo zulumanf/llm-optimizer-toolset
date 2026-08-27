@@ -446,8 +446,10 @@ export default async function ProspectAuditPage({
         </p>
       </div>
 
-      {/* ================================== 2 · who showed up instead */}
-      {stakes && (topRivals.length > 0 || prospectRow) && (
+      {/* ================================== 2 · who showed up instead.
+          Renders from the comparison rows alone so pre-stakes snapshots
+          keep their counted table (graceful degradation, spec 123). */}
+      {snapshot.comparison.length > 0 && (
         <section className="mt-14" data-signal-section="competitors">
           <h2 className="text-lg font-medium">
             {pain
@@ -457,13 +459,13 @@ export default async function ProspectAuditPage({
           <p className="mt-1 max-w-[65ch] text-sm text-muted-foreground">
             Counted across every answer — never one lucky reply.
           </p>
-          {topRivals.length === 0 && stakes.competitorsNamed.length > 0 && (
+          {topRivals.length === 0 && (stakes?.competitorsNamed.length ?? 0) > 0 && (
             // No individual team was counted ahead — the recommendations
             // went to brand-level names. Say who, counted, without a table.
             <p className="mt-3 max-w-[65ch] text-sm text-muted-foreground">
               Most frequently recommended in this sample:{" "}
               <span className="font-medium text-foreground">
-                {stakes.competitorsNamed.slice(0, 4).join(" · ")}
+                {(stakes?.competitorsNamed ?? []).slice(0, 4).join(" · ")}
               </span>
             </p>
           )}
