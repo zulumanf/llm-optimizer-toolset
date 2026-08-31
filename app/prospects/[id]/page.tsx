@@ -37,11 +37,14 @@ import {
   EditDraftButton,
   GenerateDraftButton,
   OpenInMailButton,
+  RecordReplyButton,
   RecordSentButton,
   ScheduleSendButton,
   SendViaGmailButton,
   type DraftContactOption,
 } from "@/components/prospects/draft-actions";
+import { MismatchPanel } from "@/components/prospects/mismatch-panel";
+import { competitiveMismatchReview } from "@/lib/prospects/mismatch";
 import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
 import { auditLinkForProspect } from "@/lib/prospects/links";
 import { latestSenseCheckForProspect } from "@/lib/prospects/sense-check";
@@ -166,6 +169,9 @@ export default async function ProspectDetailPage({
   const runs = prospect.companyId ? await linkableRuns(prospect.companyId) : [];
   const publishedAudit = audits.find((a) => a.status === "published");
   const primaryFinding = findings.find((f) => f.isPrimary && f.status === "approved");
+  // Competitive mismatch (spec 124) — derived on read; the panel shows the
+  // premise (or why it fails) before the operator approves anything.
+  const mismatchReview = primaryFinding ? await competitiveMismatchReview(id) : null;
 
   // The page tells the operator what to do next — one step at a time.
   const nextStep = !prospect.companyId
@@ -915,10 +921,23 @@ export default async function ProspectDetailPage({
         description="Drafted from the approved story. Nothing sends itself — you send it from your own mailbox, and the do-not-contact and suppression checks run before anything is recorded."
         actions={
           primaryFinding ? (
-            <GenerateDraftButton prospectId={id} contacts={draftContacts} />
+            <div className="flex items-center gap-2">
+              <RecordReplyButton prospectId={id} contacts={draftContacts} />
+              <GenerateDraftButton
+                prospectId={id}
+                contacts={draftContacts}
+                mismatchCandidates={
+                  mismatchReview?.evaluation.eligibleCandidates.map((c) => ({
+                    companyId: c.companyId,
+                    label: c.displayName,
+                  })) ?? []
+                }
+              />
+            </div>
           ) : undefined
         }
       >
+        <MismatchPanel review={mismatchReview} />
         {drafts.length === 0 ? (
           <EmptyState message="No email yet. Approve a story first — the draft is written from it, nothing else." />
         ) : (

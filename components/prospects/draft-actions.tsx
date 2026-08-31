@@ -26,6 +26,7 @@ import {
   approveOutreachDraft,
   cancelScheduledSend,
   createOutreachDraft,
+  recordProspectReply,
   scheduleDraftSend,
   sendProspectDraft,
 } from "@/app/prospects/actions";
@@ -82,17 +83,30 @@ function ContactSelect({
  * an unbound draft falls back to the business address and the contact gate
  * never fires.
  */
+/** An eligible comparison the operator may pick instead of the automatic
+ * best (spec 124). Only validated candidates ever reach this list. */
+export interface MismatchCandidateOption {
+  companyId: string;
+  label: string;
+}
+
+/** Sentinel for "let the system pick the strongest eligible comparison". */
+const AUTO_COMPETITOR = "auto";
+
 export function GenerateDraftButton({
   prospectId,
   contacts,
+  mismatchCandidates = [],
 }: {
   prospectId: string;
   contacts: DraftContactOption[];
+  mismatchCandidates?: MismatchCandidateOption[];
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const primary = contacts.find((c) => c.isPrimary && !c.doNotContact);
   const [contactId, setContactId] = useState<string>(primary?.id ?? ACCOUNT_DEFAULT);
+  const [competitorId, setCompetitorId] = useState<string>(AUTO_COMPETITOR);
 
   const generate = () => {
     startTransition(async () => {
@@ -100,6 +114,8 @@ export function GenerateDraftButton({
         prospectId,
         channel: "email",
         contactId: contactId === ACCOUNT_DEFAULT ? undefined : contactId,
+        competitorCompanyId:
+          competitorId === AUTO_COMPETITOR ? undefined : competitorId,
       });
       if (result.ok) {
         toast.success(`Draft v${result.data.version} generated for review.`);
@@ -114,7 +130,7 @@ export function GenerateDraftButton({
   if (contacts.length === 0) {
     return (
       <Button size="sm" variant="outline" onClick={generate} disabled={pending}>
-        <Mail className="size-4" /> {pending ? "Generating…" : "Generate reply-first draft"}
+        <Mail className="size-4" /> {pending ? "Generating…" : "Generate draft"}
       </Button>
     );
   }
@@ -123,7 +139,7 @@ export function GenerateDraftButton({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm" variant="outline">
-          <Mail className="size-4" /> Generate reply-first draft
+          <Mail className="size-4" /> Generate draft
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -138,6 +154,29 @@ export function GenerateDraftButton({
             when the send is recorded.
           </p>
         </div>
+        {mismatchCandidates.length > 0 && (
+          <div className="space-y-1.5">
+            <Label>Comparison</Label>
+            <Select value={competitorId} onValueChange={setCompetitorId}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={AUTO_COMPETITOR}>
+                  Strongest eligible comparison (automatic)
+                </SelectItem>
+                {mismatchCandidates.map((c) => (
+                  <SelectItem key={c.companyId} value={c.companyId}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Only comparisons that pass every eligibility check are listed.
+            </p>
+          </div>
+        )}
         <DialogFooter>
           <Button onClick={generate} disabled={pending}>
             {pending ? "Generating…" : "Generate draft"}
@@ -463,5 +502,78 @@ export function RecordSentButton({ draftId }: { draftId: string }) {
     <Button size="sm" variant="outline" onClick={record} disabled={pending}>
       <Send className="size-4" /> Record sent
     </Button>
+  );
+}
+
+/**
+ * Record what a reply said (spec 124). The inbox is still read by a human —
+ * this writes the insert-only reply ledger row, classifies deterministically,
+ * advances the stage for real conversations, and suppresses unsubscribes.
+ */
+export function RecordReplyButton({
+  prospectId,
+  contacts,
+}: {
+  prospectId: string;
+  contacts: DraftContactOption[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const primary = contacts.find((c) => c.isPrimary);
+  const [contactId, setContactId] = useState<string>(primary?.id ?? ACCOUNT_DEFAULT);
+  const [bodyText, setBodyText] = useState("");
+
+  const record = () => {
+    startTransition(async () => {
+      const result = await recordProspectReply({
+        prospectId,
+        contactId: contactId === ACCOUNT_DEFAULT ? undefined : contactId,
+        bodyText,
+      });
+      if (result.ok) {
+        toast.success(
+          `Reply recorded — classified ${result.data.classification.replaceAll("_", " ")}.`
+        );
+        setBodyText("");
+        setOpen(false);
+      } else {
+        toast.error(result.error.message);
+      }
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          <MailOpen className="size-4" /> Record reply
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>What did they reply?</DialogTitle>
+        </DialogHeader>
+        {contacts.length > 0 && (
+          <div className="space-y-1.5">
+            <Label>From</Label>
+            <ContactSelect contacts={contacts} value={contactId} onChange={setContactId} />
+          </div>
+        )}
+        <div className="space-y-1.5">
+          <Label>Reply text</Label>
+          <Textarea
+            value={bodyText}
+            onChange={(e) => setBodyText(e.target.value)}
+            rows={5}
+            placeholder="Paste the reply as received — it is classified automatically and kept as the record."
+          />
+        </div>
+        <DialogFooter>
+          <Button onClick={record} disabled={pending || bodyText.trim().length === 0}>
+            {pending ? "Recording…" : "Record reply"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

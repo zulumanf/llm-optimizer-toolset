@@ -105,6 +105,9 @@ export async function recordDraftSent(input: unknown) {
 export async function sendProspectDraft(input: unknown) {
   return run((u) => svc.sendProspectDraft(u, input));
 }
+export async function recordProspectReply(input: unknown) {
+  return run((u) => svc.recordProspectReply(u, input));
+}
 export async function scheduleDraftSend(input: unknown) {
   return run((u) => svc.scheduleDraftSend(u, input));
 }
