@@ -31,9 +31,12 @@ untrustworthy here.
    (lib/prospects/constants.ts) applies to page copy: no "losing deals",
    "costing you", "guaranteed", etc. Stakes are counted moments and the
    prospect's own arithmetic.
-3. **Type scale is enforced by a test** (tests/unit/layout-consistency.test.ts):
-   `text-xs/sm/lg/2xl` only — `text-xl`, `text-3xl+` fail CI. Headline
-   "presence" comes from weight, tracking, and space, not size.
+3. **Type scale**: audit pages (app/audit/**) are exempt from the workspace
+   type-scale gate (tests/unit/layout-consistency.test.ts skips them —
+   DECISIONS.md 2026-08-30): large display numerals (e.g. the hero
+   recommendation count) are part of this surface's design language. Use
+   size deliberately — one dominant number per screen; body copy stays on
+   the small scale, and internal app/ pages keep the enforced scale.
 4. **Stack stays put**: Tailwind 4 utilities only, existing tokens
    (`bg-background`, `text-muted-foreground`, `border`), dark mode must keep
    working, no new dependencies without checking package.json, no CSS files.
