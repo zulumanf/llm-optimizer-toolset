@@ -109,6 +109,43 @@ New section-view signals via the same `data-signal-*` mechanism: `sources`,
 - tests/e2e/mobile.spec.ts — audit page renders phone-width with no
   horizontal scroll.
 
+## Round 2 (ruthless simplification, 2026-08-30)
+
+Operator review demanded a second pass: the page is a simple evidence-backed
+sales diagnostic, not a benchmark report. A reader who scans only headings,
+bold text, numbers, competitor names, and buttons gets the whole pitch.
+
+- **Eight blocks**: hero → competitor contrast → why this matters (2
+  sentences) → reputation vs AI presence ("Real-world proof" vs "AI
+  recommendations", "That's the gap") → What we do (1 sentence + 3 steps) →
+  Where AI got its information → CTA → "Want to verify the data?" with ALL
+  proof collapsed (full competitor table, diagnoses, questions, receipts,
+  commission arithmetic, How we ran the test, Limitations).
+- **Hero**: eyebrow "Private AI visibility report", team · market,
+  state-adapted headline, a genuinely large number (`text-6xl` — the
+  workspace type-scale gate now scope-exempts `app/audit/` per
+  audit-page-design precedence; see DECISIONS.md), "Across the 512 ChatGPT
+  and Perplexity answers we tested." (provider-derived via
+  `answersTestedPhrase`), one opportunity line ("No {market} team dominates
+  these answers yet." only when no rival cleared the visibility threshold),
+  CTA, and a "How this was measured ↓" anchor. No caveats above the fold —
+  they live in the Limitations drawer, said once.
+- **One dominant denominator**: the primary flow shows bare counts against
+  the headline denominator only; a differing comparison basis (354-of-512)
+  is explained once, in the methodology drawer. The published-answers note
+  states the exact published count ("400 published answers of the 512
+  captured…").
+- **One CTA promise**: "Show me the plan" + "15 minutes · no obligation",
+  identical at both placements (top per prospect-voice, bottom before the
+  proof).
+- **Cut**: keyFinding paragraph drawer, repeated definitions, repeated
+  "not estimates"/"skepticism welcome" lines, second methodology recital,
+  hero scope lines. Diagnoses (`whyItHappens`) fold into "Where the gap
+  shows up — what we counted".
+- **Copy caps honored**: why-matters 2 sentences; reputation ≤3 sentences +
+  sourced facts; what-we-do 1 sentence + 3 steps ≤15 words each; sources
+  list + 2 sentences + hedged causality line.
+
 ## Non-goals
 
 - No snapshot/publish changes (`lib/prospects/audits.ts` untouched) — the

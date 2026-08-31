@@ -1,17 +1,18 @@
 /**
  * Audit page narrative states (spec 123): the hero must tell the story the
  * counts support — zero, low, strong, leader — and fall back to the frozen
- * generator headline on snapshots without a stakes block. Plus the two
- * honesty helpers: the comparison-basis sentence (never a bare "0 / 354")
- * and the published-answers note (never "all answers" unless provable).
+ * generator headline on snapshots without a stakes block. Plus the honesty
+ * helpers: the one-denominator phrase, the comparison-basis sentence (354
+ * is never unlabeled), and the published-answers note (never "all answers"
+ * unless provable).
  */
 import { describe, expect, it } from "vitest";
 import {
+  answersTestedPhrase,
   comparisonBasisNote,
   heroHeadline,
-  heroSupportLine,
+  heroOpportunityLine,
   narrativeState,
-  plainSystemsPhrase,
   publishedAnswersNote,
 } from "@/components/audit/narrative";
 import { visibilityThreshold } from "@/lib/prospects/constants";
@@ -19,6 +20,7 @@ import { visibilityThreshold } from "@/lib/prospects/constants";
 const ctx = {
   prospectName: "The Rivera Team",
   marketName: "Jersey City",
+  rivalsCountedAhead: 3,
   legacyHeadline: "Frozen generator headline.",
 };
 
@@ -93,27 +95,40 @@ describe("narrativeState", () => {
 });
 
 describe("heroHeadline", () => {
-  it("zero: past-tense, benchmark-scoped absence", () => {
+  it("zero: prospect-centric, no universal-absence claim", () => {
     const h = heroHeadline("zero", ctx);
-    expect(h).toContain("Jersey City");
-    expect(h).toContain("wasn't recommended");
-    // Never a universal-absence claim — the count is scoped to this test.
+    expect(h).toContain("Jersey City buyers ask AI who to work with");
+    expect(h).toContain("isn't being recommended");
     expect(h).not.toMatch(/never/i);
   });
 
-  it("low: rarely the recommendation", () => {
-    expect(heroHeadline("low", ctx)).toContain("rarely the recommendation");
+  it("low with several rivals ahead says so — counted, not asserted", () => {
+    expect(heroHeadline("low", ctx)).toContain(
+      "several local competitors are recommended more often"
+    );
+  });
+
+  it("low with one rival ahead never claims 'several'", () => {
+    const h = heroHeadline("low", { ...ctx, rivalsCountedAhead: 1 });
+    expect(h).toContain("another local team is recommended more often");
+    expect(h).not.toContain("several");
+  });
+
+  it("low with no rival counted ahead falls back to 'rarely the recommendation'", () => {
+    const h = heroHeadline("low", { ...ctx, rivalsCountedAhead: 0 });
+    expect(h).toContain("rarely the recommendation");
+    expect(h).not.toContain("competitors");
   });
 
   it("strong: acknowledges presence before opportunity", () => {
     const h = heroHeadline("strong", ctx);
-    expect(h).toContain("already shows up");
-    expect(h).toContain("recommended more often");
+    expect(h).toContain("already appears");
+    expect(h).toContain("gaps to close");
   });
 
-  it("leader: defend-the-position framing, still test-scoped", () => {
+  it("leader: defend-the-position framing, still benchmark-scoped", () => {
     const h = heroHeadline("leader", ctx);
-    expect(h).toContain("leads this test");
+    expect(h).toContain("leads this benchmark");
     expect(h).toContain("no Jersey City team was recommended more often");
   });
 
@@ -122,54 +137,75 @@ describe("heroHeadline", () => {
   });
 });
 
-describe("heroSupportLine", () => {
-  it("zero/low with counted competitors: others were recommended instead", () => {
+describe("heroOpportunityLine", () => {
+  it("zero/low with no dominant rival: the open-space line", () => {
     for (const state of ["zero", "low"] as const) {
       expect(
-        heroSupportLine(state, {
+        heroOpportunityLine(state, {
           marketName: "Jersey City",
+          anyRivalDominates: false,
           competitorsWereRecommended: true,
         })
-      ).toContain("recommended instead");
+      ).toBe("No Jersey City team dominates these answers yet.");
     }
   });
 
-  it("zero with NO counted competitors says nothing — never an invented loss", () => {
+  it("zero/low with a dominant rival never claims open space", () => {
+    const line = heroOpportunityLine("zero", {
+      marketName: "Jersey City",
+      anyRivalDominates: true,
+      competitorsWereRecommended: true,
+    });
+    expect(line).toContain("recommended instead");
+    expect(line).not.toContain("dominates");
+  });
+
+  it("zero with nothing counted says nothing — never an invented loss", () => {
     expect(
-      heroSupportLine("zero", {
+      heroOpportunityLine("zero", {
         marketName: "Jersey City",
+        anyRivalDominates: true,
         competitorsWereRecommended: false,
       })
     ).toBeNull();
   });
 
-  it("leader: defend and widen", () => {
+  it("leader: defend and strengthen", () => {
     expect(
-      heroSupportLine("leader", {
+      heroOpportunityLine("leader", {
         marketName: "Jersey City",
+        anyRivalDominates: false,
         competitorsWereRecommended: true,
       })
     ).toContain("defend");
   });
+
+  it("strong: no forced line", () => {
+    expect(
+      heroOpportunityLine("strong", {
+        marketName: "Jersey City",
+        anyRivalDominates: true,
+        competitorsWereRecommended: true,
+      })
+    ).toBeNull();
+  });
 });
 
-describe("plainSystemsPhrase", () => {
+describe("answersTestedPhrase — one dominant denominator", () => {
   it("names the consumer counterparts of the tested providers", () => {
-    expect(plainSystemsPhrase(["openai", "perplexity"])).toBe(
-      "the systems behind ChatGPT and Perplexity"
+    expect(answersTestedPhrase(["openai", "perplexity"], 512)).toBe(
+      "the 512 ChatGPT and Perplexity answers we tested"
     );
   });
 
-  it("single provider reads singular", () => {
-    expect(plainSystemsPhrase(["openai"])).toBe("the system behind ChatGPT");
-  });
-
   it("unknown providers stay neutral, never a guessed brand", () => {
-    expect(plainSystemsPhrase(["mock"])).toBe("the AI systems we tested");
+    expect(answersTestedPhrase(["mock"], 512)).toBe(
+      "the 512 AI answers we tested"
+    );
   });
 });
 
-describe("comparisonBasisNote — one denominator, subsets explained", () => {
+describe("comparisonBasisNote — 354 never unlabeled", () => {
   it("silent when the bases match", () => {
     expect(comparisonBasisNote(512, 512)).toBeNull();
     expect(comparisonBasisNote(null, 512)).toBeNull();
@@ -187,16 +223,17 @@ describe("publishedAnswersNote — no completeness overclaim", () => {
     expect(publishedAnswersNote(512, 512)).toContain("All 512 captured answers");
   });
 
-  it("a capped appendix states shown-of-total, never completeness", () => {
+  it("a capped appendix states the exact published count, never completeness", () => {
     const note = publishedAnswersNote(400, 512);
-    expect(note).toContain("400 of the 512");
+    expect(note).toContain("400 published answers");
+    expect(note).toContain("of the 512 captured");
     expect(note).not.toMatch(/\ball\b/i);
     expect(note).not.toMatch(/every/i);
   });
 
-  it("legacy snapshots without a total never claim completeness", () => {
+  it("legacy snapshots without a total never claim completeness (the 50-answer cap)", () => {
     const note = publishedAnswersNote(50, null);
-    expect(note).toContain("50 captured answers");
+    expect(note).toContain("50 published answers");
     expect(note).not.toMatch(/\ball\b/i);
     expect(note).not.toMatch(/every/i);
   });

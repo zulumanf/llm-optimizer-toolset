@@ -117,8 +117,14 @@ describe("page layout consistency", () => {
   it("keeps to the documented type scale", () => {
     // docs/04: "text-2xl page title · text-lg section · text-sm body · text-xs
     // metadata. Nothing else."
+    //
+    // Scoped exemption (spec 123 round 2): prospect-facing audit documents
+    // under app/audit/ follow audit-page-design, not the workspace scale —
+    // the hero metric is a display numeral and may render genuinely large.
+    // The workspace rule stays intact everywhere else.
     const offenders: string[] = [];
     for (const page of PAGES) {
+      if (page.rel.startsWith("app/audit/")) continue;
       const sizes = [...page.source.matchAll(/text-(xs|sm|base|lg|xl|2xl|3xl|4xl)\b/g)].map(
         (m) => m[1]
       );

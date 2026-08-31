@@ -2774,3 +2774,12 @@ cockpit number. Context: the operator retired the planned concurrent A/B
 split (all upcoming sends converted to Arm B), so the readout compares
 against the historical all-A baseline; send-level attribution (groupSends)
 handles mixed-arm prospects.
+
+## 2026-08-30 — Audit pages exempt from the workspace type scale
+
+The layout-consistency type-scale gate (`text-xs/sm/lg/2xl` only) now skips
+`app/audit/**`. The audit page is a prospect-facing document governed by
+`.claude/skills/audit-page-design`, which takes the design lead on those
+routes; spec 123 round 2 requires a genuinely large hero numeral
+(`text-6xl`) as the page's focal finding. The workspace rule is unchanged
+everywhere else, and audit pages otherwise keep the documented scale.

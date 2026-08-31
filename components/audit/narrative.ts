@@ -3,8 +3,8 @@
  * 123). Pure functions over snapshot facts so the story the hero tells can
  * be unit-tested against every performance state — zero, low, strong,
  * leader — plus the legacy fallback for snapshots published before the
- * stakes block existed. The page renders the same seven-section structure
- * in every state; only the story adapts to the evidence.
+ * stakes block existed. The page renders the same block structure in every
+ * state; only the story adapts to the evidence.
  *
  * Copy discipline: everything here is prospect-visible and is scanned by
  * tests/unit/audit-copy-discipline.test.ts. Counted claims only; consumer
@@ -40,65 +40,93 @@ export function narrativeState(input: NarrativeInput): NarrativeState {
 export interface HeadlineContext {
   prospectName: string;
   marketName: string;
+  /** How many rival teams were counted with MORE recommendations than the
+   * prospect — the low state only says "several competitors" when several
+   * were actually counted ahead. */
+  rivalsCountedAhead: number;
   /** The generator-written headline frozen in the snapshot — the legacy
    * state renders it verbatim. */
   legacyHeadline: string;
 }
 
-/** The one-sentence story, adapted to the performance state. Past tense and
- * benchmark-scoped on purpose: every claim is a count from this test. */
+/** The one-sentence story, adapted to the performance state. Every claim is
+ * a count from this test; the "answers we tested" line directly beneath
+ * carries the scope. */
 export function heroHeadline(state: NarrativeState, ctx: HeadlineContext): string {
   switch (state) {
     case "zero":
-      return `When ${ctx.marketName} buyers and sellers asked AI which agent to work with, ${ctx.prospectName} wasn't recommended.`;
+      return `When ${ctx.marketName} buyers ask AI who to work with, ${ctx.prospectName} isn't being recommended.`;
     case "low":
-      return `When ${ctx.marketName} buyers and sellers asked AI which agent to work with, ${ctx.prospectName} was rarely the recommendation.`;
+      return ctx.rivalsCountedAhead >= 2
+        ? `${ctx.prospectName} shows up in ${ctx.marketName}'s AI answers, but several local competitors are recommended more often.`
+        : ctx.rivalsCountedAhead === 1
+          ? `${ctx.prospectName} shows up in ${ctx.marketName}'s AI answers, but another local team is recommended more often.`
+          : `${ctx.prospectName} shows up in ${ctx.marketName}'s AI answers, but is rarely the recommendation.`;
     case "strong":
-      return `${ctx.prospectName} already shows up in ${ctx.marketName}'s AI answers — with clear room to be recommended more often.`;
+      return `${ctx.prospectName} already appears in ${ctx.marketName}'s AI answers — and there are still clear gaps to close.`;
     case "leader":
-      return `${ctx.prospectName} leads this test: no ${ctx.marketName} team was recommended more often.`;
+      return `${ctx.prospectName} leads this benchmark: no ${ctx.marketName} team was recommended more often.`;
     case "legacy":
       return ctx.legacyHeadline;
   }
 }
 
-/** The line under the headline. Null when the state has nothing counted to
- * add — never filler. */
-export function heroSupportLine(
+/** The single opportunity line under the hero number. Null when the state
+ * has nothing counted to add — never filler. */
+export function heroOpportunityLine(
   state: NarrativeState,
-  ctx: { marketName: string; competitorsWereRecommended: boolean }
+  ctx: {
+    marketName: string;
+    /** True when at least one rival team cleared the visibility threshold —
+     * the "no team dominates yet" line is only claimable when none did. */
+    anyRivalDominates: boolean;
+    competitorsWereRecommended: boolean;
+  }
 ): string | null {
-  if ((state === "zero" || state === "low") && ctx.competitorsWereRecommended) {
-    return `Other ${ctx.marketName} teams and brands were recommended instead.`;
+  if (state === "zero" || state === "low") {
+    if (!ctx.anyRivalDominates) {
+      return `No ${ctx.marketName} team dominates these answers yet.`;
+    }
+    if (ctx.competitorsWereRecommended) {
+      return `Other ${ctx.marketName} agents are being recommended instead.`;
+    }
+    return null;
   }
   if (state === "leader") {
-    return "The opportunity is to defend that position and widen the gap.";
+    return "The opportunity is to defend and strengthen that position.";
   }
   return null;
 }
 
-/** "We tested N AI answers … in the systems behind ChatGPT and Perplexity."
- * Consumer names derive from the tested providers (terminology layer); when
- * no consumer counterpart is known the phrase stays neutral. */
-export function plainSystemsPhrase(providers: string[]): string {
+/**
+ * "the 512 ChatGPT and Perplexity answers we tested" — the page's one
+ * dominant denominator, named with the consumer counterparts of the tested
+ * providers (terminology layer). Unknown providers stay neutral, never a
+ * guessed brand. The precise tested-system description (API surface, search
+ * settings) lives in the methodology drawer via testedSystemPhrase.
+ */
+export function answersTestedPhrase(
+  providers: string[],
+  responseCount: number
+): string {
   const apps = verifySuggestionApps(providers);
-  if (apps === "any AI assistant") return "the AI systems we tested";
-  return apps.includes(" and ")
-    ? `the systems behind ${apps}`
-    : `the system behind ${apps}`;
+  return apps === "any AI assistant"
+    ? `the ${responseCount} AI answers we tested`
+    : `the ${responseCount} ${apps} answers we tested`;
 }
 
 /**
  * One sentence explaining a comparison basis that differs from the headline
  * denominator (e.g. findings frozen when 354 of 512 answers were captured).
- * Null when the bases match — the common case needs no caveat.
+ * Rendered in the methodology drawer only — the primary flow keeps one
+ * denominator. Null when the bases match.
  */
 export function comparisonBasisNote(
   basis: number | null,
   responseCount: number
 ): string | null {
   if (basis === null || basis === responseCount) return null;
-  return `These counts come from the ${basis} answers analyzed when this report's findings were computed, out of ${responseCount} captured in total.`;
+  return `Competitor counts were tallied over the ${basis} answers analyzed when this report's findings were computed, out of ${responseCount} captured in total.`;
 }
 
 /**
@@ -115,7 +143,7 @@ export function publishedAnswersNote(
     return `All ${shown} captured answers are published — unedited and unselected.`;
   }
   if (total !== null && shown < total) {
-    return `${shown} of the ${total} captured answers are published, in capture order up to a page-size limit — nothing was hand-picked.`;
+    return `${shown} published answers of the ${total} captured, in capture order up to a page-size limit — nothing was hand-picked.`;
   }
-  return `${shown} captured answers are published — unedited.`;
+  return `${shown} published answers — unedited.`;
 }
