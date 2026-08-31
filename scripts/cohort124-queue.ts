@@ -28,7 +28,7 @@ import { qaDraft } from "@/lib/prospects/draft-qa";
 import { createOutreachDraft } from "@/lib/prospects/service";
 
 const MAX_PER_MARKET = 8;
-const MAX_PER_BROKERAGE = 2;
+const MAX_PER_BROKERAGE = 3; // = BROKERAGE_SEND_CAP_30D, the dispatch-time hard cap
 const RECONTACT_WINDOW_DAYS = 90;
 
 async function operatorUser(): Promise<CurrentUser> {
