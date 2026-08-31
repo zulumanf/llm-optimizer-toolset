@@ -20,6 +20,10 @@ import {
   latestVerifiedProductionByProspect,
   type ProductionEvidence,
 } from "@/lib/prospects/realtrends";
+import {
+  datasetProductionByCompany,
+  launchGeographies,
+} from "@/lib/prospects/realtrends-dataset";
 import { MISMATCH_TEMPLATE_VERSION, MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
 import { OPERATOR_TIMEZONE } from "@/lib/prospects/intent";
 
@@ -74,11 +78,26 @@ export const MISMATCH_REASON_LABELS: Record<MismatchReasonCode, string> = {
 
 export interface MismatchEntityInput {
   companyId: string;
-  prospectId: string;
+  /** Null when the comparison entity is not an outreach prospect — a
+   * dataset-verified company in the same market (spec 124 data pass). */
+  prospectId: string | null;
   displayName: string;
   production: ProductionEvidence | null;
   /** OpenAI-only, echo-excluded recommendation count (canonical service). */
   recommendationCount: number;
+}
+
+/** Operator diagnostic (never recipient-facing): a STRONG hook has a
+ * decisive production inversion AND a decisive recommendation gap. */
+export function mismatchStrength(c: {
+  productionRatio: number | null;
+  recommendationGap: number;
+}): "strong" | "valid" {
+  return c.productionRatio !== null &&
+    c.productionRatio <= 0.8 &&
+    c.recommendationGap >= 3
+    ? "strong"
+    : "valid";
 }
 
 export interface MismatchCandidate extends MismatchEntityInput {
@@ -343,7 +362,7 @@ export interface MismatchEvidenceSnapshot {
 
 interface MismatchSnapshotEntity {
   companyId: string;
-  prospectId: string;
+  prospectId: string | null;
   name: string;
   recommendationCount: number;
   productionSignalId: string;
@@ -475,34 +494,76 @@ export async function competitiveMismatchReview(
       and archived_at is null and company_id is not null
       and prospect_type != 'brokerage'
   `;
-  const production = await latestVerifiedProductionByProspect([
+  const signalProduction = await latestVerifiedProductionByProspect([
     prospectId,
     ...peers.map((r) => r.id as string),
   ]);
+  // The comparison universe is the MARKET, not the outreach batch (spec 124
+  // data pass): any company with verified dataset production in this
+  // launch's city+state qualifies as a candidate — it does not need to be a
+  // prospect. Without a resolvable state the dataset pool stays empty
+  // (fail closed; the Wilmington same-city-name lesson).
+  const geo =
+    (await launchGeographies(db)).find((g) => g.launchId === p.launchId) ?? null;
+  const datasetCompanies = geo?.state
+    ? await db`
+        select distinct company_id from realtrends_records
+        where lower(city) = ${geo.city.toLowerCase()} and state = ${geo.state}
+          and match_status in ('high_confidence', 'confirmed')
+          and company_id is not null
+      `
+    : [];
+  const peerByCompany = new Map(
+    peers.map((r) => [r.companyId as string, r])
+  );
+  const candidateCompanyIds = new Set<string>([
+    ...peers.map((r) => r.companyId as string),
+    ...datasetCompanies.map((r) => r.companyId as string),
+  ]);
+  if (p.companyId) candidateCompanyIds.delete(p.companyId as string);
   const companyIds = [
     ...(p.companyId ? [p.companyId as string] : []),
-    ...peers.map((r) => r.companyId as string),
+    ...candidateCompanyIds,
   ];
-  const counts = await providerRecommendationCounts(
-    runId,
-    MISMATCH_PROVIDER,
-    companyIds
-  );
+  const [datasetProduction, counts, companyNames] = [
+    await datasetProductionByCompany(companyIds, db),
+    await providerRecommendationCounts(runId, MISMATCH_PROVIDER, companyIds),
+    new Map(
+      (
+        await db`
+          select id, name from companies where id = any(${companyIds}::uuid[])
+        `
+      ).map((r) => [r.id as string, r.name as string])
+    ),
+  ];
 
   const prospect = {
     companyId: (p.companyId as string | null) ?? null,
-    production: production.get(prospectId) ?? null,
+    // Licensed-dataset evidence is canonical; a hand-captured signal is the
+    // fallback for the same fact, never a duplicate.
+    production: p.companyId
+      ? (datasetProduction.get(p.companyId as string) ??
+        signalProduction.get(prospectId) ??
+        null)
+      : (signalProduction.get(prospectId) ?? null),
     recommendationCount: p.companyId
       ? (counts.recommendedByCompany[p.companyId as string] ?? 0)
       : 0,
   };
-  const candidates: MismatchEntityInput[] = peers.map((r) => ({
-    companyId: r.companyId as string,
-    prospectId: r.id as string,
-    displayName: r.businessName as string,
-    production: production.get(r.id as string) ?? null,
-    recommendationCount: counts.recommendedByCompany[r.companyId as string] ?? 0,
-  }));
+  const candidates: MismatchEntityInput[] = [...candidateCompanyIds].map((cid) => {
+    const peer = peerByCompany.get(cid);
+    return {
+      companyId: cid,
+      prospectId: peer ? (peer.id as string) : null,
+      displayName: peer
+        ? (peer.businessName as string)
+        : (companyNames.get(cid) ?? "Unknown company"),
+      production:
+        datasetProduction.get(cid) ??
+        (peer ? (signalProduction.get(peer.id as string) ?? null) : null),
+      recommendationCount: counts.recommendedByCompany[cid] ?? 0,
+    };
+  });
 
   const evaluation = evaluateMismatch({
     now,
@@ -535,7 +596,12 @@ export function buildEvidenceSnapshot(
   const cp = competitor.production!;
   const metricType = competitor.metricType!;
   const entity = (
-    e: { companyId: string; prospectId: string; name: string; recommendationCount: number },
+    e: {
+      companyId: string;
+      prospectId: string | null;
+      name: string;
+      recommendationCount: number;
+    },
     prod: ProductionEvidence
   ): MismatchSnapshotEntity => ({
     ...e,

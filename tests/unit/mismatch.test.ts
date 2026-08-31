@@ -4,6 +4,7 @@ import {
   buildEvidenceSnapshot,
   evaluateMismatch,
   formatProductionDisplay,
+  mismatchStrength,
   implicationLine,
   marketShortName,
   recencyPhrase,
@@ -315,5 +316,39 @@ describe("generateCompetitiveMismatchEmail", () => {
     expect(snap.competitor.recommendationCount).toBe(14);
     expect(snap.competitor.productionSourceUrl).toContain("realtrends.com");
     expect(snap.metricType).toBe("closed_volume");
+  });
+});
+
+describe("dataset-sourced competitors (spec 124 data pass)", () => {
+  it("a non-prospect company with licensed-dataset production is eligible", () => {
+    const datasetCandidate = candidate({
+      companyId: "c7",
+      prospectId: null,
+      displayName: "Marina District Team",
+      production: prod({
+        signalId: "rt-record-1",
+        prospectId: null,
+        volumeUsd: 30_000_000,
+        sourceUrl: "licensed:realtrends-verified-2026",
+        rank: null,
+      }),
+      recommendationCount: 13,
+    });
+    const e = evaluateMismatch(input({ candidates: [datasetCandidate] }));
+    expect(e.eligible).toBe(true);
+    expect(e.selected?.companyId).toBe("c7");
+    expect(e.selected?.prospectId).toBeNull();
+  });
+  it("strength diagnostic separates strong from valid hooks", () => {
+    const e = evaluateMismatch(input());
+    expect(mismatchStrength(e.selected!)).toBe("strong"); // 62% ratio, gap 7
+    const weak = evaluateMismatch(
+      input({
+        candidates: [
+          candidate({ production: prod({ volumeUsd: 41_000_000 }), recommendationCount: 9 }),
+        ],
+      })
+    );
+    expect(mismatchStrength(weak.selected!)).toBe("valid"); // 87% ratio, gap 2
   });
 });

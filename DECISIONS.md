@@ -2819,3 +2819,23 @@ Related choices, same date:
   classifier assigns the category (override allowed, both stored), and
   corrections are new rows. The positive-reply rate renders null until any
   classified reply exists — sparse early data never reads as a zero rate.
+
+## 2026-08-30 — Licensed RealTrends dataset: own table, market-wide competitor pool
+
+Spec 124 data pass. The purchased workbook lands in `realtrends_records`
+(not `prospect_authority_signals`): rows are facts about ~75k entities,
+almost none of which are prospects, and the same-fact/company-keyed
+resolution (`company_id` + match_status) is what lets a comparison team
+exist without an outreach row. The mismatch candidate pool widened from
+"peer prospects of the launch" to "any canonical company in the launch's
+city+state with verified dataset production" — outreach cadence decides
+who we CONTACT, never who may serve as a COMPARISON. Guards kept: matching
+is deterministic (unique exact name in a geo-scoped candidate set;
+brokerage/entity-level conflicts demote to review; nothing auto-links on a
+probable match), markets carry an explicit `state_code` so same-named
+cities in different states can never cross-match (the Wilmington DE/NC
+lesson), and licensed rows stay internal — evidence panels show
+"RealTrends verified dataset", never workbook contents, and the raw file
+plus derived JSON live only in gitignored `.local-data/`. Dataset evidence
+is canonical over hand-captured signals for the same fact; signals remain
+as history and as the fallback.

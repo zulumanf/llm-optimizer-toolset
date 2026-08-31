@@ -231,8 +231,12 @@ export async function ingestRealTrendsRecord(
 /** A verified production record together with the signal row that carries
  * it — the reference an outreach evidence snapshot stores (spec 124). */
 export interface ProductionEvidence extends VerifiedProduction {
+  /** Authority-signal id, or the realtrends_records id for licensed-dataset
+   * evidence (spec 124 data pass). */
   signalId: string;
-  prospectId: string;
+  /** Null for dataset-sourced evidence — a comparison entity does not need
+   * to be an outreach prospect. */
+  prospectId: string | null;
   entityType: "individual" | "team" | null;
 }
 

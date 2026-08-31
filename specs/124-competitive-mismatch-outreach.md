@@ -175,3 +175,22 @@ All acceptance criteria pass · tests green · lint/typecheck clean ·
 migration applies and rolls back · DECISIONS.md updated (template identity
 stored on drafts; peer-prospect production reuse; ChatGPT naming;
 deterministic reply classifier).
+
+## Data pass (2026-08-30) — purchased RealTrends dataset
+
+The licensed "2026 RealTrends Verified Agent Team Download with City"
+workbook (Agents 54,274 rows · Teams 20,624 rows; production year 2025 per
+its own column headers) is imported into `realtrends_records` (migration
+095; fingerprint-idempotent, licensed data never tracked in git — working
+copies live in gitignored `.local-data/`). Records resolve
+deterministically onto canonical `companies`, geo-scoped by launch
+city+state (`markets.state_code`, migration 096, operator-declared via the
+`geo` command); only unique exact-name matches auto-verify, everything
+weaker waits in the `review`/`confirm` queue. The mismatch candidate pool
+is now the MARKET (any company with verified dataset production and
+benchmark coverage), not the outreach batch; dataset evidence outranks
+hand-captured signals for the same fact. Live rerun: 119 evaluated → 51
+verified production → 38 inversion candidates → 17 eligible (all STRONG,
+all already contacted — follow-up angles), 8-prospect benchmark-refresh
+queue prepared, send-ready queue with rendered emails in
+`.local-data/realtrends/send-queue.json`.

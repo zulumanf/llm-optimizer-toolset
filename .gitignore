@@ -22,3 +22,6 @@ test-results/
 
 # Claude Code personal settings (permission rules for prod ops)
 .claude/settings.local.json
+
+# Licensed source data (purchased datasets) — never tracked
+.local-data/

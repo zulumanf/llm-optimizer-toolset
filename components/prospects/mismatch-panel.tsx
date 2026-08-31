@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   MISMATCH_REASON_LABELS,
   formatProductionDisplay,
+  mismatchStrength,
   type CompetitiveMismatchReview,
   type MismatchCandidate,
 } from "@/lib/prospects/mismatch";
@@ -32,9 +33,15 @@ function EntityFacts({
       <p className="text-sm font-medium">{name}</p>
       <p className="text-sm tabular-nums">{display}</p>
       <p className="text-xs text-muted-foreground">
-        <a href={sourceUrl} target="_blank" rel="noreferrer" className="underline">
-          RealTrends
-        </a>
+        {sourceUrl.startsWith("http") ? (
+          <a href={sourceUrl} target="_blank" rel="noreferrer" className="underline">
+            RealTrends
+          </a>
+        ) : (
+          <span title="Purchased RealTrends verified dataset (internal evidence — no public URL)">
+            RealTrends verified dataset
+          </span>
+        )}
         {year ? ` · ${year}` : ""}
       </p>
       <p className="mt-1 text-xs tabular-nums">
@@ -55,6 +62,14 @@ export function MismatchPanel({ review }: { review: CompetitiveMismatchReview | 
         <Badge variant={evaluation.eligible ? "default" : "secondary"}>
           {evaluation.eligible ? "eligible" : "not eligible"}
         </Badge>
+        {evaluation.eligible && selected && (
+          <Badge
+            variant={mismatchStrength(selected) === "strong" ? "default" : "outline"}
+            title="Operator diagnostic only — never shown to the recipient. Strong = competitor at ≤80% of the prospect's production AND a recommendation gap of 3+."
+          >
+            {mismatchStrength(selected)} hook
+          </Badge>
+        )}
         {evaluation.benchmarkAgeDays !== null && (
           <span className="text-xs text-muted-foreground tabular-nums">
             benchmark {evaluation.benchmarkAgeDays}d old
@@ -91,6 +106,22 @@ export function MismatchPanel({ review }: { review: CompetitiveMismatchReview | 
               answers={review.benchmark?.answerCount ?? 0}
             />
           </div>
+          <p className="mt-2 text-xs tabular-nums">
+            {selected.metricType === "closed_volume"
+              ? `Prospect outproduces by ${formatProductionDisplay(
+                  "closed_volume",
+                  review.prospect.production.volumeUsd - selected.production!.volumeUsd
+                ).replace(" closed", "")} (competitor at ${Math.round(
+                  (selected.productionRatio ?? 1) * 100
+                )}%)`
+              : `Prospect outproduces by ${
+                  review.prospect.production.sides - selected.production!.sides
+                } sides (competitor at ${Math.round(
+                  (selected.productionRatio ?? 1) * 100
+                )}%)`}
+            {" · recommendation gap +"}
+            {selected.recommendationGap}
+          </p>
           <p className="mt-2 text-xs text-muted-foreground">
             {review.benchmark?.capturedAt
               ? `Captured ${review.benchmark.capturedAt.toLocaleDateString()} · `
