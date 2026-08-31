@@ -7,6 +7,7 @@
  *
  * Run: npx tsx scripts/mismatch-backfill.ts
  */
+import "dotenv/config";
 import { sql } from "@/db/client";
 import { competitiveMismatchReview } from "@/lib/prospects/mismatch";
 

@@ -46,6 +46,32 @@ export type MismatchReasonCode =
 
 export type MismatchMetricType = "closed_volume" | "sides";
 
+/** Operator-readable explanation per reason code. */
+export const MISMATCH_REASON_LABELS: Record<MismatchReasonCode, string> = {
+  NO_BENCHMARK: "No approved story is bound to a benchmark run yet.",
+  NO_VALID_COMPETITOR:
+    "No same-market team with verified RealTrends production to compare against.",
+  NO_LOWER_PRODUCING_COMPETITOR:
+    "Every comparable competitor produces at least as much as this team.",
+  NO_HIGHER_RECOMMENDATION_COMPETITOR:
+    "No comparable competitor is recommended more often in the OpenAI answers.",
+  PRODUCTION_PERIOD_MISMATCH: "Production figures come from different years.",
+  PRODUCTION_METRIC_MISMATCH:
+    "The two sides do not report the same production metric.",
+  ENTITY_LEVEL_MISMATCH:
+    "The comparison would cross entity levels (team vs individual).",
+  PRODUCTION_DATA_UNVERIFIED:
+    "Verified RealTrends production (with its year) is missing.",
+  RECOMMENDATION_GAP_TOO_SMALL: `The recommendation gap is under the minimum of +${MISMATCH_THRESHOLDS.minRecommendationGap}.`,
+  PRODUCTION_GAP_TOO_SMALL: `The competitor produces more than ${Math.round(MISMATCH_THRESHOLDS.maxCompetitorProductionRatio * 100)}% of this team — not a clean inversion.`,
+  BENCHMARK_TOO_OLD: `The benchmark is older than the ${MISMATCH_THRESHOLDS.maxBenchmarkAgeDays}-day maximum — refresh it first.`,
+  BENCHMARK_SCOPE_INVALID: "The benchmark run has no completed capture.",
+  CHATGPT_DATA_UNAVAILABLE: "The benchmark contains no OpenAI answers.",
+  ENTITY_RESOLUTION_UNCERTAIN:
+    "The prospect is not confidently linked to a tracked company.",
+  NO_RECIPIENT_FIRST_NAME: "No recipient first name is on file.",
+};
+
 export interface MismatchEntityInput {
   companyId: string;
   prospectId: string;
@@ -372,6 +398,15 @@ export async function competitiveMismatchReview(
     const [c] = await db`
       select name from prospect_contacts
       where id = ${opts.contactId} and prospect_id = ${prospectId}
+    `;
+    contactName = (c?.name as string | undefined) ?? null;
+  } else {
+    // No explicit recipient: the primary contact is who a generated draft
+    // would default to, so eligibility previews against that person.
+    const [c] = await db`
+      select name from prospect_contacts
+      where prospect_id = ${prospectId} and is_primary
+        and not do_not_contact and archived_at is null
     `;
     contactName = (c?.name as string | undefined) ?? null;
   }

@@ -1,6 +1,6 @@
 # Spec 124 — Competitive-Mismatch Reply Template
 
-> Status: in-progress
+> Status: done
 > Depends on: specs/032, specs/074, specs/090, specs/116, specs/122, docs/06, docs/13
 > Branch: feat/124-competitive-mismatch-outreach
 
@@ -149,17 +149,17 @@ Migration `094_competitive_mismatch_outreach.sql` (reversible):
 
 ## Acceptance criteria
 
-- [ ] Eligible fixture renders exactly the copy pattern; every ineligible
+- [x] Eligible fixture renders exactly the copy pattern; every ineligible
       fixture in the table above returns its reason code and falls back.
-- [ ] Denominator is provably OpenAI answers only (provider filter in the
+- [x] Denominator is provably OpenAI answers only (provider filter in the
       one canonical query; Perplexity/Google/Anthropic/mock excluded).
-- [ ] Draft QA rejects a mismatch draft whose body counts disagree with its
+- [x] Draft QA rejects a mismatch draft whose body counts disagree with its
       snapshot, and any draft citing two denominators.
-- [ ] "yes" / "sure" / "send it" / "what did you find?" classify positive;
+- [x] "yes" / "sure" / "send it" / "what did you find?" classify positive;
       "unsubscribe" suppresses; OOO does not mark replied.
-- [ ] Historical drafts/sends/mentions/snapshots untouched (append-only
+- [x] Historical drafts/sends/mentions/snapshots untouched (append-only
       changes only).
-- [ ] Backfill script prints evaluated / eligible / reason-code counts.
+- [x] Backfill script prints evaluated / eligible / reason-code counts.
 
 ## Test cases
 

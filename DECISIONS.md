@@ -2783,3 +2783,39 @@ The layout-consistency type-scale gate (`text-xs/sm/lg/2xl` only) now skips
 routes; spec 123 round 2 requires a genuinely large hero numeral
 (`text-6xl`) as the page's focal finding. The workspace rule is unchanged
 everywhere else, and audit pages otherwise keep the documented scale.
+
+## 2026-08-30 — Template identity is stored on drafts; mismatch claims are frozen
+
+Spec 124. Unlike the Arm A/B readout (derived at read time, 2026-08-26),
+the competitive-mismatch template stores identity and evidence at write
+time: `prompt_version` carries the versioned template id, and a new
+`evidence_snapshot` jsonb on `outreach_drafts` freezes exactly what the
+body asserts (production evidence ids, the OpenAI-only counts and
+denominator, thresholds), locked at approval by the same trigger that
+freezes the body. The difference in kind: an arm is a style label a regex
+can re-derive forever, while this email makes falsifiable factual claims —
+the sent claim must stay auditable even after re-parses, new revisions, or
+fresher benchmarks change what a live recompute would say. Draft QA
+re-proves every frozen claim against live data at approval AND dispatch and
+fails the draft on any drift — never a warning.
+
+Related choices, same date:
+- **Competitor production reuses peer prospects.** No new production table:
+  a mismatch candidate is another prospect of the same market launch with a
+  structured RealTrends record in `prospect_authority_signals` metadata —
+  the entity level, market scoping, and provenance rules come for free, and
+  a competitor worth naming in an email is worth tracking as a prospect
+  anyway. `ingestRealTrendsRecord` (dormant since spec 074) gained its
+  first caller (`scripts/ingest-realtrends.ts`).
+- **"ChatGPT" is never claimed as the tested system.** The requested copy
+  said "I ran … through ChatGPT"; the terminology rule (spec 090) forbids
+  describing an API benchmark as testing the consumer app. The template
+  renders `consumerAnchoredModelPhrase` — "the OpenAI model(s) behind
+  ChatGPT" — keeping the recipient-legible brand without the false claim,
+  and the denominator counts OpenAI answers only (echo-excluded,
+  non-holdout, current revisions) via one canonical service.
+- **Reply classification is deterministic and insert-only.** No Gmail
+  polling yet: the operator records the reply text, a versioned pattern
+  classifier assigns the category (override allowed, both stored), and
+  corrections are new rows. The positive-reply rate renders null until any
+  classified reply exists — sparse early data never reads as a zero rate.
