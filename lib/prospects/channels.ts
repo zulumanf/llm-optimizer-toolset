@@ -13,6 +13,7 @@
 import { ClassifiedError } from "@/lib/errors";
 import { mockProviderAllowed } from "@/lib/ai/registry";
 import { executeCapability } from "@/lib/connectors/execute";
+import { OUTREACH_PUBLIC_WEBSITE } from "@/lib/prospects/constants";
 
 export interface OutboundEmail {
   recipientEmail: string | null;
@@ -148,6 +149,7 @@ export function optOutFooter(identity: {
 }): string {
   return (
     `\n\n—\n${identity.senderName} · ${identity.companyName}\n` +
+    `${OUTREACH_PUBLIC_WEBSITE}\n` +
     `${identity.postalAddress}\n` +
     `If you'd rather not hear from us, reply "unsubscribe" and we will not contact you again.`
   );

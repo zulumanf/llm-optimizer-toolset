@@ -8,7 +8,12 @@
 import { sql } from "@/db/client";
 import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
 import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
-import { MISMATCH_TEMPLATE_VERSION, MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
+import {
+  MISMATCH_TEMPLATE_VERSION,
+  MISMATCH_THRESHOLDS,
+  OUTREACH_FORBIDDEN_FOOTER_HOST,
+  OUTREACH_PUBLIC_WEBSITE,
+} from "@/lib/prospects/constants";
 import {
   competitiveMismatchReview,
   type MismatchEvidenceSnapshot,
@@ -93,6 +98,18 @@ export function qaDraftContent(input: DraftQaInput): DraftQaIssue[] {
   }
   if (input.senderPostalAddress && !body.includes(input.senderPostalAddress)) {
     add("compliance_footer", "body is missing the sender postal address.");
+  }
+  // The public-domain rule (cohort 001 directive): the visible signature
+  // block must show the public website, never the operator-console host.
+  // Scoped to the footer — a reply-first BODY may legitimately carry an
+  // app-hosted audit proof link above the signature.
+  const footerStart = body.lastIndexOf("\n—\n");
+  const footer = footerStart >= 0 ? body.slice(footerStart) : "";
+  if (footer.toLowerCase().includes(OUTREACH_FORBIDDEN_FOOTER_HOST)) {
+    add("signature_domain", `signature shows ${OUTREACH_FORBIDDEN_FOOTER_HOST} — the public site is ${OUTREACH_PUBLIC_WEBSITE}.`);
+  }
+  if (footer && !footer.includes(OUTREACH_PUBLIC_WEBSITE)) {
+    add("signature_domain", `signature is missing ${OUTREACH_PUBLIC_WEBSITE}.`);
   }
   if (!input.contactEmail) {
     add("contact", "no contact with an email is bound to the draft.");

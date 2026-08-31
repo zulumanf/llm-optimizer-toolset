@@ -407,6 +407,12 @@ export const BROKERAGE_SEND_CAP_30D = 3;
 // above: raising it is a diff, not a config edit.
 export const GMAIL_DAILY_SEND_CAP = 25;
 
+/** The PUBLIC website shown in the outgoing signature/footer. Outbound
+ * email must never show the app subdomain — the operator console is not
+ * the company's public face (cohort 001 pre-send directive, 2026-08-31). */
+export const OUTREACH_PUBLIC_WEBSITE = "www.RecommendedFirst.com";
+export const OUTREACH_FORBIDDEN_FOOTER_HOST = "app.recommendedfirst.com";
+
 /** SQL regex (case-insensitive) that counts as "the body contains a link" —
  * the Arm A / Arm B discriminator (spec 122). Matches scheme'd URLs and the
  * naked branded domain some drafts use. */

@@ -10,7 +10,7 @@ function base(): DraftQaInput {
       `Hi Jane,\n\nI was benchmarking teams (354 monitored responses).\n\n` +
       `Acme Team was mentioned in 0 of 354 monitored responses (0%).\n\n` +
       `${AUDIT_URL}\n\nReply "show me".\n\n—\nFrancisco Zuluaga · Recommended First\n` +
-      `1399 Myrtle Ave, Brooklyn, NY 11237\nIf you'd rather not hear from us, reply "unsubscribe".`,
+      `www.RecommendedFirst.com\n1399 Myrtle Ave, Brooklyn, NY 11237\nIf you'd rather not hear from us, reply "unsubscribe".`,
     contactName: "Jane Smith",
     contactEmail: "jane@acmerealty.com",
     teamLeader: null,
@@ -104,7 +104,8 @@ const MISMATCH_BODY =
   `Harbor View Group: $29.4M closed · recommended in 14 of 64 answers\n\n` +
   `When people use ChatGPT to research who to work with, they can see them before they see you.\n\n` +
   `I have the exact questions and the side-by-side. Want me to send them?\n\n—\n` +
-  `Francisco Zuluaga · Recommended First\n1399 Myrtle Ave, Brooklyn, NY 11237\n` +
+  `Francisco Zuluaga · Recommended First\nwww.RecommendedFirst.com\n` +
+  `1399 Myrtle Ave, Brooklyn, NY 11237\n` +
   `If you'd rather not hear from us, reply "unsubscribe".`;
 
 function mismatchBase(): DraftQaInput {
@@ -217,5 +218,22 @@ describe("qaMismatchClaims — every claim re-proven at approval and dispatch", 
       benchmarkAgeDays: MISMATCH_THRESHOLDS.maxBenchmarkAgeDays + 1,
     });
     expect(issues.map((i) => i.check)).toContain("mismatch_recency");
+  });
+});
+
+describe("qaDraftContent — public signature domain (cohort 001 directive)", () => {
+  it("fails a footer that shows the operator-console host", () => {
+    const input = base();
+    input.body = input.body.replace(
+      "www.RecommendedFirst.com",
+      "app.recommendedfirst.com"
+    );
+    expect(checks(input)).toContain("signature_domain");
+  });
+
+  it("fails a footer that omits the public website", () => {
+    const input = base();
+    input.body = input.body.replace("www.RecommendedFirst.com\n", "");
+    expect(checks(input)).toContain("signature_domain");
   });
 });
