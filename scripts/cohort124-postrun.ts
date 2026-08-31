@@ -67,6 +67,11 @@ async function main(): Promise<void> {
       console.log(`${city}: no launch resolved — SKIPPED`);
       continue;
     }
+    // The worker's compute_scores job sits behind a deep parse backlog;
+    // linkBenchmark requires scores rows, so compute here (same handler,
+    // idempotent) once the run's responses are parsed.
+    const { computeScores } = await import("@/lib/scoring/compute");
+    await computeScores(run.id as string);
     const prospects = await sql`
       select p.id, p.business_name, p.company_id from prospects p
       where p.launch_id = ${launch.id} and p.archived_at is null and not p.do_not_contact
