@@ -387,16 +387,30 @@ export async function launchGeographies(
  * unlocks dataset matching for markets predating the city pipelines. */
 export async function setMarketState(
   user: CurrentUser,
-  input: { marketName: string; state: string }
+  input: { marketName: string; state: string; marketId?: string }
 ): Promise<ActionResult<{ marketId: string; state: string }>> {
   try {
     assertCanWrite(user);
     const code = stateCode(input.state);
     if (!code) throw new ClassifiedError("validation", `Unknown state "${input.state}".`);
     const result = await sql.begin(async (tx) => {
-      const [market] = await tx`
-        select id from markets where lower(name) = ${input.marketName.toLowerCase()}
-      `;
+      // Same-named cities exist in different states (Wilmington DE/NC), so a
+      // caller that knows the market id must pin it; the name path refuses
+      // ambiguity instead of picking one.
+      const matches = input.marketId
+        ? await tx`select id from markets where id = ${input.marketId}`
+        : await tx`
+            select id from markets
+            where lower(name) = ${input.marketName.toLowerCase()}
+              and (state_code is null or state_code = ${code})
+          `;
+      if (matches.length > 1) {
+        throw new ClassifiedError(
+          "conflict",
+          `Multiple markets named "${input.marketName}" — pass marketId.`
+        );
+      }
+      const [market] = matches;
       if (!market) throw new ClassifiedError("not_found", "Market not found.");
       await tx`update markets set state_code = ${code} where id = ${market.id}`;
       await writeAudit(tx, {
