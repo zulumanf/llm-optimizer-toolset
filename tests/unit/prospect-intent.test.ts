@@ -51,7 +51,7 @@ const facts = (over: Partial<ProspectBehaviorFacts> = {}): ProspectBehaviorFacts
   opens: 0,
   views: [],
   hasEmail: true,
-  auditPublished: true, unqualifiedViews: 0,
+  auditPublished: true, unqualifiedViews: 0, replies: [],
   ...over,
 });
 

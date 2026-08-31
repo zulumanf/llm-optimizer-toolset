@@ -287,6 +287,44 @@ export type RecordingStatus = (typeof RECORDING_STATUSES)[number];
 export const FINDING_GENERATOR_VERSION = "prospect-findings-v2+deterministic";
 export const RECORDING_GENERATOR_VERSION = "recording-plan-v1+deterministic";
 export const OUTREACH_TEMPLATE_VERSION = "reply-first-email-v1";
+// Spec 124: the competitive-mismatch template. The version string IS the
+// template identity persisted on drafts (prompt_version) — bump it with any
+// copy change so analytics attribution survives edits.
+export const MISMATCH_TEMPLATE_VERSION = "competitive_mismatch_reply_v1";
+
+/** Prospect-readable labels per template version for analytics groupings. */
+export const OUTREACH_TEMPLATE_LABELS: Record<string, string> = {
+  [OUTREACH_TEMPLATE_VERSION]: "Reply-first audit email",
+  [MISMATCH_TEMPLATE_VERSION]: "Competitive mismatch",
+};
+
+/**
+ * Competitive-mismatch eligibility thresholds (spec 124). Policy constants,
+ * not env config — the comparison must never be quietly weakened to make
+ * the template fire; loosening any of these is a reviewed diff.
+ */
+export const MISMATCH_THRESHOLDS = {
+  /** Competitor OpenAI recommendations must exceed the prospect's by ≥ this. */
+  minRecommendationGap: 2,
+  /** Competitor production must be ≤ this fraction of the prospect's. */
+  maxCompetitorProductionRatio: 0.9,
+  /** Hard maximum benchmark age for the template to fire at all. */
+  maxBenchmarkAgeDays: 14,
+} as const;
+
+/** Reply classifications (spec 124) — mirrors the prospect_replies CHECK. */
+export const REPLY_CLASSIFICATIONS = [
+  "positive_interest",
+  "question",
+  "objection",
+  "proof_request",
+  "referral",
+  "not_interested",
+  "unsubscribe",
+  "out_of_office",
+  "unclear",
+] as const;
+export type ReplyClassification = (typeof REPLY_CLASSIFICATIONS)[number];
 
 /**
  * Wording the platform refuses to approve in prospect-facing text (spec 032,

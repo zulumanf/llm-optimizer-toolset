@@ -128,6 +128,7 @@ export async function prospectFacts(filter: CockpitFilter = {}): Promise<Prospec
       coalesce((select json_agg(json_build_object(
           'sentAt', s.sent_at, 'subject', d.subject, 'draftChannel', d.channel,
           'hasLink', (d.body ~* ${OUTREACH_LINK_PATTERN}),
+          'templateVersion', d.prompt_version,
           'opens', (select count(*)::int from outreach_email_opens o where o.send_id = s.id),
           'bounced', exists (select 1 from suppression_entries se
             where se.lifted_at is null and se.reason ilike '%bounce%'
@@ -139,6 +140,11 @@ export async function prospectFacts(filter: CockpitFilter = {}): Promise<Prospec
         join prospect_outreach_sends s on s.id = o.send_id
         where s.prospect_id = p.id
           and (${since}::timestamptz is null or o.opened_at >= ${since})) as opens,
+      coalesce((select json_agg(json_build_object(
+          'receivedAt', pr.received_at, 'classification', pr.classification)
+          order by pr.received_at)
+        from prospect_replies pr where pr.prospect_id = p.id
+          and (${since}::timestamptz is null or pr.received_at >= ${since})), '[]') as replies,
       coalesce((select json_agg(json_build_object(
           'id', hv.id, 'viewedAt', hv.viewed_at, 'linkKey', hv.link_key,
           'sessionId', vs.session_id, 'visitorId', vs.visitor_id,
@@ -172,7 +178,7 @@ export async function prospectFacts(filter: CockpitFilter = {}): Promise<Prospec
     stage: r.stage as ProspectStage,
     visitedStages: (r.visitedStages as ProspectStage[]) ?? [],
     sentAts: ((r.sentAts as (Date | string)[]) ?? []).map((d) => new Date(d)),
-    sends: ((r.sends as { sentAt: string; subject: string | null; draftChannel: string | null; opens: number; bounced: boolean; hasLink: boolean | null }[]) ?? []).map((x, i) => ({
+    sends: ((r.sends as { sentAt: string; subject: string | null; draftChannel: string | null; opens: number; bounced: boolean; hasLink: boolean | null; templateVersion: string | null }[]) ?? []).map((x, i) => ({
       sentAt: new Date(x.sentAt),
       touch: i + 1,
       subject: x.subject ?? null,
@@ -180,6 +186,11 @@ export async function prospectFacts(filter: CockpitFilter = {}): Promise<Prospec
       opens: Number(x.opens ?? 0),
       bounced: Boolean(x.bounced),
       hasLink: x.hasLink ?? null,
+      templateVersion: x.templateVersion ?? null,
+    })),
+    replies: ((r.replies as { receivedAt: string; classification: string }[]) ?? []).map((x) => ({
+      receivedAt: new Date(x.receivedAt),
+      classification: x.classification,
     })),
     prospectType: (r.prospectType as string | null) ?? null,
     repliedAt: r.repliedAt ? new Date(r.repliedAt as Date) : null,

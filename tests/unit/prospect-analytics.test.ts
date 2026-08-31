@@ -24,12 +24,12 @@ import { summarizeCohort } from "@/lib/prospects/intent";
 const NOW = new Date("2026-08-28T12:00:00Z");
 const T1 = new Date("2026-08-18T13:00:00Z"); // Tue 9 AM ET
 const T2 = new Date("2026-08-21T13:00:00Z");
-const send = (sentAt: Date, touch: number, over: Partial<SendFact> = {}): SendFact => ({ sentAt, touch, subject: "S-A", draftChannel: touch === 1 ? "email" : "followup_email", opens: 0, bounced: false, hasLink: null, ...over });
+const send = (sentAt: Date, touch: number, over: Partial<SendFact> = {}): SendFact => ({ sentAt, touch, subject: "S-A", draftChannel: touch === 1 ? "email" : "followup_email", opens: 0, bounced: false, hasLink: null, templateVersion: null, ...over });
 const view = (viewedAt: Date, over: Partial<AuditViewFact> = {}): AuditViewFact => ({ viewedAt, sessionId: `s${viewedAt.getTime()}`, visitorId: "v", linkKey: "k", engagedSeconds: 0, maxScrollPercent: 0, sectionsViewed: [], evidenceExpanded: false, ctaClicked: false, ...over });
 let seq = 0;
 const facts = (over: Partial<ProspectBehaviorFacts>): ProspectBehaviorFacts => ({
   prospectId: `p${++seq}`, businessName: `P${seq}`, launchId: "L1", launchName: "Jersey City", qualityScore: 75, stage: "contacted", visitedStages: ["contacted"],
-  sentAts: [T1], sends: [send(T1, 1)], prospectType: "team", repliedAt: null, meetingAt: null, opens: 0, views: [], hasEmail: true, auditPublished: true, unqualifiedViews: 0, ...over,
+  sentAts: [T1], sends: [send(T1, 1)], prospectType: "team", repliedAt: null, meetingAt: null, opens: 0, views: [], hasEmail: true, auditPublished: true, unqualifiedViews: 0, replies: [], ...over,
 });
 const P = (over: Partial<ProspectBehaviorFacts> = {}) => deriveIntent(facts(over), NOW);
 

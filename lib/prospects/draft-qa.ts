@@ -8,6 +8,11 @@
 import { sql } from "@/db/client";
 import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
 import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
+import { MISMATCH_TEMPLATE_VERSION, MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
+import {
+  competitiveMismatchReview,
+  type MismatchEvidenceSnapshot,
+} from "@/lib/prospects/mismatch";
 
 export interface DraftQaIssue {
   check: string;
@@ -63,6 +68,10 @@ export interface DraftQaInput {
   } | null;
   senderReplyTo: string | null;
   senderPostalAddress: string | null;
+  /** Spec 124: the draft's frozen evidence — when present, the body's
+   * "N of M" denominators must equal ITS answer count, not the published
+   * audit's sample (a mismatch draft counts one provider's answers). */
+  evidence?: { denominator: number } | null;
 }
 
 export function qaDraftContent(input: DraftQaInput): DraftQaIssue[] {
@@ -89,7 +98,12 @@ export function qaDraftContent(input: DraftQaInput): DraftQaIssue[] {
     add("contact", "no contact with an email is bound to the draft.");
   }
 
-  const greeting = body.match(/^Hi ([^,]+),/)?.[1];
+  // Two accepted greeting forms: "Hi Name," (reply-first) and the direct
+  // "Name —" opener (competitive mismatch, spec 124). Both must greet the
+  // bound contact or the team leader.
+  const firstLine = body.split("\n", 1)[0] ?? "";
+  const greeting =
+    body.match(/^Hi ([^,\n]+),/)?.[1] ?? firstLine.match(/^(\S[^—\n]*?)\s+—$/)?.[1];
   if (!greeting) {
     add("greeting", "body does not open with a greeting.");
   } else if (greeting.toLowerCase() !== "there") {
@@ -98,6 +112,24 @@ export function qaDraftContent(input: DraftQaInput): DraftQaIssue[] {
       add(
         "greeting",
         `greets "${greeting}" but the bound contact is "${input.contactName ?? "—"}" (team leader "${input.teamLeader ?? "—"}").`
+      );
+    }
+  }
+
+  // Count consistency: one M across the whole email (the 512-vs-354 defect,
+  // 2026-08-25), equal to the draft's own evidence denominator when frozen
+  // evidence exists (spec 124), else to the published finding's sample.
+  const cited = new Set<number>();
+  for (const m of body.matchAll(N_OF_M_RE)) cited.add(Number(m[1]));
+  for (const m of body.matchAll(MONITORED_RE)) cited.add(Number(m[1]));
+  if (cited.size > 1) {
+    add("count_consistency", `body cites conflicting sample sizes: ${[...cited].join(", ")}.`);
+  }
+  if (input.evidence) {
+    if (cited.size > 0 && !cited.has(input.evidence.denominator)) {
+      add(
+        "count_consistency",
+        `body cites sample ${[...cited].join(", ")} but the draft's evidence counts ${input.evidence.denominator} answers.`
       );
     }
   }
@@ -121,15 +153,12 @@ export function qaDraftContent(input: DraftQaInput): DraftQaIssue[] {
         `audit preparedBy is ${input.audit.preparedByEmail ?? "unset"}, not the sender identity ${input.senderReplyTo}.`
       );
     }
-    // Count consistency: one M across the whole email, equal to the
-    // published finding's sample (the 512-vs-354 defect, 2026-08-25).
-    const cited = new Set<number>();
-    for (const m of body.matchAll(N_OF_M_RE)) cited.add(Number(m[1]));
-    for (const m of body.matchAll(MONITORED_RE)) cited.add(Number(m[1]));
-    if (cited.size > 1) {
-      add("count_consistency", `body cites conflicting sample sizes: ${[...cited].join(", ")}.`);
-    }
-    if (input.audit.sampleSize !== null && cited.size > 0 && !cited.has(input.audit.sampleSize)) {
+    if (
+      !input.evidence &&
+      input.audit.sampleSize !== null &&
+      cited.size > 0 &&
+      !cited.has(input.audit.sampleSize)
+    ) {
       add(
         "count_consistency",
         `body cites sample ${[...cited].join(", ")} but the published finding counts ${input.audit.sampleSize}.`
@@ -149,10 +178,86 @@ export function qaDraftContent(input: DraftQaInput): DraftQaIssue[] {
   return issues;
 }
 
+/** Live facts a mismatch draft's frozen claims are re-checked against at
+ * approval and again at dispatch (spec 124). */
+export interface MismatchQaLive {
+  eligible: boolean;
+  eligibleCompetitorCompanyIds: string[];
+  prospectRecommendationCount: number;
+  /** Live count for the snapshot's competitor; null = no longer computable. */
+  competitorRecommendationCount: number | null;
+  answerCount: number;
+  benchmarkAgeDays: number | null;
+}
+
+/**
+ * Deterministic re-validation of every claim a competitive-mismatch draft
+ * makes (spec 124). Pure. Any issue FAILS the draft — approval and the send
+ * gate both treat these as refusals, never warnings.
+ */
+export function qaMismatchClaims(
+  body: string,
+  snapshot: MismatchEvidenceSnapshot,
+  live: MismatchQaLive
+): DraftQaIssue[] {
+  const issues: DraftQaIssue[] = [];
+  const add = (check: string, detail: string): void => {
+    issues.push({ check, detail });
+  };
+  const rendered = [
+    `in ${snapshot.prospect.recommendationCount} of ${snapshot.answerCount} answers`,
+    `in ${snapshot.competitor.recommendationCount} of ${snapshot.answerCount} answers`,
+    snapshot.prospect.productionDisplay,
+    snapshot.competitor.productionDisplay,
+    snapshot.competitor.name,
+  ];
+  for (const fragment of rendered) {
+    if (!body.includes(fragment)) {
+      add("mismatch_render", `body no longer states the frozen claim "${fragment}".`);
+    }
+  }
+  if (live.answerCount !== snapshot.answerCount) {
+    add(
+      "mismatch_stale",
+      `live ${snapshot.provider} answer count is ${live.answerCount}, the draft asserts ${snapshot.answerCount}.`
+    );
+  }
+  if (live.prospectRecommendationCount !== snapshot.prospect.recommendationCount) {
+    add(
+      "mismatch_stale",
+      `live prospect recommendation count is ${live.prospectRecommendationCount}, the draft asserts ${snapshot.prospect.recommendationCount}.`
+    );
+  }
+  if (live.competitorRecommendationCount !== snapshot.competitor.recommendationCount) {
+    add(
+      "mismatch_stale",
+      `live competitor recommendation count is ${live.competitorRecommendationCount ?? "unavailable"}, the draft asserts ${snapshot.competitor.recommendationCount}.`
+    );
+  }
+  if (!live.eligible || !live.eligibleCompetitorCompanyIds.includes(snapshot.competitor.companyId)) {
+    add(
+      "mismatch_eligibility",
+      "the comparison no longer passes eligibility against live data — regenerate the draft."
+    );
+  }
+  if (
+    live.benchmarkAgeDays === null ||
+    live.benchmarkAgeDays > MISMATCH_THRESHOLDS.maxBenchmarkAgeDays
+  ) {
+    add(
+      "mismatch_recency",
+      `benchmark is ${live.benchmarkAgeDays ?? "of unknown"} days old — over the ${MISMATCH_THRESHOLDS.maxBenchmarkAgeDays}-day maximum; refresh the benchmark and regenerate.`
+    );
+  }
+  return issues;
+}
+
 /** Assemble a draft's QA input from the database and run the pure core. */
 export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
   const [row] = await sql`
-    select d.subject, d.body, p.team_leader, p.brokerage_affiliation,
+    select d.subject, d.body, d.prospect_id, d.contact_id,
+      d.prompt_version, d.evidence_snapshot,
+      p.team_leader, p.brokerage_affiliation,
       c.name as contact_name, c.email as contact_email,
       a.access_token, a.expires_at,
       a.snapshot->'keyFinding'->'metrics'->>'sampleSize' as sample_size,
@@ -176,7 +281,31 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
     const u = auditUrl(row.accessToken as string);
     if (u) validUrls.push(u);
   }
-  return qaDraftContent({
+  const snapshot =
+    row.promptVersion === MISMATCH_TEMPLATE_VERSION && row.evidenceSnapshot
+      ? (row.evidenceSnapshot as MismatchEvidenceSnapshot)
+      : null;
+  const mismatchIssues: DraftQaIssue[] = [];
+  if (snapshot) {
+    const review = await competitiveMismatchReview(row.prospectId as string, {
+      contactId: (row.contactId as string | null) ?? null,
+    });
+    const liveCompetitor = review?.evaluation.candidates.find(
+      (c) => c.companyId === snapshot.competitor.companyId
+    );
+    mismatchIssues.push(
+      ...qaMismatchClaims((row.body as string) ?? "", snapshot, {
+        eligible: review?.evaluation.eligible ?? false,
+        eligibleCompetitorCompanyIds:
+          review?.evaluation.eligibleCandidates.map((c) => c.companyId) ?? [],
+        prospectRecommendationCount: review?.prospect.recommendationCount ?? 0,
+        competitorRecommendationCount: liveCompetitor?.recommendationCount ?? null,
+        answerCount: review?.benchmark?.answerCount ?? 0,
+        benchmarkAgeDays: review?.evaluation.benchmarkAgeDays ?? null,
+      })
+    );
+  }
+  return mismatchIssues.concat(qaDraftContent({
     subject: (row.subject as string | null) ?? null,
     body: (row.body as string) ?? "",
     contactName: (row.contactName as string | null) ?? null,
@@ -193,5 +322,6 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
       : null,
     senderReplyTo: identity?.replyToEmail ?? null,
     senderPostalAddress: identity?.postalAddress ?? null,
-  });
+    evidence: snapshot ? { denominator: snapshot.answerCount } : null,
+  }));
 }

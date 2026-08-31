@@ -49,8 +49,10 @@ import {
   UNATTENDED_SEND_BLOCKED_STAGES,
   CONTACT_GATE_STAGE,
   PRE_CONTACT_STAGES,
+  REPLY_CLASSIFICATIONS,
+  type ReplyClassification,
 } from "@/lib/prospects/constants";
-import { validateTransition } from "@/lib/prospects/stages";
+import { atOrPast, validateTransition } from "@/lib/prospects/stages";
 import {
   generateFindingCandidates,
   type BenchmarkEntityMetrics,
@@ -68,10 +70,23 @@ import {
 
   type RunSummary,
 } from "@/lib/prospects/benchmark";
-import { generateReplyFirstEmail } from "@/lib/prospects/outreach";
+import {
+  generateCompetitiveMismatchEmail,
+  generateReplyFirstEmail,
+} from "@/lib/prospects/outreach";
+import {
+  buildEvidenceSnapshot,
+  competitiveMismatchReview,
+  type MismatchEvidenceSnapshot,
+} from "@/lib/prospects/mismatch";
+import {
+  classifyReplyText,
+  CONVERSATION_CLASSIFICATIONS,
+  REPLY_CLASSIFIER_VERSION,
+} from "@/lib/prospects/reply-classify";
 import { generateRecordingPlan as buildRecordingPlan } from "@/lib/prospects/recording";
 import { parseProspectImport, type ImportRow } from "@/lib/prospects/import";
-import { checkSuppression } from "@/lib/outreach/suppression";
+import { checkSuppression, suppress } from "@/lib/outreach/suppression";
 // removed-unused: authorityGapForRun
 import {} from "@/lib/prospects/gap";
 import { resolveProspectCompany } from "@/lib/prospects/resolve";
@@ -1529,6 +1544,9 @@ export async function createOutreachDraft(
       body: z.string().trim().min(1).max(10000).optional(),
       tone: z.string().trim().max(120).optional(),
       cta: z.string().trim().max(500).optional(),
+      /** Spec 124: operator's pick among ELIGIBLE mismatch candidates.
+       * Never a way to force an unvalidated comparison. */
+      competitorCompanyId: z.string().uuid().optional(),
     })
     .safeParse(raw);
   if (!parsed.success) {
@@ -1559,6 +1577,7 @@ export async function createOutreachDraft(
       let cta = input.cta ?? null;
       let generatedBy: "system" | "operator" = "operator";
       let promptVersion: string | null = null;
+      let evidenceSnapshot: MismatchEvidenceSnapshot | null = null;
 
       if (!body) {
         const [benchmark] = await tx`
@@ -1594,33 +1613,64 @@ export async function createOutreachDraft(
             "No sender identity is configured — an admin must set the legal sender (name, company, postal address) before outreach drafts can be generated."
           );
         }
-        const generated = generateReplyFirstEmail({
-          prospectName: prospect.businessName,
-          teamLeader: prospect.teamLeader,
-          marketName: draftMarketName,
-          findingTitle: finding.title,
-          findingExplanation: finding.explanation,
-          providers: run?.providers ?? [],
-          sampleSize: run?.responseCount ?? 0,
-          // Branded link preferred (spec 076): the first readable thing in
-          // the emailed URL is the prospect's own name. Legacy token URL is
-          // the fallback for prospects minted before the feature.
-          auditUrl: publishedAudit
-            ? await (async () => {
-                const link = await auditLinkForProspect(input.prospectId, tx);
-                return (
-                  (link ? brandedAuditUrl(link.slug, link.key) : null) ??
-                  auditUrl(publishedAudit.accessToken as string)
-                );
-              })()
-            : null,
+        // Spec 124: the competitive-mismatch template is preferred whenever
+        // the comparison is clean; anything less fails closed into the
+        // reply-first template. The comparison is never weakened to fire.
+        const review = await competitiveMismatchReview(input.prospectId, {
+          contactId: input.contactId ?? null,
+          db: tx,
         });
-        subject = generated.subject;
-        body = generated.body + optOutFooter(draftIdentity);
-        tone = generated.tone;
-        cta = generated.cta;
-        generatedBy = "system";
-        promptVersion = generated.promptVersion;
+        const chosenCompetitor = review?.evaluation.eligible
+          ? input.competitorCompanyId
+            ? (review.evaluation.eligibleCandidates.find(
+                (c) => c.companyId === input.competitorCompanyId
+              ) ?? null)
+            : review.evaluation.selected
+          : null;
+        if (input.competitorCompanyId && !chosenCompetitor) {
+          throw new ClassifiedError(
+            "validation",
+            "That competitor is not an eligible mismatch candidate for this prospect — only validated candidates can be used."
+          );
+        }
+        if (review && chosenCompetitor) {
+          const generated = generateCompetitiveMismatchEmail(review, chosenCompetitor);
+          subject = generated.subject;
+          body = generated.body + optOutFooter(draftIdentity);
+          tone = generated.tone;
+          cta = generated.cta;
+          generatedBy = "system";
+          promptVersion = generated.promptVersion;
+          evidenceSnapshot = buildEvidenceSnapshot(review, chosenCompetitor);
+        } else {
+          const generated = generateReplyFirstEmail({
+            prospectName: prospect.businessName,
+            teamLeader: prospect.teamLeader,
+            marketName: draftMarketName,
+            findingTitle: finding.title,
+            findingExplanation: finding.explanation,
+            providers: run?.providers ?? [],
+            sampleSize: run?.responseCount ?? 0,
+            // Branded link preferred (spec 076): the first readable thing in
+            // the emailed URL is the prospect's own name. Legacy token URL is
+            // the fallback for prospects minted before the feature.
+            auditUrl: publishedAudit
+              ? await (async () => {
+                  const link = await auditLinkForProspect(input.prospectId, tx);
+                  return (
+                    (link ? brandedAuditUrl(link.slug, link.key) : null) ??
+                    auditUrl(publishedAudit.accessToken as string)
+                  );
+                })()
+              : null,
+          });
+          subject = generated.subject;
+          body = generated.body + optOutFooter(draftIdentity);
+          tone = generated.tone;
+          cta = generated.cta;
+          generatedBy = "system";
+          promptVersion = generated.promptVersion;
+        }
       }
 
       const [latest] = await tx`
@@ -1632,11 +1682,14 @@ export async function createOutreachDraft(
       const [row] = await tx`
         insert into outreach_drafts
           (prospect_id, finding_id, channel, contact_id, version, parent_id,
-           subject, body, tone, cta, generated_by, prompt_version, created_by)
+           subject, body, tone, cta, generated_by, prompt_version,
+           evidence_snapshot, created_by)
         values (${input.prospectId}, ${finding.id}, ${input.channel},
           ${input.contactId ?? null}, ${version},
           ${latest?.id ?? null}, ${subject}, ${body}, ${tone}, ${cta},
-          ${generatedBy}, ${promptVersion}, ${user.id})
+          ${generatedBy}, ${promptVersion},
+          ${evidenceSnapshot ? tx.json(evidenceSnapshot as never) : null},
+          ${user.id})
         returning id
       `;
       await writeAudit(tx, {
@@ -1656,6 +1709,124 @@ export async function createOutreachDraft(
       return { draftId: row?.id as string, version };
     });
     return ok(result);
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Record what a reply actually said (spec 124). The inbox is still read by
+ * a human (or an ops script) — this is the first structured record of the
+ * reply itself. Insert-only ledger; classification is deterministic
+ * (lib/prospects/reply-classify.ts) unless the operator overrides, and the
+ * classifier version is stored either way. A conversation reply advances
+ * the prospect to `replied` through the one existing transition path;
+ * autoresponders and unsubscribes never do. An unsubscribe writes the
+ * opt-out suppression entry in the same transaction.
+ */
+export async function recordProspectReply(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ replyId: string; classification: ReplyClassification; stageAdvanced: boolean }>> {
+  const parsed = z
+    .object({
+      prospectId: z.string().uuid(),
+      contactId: z.string().uuid().optional(),
+      sendId: z.string().uuid().optional(),
+      bodyText: z.string().trim().min(1).max(20000),
+      receivedAt: z.coerce.date().optional(),
+      classification: z.enum(REPLY_CLASSIFICATIONS).optional(),
+    })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    const result = await sql.begin(async (tx) => {
+      const prospect = await lockProspect(tx, input.prospectId);
+      let contactEmail: string | null = null;
+      if (input.contactId) {
+        const [contact] = await tx`
+          select email from prospect_contacts
+          where id = ${input.contactId} and prospect_id = ${input.prospectId}
+        `;
+        if (!contact) {
+          throw new ClassifiedError("validation", "Contact not found on this prospect.");
+        }
+        contactEmail = (contact.email as string | null) ?? null;
+      }
+      if (input.sendId) {
+        const [send] = await tx`
+          select id from prospect_outreach_sends
+          where id = ${input.sendId} and prospect_id = ${input.prospectId}
+        `;
+        if (!send) {
+          throw new ClassifiedError("validation", "Send not found on this prospect.");
+        }
+      }
+      const classification: ReplyClassification =
+        input.classification ?? classifyReplyText(input.bodyText);
+      const [row] = await tx`
+        insert into prospect_replies
+          (prospect_id, contact_id, send_id, body_text, received_at,
+           classification, classifier_version, recorded_by)
+        values (${input.prospectId}, ${input.contactId ?? null},
+          ${input.sendId ?? null}, ${input.bodyText},
+          ${input.receivedAt ?? new Date()}, ${classification},
+          ${REPLY_CLASSIFIER_VERSION}, ${user.id})
+        returning id
+      `;
+      if (classification === "unsubscribe") {
+        const email = contactEmail ?? prospect.email;
+        if (email) {
+          await suppress(tx, {
+            scope: "email",
+            value: email,
+            reason: "opt_out",
+            detail: "Reply classified as unsubscribe (spec 124).",
+            projectId: null,
+            userId: user.id,
+          });
+        }
+      }
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.reply_record",
+        entity: "prospect",
+        entityId: input.prospectId,
+        detail: { replyId: row?.id, classification, sendId: input.sendId ?? null },
+      });
+      await logActivity(
+        tx,
+        input.prospectId,
+        "reply_recorded",
+        { classification },
+        user.id
+      );
+      return { replyId: row?.id as string, classification, stage: prospect.stage };
+    });
+    // A real conversation advances the stage through the one existing
+    // transition path — outside the tx so a gate refusal (e.g. conflict)
+    // never rolls back the recorded reply, which is a fact either way.
+    let stageAdvanced = false;
+    if (
+      CONVERSATION_CLASSIFICATIONS.includes(result.classification) &&
+      !atOrPast(result.stage as ProspectStage, "replied")
+    ) {
+      const moved = await transitionStage(user, {
+        prospectId: input.prospectId,
+        toStage: "replied",
+        reason: `Reply recorded (${result.classification}).`,
+      });
+      stageAdvanced = moved.ok;
+    }
+    return ok({
+      replyId: result.replyId,
+      classification: result.classification,
+      stageAdvanced,
+    });
   } catch (err) {
     return fail(err);
   }
