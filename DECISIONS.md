@@ -2839,3 +2839,20 @@ lesson), and licensed rows stay internal — evidence panels show
 plus derived JSON live only in gitignored `.local-data/`. Dataset evidence
 is canonical over hand-captured signals for the same fact; signals remain
 as history and as the fallback.
+
+## 2026-09-01 — Remote MCP endpoint as an app route; unsalted-sha256 tokens; ledger-window rate limit
+
+Spec 126. `/mcp` (plus `/healthz` and `/.well-known/oauth-protected-resource`)
+is the third documented exception to "route handlers only for webhooks/cron":
+like a webhook, it is a machine protocol endpoint — JSON-RPC over POST with
+bearer auth, no session, no page. It lives inside the existing Next.js app
+(SDK `WebStandardStreamableHTTPServerTransport`, stateless per-request
+server) rather than a second service, because the repo's one-app rule beats
+a new deployable, and Grok's Streamable HTTP needs no long-lived state.
+Personal access tokens are stored as plain sha256 hashes — no pepper, no
+bcrypt: the secret embeds 32 random bytes (~256 bits), so brute force is
+bounded by the entropy, not the hash cost, and lookup stays a unique-index
+equality. The 60-calls/min rate limit counts rows in the insert-only
+`mcp_tool_calls` audit ledger over a trailing 60s window: correct across
+multiple web instances without introducing Redis, at the cost of one
+indexed count per tools/call — fine at connector volumes.
