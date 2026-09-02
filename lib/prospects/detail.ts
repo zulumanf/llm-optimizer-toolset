@@ -243,7 +243,8 @@ export async function listDrafts(prospectId: string): Promise<DraftRow[]> {
         count(op.id)::int as open_count,
         max(op.opened_at) as last_opened_at
       from prospect_outreach_sends s
-      left join outreach_email_opens op on op.send_id = s.id
+      left join outreach_open_signal op
+        on op.send_id = s.id and op.signal_class <> 'scanner'
       where s.draft_id = d.id and s.allowed
     ) o on true
     where d.prospect_id = ${prospectId}

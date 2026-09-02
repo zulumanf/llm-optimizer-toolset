@@ -184,9 +184,9 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
             and c.archived_at is null and not c.do_not_contact and c.email is not null) as has_email,
           (select count(*)::int from prospect_outreach_sends s
             where s.prospect_id = p.id and s.allowed) as sends,
-          (select count(*)::int from outreach_email_opens o
+          (select count(*)::int from outreach_open_signal o
             join prospect_outreach_sends s on s.id = o.send_id
-            where s.prospect_id = p.id) as opens
+            where s.prospect_id = p.id and o.signal_class <> 'scanner') as opens
         from prospects p
         join market_launches l on l.id = p.launch_id
         join markets m on m.id = l.market_id
@@ -229,7 +229,8 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
       `;
       const sends = await sql`
         select s.id, s.channel, s.recipient_email, s.sent_at, s.allowed,
-          (select count(*)::int from outreach_email_opens o where o.send_id = s.id) as opens
+          (select count(*)::int from outreach_open_signal o
+            where o.send_id = s.id and o.signal_class <> 'scanner') as opens
         from prospect_outreach_sends s where s.prospect_id = ${id}
         order by s.sent_at desc limit 10
       `;

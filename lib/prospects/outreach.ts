@@ -53,10 +53,10 @@ export function generateReplyFirstEmail(input: OutreachDraftInput): GeneratedDra
   // With a published audit the link does the proving and the ask matches the
   // page's own CTA chip ("show me"). Without one, ask-first as before.
   const cta = input.auditUrl
-    ? `If it's useful, reply "show me" and I'll walk you through it — 15 minutes.`
+    ? `If it's useful, reply "show me" and I'll walk you through it. About 15 minutes.`
     : "Would it be useful if I sent the benchmark over?";
   const proofParagraph = input.auditUrl
-    ? `The full benchmark is here — every question and complete answer included, ` +
+    ? `The full benchmark is here, with every question and complete answer included, ` +
       `so you can search for your own name: ${input.auditUrl}`
     : `I put together the supporting benchmark with the exact prompts and responses.`;
   const body = [
@@ -118,7 +118,7 @@ export function generateCompetitiveMismatchEmail(
   const n = benchmark.answerCount;
   const cta = "I have the exact questions and the side-by-side. Want me to send them?";
   const body = [
-    `${firstName} —`,
+    `${firstName},`,
     ``,
     `${recency} I ran ${review.scopeCopy} through ${systemPhrase}. ` +
       `${pronoun} recommended ${competitor.displayName} more often than your team, ` +
@@ -132,7 +132,7 @@ export function generateCompetitiveMismatchEmail(
     cta,
   ].join("\n");
   return {
-    subject: `${firstName} — ${marketShortName(review.marketName)}`,
+    subject: `${firstName} - ${marketShortName(review.marketName)}`,
     body,
     tone: "direct, factual, peer-to-peer",
     cta,

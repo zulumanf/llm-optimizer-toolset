@@ -286,11 +286,13 @@ export type RecordingStatus = (typeof RECORDING_STATUSES)[number];
 // individuals, counts as the primary unit (no rounded-up sub-10% rates).
 export const FINDING_GENERATOR_VERSION = "prospect-findings-v2+deterministic";
 export const RECORDING_GENERATOR_VERSION = "recording-plan-v1+deterministic";
-export const OUTREACH_TEMPLATE_VERSION = "reply-first-email-v1";
+// v2 (2026-08-31): no em-dashes in generated copy (operator decision).
+export const OUTREACH_TEMPLATE_VERSION = "reply-first-email-v2";
 // Spec 124: the competitive-mismatch template. The version string IS the
 // template identity persisted on drafts (prompt_version) — bump it with any
 // copy change so analytics attribution survives edits.
-export const MISMATCH_TEMPLATE_VERSION = "competitive_mismatch_reply_v1";
+// v2 (2026-08-31): no em-dashes in greeting/subject (operator decision).
+export const MISMATCH_TEMPLATE_VERSION = "competitive_mismatch_reply_v2";
 
 /** Prospect-readable labels per template version for analytics groupings. */
 export const OUTREACH_TEMPLATE_LABELS: Record<string, string> = {
@@ -417,6 +419,11 @@ export const OUTREACH_FORBIDDEN_FOOTER_HOST = "app.recommendedfirst.com";
  * the Arm A / Arm B discriminator (spec 122). Matches scheme'd URLs and the
  * naked branded domain some drafts use. */
 export const OUTREACH_LINK_PATTERN = "(https?://|recommendedfirst\\.com)";
+/** Version of the read-time open classification heuristic (spec 125) —
+ * the outreach_open_signal view (migration 097): 'scanner' = null/bare
+ * Mozilla/5.0 UA, 'proxy' = Gmail image proxy, 'browser' = the rest.
+ * Bump when the view's rules change; raw open rows never do. */
+export const OPEN_SIGNAL_VERSION = "open-signal-v1";
 /** The operator's daily send commitment (spec 119) — the input scoreboard
  * target, deliberately under the transport cap so follow-ups never compete
  * with the quota for headroom. A policy constant like the cap above. */

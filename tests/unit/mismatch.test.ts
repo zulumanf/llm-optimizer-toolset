@@ -257,10 +257,10 @@ describe("generateCompetitiveMismatchEmail", () => {
   const draft = generateCompetitiveMismatchEmail(r, r.evaluation.selected!, NOW);
 
   it("renders the exact five-line comparison", () => {
-    expect(draft.subject).toBe("Joelle — Jersey City");
+    expect(draft.subject).toBe("Joelle - Jersey City");
     expect(draft.body).toBe(
       [
-        "Joelle —",
+        "Joelle,",
         "",
         "Earlier this week I ran Jersey City buyer and seller questions through " +
           "the OpenAI model behind ChatGPT. It recommended Harbor View Group " +

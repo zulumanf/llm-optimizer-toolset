@@ -148,7 +148,7 @@ export function optOutFooter(identity: {
   postalAddress: string;
 }): string {
   return (
-    `\n\n—\n${identity.senderName} · ${identity.companyName}\n` +
+    `\n\n--\n${identity.senderName} · ${identity.companyName}\n` +
     `${OUTREACH_PUBLIC_WEBSITE}\n` +
     `${identity.postalAddress}\n` +
     `If you'd rather not hear from us, reply "unsubscribe" and we will not contact you again.`
