@@ -392,8 +392,24 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     unwrap(await svc.revokeAudit(operator, { auditId: liveAuditId, reason: "content superseded" }));
     expect(await svc.getAuditByToken(accessToken)).toBeNull();
 
-    // Draft: generated from the approved finding, versioned, approved, sent
-    const draft = unwrap(await svc.createOutreachDraft(operator, { prospectId, channel: "email" }));
+    // Draft: generated from the approved finding, versioned, approved, sent.
+    // The spec-116 QA gate refuses approval without a bound contact that has
+    // an email, so bind one before drafting.
+    const draftContact = unwrap(
+      await svc.addContact(operator, {
+        prospectId,
+        name: "Ana Rivera",
+        email: "ana@riverateam.com",
+        isPrimary: true,
+      })
+    );
+    const draft = unwrap(
+      await svc.createOutreachDraft(operator, {
+        prospectId,
+        channel: "email",
+        contactId: draftContact.contactId,
+      })
+    );
     expect(draft.version).toBe(1);
     const [draftRow] = await sql`
       select body, generated_by from outreach_drafts where id = ${draft.draftId}
