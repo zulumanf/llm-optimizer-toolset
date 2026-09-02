@@ -2856,3 +2856,14 @@ equality. The 60-calls/min rate limit counts rows in the insert-only
 `mcp_tool_calls` audit ledger over a trailing 60s window: correct across
 multiple web instances without introducing Redis, at the cost of one
 indexed count per tools/call — fine at connector volumes.
+## 2026-08-25 — Brokerage send cap scoped per market (spec 120)
+
+The spec-052 cap (3/brokerage/30d) matched brokerage names globally; by
+08-25 Compass, Coldwell Banker Realty, and eXp were 3/3 nationwide and 14 of
+15 approved initial drafts were gate-blocked in markets those brands had
+never been contacted in. Operator decision: the intrusion risk is
+office-local, so the cap now counts sends within the prospect's launch
+(market) only. Same diff normalizes brokerage names (comma cut + trailing
+inc/llc) so suffix variants share one cap bucket — "Long & Foster Real
+Estate Inc." no longer dodges the plain form's count. Cap value and window
+unchanged; still a policy constant.
