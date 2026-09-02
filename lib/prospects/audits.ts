@@ -26,6 +26,7 @@ import {
 } from "@/lib/prospects/constants";
 import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
 import { latestVerifiedProduction } from "@/lib/prospects/realtrends";
+import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
 import {
   CURRENT,
   promptEvidenceForResponses,
@@ -768,9 +769,13 @@ export async function publishAudit(
     // authority statement the page can make, with its exact ranking scope.
     const verifiedProduction = await latestVerifiedProduction(input.prospectId);
 
+    // The page's reply CTA mails preparedBy.email — that must be the legal
+    // sender identity's reply-to (the mailbox outreach transmits from), not
+    // the publishing operator's login account (spec 052 sender identity).
+    const senderIdentity = await getActiveSenderIdentity();
     const preparedBy = {
-      name: user.name,
-      email: user.email,
+      name: senderIdentity?.senderName ?? user.name,
+      email: senderIdentity?.replyToEmail ?? user.email,
       date: todayIso(),
       reportId: randomBytes(4).toString("hex"),
       // Sender credibility (PR B, P5e) — env-configured template fields,

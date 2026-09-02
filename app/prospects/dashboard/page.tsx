@@ -34,6 +34,18 @@ import {
   StatGrid,
 } from "@/components/layout/page";
 import { cockpit, machineHealth, upcomingAutomation, WINDOWS, type UpcomingSend, type Window } from "@/lib/prospects/dashboard";
+import {
+  isBusinessDay,
+  medianHoursToFirstReply,
+  momentum,
+  quotaStreak,
+  touchDepthDistribution,
+  type Momentum,
+} from "@/lib/prospects/momentum";
+import { MomentumSection } from "@/components/prospects/momentum-section";
+import { executiveBrief } from "@/lib/prospects/brief";
+import { ExecutiveBriefSection } from "@/components/prospects/executive-brief";
+import { DAILY_SEND_QUOTA } from "@/lib/prospects/constants";
 import { dashboardHref, type DashboardFilters } from "@/lib/prospects/dashboard-url";
 import { outreachMetrics, type Rate } from "@/lib/prospects/analytics";
 import { AnalyzeView, OPEN_SIGNAL_CAVEAT, POSITIVE_REPLY_CAVEAT } from "@/components/prospects/analyze-view";
@@ -233,7 +245,9 @@ export default async function ProspectingDashboardPage({
       // Analyze compares batches: it needs every cohort in the same window.
       view === "analyze" && launchId ? cockpit({ window }, now) : Promise.resolve(null),
     ]);
-    data = { c, health, upcoming, launchId, all };
+    // After the batch, not inside it — the pooler's session cap is close.
+    const mo: Momentum | null = view === "operate" ? await momentum(now) : null;
+    data = { c, health, upcoming, launchId, all, mo };
   } catch {
     return (
       <PageShell>
@@ -242,7 +256,7 @@ export default async function ProspectingDashboardPage({
       </PageShell>
     );
   }
-  const { c, health, upcoming, launchId, all } = data;
+  const { c, health, upcoming, launchId, all, mo } = data;
   const { cohort } = c;
   const launch = c.launches.find((l) => l.id === launchId);
   const cohortName = launch ? `${launch.name} · Batch 1` : "All active cohorts";
@@ -307,6 +321,34 @@ export default async function ProspectingDashboardPage({
   const researchTop = health.researchQueue.slice(0, 3);
   const cohortOptions = c.launches.filter((l) => l.prospectCount > 0);
 
+  // Executive brief (spec 121): pure synthesis of numbers derived above.
+  const momentumToday = mo?.days[mo.days.length - 1];
+  const brief = mo
+    ? executiveBrief({
+        cohortName,
+        prospectCount: c.prospects.length,
+        cohort,
+        repliesWaiting,
+        meetingsToPrepare: meetings,
+        approvals: approvals.length,
+        blockedSends: blocked.length,
+        scheduledPending: health.scheduledPending,
+        followUpsEligible24h: eligible24h.length,
+        unresolvedAttribution: review.length,
+        expiringAudits: health.expiringAudits.length,
+        researchQueue: health.researchQueue.length,
+        gmailHealthy,
+        gmailStatus: health.gmailStatus,
+        capUsed24h: health.capUsed24h,
+        capLimit: health.capLimit,
+        sentToday: momentumToday ? momentumToday.firstTouch + momentumToday.followUps : 0,
+        quota: DAILY_SEND_QUOTA,
+        quotaStreak: quotaStreak(mo.days, DAILY_SEND_QUOTA),
+        stalledAtOne: touchDepthDistribution(c.prospects).stalledAtOne,
+        businessDay: isBusinessDay(now),
+      })
+    : null;
+
   const UpcomingRow = ({ u }: { u: UpcomingSend }) => (
     <li className="flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-3">
       <div className="min-w-0 flex-1">
@@ -336,7 +378,7 @@ export default async function ProspectingDashboardPage({
               <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md border px-2.5 py-1 text-sm font-medium hover:bg-muted [&::-webkit-details-marker]:hidden">
                 {cohortName} <ChevronDown className="size-3.5" />
               </summary>
-              <ul className="absolute right-0 z-10 mt-1 min-w-56 rounded-md border bg-background p-1 text-sm shadow-sm">
+              <ul className="absolute left-0 z-10 mt-1 min-w-56 rounded-md border bg-background p-1 text-sm shadow-sm sm:left-auto sm:right-0">
                 {cohortOptions.map((l) => (
                   <li key={l.id}>
                     <Link href={href({ launch: l.id })} className={`block rounded px-2 py-1 hover:bg-muted ${launchId === l.id ? "font-medium" : ""}`}>
@@ -415,6 +457,12 @@ export default async function ProspectingDashboardPage({
           </div>
         ))}
       </dl>
+
+      {/* ===================== executive brief (spec 121) */}
+      {brief && <ExecutiveBriefSection brief={brief} hrefFor={(patch) => href(patch)} />}
+
+      {/* ===================== 0. did we do the work (spec 119) */}
+      {mo && <MomentumSection momentum={mo} prospects={c.prospects} cohortName={cohortName} quota={DAILY_SEND_QUOTA} />}
 
       {/* ===================== 1. what requires me */}
       <Section
@@ -562,12 +610,16 @@ export default async function ProspectingDashboardPage({
               <Stat label="Replies" value={`${cohort.replied} / ${cohort.contacted}`} hint={`${cohort.meeting} meeting${cohort.meeting === 1 ? "" : "s"}`} />
             </StatGrid>
             <ul className="mt-5 max-w-prose space-y-2">
+              {/* Phone: label/count/rate on one line, bar full-width below.
+                  sm+: the classic single-line bar row, via order utilities. */}
               {cohort.funnel.map((step) => (
-                <li key={step.key} className="flex items-center gap-3 text-sm">
-                  <span className="w-40 shrink-0 text-muted-foreground">{step.label}</span>
-                  <FunnelBar count={step.count} max={cohort.contacted} />
-                  <span className="w-10 text-right font-medium tabular-nums">{step.count}</span>
-                  <span className="w-24 text-right text-xs text-muted-foreground tabular-nums" title={step.basis}>
+                <li key={step.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm sm:flex-nowrap">
+                  <span className="order-1 min-w-0 flex-1 text-muted-foreground sm:w-40 sm:flex-none">{step.label}</span>
+                  <div className="order-4 w-full basis-full sm:order-2 sm:min-w-0 sm:flex-1 sm:basis-auto">
+                    <FunnelBar count={step.count} max={cohort.contacted} />
+                  </div>
+                  <span className="order-2 w-10 text-right font-medium tabular-nums sm:order-3">{step.count}</span>
+                  <span className="order-3 w-24 text-right text-xs text-muted-foreground tabular-nums sm:order-4" title={step.basis}>
                     {step.of !== null && step.of > 0 ? `${pct(step.rate)} of ${step.of}` : ""}
                   </span>
                 </li>
@@ -608,6 +660,12 @@ export default async function ProspectingDashboardPage({
           {cohort.medianSecondsToFirstView !== null && cohort.viewed >= LATENCY_MIN_SAMPLE && (
             <> Median time to first audit visit <span className="tabular-nums">{duration(cohort.medianSecondsToFirstView)}</span> (n={cohort.viewed}).</>
           )}
+          {(() => {
+            const r = medianHoursToFirstReply(c.prospects);
+            return r.hours !== null && r.n >= LATENCY_MIN_SAMPLE ? (
+              <> Median time to first reply <span className="tabular-nums">{duration(Math.round(r.hours * 3600))}</span> (n={r.n}).</>
+            ) : null;
+          })()}
         </p>
       </Section>
 

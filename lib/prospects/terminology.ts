@@ -86,6 +86,27 @@ export function testedSystemPhrase(
   return plural ? `AI models from ${names}` : `an ${names} model`;
 }
 
+/**
+ * Consumer-anchored name for an API-tested provider (spec 124 outreach):
+ * identifies the tested OpenAI model by the consumer product it powers
+ * without claiming the consumer app itself was tested — the line the
+ * tested-system rule above draws. Singular/plural follows how many models
+ * of that provider the run actually queried.
+ */
+export function consumerAnchoredModelPhrase(
+  provider: string,
+  modelCount: number
+): string {
+  const counterpart = CONSUMER_COUNTERPART[provider];
+  const brand = providerDisplayName(provider);
+  if (!counterpart || counterpart === brand) {
+    return modelCount > 1 ? `${brand} models` : `a ${brand} model`;
+  }
+  return modelCount > 1
+    ? `the ${brand} models behind ${counterpart}`
+    : `the ${brand} model behind ${counterpart}`;
+}
+
 /** "Try one yourself in ChatGPT" — the verification invitation, named from
  * the tested providers' consumer counterparts. */
 export function verifySuggestionApps(providers: string[]): string {

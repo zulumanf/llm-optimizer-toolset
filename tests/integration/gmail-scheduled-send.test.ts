@@ -713,13 +713,16 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     // supersedes the old one and clears its schedule.
     await scheduleAndBackdate(draftId);
     const [draft] = await sql`
-      select prospect_id, contact_id, body from outreach_drafts where id = ${draftId}
+      select prospect_id, contact_id, subject, body from outreach_drafts where id = ${draftId}
     `;
     const newVersion = unwrap(
       await svc.createOutreachDraft(operator, {
         prospectId: draft?.prospectId as string,
         channel: "email",
         contactId: draft?.contactId as string,
+        // An operator-supplied body leaves subject empty unless passed —
+        // and the spec-116 QA gate refuses approval without one.
+        subject: draft?.subject as string,
         body: `${draft?.body as string}\n\nP.S. updated`,
       })
     );

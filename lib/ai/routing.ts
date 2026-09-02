@@ -76,7 +76,12 @@ export const TASK_ROUTES = {
   // ------------------------------------------------ workspace assistant
   workspace_assistant: {
     tier: "frontier",
-    rationale: "Open-ended tool-using dialogue over live operator questions; capped at 7 calls per turn.",
+    rationale: "Open-ended tool-using dialogue over live operator questions; capped at 10 calls per turn.",
+  },
+  assistant_task: {
+    tier: "frontier",
+    rationale:
+      "Delegated multi-step execution (spec 115): same open-ended tool use as the chat loop, unattended — hard step and cost budgets per task.",
   },
   // ---------------------------------- automation registry (one per prompt)
   classify_lead: {

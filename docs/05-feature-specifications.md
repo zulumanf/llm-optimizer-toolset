@@ -245,3 +245,17 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Purpose:** previous chats stop being orphans (`specs/112-assistant-conversation-list.md`): a History control in the dock header lists the operator's own conversations (newest activity first, title + message count + date) and reopens any of them with its messages and pending actions; "New chat" is unchanged, the old thread just stays reachable.
 
 **Edge cases:** own conversations only (ownership as `loadConversation` enforces); switching is blocked while a turn is in flight; loading and empty states present.
+
+## Assistant Analytics Reads
+
+**Purpose:** "analyze X" answers from the sanctioned metric module (`specs/113-assistant-analytics-reads.md`): `outreach_scorecard` (rates/funnel/diagnostic/insights), `outreach_breakdown` (bySegment with n + sample labels), `acquisition_funnel`, `outreach_sends` (compact per-send outcome rows, newest first). Assembly is the dashboard's own `prospectFacts → deriveIntent` glue; null rates pass through as null, never zero.
+
+## Assistant Operator Preferences
+
+**Purpose:** the assistant remembers how you work (`specs/114-assistant-operator-preferences.md`): a per-operator standing-preferences block (≤2000 chars, migration 092) rendered into every turn's prompt with "platform rules and confirmation gates always win"; set/cleared through confirm-gated `set_my_preferences`, read via `get_my_preferences`. Prompt v4 also tells the model to consult `search_learnings` before advising on approach. Preferences are prompt context only — nothing else reads them, so they can never override tiers or gates by construction.
+
+## Assistant Tasks
+
+**Purpose:** delegated multi-step jobs (`specs/115-assistant-tasks.md`): a confirm-gated `create_task` authorizes autonomous read/direct execution toward a goal within hard step and cost budgets; the worker's tick advances tasks through the chat loop's own extracted dispatch (`dispatchToolCall` — one implementation, gates cannot diverge); confirm-tier tools stage task-linked pending actions and park the task until the operator decides; every state change posts into the task's conversation and the dock header shows "Tasks: N running · M need you". `list_tasks`/`get_task` read; `cancel_task` (confirm) also cancels undecided stagings.
+
+**Edge cases:** budgets fail loudly (never a silent partial success); dismissed stagings are instructions, not errors; recursion refused; transcript persists after every step so a crashed tick resumes at the last durable step; cancelled/failed tasks keep their transcripts.

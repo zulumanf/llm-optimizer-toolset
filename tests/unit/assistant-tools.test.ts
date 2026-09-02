@@ -43,6 +43,12 @@ const MUST_CONFIRM = [
   "record_learning",
   // Spec 111: the close creates a client project and an ACTIVE agreement.
   "promote_prospect_to_client",
+  // Spec 114: standing preferences steer all future turns.
+  "set_my_preferences",
+  // Spec 115: creating a task authorizes autonomous execution + budgets;
+  // cancelling reverses that authorization.
+  "create_task",
+  "cancel_task",
 ];
 
 describe("assistant tool catalog", () => {
@@ -100,8 +106,11 @@ describe("catalog compaction (spec 107)", () => {
     const { compactCatalog } = await import("@/lib/assistant/tools");
     const { MCP_TOOLS } = await import("@/lib/mcp/tools");
     const catalog = compactCatalog();
-    // The whole point of spec 107: raise this consciously or not at all.
-    expect(catalog.length).toBeLessThan(11_000);
+    // The spec-107 ratchet. Raised 11k → 12k with spec 114 (81 tools):
+    // three rounds of first-sentence trims established ~135 chars/line as
+    // the honest floor, so the old limit had become a per-tool tax, not a
+    // compaction guard. Next conscious review when this fires again.
+    expect(catalog.length).toBeLessThan(12_000);
     for (const tool of ASSISTANT_TOOLS) {
       expect(catalog).toContain(`- ${tool.name}`);
     }
@@ -111,6 +120,29 @@ describe("catalog compaction (spec 107)", () => {
     // Confirm markers present; input shapes absent.
     expect(catalog).toContain("- send_draft (confirm):");
     expect(catalog).not.toContain("Input: {");
+  });
+
+  it("every group renders non-empty — a header never dangles over nothing", async () => {
+    const { compactCatalog, GROUP_HEADERS } = await import("@/lib/assistant/tools");
+    const catalog = compactCatalog();
+    for (const header of Object.values(GROUP_HEADERS)) {
+      // The header appears, immediately followed by at least one tool line.
+      expect(catalog, `group "${header}" must render`).toContain(`${header}:\n- `);
+    }
+  });
+
+  it("every confirm-tier tool is marked (confirm) in the compact catalog", async () => {
+    const { compactCatalog } = await import("@/lib/assistant/tools");
+    const catalog = compactCatalog();
+    for (const tool of ASSISTANT_TOOLS.filter((t) => t.tier === "confirm")) {
+      expect(catalog, `${tool.name} must carry the confirm marker`).toContain(
+        `- ${tool.name} (confirm):`
+      );
+    }
+    // And no non-confirm tool wears the marker.
+    for (const tool of ASSISTANT_TOOLS.filter((t) => t.tier !== "confirm")) {
+      expect(catalog).not.toContain(`- ${tool.name} (confirm):`);
+    }
   });
 
   it("describe_tools returns full guidance + shape for known names, unknown rows for misses", async () => {

@@ -31,6 +31,7 @@ export interface AutomationTickReport {
   notifications: Record<string, unknown>;
   scheduledSends: Record<string, unknown>;
   cityPipelines: Record<string, unknown>;
+  assistantTasks: Record<string, unknown>;
 }
 
 /**
@@ -191,6 +192,21 @@ export async function runAutomationTick(
     cityPipelines = { error: "city pipelines failed; dispatch was unaffected" };
   }
 
+  // Delegated assistant tasks (spec 115): resume decided tasks, advance
+  // running ones through the chat loop's own dispatch — read/direct only,
+  // confirm-tier stages and parks. Isolated: a task failure never fails
+  // dispatch.
+  let assistantTasks: Record<string, unknown> = { skipped: true };
+  try {
+    const { advanceAssistantTasks } = await import("@/lib/assistant/tasks");
+    assistantTasks = { ...(await advanceAssistantTasks()) };
+  } catch (err) {
+    log("error", "cron.assistant_tasks_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    assistantTasks = { error: "assistant tasks failed; dispatch was unaffected" };
+  }
+
   // Notification sync (docs/17 B2): derives the operator inbox from platform
   // state. It had no production scheduler at all once launchd retired — the
   // worker tick is what actually runs it now. Idempotent; isolated.
@@ -235,6 +251,7 @@ export async function runAutomationTick(
     notifications,
     scheduledSends,
     cityPipelines,
+    assistantTasks,
   };
 }
 

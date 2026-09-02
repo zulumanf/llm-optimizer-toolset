@@ -43,6 +43,19 @@ export interface SendFact {
   opens: number;
   /** A bounce suppression exists for the recipient. */
   bounced: boolean;
+  /** The sent draft's body contained a link (Arm A, spec 122); false = Arm B
+   * (reply CTA); null when no draft body is on file for the send. */
+  hasLink: boolean | null;
+  /** The sent draft's template version (outreach_drafts.prompt_version) —
+   * template attribution that survives copy changes (spec 124). Null for
+   * operator-written drafts and sends with no draft on file. */
+  templateVersion: string | null;
+}
+
+/** One recorded reply (spec 124) — the classification ledger row. */
+export interface ReplyFact {
+  receivedAt: Date;
+  classification: string;
 }
 
 export interface ProspectBehaviorFacts {
@@ -61,6 +74,9 @@ export interface ProspectBehaviorFacts {
   sentAts: Date[];
   /** Per-send facts for touch/subject/timing analytics (same ledger rows). */
   sends: SendFact[];
+  /** Recorded replies with deterministic classifications (spec 124),
+   * ascending. Empty until an operator records what a reply said. */
+  replies: ReplyFact[];
   prospectType: string | null;
   /** First recorded reply / meeting stage change. */
   repliedAt: Date | null;

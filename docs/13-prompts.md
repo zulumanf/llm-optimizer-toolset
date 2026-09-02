@@ -192,3 +192,14 @@ prompt forces an answer.
 | 2026-08-02 | workspace-assistant-v1 | Initial. |
 | 2026-08-20 | workspace-assistant-v2 | Spec 096: the assistant may act — direct staging tools plus confirm-gated consequential ones; MAX_TOOL_CALLS raised to 10; self-healing validation shapes. |
 | 2026-08-24 | workspace-assistant-v3 | Spec 107: grouped compact catalog (name + first sentence, confirm markers); full guidance and input shapes moved behind the describe_tools meta-tool. |
+| 2026-08-24 | workspace-assistant-v4 | Spec 114: operator standing-preferences block (gates always win); consult search_learnings before advising on approach. |
+
+`assistant-task-v1` — `lib/assistant/prompt.ts` (`assistantTaskPrompt`).
+The delegated-task loop's template (spec 115): same JSON protocol,
+honesty rules, and compact catalog as the chat prompt, framed for
+unattended execution — confirm-tier tools stage-and-park, dismissals are
+instructions, budgets are hard, answer means final report.
+
+| Date | Template | Change |
+|---|---|---|
+| 2026-08-24 | assistant-task-v1 | Initial (spec 115). |

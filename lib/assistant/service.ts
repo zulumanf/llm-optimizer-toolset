@@ -25,6 +25,7 @@ import {
   runAssistantTool,
 } from "@/lib/assistant/tools";
 import { mintPendingAction } from "@/lib/assistant/confirm";
+import { getPreferences } from "@/lib/assistant/preferences";
 import {
   ASSISTANT_PROMPT_VERSION,
   assistantSystemPrompt,
@@ -43,7 +44,7 @@ const TITLE_MAX = 80;
  * Mutating tools never enter the catalog, so the model cannot even see them. */
 const OBSERVER_TOOLS = MCP_TOOLS.filter((t) => t.group === "observer");
 
-const stepSchema = z.union([
+export const stepSchema = z.union([
   z.object({
     action: z.literal("tool"),
     tool: z.string().min(1),
@@ -141,6 +142,88 @@ export async function getConversationMessages(
   }));
 }
 
+export interface DispatchOutcome {
+  ok: boolean;
+  /** Untruncated transcript summary; callers slice for storage. */
+  summary: string;
+  pendingAction: AssistantPendingAction | null;
+}
+
+/** The ONE tool-dispatch implementation (spec 115 extraction): observer
+ * tools, then the belt — whose confirm tier NEVER executes from here; it
+ * mints a pending action (task-linked when a task staged it). Used by
+ * both the chat loop and the task engine, so the gates cannot diverge. */
+export async function dispatchToolCall(
+  user: CurrentUser,
+  conversationId: string,
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  opts: { caller?: AgentCaller; taskId?: string; forbidden?: readonly string[] } = {}
+): Promise<DispatchOutcome> {
+  if (opts.forbidden?.includes(toolName)) {
+    return {
+      ok: false,
+      summary: `ERROR (validation): "${toolName}" cannot be used from inside a task.`,
+      pendingAction: null,
+    };
+  }
+  const isObserver = OBSERVER_TOOLS.some((t) => t.name === toolName);
+  const assistantTool = getAssistantTool(toolName);
+  let pendingAction: AssistantPendingAction | null = null;
+  let result: { ok: true; data: unknown } | { ok: false; error: { kind: string; message: string } };
+  if (isObserver) {
+    result = await invokeTool(user, toolName, toolInput);
+  } else if (assistantTool && CONFIRM_REQUIRED.has(toolName)) {
+    try {
+      const pending = await mintPendingAction(
+        user,
+        conversationId,
+        toolName,
+        toolInput,
+        opts.taskId
+      );
+      pendingAction = {
+        id: pending.id,
+        tool: pending.tool,
+        summary: pending.summary,
+        token: pending.token,
+      };
+      result = {
+        ok: true,
+        data: {
+          requires_confirmation: true,
+          summary: pending.summary,
+          note: "A Confirm button is now shown to the operator. Nothing has executed. Tell them what it will do and wait — do not retry this tool.",
+        },
+      };
+    } catch (err) {
+      result = {
+        ok: false,
+        error: {
+          kind: "validation",
+          message: err instanceof Error ? err.message : "could not stage the action",
+        },
+      };
+    }
+  } else if (assistantTool) {
+    try {
+      result = { ok: true, data: await runAssistantTool(user, toolName, toolInput, opts.caller) };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "tool failed";
+      result = { ok: false, error: { kind: "validation", message } };
+    }
+  } else {
+    result = {
+      ok: false,
+      error: { kind: "validation", message: `Unknown tool "${toolName}".` },
+    };
+  }
+  const summary = result.ok
+    ? toolResultForTranscript(result.data)
+    : `ERROR (${result.error.kind}): ${result.error.message}`;
+  return { ok: result.ok, summary, pendingAction };
+}
+
 /** Progress events for the streaming transport (spec 110). Emission is
  * observation only — a callback failure is logged and never fails the turn. */
 export type AssistantStreamEvent =
@@ -235,104 +318,75 @@ export async function askAssistant(
       today: new Date().toISOString().slice(0, 10),
       pathname: input.pathname,
       toolCatalog: compactCatalog(),
+      preferences: await getPreferences(user),
     });
 
     const toolCalls: AssistantToolCall[] = [];
     const pendingActions: AssistantPendingAction[] = [];
     let cost = 0;
     let reply: string | null = null;
+    /** A mid-turn agent failure (runAgent throwing after tool calls have
+     * executed and spent money). The turn is still the record: persist
+     * what happened, THEN surface the failure — never lose the thread. */
+    let agentFailure: unknown = null;
 
-    for (let step = 0; step <= MAX_TOOL_CALLS; step += 1) {
-      const mustAnswer = step === MAX_TOOL_CALLS;
-      const run = await runAgent({
-        agentVersion: ASSISTANT_PROMPT_VERSION,
-        model: modelForTask("workspace_assistant"),
-        system,
-        user:
-          transcript.join("\n\n") +
-          (mustAnswer
-            ? '\n\n(You have used every allowed lookup — respond with {"action":"answer",...} now.)'
-            : ""),
-        schema: stepSchema,
-        caller,
-      });
-      cost += run.costMicroUsd;
+    try {
+      for (let step = 0; step <= MAX_TOOL_CALLS; step += 1) {
+        const mustAnswer = step === MAX_TOOL_CALLS;
+        const run = await runAgent({
+          agentVersion: ASSISTANT_PROMPT_VERSION,
+          model: modelForTask("workspace_assistant"),
+          system,
+          user:
+            transcript.join("\n\n") +
+            (mustAnswer
+              ? '\n\n(You have used every allowed lookup — respond with {"action":"answer",...} now.)'
+              : ""),
+          schema: stepSchema,
+          caller,
+        });
+        cost += run.costMicroUsd;
 
-      const output = run.output;
-      if (output.action === "answer") {
-        reply = output.answer;
-        break;
-      }
-      if (mustAnswer) {
-        // The model asked for yet another tool after the hard stop.
-        reply =
-          "I hit the lookup limit for one question before reaching an answer — try asking something narrower.";
-        break;
-      }
-      const toolName = output.tool;
-      const toolInput = output.input;
-      // Three sources, in precedence order (spec 096): MCP observer tools,
-      // then the assistant belt — whose confirm tier NEVER executes from
-      // here: it mints a pending action for the operator's Confirm button.
-      emitEvent(onEvent, { type: "tool_start", tool: toolName });
-      const isObserver = OBSERVER_TOOLS.some((t) => t.name === toolName);
-      const assistantTool = getAssistantTool(toolName);
-      let result: { ok: true; data: unknown } | { ok: false; error: { kind: string; message: string } };
-      if (isObserver) {
-        result = await invokeTool(user, toolName, toolInput);
-      } else if (assistantTool && CONFIRM_REQUIRED.has(toolName)) {
-        try {
-          const pending = await mintPendingAction(user, conversationId, toolName, toolInput);
-          pendingActions.push({ id: pending.id, tool: pending.tool, summary: pending.summary, token: pending.token });
-          result = {
-            ok: true,
-            data: {
-              requires_confirmation: true,
-              summary: pending.summary,
-              note: "A Confirm button is now shown to the operator. Nothing has executed. Tell them what it will do and wait — do not retry this tool.",
-            },
-          };
-        } catch (err) {
-          result = {
-            ok: false,
-            error: {
-              kind: "validation",
-              message: err instanceof Error ? err.message : "could not stage the action",
-            },
-          };
+        const output = run.output;
+        if (output.action === "answer") {
+          reply = output.answer;
+          break;
         }
-      } else if (assistantTool) {
-        try {
-          result = { ok: true, data: await runAssistantTool(user, toolName, toolInput, caller) };
-        } catch (err) {
-          const message = err instanceof Error ? err.message : "tool failed";
-          result = { ok: false, error: { kind: "validation", message } };
+        if (mustAnswer) {
+          // The model asked for yet another tool after the hard stop.
+          reply =
+            "I hit the lookup limit for one question before reaching an answer — try asking something narrower.";
+          break;
         }
-      } else {
-        result = {
-          ok: false,
-          error: {
-            kind: "validation",
-            message: `Unknown tool "${toolName}".`,
-          },
-        };
+        const toolName = output.tool;
+        const toolInput = output.input;
+        // Three sources, in precedence order (spec 096): MCP observer tools,
+        // then the assistant belt — whose confirm tier NEVER executes from
+        // here: it mints a pending action for the operator's Confirm button.
+        emitEvent(onEvent, { type: "tool_start", tool: toolName });
+        const outcome = await dispatchToolCall(user, conversationId, toolName, toolInput, {
+          caller,
+        });
+        if (outcome.pendingAction) pendingActions.push(outcome.pendingAction);
+        toolCalls.push({
+          tool: toolName,
+          input: toolInput,
+          ok: outcome.ok,
+          summary: outcome.summary.slice(0, 400),
+        });
+        emitEvent(onEvent, {
+          type: "tool_end",
+          tool: toolName,
+          ok: outcome.ok,
+          summary: outcome.summary.slice(0, 400),
+        });
+        transcript.push(`TOOL ${toolName}(${JSON.stringify(toolInput)}) → ${outcome.summary}`);
       }
-      const summary = result.ok
-        ? toolResultForTranscript(result.data)
-        : `ERROR (${result.error.kind}): ${result.error.message}`;
-      toolCalls.push({
-        tool: toolName,
-        input: toolInput,
-        ok: result.ok,
-        summary: summary.slice(0, 400),
-      });
-      emitEvent(onEvent, {
-        type: "tool_end",
-        tool: toolName,
-        ok: result.ok,
-        summary: summary.slice(0, 400),
-      });
-      transcript.push(`TOOL ${toolName}(${JSON.stringify(toolInput)}) → ${summary}`);
+    } catch (err) {
+      agentFailure = err;
+      reply = `The assistant failed mid-turn (${
+        err instanceof Error ? err.message : "unknown error"
+      }). The tool calls above are preserved in this thread — ask again to continue.`;
     }
 
     const finalReply = reply ?? "I could not produce an answer.";
@@ -357,6 +411,9 @@ export async function askAssistant(
       toolCalls: toolCalls.length,
       costMicroUsd: Math.round(cost),
     });
+    // The turn is recorded; NOW the failure surfaces. No "done" event — the
+    // streaming route emits its single error event from this refusal.
+    if (agentFailure !== null) return fail(agentFailure);
     const replyPayload: AssistantReply = {
       conversationId,
       reply: finalReply,

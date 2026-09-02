@@ -2680,6 +2680,182 @@ the server action only when the stream fails before ANY event arrived:
 after the first event the turn may already have completed server-side,
 and an automatic retry could execute it twice.
 
+## 2026-08-24 — Operator preferences + catalog ratchet raise (specs 113-114)
+
+Preferences are rendered prompt context, never configuration: the ONLY
+reader is the prompt renderer, so standing instructions cannot override
+tiers, gates, budgets, or validation by construction — and the block
+itself says gates always win. Learning "injection" is deliberately a
+prompt rule pointing at the existing search_learnings tool, not an
+automatic retrieval layer (deterministic, zero new moving parts).
+The spec-107 catalog ratchet was raised 11k → 12k at 81 tools: three
+rounds of first-sentence trims established ~135 chars/line as the honest
+floor, so the old limit had stopped guarding compaction and started
+taxing every new tool. Also: analytics tools reuse the metric module
+verbatim, and `send_outcomes` was named `outreach_sends` because the
+`send_` prefix is reserved by the confirm-tier catalog invariant.
+
+## 2026-08-24 — Delegated tasks lift the spec-096 deferral (spec 115)
+
+Spec 096's "no multi-step autonomous plans" is lifted with the trust
+model extended, not weakened: the create_task confirm click authorizes
+READ/DIRECT tools only, within hard step + LLM-cost budgets stated on
+the card; confirm-tier tools inside a task mint task-linked pending
+actions and PARK the task — the operator's decisions (or dismissals)
+enter the transcript verbatim before it resumes. The chat loop's
+dispatch was extracted (dispatchToolCall) so both paths share one gate
+implementation by construction. Task-state notifications deliberately
+skip the notifications feed (it is project-keyed; tasks are
+operator-keyed) — the surfaces are the task's own conversation and the
+dock header line. Budget exhaustion is status 'failed' with the budget
+named, never a trimmed "success".
+
+## 2026-08-24 — Absence finding title made count-exact without a generator version bump
+The sense-check agent flagged "absent from most monitored AI responses" as
+imprecise: it understates 0-of-N (absence from ALL) and overstates a nonzero
+mention count. The title now renders the exact count ("absent from all 354…"
+/ "appears in only 15 of 354…"). FINDING_GENERATOR_VERSION was deliberately
+NOT bumped: metrics, thresholds, and methodology are unchanged (title is
+presentation over the same counted numbers), and a bump 12 hours before the
+2026-08-25 send batch would have marked every shipped v2 primary stale and
+triggered cross-batch regeneration churn. Wilmington findings were
+regenerated under the same version before first publish.
+
+## 2026-08-25 — Wilmington audits ship on the 354-sample scoring basis (resume-after-scoring gap)
+Run 66af5cdb was scored while partial (354 captures), then completed to 512.
+The scores table is immutable (052) and deduped per (run, company, metric,
+provider, scoring_version), so the completed run can never be re-scored at
+the same version — findings remain on the 354 basis while the transcript
+appendix shows all 512 captures. Before shipping, every finding claim was
+verified directly against current mentions across the FULL 512: all twelve
+"absent from all 354" prospects have zero mentions in all 512; nonzero
+prospects only gained mentions (finding undersells, never overclaims).
+Platform gap to fix properly: score only after run completion (or step the
+scoring version on material sample change). Also: the 03:02 UTC compute_scores
+job executed on the OUTDATED deployed worker and wrote a 42-company-scoped
+pass — worker redeploy required before relying on job-queue scoring again.
+
+## 2026-08-25 — Momentum scoreboard is all-cohort; quota is a policy constant (spec 119)
+
+The Momentum section's volume metrics (sends today, streak, daily chart,
+throughput) deliberately ignore the cohort filter: effort is a global input
+the operator controls, and slicing it per cohort would let a quiet cohort
+hide a quiet week. Touch depth and replies-by-touch stay cohort-scoped like
+every other Operate section, and each half is labeled. DAILY_SEND_QUOTA (15)
+is a named policy constant next to GMAIL_DAILY_SEND_CAP, not config —
+changing the commitment is a diff. Reply/bounce ingestion stay out of scope
+(spec 118); the replies line reads recorded stage changes only.
+
+## 2026-08-26 — Executive brief is deterministic synthesis, not an LLM call (spec 121)
+
+The cockpit's "Executive brief" is a pure function (lib/prospects/brief.ts,
+prospecting-brief-v1) over numbers the page already derives — headline
+priority, a hard cap of three ranked actions, observations with verbatim
+evidence counts. No LLM: the brief must be instant, free, reproducible, and
+incapable of fabricating a number, and its sample-size judgment is delegated
+to the cohort's existing diagnosis so it can never disagree with the funnel
+section rendered below it. Actions carry semantic targets (filter patches),
+not URLs, so the module stays URL-agnostic and unit-testable; the page maps
+targets through dashboardHref. Mobile: the PageHeader/Section actions slot
+now wraps (min-w-0 flex-wrap, was shrink-0 no-wrap) — the /prospects header
+stacks seven controls in that slot and overflowed at 390px; fixing the
+primitive fixed every page, and /prospects/dashboard (both views) joined the
+390px no-horizontal-scroll e2e fence.
+
+## 2026-08-26 — Arm A/B is derived from the sent body, not stored (spec 122)
+
+The Analyze tab's "Arm A vs Arm B" readout classifies every send at read
+time: a link in the sent draft's body (OUTREACH_LINK_PATTERN) is Arm A,
+link-free is Arm B, no draft body is "Unclassified", never guessed. No arm
+column: the 55 historical sends classify themselves retroactively, the
+2026-08-26 all-B conversion needs no backfill, and a future style change
+can't strand stale labels — same derive-on-read discipline as every other
+cockpit number. Context: the operator retired the planned concurrent A/B
+split (all upcoming sends converted to Arm B), so the readout compares
+against the historical all-A baseline; send-level attribution (groupSends)
+handles mixed-arm prospects.
+
+## 2026-08-30 — Audit pages exempt from the workspace type scale
+
+The layout-consistency type-scale gate (`text-xs/sm/lg/2xl` only) now skips
+`app/audit/**`. The audit page is a prospect-facing document governed by
+`.claude/skills/audit-page-design`, which takes the design lead on those
+routes; spec 123 round 2 requires a genuinely large hero numeral
+(`text-6xl`) as the page's focal finding. The workspace rule is unchanged
+everywhere else, and audit pages otherwise keep the documented scale.
+
+## 2026-08-30 — Template identity is stored on drafts; mismatch claims are frozen
+
+Spec 124. Unlike the Arm A/B readout (derived at read time, 2026-08-26),
+the competitive-mismatch template stores identity and evidence at write
+time: `prompt_version` carries the versioned template id, and a new
+`evidence_snapshot` jsonb on `outreach_drafts` freezes exactly what the
+body asserts (production evidence ids, the OpenAI-only counts and
+denominator, thresholds), locked at approval by the same trigger that
+freezes the body. The difference in kind: an arm is a style label a regex
+can re-derive forever, while this email makes falsifiable factual claims —
+the sent claim must stay auditable even after re-parses, new revisions, or
+fresher benchmarks change what a live recompute would say. Draft QA
+re-proves every frozen claim against live data at approval AND dispatch and
+fails the draft on any drift — never a warning.
+
+Related choices, same date:
+- **Competitor production reuses peer prospects.** No new production table:
+  a mismatch candidate is another prospect of the same market launch with a
+  structured RealTrends record in `prospect_authority_signals` metadata —
+  the entity level, market scoping, and provenance rules come for free, and
+  a competitor worth naming in an email is worth tracking as a prospect
+  anyway. `ingestRealTrendsRecord` (dormant since spec 074) gained its
+  first caller (`scripts/ingest-realtrends.ts`).
+- **"ChatGPT" is never claimed as the tested system.** The requested copy
+  said "I ran … through ChatGPT"; the terminology rule (spec 090) forbids
+  describing an API benchmark as testing the consumer app. The template
+  renders `consumerAnchoredModelPhrase` — "the OpenAI model(s) behind
+  ChatGPT" — keeping the recipient-legible brand without the false claim,
+  and the denominator counts OpenAI answers only (echo-excluded,
+  non-holdout, current revisions) via one canonical service.
+- **Reply classification is deterministic and insert-only.** No Gmail
+  polling yet: the operator records the reply text, a versioned pattern
+  classifier assigns the category (override allowed, both stored), and
+  corrections are new rows. The positive-reply rate renders null until any
+  classified reply exists — sparse early data never reads as a zero rate.
+
+## 2026-08-30 — Licensed RealTrends dataset: own table, market-wide competitor pool
+
+Spec 124 data pass. The purchased workbook lands in `realtrends_records`
+(not `prospect_authority_signals`): rows are facts about ~75k entities,
+almost none of which are prospects, and the same-fact/company-keyed
+resolution (`company_id` + match_status) is what lets a comparison team
+exist without an outreach row. The mismatch candidate pool widened from
+"peer prospects of the launch" to "any canonical company in the launch's
+city+state with verified dataset production" — outreach cadence decides
+who we CONTACT, never who may serve as a COMPARISON. Guards kept: matching
+is deterministic (unique exact name in a geo-scoped candidate set;
+brokerage/entity-level conflicts demote to review; nothing auto-links on a
+probable match), markets carry an explicit `state_code` so same-named
+cities in different states can never cross-match (the Wilmington DE/NC
+lesson), and licensed rows stay internal — evidence panels show
+"RealTrends verified dataset", never workbook contents, and the raw file
+plus derived JSON live only in gitignored `.local-data/`. Dataset evidence
+is canonical over hand-captured signals for the same fact; signals remain
+as history and as the fallback.
+
+## 2026-09-01 — Remote MCP endpoint as an app route; unsalted-sha256 tokens; ledger-window rate limit
+
+Spec 126. `/mcp` (plus `/healthz` and `/.well-known/oauth-protected-resource`)
+is the third documented exception to "route handlers only for webhooks/cron":
+like a webhook, it is a machine protocol endpoint — JSON-RPC over POST with
+bearer auth, no session, no page. It lives inside the existing Next.js app
+(SDK `WebStandardStreamableHTTPServerTransport`, stateless per-request
+server) rather than a second service, because the repo's one-app rule beats
+a new deployable, and Grok's Streamable HTTP needs no long-lived state.
+Personal access tokens are stored as plain sha256 hashes — no pepper, no
+bcrypt: the secret embeds 32 random bytes (~256 bits), so brute force is
+bounded by the entropy, not the hash cost, and lookup stays a unique-index
+equality. The 60-calls/min rate limit counts rows in the insert-only
+`mcp_tool_calls` audit ledger over a trailing 60s window: correct across
+multiple web instances without introducing Redis, at the cost of one
+indexed count per tools/call — fine at connector volumes.
 ## 2026-08-25 — Brokerage send cap scoped per market (spec 120)
 
 The spec-052 cap (3/brokerage/30d) matched brokerage names globally; by

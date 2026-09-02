@@ -17,10 +17,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  byArm,
   byCohort,
   bySegment,
   byStrategy,
   bySubject,
+  byTemplate,
   byTiming,
   byTouch,
   funnelConversion,
@@ -41,7 +43,7 @@ import type { ProspectIntent } from "@/lib/prospects/intent";
 export const OPEN_SIGNAL_CAVEAT =
   "Directional only. Mail privacy, image proxies, and security systems can inflate opens.";
 export const POSITIVE_REPLY_CAVEAT =
-  "Reply classification is not recorded yet — replies are counted, sentiment is not.";
+  "Counted from recorded reply classifications. Blank until a classified reply exists in the group — replies recorded only as stage moves carry no sentiment.";
 
 const pct = (r: Rate | null | undefined): string =>
   !r || r.rate === null ? "—" : `${Math.round(r.rate * 1000) / 10}%`;
@@ -202,6 +204,8 @@ export function AnalyzeView({
   const diag = funnelDiagnostic(m);
   const cohorts = byCohort(allProspects);
   const touches = byTouch(prospects);
+  const arms = byArm(prospects);
+  const templates = byTemplate(prospects);
   const strategies = byStrategy(prospects);
   const subjects = bySubject(prospects);
   const dim = (SEGMENT_DIMENSIONS.find((d) => d.key === segmentKey)?.key ?? "quality") as SegmentDimension;
@@ -271,6 +275,20 @@ export function AnalyzeView({
 
       <Section title="Message strategy" description={<>By the strategy the data records today (initial vs follow-up). <Help text="A finer follow-up strategy (no-view reframe, competitor gap, authority mismatch…) is not recorded on drafts yet, so it is not reported." /></>}>
         {strategies.length === 0 ? <p className="text-sm text-muted-foreground">No sends yet.</p> : <SendGroupTable rows={strategies} firstHeader="Strategy" />}
+      </Section>
+
+      <Section
+        title="Arm A vs Arm B"
+        description={<>Link CTA vs reply CTA, classified from each sent body. <Help text="A link in the sent body is Arm A; no link is Arm B (reply CTA). Arm B recipients only get the link on request, so audit views under B lag by design — compare arms on replies first and open signal directionally." /></>}
+      >
+        {arms.length === 0 ? <p className="text-sm text-muted-foreground">No sends yet.</p> : <SendGroupTable rows={arms} firstHeader="Arm" showOpen />}
+      </Section>
+
+      <Section
+        title="Template performance"
+        description={<>By the versioned template stored on each sent draft. <Help text="Attribution survives copy changes — a copy change bumps the template version. Operator-written drafts carry no template and report separately. Positive replies come from recorded reply classifications." /></>}
+      >
+        {templates.length === 0 ? <p className="text-sm text-muted-foreground">No sends yet.</p> : <SendGroupTable rows={templates} firstHeader="Template" />}
       </Section>
 
       <Section title="Subject performance" description="Where open signal is most useful — still directional.">

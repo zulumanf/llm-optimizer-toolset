@@ -12,9 +12,13 @@
  *   engaged      meaningfully engaged / audit viewers
  *   repeat       ≥2 qualifying sessions / audit viewers ("multiple sessions")
  *   reply        recorded reply stage / delivered
- *   positive     NOT RECORDED yet (no reply classification exists) → null
+ *   positive     prospects with ≥1 reply classified positive_interest /
+ *                delivered (spec 124) — null until any classified reply
+ *                exists in the population, so sparse early data never
+ *                renders as a zero rate
  *   meeting      recorded meeting stage / delivered
  */
+import { OUTREACH_TEMPLATE_LABELS } from "@/lib/prospects/constants";
 import { OPERATOR_TIMEZONE, type ProspectIntent, type SendFact } from "@/lib/prospects/intent";
 
 export interface Rate {
@@ -45,6 +49,7 @@ export interface ProspectOutcome {
   engaged: boolean;
   repeat: boolean;
   replied: boolean;
+  positive: boolean;
   meeting: boolean;
   proposal: boolean;
   client: boolean;
@@ -64,6 +69,8 @@ export function outcome(p: ProspectIntent): ProspectOutcome {
     engaged: viewed && p.engagement.meaningfullyEngaged,
     repeat: viewed && p.engagement.repeat,
     replied: delivered && p.sales.replied,
+    positive:
+      delivered && p.replies.some((r) => r.classification === "positive_interest"),
     meeting: delivered && p.sales.meeting,
     proposal: delivered && p.sales.proposal,
     client: delivered && p.sales.won,
@@ -102,7 +109,11 @@ export function outreachMetrics(items: ProspectIntent[]): OutreachMetrics {
     engagedView: rate(engaged, viewed),
     repeatSession: rate(c("repeat"), viewed),
     reply: rate(replied, delivered),
-    positiveReply: NOT_RECORDED,
+    // Recorded, not projected: null until any classified reply exists, so
+    // unclassified historical replies never read as "zero positive".
+    positiveReply: items.some((p) => p.replies.length > 0)
+      ? rate(c("positive"), delivered)
+      : NOT_RECORDED,
     meeting: rate(meeting, delivered),
     proposal: rate(proposal, delivered),
     client: rate(client, delivered),
@@ -223,6 +234,7 @@ export interface SendOutcome {
   opened: boolean;
   viewedAfter: boolean;
   repliedAfter: boolean;
+  positiveAfter: boolean;
   meetingAfter: boolean;
 }
 
@@ -242,6 +254,11 @@ export function sendOutcomes(items: ProspectIntent[]): SendOutcome[] {
         opened: o.delivered && send.opens > 0,
         viewedAfter,
         repliedAfter: o.delivered && inWindow(p.repliedAt),
+        positiveAfter:
+          o.delivered &&
+          p.replies.some(
+            (r) => r.classification === "positive_interest" && inWindow(r.receivedAt)
+          ),
         meetingAfter: o.delivered && inWindow(p.meetingAt),
       });
     });
@@ -281,7 +298,9 @@ function groupSends(sends: SendOutcome[], keyOf: (s: SendOutcome) => { key: stri
       openSignal: rate(g.items.filter((s) => s.opened).length, delivered),
       auditView: rate(g.items.filter((s) => s.viewedAfter).length, delivered),
       reply: rate(g.items.filter((s) => s.repliedAfter).length, delivered),
-      positiveReply: NOT_RECORDED,
+      positiveReply: g.items.some((s) => s.p.replies.length > 0)
+        ? rate(g.items.filter((s) => s.positiveAfter).length, delivered)
+        : NOT_RECORDED,
       meeting: rate(g.items.filter((s) => s.meetingAfter).length, delivered),
       sample: sampleLabel(delivered),
     };
@@ -305,6 +324,35 @@ export const byStrategy = (items: ProspectIntent[]): SendGroupRow[] =>
     const ch = s.send.draftChannel ?? "unknown";
     return { key: ch, label: STRATEGY_LABELS[ch] ?? ch };
   }).sort((a, b) => (b.meeting.rate ?? b.reply.rate ?? 0) - (a.meeting.rate ?? a.reply.rate ?? 0));
+
+/** Arm = message style, derived from the sent body at read time (spec 122):
+ * a link in the body is Arm A, no link is Arm B (reply CTA). A send with no
+ * draft body on file is reported as unclassified, never guessed. */
+export const ARM_LABELS = {
+  A: "Arm A · link CTA",
+  B: "Arm B · reply CTA",
+  unknown: "Unclassified (no draft body on file)",
+} as const;
+export const byArm = (items: ProspectIntent[]): SendGroupRow[] =>
+  groupSends(sendOutcomes(items), (s) =>
+    s.send.hasLink === null
+      ? { key: "unknown", label: ARM_LABELS.unknown }
+      : s.send.hasLink
+        ? { key: "A", label: ARM_LABELS.A }
+        : { key: "B", label: ARM_LABELS.B }
+  ).sort((a, b) => a.key.localeCompare(b.key));
+
+/** Template = the versioned template id stored on the sent draft
+ * (prompt_version, spec 124). Attribution survives copy changes because a
+ * copy change bumps the version. Operator-written drafts have none. */
+export const TEMPLATE_UNTRACKED_LABEL = "Operator-written (no template recorded)";
+export const byTemplate = (items: ProspectIntent[]): SendGroupRow[] =>
+  groupSends(sendOutcomes(items), (s) => {
+    const v = s.send.templateVersion;
+    return v
+      ? { key: v, label: OUTREACH_TEMPLATE_LABELS[v] ?? v }
+      : { key: "untracked", label: TEMPLATE_UNTRACKED_LABEL };
+  }).sort((a, b) => (b.positiveReply.rate ?? b.reply.rate ?? 0) - (a.positiveReply.rate ?? a.reply.rate ?? 0));
 
 export const bySubject = (items: ProspectIntent[]): SendGroupRow[] =>
   groupSends(sendOutcomes(items), (s) => (s.send.subject ? { key: s.send.subject, label: s.send.subject } : null)).sort((a, b) => b.delivered - a.delivered);
