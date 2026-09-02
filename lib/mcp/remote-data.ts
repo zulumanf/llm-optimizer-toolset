@@ -164,10 +164,12 @@ export async function listTeams(options: {
 
 // --------------------------------------------------------------- captures
 
+/** No company key here on purpose: prospects.company_id is nullable and
+ * mutable — measurement is keyed to ResolvedCapture.companyId (the frozen
+ * prospect_benchmarks.company_id) instead. */
 interface ProspectMeta {
   prospectId: string;
   businessName: string;
-  companyId: string | null;
   website: string | null;
   launchId: string;
   marketName: string;
@@ -176,12 +178,17 @@ interface ProspectMeta {
 interface ResolvedCapture {
   prospect: ProspectMeta;
   runId: string;
+  /** The benchmark's frozen company key (prospect_benchmarks.company_id).
+   * All mention counting is keyed to THIS id — prospects.company_id is
+   * nullable and mutable, and re-pointing it after the benchmark was linked
+   * must never change what a capture reports. */
+  companyId: string;
   completedAt: Date | null;
 }
 
 async function prospectMeta(teamId: string): Promise<ProspectMeta | null> {
   const [row] = await sql`
-    select p.id, p.business_name, p.company_id, p.website, p.launch_id,
+    select p.id, p.business_name, p.website, p.launch_id,
       ml.name as market_name
     from prospects p
     join market_launches ml on ml.id = p.launch_id
@@ -191,7 +198,6 @@ async function prospectMeta(teamId: string): Promise<ProspectMeta | null> {
   return {
     prospectId: row.id as string,
     businessName: row.businessName as string,
-    companyId: (row.companyId as string | null) ?? null,
     website: (row.website as string | null) ?? null,
     launchId: row.launchId as string,
     marketName: row.marketName as string,
@@ -208,7 +214,7 @@ async function resolveCapture(
   const prospect = await prospectMeta(teamId);
   if (!prospect) return { error: "not_found", team_id: teamId };
   const rows = await sql`
-    select r.id, r.completed_at
+    select r.id, r.completed_at, pb.company_id
     from prospect_benchmarks pb
     join runs r on r.id = pb.run_id
     where pb.prospect_id = ${teamId}
@@ -223,9 +229,13 @@ async function resolveCapture(
       ? { error: "not_found", team_id: teamId, capture_id: captureId }
       : { error: "no_capture", team_id: teamId };
   }
+  // company_id is NOT NULL on prospect_benchmarks; guard anyway — a panel
+  // keyed to nothing must fail closed, never fall through to zeros.
+  if (!row.companyId) return { error: "not_configured", team_id: teamId };
   return {
     prospect,
     runId: row.id as string,
+    companyId: row.companyId as string,
     completedAt: (row.completedAt as Date) ?? null,
   };
 }
@@ -254,11 +264,12 @@ export interface VisibilitySnapshot {
   as_of: string;
 }
 
+/** Counts for the benchmark's frozen company key — callers must pass
+ * ResolvedCapture.companyId, never prospects.company_id (mutable). */
 async function mentionCounts(
   runId: string,
-  companyId: string | null
+  companyId: string
 ): Promise<{ mentioned: number; recommended: number }> {
-  if (!companyId) return { mentioned: 0, recommended: 0 };
   const [row] = await sql`
     select
       count(distinct m.response_id) filter (where m.mentioned)::int as mentioned,
@@ -357,7 +368,7 @@ export async function getVisibilitySnapshot(
     select count(distinct repetition)::int as reps
     from responses where run_id = ${capture.runId} and error is null
   `;
-  const counts = await mentionCounts(capture.runId, capture.prospect.companyId);
+  const counts = await mentionCounts(capture.runId, capture.companyId);
   const top = await topRecommended(capture.runId, TOP_RECOMMENDED_LIMIT);
   const domains = await domainTallies(capture.runId, TOP_DOMAINS_LIMIT);
   const valid = summary.responseCount;
@@ -445,7 +456,7 @@ export async function searchAnswers(options: {
   const capture = await resolveCapture(options.teamId, options.captureId);
   if (isError(capture)) return capture;
   const limit = Math.min(options.limit ?? ANSWERS_LIMIT_DEFAULT, ANSWERS_LIMIT_MAX);
-  const teamCompanyId = capture.prospect.companyId;
+  const teamCompanyId = capture.companyId;
 
   let competitorId: string | null = null;
   if (options.filter === "competitor_named") {
@@ -543,7 +554,7 @@ export async function getEmailBrief(
   if (!isError(capture)) {
     const summary = await runSummary(capture.runId);
     if (summary && summary.responseCount > 0) {
-      const counts = await mentionCounts(capture.runId, prospect.companyId);
+      const counts = await mentionCounts(capture.runId, capture.companyId);
       const top = await topRecommended(capture.runId, TOP_RECOMMENDED_LIMIT);
       const domains = await domainTallies(capture.runId, TOP_DOMAINS_LIMIT);
       const siteDomain = websiteDomain(prospect.website);
@@ -557,7 +568,7 @@ export async function getEmailBrief(
         mentionedCount: counts.mentioned,
         recommendedCount: counts.recommended,
         competitorsNamed: top
-          .filter((t) => t.company_id !== prospect.companyId)
+          .filter((t) => t.company_id !== capture.companyId)
           .map((t) => t.name),
         topDomain: domains[0]
           ? { domain: domains[0].domain, citations: domains[0].count }

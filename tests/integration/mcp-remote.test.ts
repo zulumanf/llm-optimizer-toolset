@@ -274,6 +274,35 @@ describe.skipIf(!TEST_URL)("remote mcp endpoint (integration)", () => {
     expect(data.error).toBe("not_found");
   });
 
+  it("keys counts to the benchmark company, not the current prospect link", async () => {
+    // prospects.company_id is mutable; the benchmark's frozen key
+    // (prospect_benchmarks.company_id) must decide every count. Re-point
+    // the prospect at Acme — heavily recommended in the mock capture —
+    // and the panel must still report Rivera's (zero) numbers.
+    const [acme] = await sql`select id from companies where name = 'Acme'`;
+    if (!acme) throw new Error("fixture company Acme missing");
+    await sql`update prospects set company_id = ${acme.id} where id = ${fixture.prospectId}`;
+    try {
+      const snap = await callTool("get_visibility_snapshot", { team_id: fixture.prospectId });
+      expect(snap.isError).toBe(false);
+      expect(snap.data.mentioned_count).toBe(0);
+      expect(snap.data.recommended_count).toBe(0);
+      expect(snap.data.gap_label).toBe("absent");
+
+      const brief = await callTool("get_email_brief", { team_id: fixture.prospectId });
+      expect(brief.isError).toBe(false);
+      // A capture exists, so measurement claims stay allowed — but they are
+      // Rivera's counted absence, never Acme's recommendations.
+      expect(brief.data.allowed_to_claim_measurement).toBe(true);
+      expect(brief.data.recommended_count).toBe(0);
+      expect(brief.data.appeared).toBe(false);
+      expect(String(brief.data.allowed_first_line)).not.toMatch(/recommended in \d/);
+    } finally {
+      await sql`update prospects set company_id = ${fixture.prospectCompanyId}
+        where id = ${fixture.prospectId}`;
+    }
+  });
+
   it("email brief without a capture refuses measurement claims", async () => {
     const { isError, data } = await callTool("get_email_brief", {
       team_id: noCaptureProspectId,
