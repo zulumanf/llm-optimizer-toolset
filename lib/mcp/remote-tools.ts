@@ -154,7 +154,16 @@ export const REMOTE_TOOLS: RemoteToolDef[] = [
       "Send-level outreach history (email sends recorded in the evidence ledger), newest first, optionally since an ISO date or scoped to a market. Use to avoid re-pitching a recently contacted team. Not a CRM — read-only evidence rows.",
     schema: z
       .object({
-        since: z.string().datetime().optional(),
+        // Not z.string().datetime(): that rejects date-only strings and
+        // timezone offsets, and agents routinely send "2026-09-01".
+        since: z
+          .string()
+          .min(4)
+          .max(40)
+          .refine((v) => !Number.isNaN(Date.parse(v)), {
+            message: "since must be an ISO date or datetime, e.g. 2026-09-01",
+          })
+          .optional(),
         market_id: uuid.optional(),
         limit: z.number().int().min(1).default(data.SENDS_LIMIT_DEFAULT),
       })
@@ -185,19 +194,26 @@ export async function invokeRemoteTool(
   tool: RemoteToolDef,
   rawInput: unknown
 ): Promise<{ isError: boolean; payload: unknown }> {
-  if (!auth.scopes.includes(MCP_SCOPE_READ)) {
-    return { isError: true, payload: { error: "forbidden", detail: `${MCP_SCOPE_READ} scope required` } };
-  }
-  const parsed = tool.schema.safeParse(rawInput ?? {});
-  if (!parsed.success) {
-    return {
-      isError: true,
-      payload: { error: "invalid_arguments", detail: parsed.error.issues[0]?.message ?? "invalid input" },
-    };
-  }
+  // EVERY auth-passed call lands in the ledger — including forbidden and
+  // invalid_arguments, so rejected calls are audited and count toward the
+  // rate window instead of being free to spam.
   const started = Date.now();
   let errorCode: string | null = null;
+  let auditIds: Record<string, string> = {};
   try {
+    if (!auth.scopes.includes(MCP_SCOPE_READ)) {
+      errorCode = "forbidden";
+      return { isError: true, payload: { error: "forbidden", detail: `${MCP_SCOPE_READ} scope required` } };
+    }
+    const parsed = tool.schema.safeParse(rawInput ?? {});
+    if (!parsed.success) {
+      errorCode = "invalid_arguments";
+      return {
+        isError: true,
+        payload: { error: "invalid_arguments", detail: parsed.error.issues[0]?.message ?? "invalid input" },
+      };
+    }
+    auditIds = argumentIds(parsed.data as Record<string, unknown>);
     const result = await tool.handler(auth, parsed.data as never);
     if (isDataError(result)) {
       errorCode = result.error;
@@ -213,7 +229,7 @@ export async function invokeRemoteTool(
       await recordToolCall({
         tokenId: auth.tokenId,
         toolName: tool.name,
-        argumentIds: argumentIds((parsed.success ? parsed.data : {}) as Record<string, unknown>),
+        argumentIds: auditIds,
         durationMs: Date.now() - started,
         error: errorCode,
       });

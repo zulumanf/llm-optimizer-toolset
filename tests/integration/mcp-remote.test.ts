@@ -77,10 +77,18 @@ describe.skipIf(!TEST_URL)("remote mcp endpoint (integration)", () => {
     const body = (await res.json()) as {
       result?: { isError?: boolean; content: { text: string }[] };
     };
+    // SDK-level rejections (schema validation) carry plain-text errors,
+    // not the JSON payloads our handler emits.
+    let data: Record<string, unknown> = {};
+    try {
+      data = JSON.parse(body.result?.content[0]?.text ?? "{}") as Record<string, unknown>;
+    } catch {
+      data = { raw_text: body.result?.content[0]?.text };
+    }
     return {
       status: res.status,
       isError: Boolean(body.result?.isError),
-      data: JSON.parse(body.result?.content[0]?.text ?? "{}") as Record<string, unknown>,
+      data,
     };
   }
 
@@ -382,6 +390,107 @@ describe.skipIf(!TEST_URL)("remote mcp endpoint (integration)", () => {
     // tools/list is not a tool call and stays available.
     const list = await call({ jsonrpc: "2.0", id: 99, method: "tools/list" }, minted.secret);
     expect(list.status).toBe(200);
+  });
+
+  it("refuses GET and DELETE with 405 instead of opening a stream", async () => {
+    const get = await route.GET();
+    expect(get.status).toBe(405);
+    expect(get.headers.get("Allow")).toBe("POST");
+    // The old delegation trap: GET with an SSE Accept got a 200 stream that
+    // never emitted and never closed. A 405 body must be readable instantly.
+    const body = (await get.json()) as { error: string };
+    expect(body.error).toBe("method_not_allowed");
+    const del = await route.DELETE();
+    expect(del.status).toBe(405);
+  });
+
+  it("meters every tools/call in a JSON-RPC batch against the window", async () => {
+    const minted = await auth.mintToken({
+      userId: operator.id,
+      name: "batch",
+      prefix: "rf_test_",
+      createdBy: operator.id,
+    });
+    const batchOf = (n: number): RpcBody[] =>
+      Array.from({ length: n }, (_v, i) => ({
+        jsonrpc: "2.0" as const,
+        id: 500 + i,
+        method: "tools/call",
+        params: { name: "whoami", arguments: {} },
+      }));
+    const request = (batch: RpcBody[]): Request =>
+      new Request("http://localhost/mcp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+          Authorization: `Bearer ${minted.secret}`,
+        },
+        body: JSON.stringify(batch),
+      });
+    // A small batch executes and writes one ledger row per call.
+    const ok = await route.POST(request(batchOf(2)));
+    expect(ok.status).toBe(200);
+    const [counted] = await sql`
+      select count(*)::int as n from mcp_tool_calls where token_id = ${minted.id}
+    `;
+    expect(counted?.n).toBe(2);
+    // 55 in the window + a batch of 10 would overshoot 60 → the whole
+    // request is refused before any call runs (previously all 10 executed).
+    for (let i = 0; i < 53; i += 1) {
+      await auth.recordToolCall({
+        tokenId: minted.id,
+        toolName: "whoami",
+        argumentIds: {},
+        durationMs: 1,
+        error: null,
+      });
+    }
+    const limited = await route.POST(request(batchOf(10)));
+    expect(limited.status).toBe(429);
+    const [after] = await sql`
+      select count(*)::int as n from mcp_tool_calls where token_id = ${minted.id}
+    `;
+    expect(after?.n).toBe(55);
+  });
+
+  it("audits rejected calls: invalid_arguments and forbidden are ledgered", async () => {
+    const minted = await auth.mintToken({
+      userId: operator.id,
+      name: "rejects",
+      prefix: "rf_test_",
+      createdBy: operator.id,
+    });
+    const bad = await callTool(
+      "get_visibility_snapshot",
+      { team_id: "not-a-uuid" },
+      minted.secret
+    );
+    expect(bad.isError).toBe(true);
+    const wrongScope = await auth.mintToken({
+      userId: operator.id,
+      name: "rejects-scope",
+      prefix: "rf_test_",
+      createdBy: operator.id,
+      scopes: ["mcp:write"],
+    });
+    await callTool("whoami", {}, wrongScope.secret);
+    const [invalidRow] = await sql`
+      select error from mcp_tool_calls where token_id = ${minted.id}
+    `;
+    const [forbiddenRow] = await sql`
+      select error from mcp_tool_calls where token_id = ${wrongScope.id}
+    `;
+    expect(invalidRow?.error).toBe("invalid_arguments");
+    expect(forbiddenRow?.error).toBe("forbidden");
+  });
+
+  it("accepts a date-only since filter", async () => {
+    const { isError, data } = await callTool("list_outreach_sends", {
+      since: "2026-09-01",
+    });
+    expect(isError).toBe(false);
+    expect(Array.isArray(data.sends)).toBe(true);
   });
 
   it("audits tool calls with argument ids only", async () => {

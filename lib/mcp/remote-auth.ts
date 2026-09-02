@@ -124,13 +124,18 @@ export async function authenticateRemoteToken(
   };
 }
 
-/** True when the token is at/over its 60s tool-call budget. */
-export async function rateLimited(tokenId: string): Promise<boolean> {
+/** True when executing `pendingCalls` more tool calls would take the token
+ * over its 60s budget. Callers pass the number of tools/call messages in
+ * the request so JSON-RPC batches are metered call-by-call, not per POST. */
+export async function rateLimited(
+  tokenId: string,
+  pendingCalls = 1
+): Promise<boolean> {
   const [row] = await sql`
     select count(*)::int as calls from mcp_tool_calls
     where token_id = ${tokenId} and created_at > now() - interval '60 seconds'
   `;
-  return Number(row?.calls ?? 0) >= MCP_TOOL_CALLS_PER_MINUTE;
+  return Number(row?.calls ?? 0) + pendingCalls > MCP_TOOL_CALLS_PER_MINUTE;
 }
 
 export async function recordToolCall(entry: {
