@@ -124,6 +124,19 @@ describe("qaDraftContent — competitive mismatch drafts (spec 124)", () => {
     expect(checks(wrong)).toContain("greeting");
   });
 
+  it("accepts the em-dash-free 'Name,' opener on its own line and validates the name", () => {
+    const comma = mismatchBase();
+    comma.body = comma.body.replace("Jane —", "Jane,");
+    expect(checks(comma)).not.toContain("greeting");
+    const wrong = mismatchBase();
+    wrong.body = wrong.body.replace("Jane —", "Robert,");
+    expect(checks(wrong)).toContain("greeting");
+    // A first line that merely ends in a comma is not a greeting.
+    const sentence = mismatchBase();
+    sentence.body = sentence.body.replace("Jane —", "Last week I ran your market,");
+    expect(checks(sentence)).toContain("greeting");
+  });
+
   it("validates the denominator against the draft's own evidence, not the audit sample", () => {
     // Audit sample is 354; the mismatch body correctly cites the OpenAI-only 64.
     expect(checks(mismatchBase())).not.toContain("count_consistency");

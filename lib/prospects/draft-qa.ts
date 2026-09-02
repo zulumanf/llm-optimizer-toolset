@@ -115,12 +115,17 @@ export function qaDraftContent(input: DraftQaInput): DraftQaIssue[] {
     add("contact", "no contact with an email is bound to the draft.");
   }
 
-  // Two accepted greeting forms: "Hi Name," (reply-first) and the direct
-  // "Name —" opener (competitive mismatch, spec 124). Both must greet the
-  // bound contact or the team leader.
+  // Three accepted greeting forms: "Hi Name," (reply-first), the direct
+  // "Name —" opener (competitive mismatch, spec 124), and its em-dash-free
+  // twin "Name," on a line of its own (operator decision 2026-08-31: no
+  // em-dashes in outbound copy; 17 cohort sends parked 2026-09-02 because
+  // only the first two were accepted). All must greet the bound contact or
+  // the team leader.
   const firstLine = body.split("\n", 1)[0] ?? "";
   const greeting =
-    body.match(/^Hi ([^,\n]+),/)?.[1] ?? firstLine.match(/^(\S[^—\n]*?)\s+—$/)?.[1];
+    body.match(/^Hi ([^,\n]+),/)?.[1] ??
+    firstLine.match(/^(\S[^—\n]*?)\s+—$/)?.[1] ??
+    firstLine.match(/^(\S[^,\n]*?),$/)?.[1];
   if (!greeting) {
     add("greeting", "body does not open with a greeting.");
   } else if (greeting.toLowerCase() !== "there") {
