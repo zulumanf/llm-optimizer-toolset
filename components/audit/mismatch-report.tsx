@@ -71,7 +71,7 @@ export function MismatchReport({
                   {q.excerpts.map((e) => (
                     <blockquote key={e.responseId} className="mt-2 border-l pl-3 text-sm">
                       {e.quote}
-                      <footer className="mt-1 text-xs text-muted-foreground">{e.model} · {new Date(e.capturedAt).toLocaleDateString("en-US")}</footer>
+                      <footer className="mt-1 text-xs text-muted-foreground">{b.assistant} · {new Date(e.capturedAt).toLocaleDateString("en-US")}</footer>
                     </blockquote>
                   ))}
                 </details>
@@ -105,7 +105,7 @@ function Tile({ name, production, year, count, total, pain }: { name: string; pr
     <div className="rounded-md border p-5">
       <p className="text-sm font-medium">{name}</p>
       <p className="mt-3 text-2xl tabular-nums">{production}</p>
-      <p className="text-xs text-muted-foreground">closed{year ? ` in ${year}` : ""}</p>
+      {year && <p className="text-xs text-muted-foreground">in {year}</p>}
       <p className={`mt-4 text-4xl tabular-nums ${pain ? "text-destructive" : ""}`}>{count}</p>
       <p className="text-xs text-muted-foreground">recommended, out of {total} answers</p>
     </div>
