@@ -203,3 +203,24 @@ instructions, budgets are hard, answer means final report.
 | Date | Template | Change |
 |---|---|---|
 | 2026-08-24 | assistant-task-v1 | Initial (spec 115). |
+
+`competitive_mismatch_t2_no_engagement_v1` / `competitive_mismatch_t2_engaged_v1` /
+`competitive_mismatch_t3_engaged_v1` / `competitive_mismatch_t3_no_engagement_v1` —
+`lib/prospects/followup-templates.ts` (`renderFollowup`). Spec 127 follow-ups
+over the FROZEN Touch 1 evidence snapshot (competitor, counts, denominator,
+production never re-queried). Deterministic, no LLM. Plain-language rules:
+"test" not benchmark, "question" not prompt, "private report", no links, no
+pricing/calendar, no "just following up". Greeting is the em-dash-free
+`{first},` (operator decision 2026-08-31); subjects use a hyphen.
+
+| Template | Thread | Body (signature + postal/opt-out lines follow) |
+|---|---|---|
+| t2_no_engagement | new · `{first} - one thing I found` | I found something odd when I tested which {market} teams AI recommends to buyers and sellers. / RealTrends has your team at {pd}, ahead of {comp} at {cd}. / But in the same test: / Your team: recommended in {pc} of {n} answers / {comp}: recommended in {cc} of {n} / I put the exact questions and answers into a private report for your team. / Want me to send it? |
+| t2_engaged (≥ 3 distinct questions) | reply in T1 thread | One more thing I noticed after I sent this. / The gap wasn't coming from one unusual question. {comp} showed up across several of the buyer and seller questions I tested. / That's why I thought it was worth flagging. / I already have the exact questions and answers pulled together for your team. / Happy to send them over if you want to see it. |
+| t2_engaged (fallback) | reply in T1 thread | One more thing I wanted to flag. / The side-by-side is what stood out: your team closed more, but {comp} was still recommended more often in the same test. / I already have the exact questions and answers pulled together for your team. / Happy to send them over if you want to see it. |
+| t3_engaged | reply in latest thread | The part I find most interesting is that your sales numbers aren't the issue. You're already ahead of {comp}. / So the question is why AI keeps showing them more often than your team. / That's what I started breaking down in the private report. / Want me to send it? |
+| t3_no_engagement | reply in latest thread | Last note from me on this. / RealTrends has your team at {pd} versus {comp} at {cd}, but they were recommended {cc} times versus {pc} for your team in the same test. / If you want the exact questions and answers, I have the private report ready. / Worth sending over? |
+
+| Date | Template | Change |
+|---|---|---|
+| 2026-09-03 | competitive_mismatch_t2/t3_*_v1 | Initial (spec 127). |

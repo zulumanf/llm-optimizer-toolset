@@ -293,9 +293,40 @@ export const OUTREACH_TEMPLATE_VERSION = "reply-first-email-v1";
 export const MISMATCH_TEMPLATE_VERSION = "competitive_mismatch_reply_v1";
 
 /** Prospect-readable labels per template version for analytics groupings. */
+/** Spec 127: follow-up touches over the frozen Touch 1 evidence. */
+export const FOLLOWUP_TEMPLATE_VERSIONS = {
+  t2NoEngagement: "competitive_mismatch_t2_no_engagement_v1",
+  t2Engaged: "competitive_mismatch_t2_engaged_v1",
+  t3Engaged: "competitive_mismatch_t3_engaged_v1",
+  t3NoEngagement: "competitive_mismatch_t3_no_engagement_v1",
+} as const;
+export type FollowupTemplateVersion =
+  (typeof FOLLOWUP_TEMPLATE_VERSIONS)[keyof typeof FOLLOWUP_TEMPLATE_VERSIONS];
+export const FOLLOWUP_TEMPLATE_VERSION_LIST: readonly string[] = Object.values(FOLLOWUP_TEMPLATE_VERSIONS);
+export const FOLLOWUP_EXPERIMENT_ID = "competitive_mismatch_bootstrap_test_001";
+/** Business days from the previous touch's actual send to the next touch. */
+export const FOLLOWUP_CADENCE_BUSINESS_DAYS = { 2: 3, 3: 4 } as const;
+export const FOLLOWUP_MAX_TOUCHES = 3;
+/** Recipient-local morning window: 09:00 + [3, 88] min → 09:03–10:28. */
+export const FOLLOWUP_SEND_WINDOW = { startHour: 9, minOffsetMinutes: 3, maxOffsetMinutes: 88 } as const;
+/** Branch is rendered no earlier than this before its slot. */
+export const FOLLOWUP_RENDER_LEAD_MINUTES = 30;
+/** Preflight refuses when the Gmail reply sync is older than this. */
+export const FOLLOWUP_REPLY_SYNC_MAX_AGE_MINUTES = 90;
+export const FOLLOWUP_SEVERAL_QUESTIONS_MIN = 3;
+export const FOLLOWUP_OOO_PAUSE_DAYS = 7;
+export const FOLLOWUP_MEANINGFUL_OPEN_GAP_MINUTES = 10;
+/** Mail-provider scanners fetch pixels/links within this window of a send. */
+export const MAIL_SCANNER_WINDOW_SECONDS = 600;
+export const REPLY_SYNC_LOOKBACK_DAYS = 30;
+
 export const OUTREACH_TEMPLATE_LABELS: Record<string, string> = {
   [OUTREACH_TEMPLATE_VERSION]: "Reply-first audit email",
   [MISMATCH_TEMPLATE_VERSION]: "Competitive mismatch",
+  [FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement]: "Mismatch T2 · no engagement",
+  [FOLLOWUP_TEMPLATE_VERSIONS.t2Engaged]: "Mismatch T2 · engaged",
+  [FOLLOWUP_TEMPLATE_VERSIONS.t3Engaged]: "Mismatch T3 · engaged",
+  [FOLLOWUP_TEMPLATE_VERSIONS.t3NoEngagement]: "Mismatch T3 · no engagement",
 };
 
 /**

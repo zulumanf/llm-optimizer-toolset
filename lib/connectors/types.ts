@@ -29,6 +29,7 @@ export const CONNECTOR_CAPABILITIES = [
   "crm.fetch_stage_history",
 
   "email.read_thread",
+  "email.search_messages",
   "email.create_draft",
   "email.send_approved_message",
 

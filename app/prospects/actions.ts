@@ -10,6 +10,7 @@ import * as refresh from "@/lib/prospects/refresh";
 import * as senseCheckSvc from "@/lib/prospects/sense-check";
 import * as enrichmentSvc from "@/lib/prospects/enrichment";
 import * as marketResearch from "@/lib/markets/research";
+import * as followups from "@/lib/prospects/followups";
 const run = makeActionRunner(["/prospects", "layout"]);
 
 export async function createLaunch(input: unknown) {
@@ -110,6 +111,21 @@ export async function recordProspectReply(input: unknown) {
 }
 export async function scheduleDraftSend(input: unknown) {
   return run((u) => svc.scheduleDraftSend(u, input));
+}
+export async function enrollFollowupSequence(input: unknown) {
+  return run((u) => followups.enrollFollowupSequence(u, input));
+}
+export async function pauseFollowupSequence(input: unknown) {
+  return run((u) => followups.pauseFollowupSequence(u, input));
+}
+export async function resumeFollowupSequence(input: unknown) {
+  return run((u) => followups.resumeFollowupSequence(u, input));
+}
+export async function stopFollowupSequence(input: unknown) {
+  return run((u) => followups.stopFollowupSequence(u, input));
+}
+export async function setAllFollowupsPaused(input: unknown) {
+  return run((u) => followups.setAllFollowupsPaused(u, input));
 }
 export async function cancelScheduledSend(input: unknown) {
   return run((u) => svc.cancelScheduledSend(u, input));

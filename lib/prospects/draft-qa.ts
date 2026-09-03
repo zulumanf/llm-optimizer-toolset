@@ -18,6 +18,22 @@ import {
   competitiveMismatchReview,
   type MismatchEvidenceSnapshot,
 } from "@/lib/prospects/mismatch";
+import {
+  lintFollowupCopy,
+  qaFollowupEvidence,
+} from "@/lib/prospects/followup-templates";
+import { isFollowupTemplate } from "@/lib/prospects/followups";
+import type { FollowupTemplateVersion } from "@/lib/prospects/constants";
+
+/** A body that states every Touch 1 fragment, so qaMismatchClaims runs only
+ * its live checks (staleness, eligibility, recency) for a follow-up. */
+function followupRenderProxy(s: MismatchEvidenceSnapshot): string {
+  return [
+    `in ${s.prospect.recommendationCount} of ${s.answerCount} answers`,
+    `in ${s.competitor.recommendationCount} of ${s.answerCount} answers`,
+    s.prospect.productionDisplay, s.competitor.productionDisplay, s.competitor.name,
+  ].join("\n");
+}
 
 export interface DraftQaIssue {
   check: string;
@@ -303,11 +319,21 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
     const u = auditUrl(row.accessToken as string);
     if (u) validUrls.push(u);
   }
+  const followup = isFollowupTemplate(row.promptVersion as string | null);
   const snapshot =
-    row.promptVersion === MISMATCH_TEMPLATE_VERSION && row.evidenceSnapshot
+    (row.promptVersion === MISMATCH_TEMPLATE_VERSION || followup) && row.evidenceSnapshot
       ? (row.evidenceSnapshot as MismatchEvidenceSnapshot)
       : null;
   const mismatchIssues: DraftQaIssue[] = [];
+  if (snapshot && followup) {
+    // Spec 127: follow-ups restate the frozen evidence in their own words —
+    // template fragments + scoped copy linter replace the Touch 1 render
+    // check; the live staleness/eligibility checks are shared.
+    mismatchIssues.push(
+      ...lintFollowupCopy((row.subject as string | null) ?? null, (row.body as string) ?? ""),
+      ...qaFollowupEvidence(row.promptVersion as FollowupTemplateVersion, (row.body as string) ?? "", snapshot)
+    );
+  }
   if (snapshot) {
     const review = await competitiveMismatchReview(row.prospectId as string, {
       contactId: (row.contactId as string | null) ?? null,
@@ -315,8 +341,7 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
     const liveCompetitor = review?.evaluation.candidates.find(
       (c) => c.companyId === snapshot.competitor.companyId
     );
-    mismatchIssues.push(
-      ...qaMismatchClaims((row.body as string) ?? "", snapshot, {
+    const claimIssues = qaMismatchClaims(followup ? followupRenderProxy(snapshot) : (row.body as string) ?? "", snapshot, {
         eligible: review?.evaluation.eligible ?? false,
         eligibleCompetitorCompanyIds:
           review?.evaluation.eligibleCandidates.map((c) => c.companyId) ?? [],
@@ -324,8 +349,8 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
         competitorRecommendationCount: liveCompetitor?.recommendationCount ?? null,
         answerCount: review?.benchmark?.answerCount ?? 0,
         benchmarkAgeDays: review?.evaluation.benchmarkAgeDays ?? null,
-      })
-    );
+      });
+    mismatchIssues.push(...claimIssues);
   }
   return mismatchIssues.concat(qaDraftContent({
     subject: (row.subject as string | null) ?? null,

@@ -43,6 +43,7 @@ import {
   type Momentum,
 } from "@/lib/prospects/momentum";
 import { MomentumSection } from "@/components/prospects/momentum-section";
+import { FollowupSequencesSection } from "@/components/prospects/followup-sequence";
 import { executiveBrief } from "@/lib/prospects/brief";
 import { ExecutiveBriefSection } from "@/components/prospects/executive-brief";
 import { DAILY_SEND_QUOTA } from "@/lib/prospects/constants";
@@ -463,6 +464,7 @@ export default async function ProspectingDashboardPage({
 
       {/* ===================== 0. did we do the work (spec 119) */}
       {mo && <MomentumSection momentum={mo} prospects={c.prospects} cohortName={cohortName} quota={DAILY_SEND_QUOTA} />}
+      <FollowupSequencesSection />
 
       {/* ===================== 1. what requires me */}
       <Section
