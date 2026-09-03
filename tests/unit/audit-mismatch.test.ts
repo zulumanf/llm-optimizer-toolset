@@ -90,11 +90,12 @@ describe("narrative — typed, personalized, honest", () => {
     expect(bare.priorities.length).toBe(1);
     expect(bare.note.question).toBeNull();
   });
-  it("priorities max three; context questions personalized to neighborhoods, property types and the competitor", () => {
+  it("priorities max three; three context questions, competitor first, then the named neighborhoods", () => {
     expect(n.priorities.length).toBeLessThanOrEqual(3);
-    expect(n.contextQuestions.some((c) => c.includes("Mordecai and Hayes Barton"))).toBe(true);
-    expect(n.contextQuestions.some((c) => c.includes("David Worters"))).toBe(true);
-    expect(n.contextQuestions.length).toBeLessThanOrEqual(4);
+    expect(n.contextQuestions.length).toBe(3);
+    expect(n.contextQuestions[0]).toContain("David Worters");
+    expect(n.contextQuestions[1]).toContain("Mordecai and Hayes Barton");
+    expect(n.ctaBridge).toContain("Mordecai and Hayes Barton are actually the parts of Raleigh");
   });
   it("less-concerned checks state the actual status, including when the competitor was concentrated", () => {
     expect(n.lessConcerned[0]!.status).toContain("3 different questions");

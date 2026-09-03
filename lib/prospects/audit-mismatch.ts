@@ -14,6 +14,7 @@ import { CURRENT } from "@/lib/prospects/benchmark";
 import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
 import { deliveredTouch1 } from "@/lib/prospects/followups";
 import { marketShortName, type MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
+import { consumerAnchoredModelPhrase, providerDisplayName } from "@/lib/prospects/terminology";
 
 export const PRIVATE_REPORT_TEMPLATE_VERSION = "private_ai_recommendation_report_v2";
 
@@ -51,7 +52,13 @@ export interface AuditMismatchBlock {
   competitor: { name: string; productionDisplay: string; productionYear: number | null; recommendationCount: number };
   productionSource: string;
   metricLabel: string;
+  /** Truthful provider label ("OpenAI") — never the consumer app name: the
+   * answers are API captures, not consumer ChatGPT sessions. */
   assistant: string;
+  /** Prose form: "the OpenAI model behind ChatGPT". */
+  assistantPhrase: string;
+  /** Whether the model could search the web while answering. */
+  webSearch: boolean;
   /** Valid answers the counts are out of — never rounded. */
   answerCount: number;
   questionCount: number;
@@ -75,9 +82,10 @@ export interface AuditMismatchBlock {
   contextQuestions: string[];
   lessConcerned: { condition: string; status: string }[];
   note: { paragraphs: string[]; question: string | null };
+  /** One line before the final ask: their context is the missing variable. */
+  ctaBridge: string | null;
 }
 
-const ASSISTANT_LABELS: Record<string, string> = { openai: "ChatGPT", anthropic: "Claude", google: "Gemini", perplexity: "Perplexity" };
 const MAX_QUOTE = 240;
 const MAX_EXCERPTS_PER_QUESTION = 2;
 const GAP_MIN_COMPETITOR = 2;
@@ -162,7 +170,7 @@ export interface NarrativeInput {
 
 /** Diagnosis, priorities, context questions, less-concerned checks and the
  * note — all deterministic over the counted evidence, all personalized. */
-export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosis" | "priorities" | "contextQuestions" | "lessConcerned" | "note"> {
+export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosis" | "priorities" | "contextQuestions" | "lessConcerned" | "note" | "ctaBridge"> {
   const p = i.prospect;
   const c = i.competitor;
   const gapLead = i.gaps[0] ?? null;
@@ -214,11 +222,10 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
   ].slice(0, 3);
 
   const contextQuestions = [
-    ...(nbhd.length ? [`Are ${list(nbhd)} still a priority for the team this year?`] : []),
-    ...(i.gaps.some((g) => g.key.startsWith("property:")) ? [`Do ${list(i.gaps.filter((g) => g.key.startsWith("property:")).map((g) => g.label.replace(" questions", "").toLowerCase()))} listings matter to you, or is that not where you want to grow?`] : []),
-    `Is ${c.name} someone you consider a direct competitor, or a team you rarely run into?`,
+    `Is ${c.name} someone you actually consider a direct competitor?`,
+    ...(nbhd.length ? [`Are ${list(nbhd)} areas you actively want more business in?`] : []),
     "Which two or three neighborhoods or property types matter most to you this year?",
-  ].slice(0, 4);
+  ].slice(0, 3);
 
   const lessConcerned = [
     {
@@ -251,7 +258,11 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
       : null,
   };
 
-  return { diagnosis, priorities, contextQuestions, lessConcerned, note };
+  const ctaBridge = nbhd.length
+    ? `The main thing I'd want to understand from you is whether ${list(nbhd)} are actually the parts of ${i.market} you're trying to win. That changes what I'd work on first.`
+    : `The main thing I'd want to understand from you is which parts of ${i.market} you're actually trying to win. That changes what I'd work on first.`;
+
+  return { diagnosis, priorities, contextQuestions, lessConcerned, note, ctaBridge };
 }
 
 /** Every non-holdout question with counts; excerpts where the competitor
@@ -334,7 +345,8 @@ export async function mismatchBlockForProspect(
   const s = t1.evidenceSnapshot;
   const questions = await mismatchQuestions(s);
   const [meta] = await sql`
-    select count(distinct prompt_id)::int as q, count(*)::int as n
+    select count(distinct prompt_id)::int as q, count(*)::int as n,
+      count(*) filter (where request_params::text ilike '%web_search%')::int as ws
     from responses where run_id = ${s.runId} and provider = ${s.provider} and error is null
   `;
   const [marketRow] = await sql`
@@ -366,7 +378,9 @@ export async function mismatchBlockForProspect(
     competitor,
     productionSource: "RealTrends (licensed, verified)",
     metricLabel: s.metricType === "sides" ? "closed sides" : "closed volume",
-    assistant: ASSISTANT_LABELS[s.provider] ?? s.provider,
+    assistant: providerDisplayName(s.provider),
+    assistantPhrase: consumerAnchoredModelPhrase(s.provider, s.modelCount),
+    webSearch: Number(meta?.ws ?? 0) > 0,
     answerCount: s.answerCount,
     questionCount,
     repetitions: questionCount > 0 ? Math.round(s.answerCount / questionCount) : 0,

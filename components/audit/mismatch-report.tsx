@@ -47,7 +47,7 @@ export function MismatchReport({
         </div>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-1 self-end text-xs lg:col-span-5">
           <dt className="text-muted-foreground">Production source</dt><dd className="tabular-nums">RealTrends{b.prospect.productionYear ? ` ${b.prospect.productionYear}` : ""}</dd>
-          <dt className="text-muted-foreground">AI test</dt><dd>{b.assistant}</dd>
+          <dt className="text-muted-foreground">AI test</dt><dd>{b.assistant}{b.webSearch ? ", web search on" : ""}</dd>
           <dt className="text-muted-foreground">Questions tested</dt><dd className="tabular-nums">{b.questionCount}</dd>
           <dt className="text-muted-foreground">Valid answers</dt><dd className="tabular-nums">{b.answerCount}</dd>
           {captured && <><dt className="text-muted-foreground">Captured</dt><dd className="tabular-nums">{captured}</dd></>}
@@ -66,7 +66,15 @@ export function MismatchReport({
         </div>
         <figure className="lg:col-span-7">
           <figcaption className="text-xs uppercase tracking-wide text-muted-foreground">Figure 01 · Production vs AI recommendations</figcaption>
-          <table className="mt-3 w-full text-sm">
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-y py-3 text-sm sm:hidden">
+            <dt className="col-span-2 text-xs uppercase tracking-wide text-muted-foreground">{b.prospect.productionYear ?? ""} {b.metricLabel} · RealTrends</dt>
+            <dd><span className="block text-xs text-muted-foreground">Your team</span><span className="text-2xl tabular-nums">{b.prospect.productionDisplay.replace(/ closed$/, "")}</span></dd>
+            <dd><span className="block text-xs text-muted-foreground">{b.competitor.name}</span><span className="text-2xl tabular-nums">{b.competitor.productionDisplay.replace(/ closed$/, "")}</span></dd>
+            <dt className="col-span-2 mt-2 text-xs uppercase tracking-wide text-muted-foreground">AI recommendations · same {market} test</dt>
+            <dd><span className="block text-xs text-muted-foreground">Your team</span><span className="text-2xl tabular-nums text-destructive">{b.prospect.recommendationCount}</span> <span className="text-xs text-muted-foreground">/ {b.answerCount}</span></dd>
+            <dd><span className="block text-xs text-muted-foreground">{b.competitor.name}</span><span className="text-2xl tabular-nums">{b.competitor.recommendationCount}</span> <span className="text-xs text-muted-foreground">/ {b.answerCount}</span></dd>
+          </dl>
+          <table className="mt-3 hidden w-full text-sm sm:table">
             <thead>
               <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="py-2 font-medium" />
@@ -94,6 +102,7 @@ export function MismatchReport({
             </tbody>
           </table>
           <p className={`${serifClass} mt-4 text-lg`}>Your team sold more. {b.competitor.name} was recommended more.</p>
+          {notFluke && <p className="mt-1 text-sm text-muted-foreground">{b.competitor.name} appeared across <span className="tabular-nums">{b.distinctQuestions.competitor}</span> different questions.</p>}
         </figure>
       </section>
 
@@ -150,7 +159,7 @@ export function MismatchReport({
                   <p className="mt-1 text-sm">“{q.text}”</p>
                   <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">Captured answer</p>
                   <blockquote className="mt-1 text-sm leading-relaxed">{q.excerpts[0]!.quote}</blockquote>
-                  <p className="mt-2 text-xs text-muted-foreground">Captured {fmtDate(q.excerpts[0]!.capturedAt)} · {b.assistant}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">Captured {fmtDate(q.excerpts[0]!.capturedAt)} · Provider: {b.assistant}</p>
                 </div>
                 <dl className="text-xs sm:col-span-4">
                   <dt className="uppercase tracking-wide text-muted-foreground">What we recorded</dt>
@@ -350,7 +359,7 @@ export function MismatchReport({
           <details className="mt-4 text-sm" data-signal-evidence="methodology">
             <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">View full methodology</summary>
             <div className="mt-2 max-w-[65ch] space-y-2 text-sm leading-relaxed text-muted-foreground">
-              <p>We ask the kinds of questions buyers and sellers ask when looking for an agent in {market}: {b.questionCount} questions, each asked {b.repetitions} times, through {b.assistant}{captured ? ` on ${captured}` : ""}. Every answer is saved exactly as it came back.</p>
+              <p>We ask the kinds of questions buyers and sellers ask when looking for an agent in {market}: {b.questionCount} questions, each asked {b.repetitions} times, through {b.assistantPhrase}{b.webSearch ? " with web search on" : ""}{captured ? `, on ${captured}` : ""}. These are direct answers from the {b.assistant} model, not screenshots of the consumer app. Every answer is saved exactly as it came back.</p>
               <p>We record which teams each answer actually recommended. A name that merely appears in passing is not counted. Answers that came back empty or failed are left out, which is why the count is out of {b.answerCount} valid answers rather than the number we asked.</p>
               <p>We compare those counts with the RealTrends record for the same year, the same measure ({b.metricLabel}) and the same market, at team level. The two are kept separate: the sales record never changes the recommendation count, and the other way round.</p>
               <p>When a team selling less than you shows up more often, we investigate why and what may be worth improving. Running the same test again later shows whether anything moved.</p>
@@ -362,6 +371,7 @@ export function MismatchReport({
       {/* ------------------------------------------------ 14 · CTA */}
       <section className="grid gap-8 border-t py-12 lg:grid-cols-12" data-signal-section="cta">
         <div className="lg:col-span-7">
+          {b.ctaBridge && <p className={`${serifClass} mb-6 max-w-[52ch] text-lg leading-relaxed`}>{b.ctaBridge}</p>}
           <h2 className={`${serifClass} text-balance text-2xl`}>Want me to walk you through what I’d look at first?</h2>
           <p className="mt-4 max-w-[52ch] text-sm leading-relaxed">I’ve already done the initial comparison. If you want, I can walk you through:</p>
           <ul className="mt-2 max-w-[52ch] space-y-1 text-sm">
