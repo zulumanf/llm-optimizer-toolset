@@ -21,7 +21,7 @@ import { log } from "@/lib/logger";
 import { executeCapability } from "@/lib/connectors/execute";
 import type { ParsedGmailMessage } from "@/lib/connectors/adapters/google";
 import { checkSuppression } from "@/lib/outreach/suppression";
-import { classifyReplyText, REPLY_CLASSIFIER_VERSION } from "@/lib/prospects/reply-classify";
+import { stripQuotedReply } from "@/lib/prospects/reply-classify";
 import {
   FOLLOWUP_CADENCE_BUSINESS_DAYS,
   FOLLOWUP_EXPERIMENT_ID,
@@ -114,6 +114,12 @@ function toSequence(r: Record<string, unknown>): FollowupSequence {
     lastTouchSendId: (r.lastTouchSendId as string | null) ?? null,
     enrolledBy: r.enrolledBy as string,
   };
+}
+
+/** Load an active user as the actor for unattended bookkeeping. */
+export async function userById(id: string): Promise<CurrentUser | null> {
+  const [u] = await sql`select id, email, name, role from users where id = ${id} and active`;
+  return u ? { id: u.id as string, email: u.email as string, name: u.name as string, role: u.role as CurrentUser["role"] } : null;
 }
 
 export async function getFollowupSequence(id: string): Promise<FollowupSequence | null> {
@@ -825,21 +831,25 @@ async function templateOf(draftId: string): Promise<FollowupTemplateVersion> {
 export async function recordInboundReply(seq: FollowupSequence, m: ParsedGmailMessage): Promise<boolean> {
   const [dup] = await sql`select id from prospect_replies where gmail_message_id = ${m.id}`;
   if (dup) return false;
-  const text = m.body.trim().slice(0, 20000) || m.subject;
+  const text = stripQuotedReply(m.body).slice(0, 20000) || m.subject;
   const [send] = await sql`
     select s.id from prospect_outreach_sends s left join outreach_drafts d on d.id = s.draft_id
     where s.allowed and (s.id = ${seq.touch1SendId} or d.sequence_id = ${seq.id})
       and (${m.date ?? null}::timestamptz is null or s.sent_at <= ${m.date ?? null})
     order by s.sent_at desc limit 1
   `;
-  await sql`
-    insert into prospect_replies
-      (prospect_id, contact_id, send_id, body_text, received_at, classification, classifier_version, recorded_by, gmail_message_id)
-    values (${seq.prospectId}, ${seq.contactId}, ${(send?.id as string | null) ?? null}, ${text},
-      ${m.date ? new Date(m.date) : new Date()}, ${classifyReplyText(text)}, ${REPLY_CLASSIFIER_VERSION}, ${seq.enrolledBy}, ${m.id})
-    on conflict do nothing
-  `;
-  return true;
+  const user = await userById(seq.enrolledBy);
+  if (!user) return false;
+  const { recordProspectReply } = await import("@/lib/prospects/service");
+  const res = await recordProspectReply(user, {
+    prospectId: seq.prospectId,
+    contactId: seq.contactId ?? undefined,
+    sendId: (send?.id as string | undefined) ?? undefined,
+    bodyText: text,
+    receivedAt: m.date ? new Date(m.date) : new Date(),
+    gmailMessageId: m.id,
+  });
+  return res.ok;
 }
 
 export async function recordBounce(seq: FollowupSequence, m: ParsedGmailMessage, excludeDraftId: string | null = null): Promise<void> {
