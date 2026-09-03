@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  stripQuotedReply,
   classifyReplyText,
   CONVERSATION_CLASSIFICATIONS,
 } from "@/lib/prospects/reply-classify";
@@ -62,5 +63,19 @@ describe("classifyReplyText", () => {
     expect(CONVERSATION_CLASSIFICATIONS).not.toContain("unsubscribe");
     expect(CONVERSATION_CLASSIFICATIONS).toContain("positive_interest");
     expect(CONVERSATION_CLASSIFICATIONS).toContain("not_interested");
+  });
+});
+
+describe("stripQuotedReply — our own footer never classifies the reply (spec 127)", () => {
+  it("drops quoted history so 'Yes' over a quoted unsubscribe line is positive", () => {
+    const raw =
+      "Yes\r\n\r\n*Steve Wall*\r\n\r\nOn Thu, Sep 3, 2026 at 9:03 AM Francisco <f@x.com> wrote:\r\n\r\n> Steve,\r\n> If you'd rather not hear from us, reply \"unsubscribe\" and we will not contact you again.\r\n";
+    expect(classifyReplyText(raw)).toBe("unsubscribe");
+    const stripped = stripQuotedReply(raw);
+    expect(stripped).not.toContain("unsubscribe");
+    expect(classifyReplyText(stripped)).not.toBe("unsubscribe");
+  });
+  it("keeps the whole text when nothing is quoted", () => {
+    expect(stripQuotedReply("Please unsubscribe me.")).toBe("Please unsubscribe me.");
   });
 });

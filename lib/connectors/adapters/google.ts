@@ -412,6 +412,9 @@ export const gmailConnector = buildAdapter({
       const response = await ctx.http({
         url: `${GMAIL_BASE}/users/${encodeURIComponent(config.userId)}/threads/${encodeURIComponent(threadId)}?format=full`,
         headers: bearer(ctx),
+        // Message bodies are base64url; without this the redactor replaces
+        // them with "[redacted]" (found live 2026-09-03, spec 127).
+        rawSecrets: true,
       });
       const { data } = expectOk(response, (raw) => {
         const envelope = raw as { messages?: RawGmailMessage[] } | null;
@@ -442,6 +445,7 @@ export const gmailConnector = buildAdapter({
         const res = await ctx.http({
           url: `${GMAIL_BASE}/users/${encodeURIComponent(config.userId)}/messages/${encodeURIComponent(id)}?format=full`,
           headers: bearer(ctx),
+          rawSecrets: true,
         });
         const { data } = expectOk(res, (raw) => ({
           data: parseGmailMessage(raw as RawGmailMessage),

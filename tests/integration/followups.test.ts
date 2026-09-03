@@ -298,7 +298,7 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     thread([outbound, { id: "gm-in-1", threadId: "thread-1", messageId: "<r@kane>", from: `Ryan Kane <${RECIPIENT}>`, to: SENDER, subject: "Re: Ryan - Reno", date: "2026-09-02T18:00:00Z", labelIds: ["INBOX"], body: "What is this about?" }]);
     res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.message).toContain("inbound reply");
+    if (!res.ok) expect(res.error.message).toMatch(/inbound reply|stage is "replied"/);
     const [reply] = await sql`select classification, gmail_message_id from prospect_replies where prospect_id = ${prospectId}`;
     expect(reply!.gmailMessageId).toBe("gm-in-1");
     expect(reply!.classification).toBe("question");
@@ -306,6 +306,7 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     // Gmail read failure also refuses.
     await sql`truncate prospect_replies`;
     await sql`update outreach_followup_sequences set status = 'active', stop_reason = null`;
+    await sql`update prospects set stage = 'contacted' where id = ${prospectId}`;
     executeCapability.mockImplementation(async () => ({ ok: false, errorCode: "http_500", error: "boom" }));
     res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
     expect(res.ok).toBe(false);

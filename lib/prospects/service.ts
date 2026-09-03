@@ -1739,6 +1739,8 @@ export async function recordProspectReply(
       bodyText: z.string().trim().min(1).max(20000),
       receivedAt: z.coerce.date().optional(),
       classification: z.enum(REPLY_CLASSIFICATIONS).optional(),
+      /** Spec 127: set by Gmail ingestion; unique, so a re-sync is a no-op. */
+      gmailMessageId: z.string().min(1).max(200).optional(),
     })
     .safeParse(raw);
   if (!parsed.success) {
@@ -1749,6 +1751,14 @@ export async function recordProspectReply(
     assertCanWrite(user);
     const result = await sql.begin(async (tx) => {
       const prospect = await lockProspect(tx, input.prospectId);
+      if (input.gmailMessageId) {
+        const [dup] = await tx`
+          select id, classification from prospect_replies where gmail_message_id = ${input.gmailMessageId}
+        `;
+        if (dup) {
+          return { replyId: dup.id as string, classification: dup.classification as ReplyClassification, stage: prospect.stage };
+        }
+      }
       let contactEmail: string | null = null;
       if (input.contactId) {
         const [contact] = await tx`
@@ -1774,11 +1784,11 @@ export async function recordProspectReply(
       const [row] = await tx`
         insert into prospect_replies
           (prospect_id, contact_id, send_id, body_text, received_at,
-           classification, classifier_version, recorded_by)
+           classification, classifier_version, recorded_by, gmail_message_id)
         values (${input.prospectId}, ${input.contactId ?? null},
           ${input.sendId ?? null}, ${input.bodyText},
           ${input.receivedAt ?? new Date()}, ${classification},
-          ${REPLY_CLASSIFIER_VERSION}, ${user.id})
+          ${REPLY_CLASSIFIER_VERSION}, ${user.id}, ${input.gmailMessageId ?? null})
         returning id
       `;
       if (classification === "unsubscribe") {

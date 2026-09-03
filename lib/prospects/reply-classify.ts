@@ -95,6 +95,23 @@ const RULES: Rule[] = [
   },
 ];
 
+/** Drop quoted history and signature-less trailers so the classifier sees
+ * only what the human typed: everything from an "On … wrote:" line, any
+ * "> " quoted lines, and anything after a "--" / "From:" boundary. Our own
+ * footer ("reply \"unsubscribe\"") must never classify the reply. */
+export function stripQuotedReply(text: string): string {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const out: string[] = [];
+  for (const line of lines) {
+    const t = line.trim();
+    if (/^on .{3,120} wrote:$/i.test(t) || /^-{2,}\s*(original|forwarded) message/i.test(t) || /^from:\s/i.test(t)) break;
+    if (t.startsWith(">")) continue;
+    out.push(line);
+  }
+  const body = out.join("\n").trim();
+  return body.length > 0 ? body : text.trim();
+}
+
 export function classifyReplyText(text: string): ReplyClassification {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) return "unclear";

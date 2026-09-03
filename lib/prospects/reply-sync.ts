@@ -12,10 +12,10 @@ import * as connectors from "@/db/connectors";
 import { executeCapability } from "@/lib/connectors/execute";
 import type { ParsedGmailMessage } from "@/lib/connectors/adapters/google";
 import { log } from "@/lib/logger";
-import { classifyReplyText, REPLY_CLASSIFIER_VERSION } from "@/lib/prospects/reply-classify";
 import { REPLY_SYNC_LOOKBACK_DAYS } from "@/lib/prospects/constants";
-import { applySequenceSignals, sequenceForProspect } from "@/lib/prospects/followups";
-import { suppress } from "@/lib/outreach/suppression";
+import { stripQuotedReply } from "@/lib/prospects/reply-classify";
+import { applySequenceSignals, sequenceForProspect, userById } from "@/lib/prospects/followups";
+import { recordProspectReply } from "@/lib/prospects/service";
 
 export interface ReplySyncReport {
   recipients: number;
@@ -121,28 +121,26 @@ async function recordReply(r: Recipient, m: ParsedGmailMessage): Promise<boolean
   if (receivedAt.getTime() < r.lastSentAt.getTime() - 86_400_000 * REPLY_SYNC_LOOKBACK_DAYS) return false;
   const [dup] = await sql`select id from prospect_replies where gmail_message_id = ${m.id}`;
   if (dup) return false;
-  const text = m.body.trim().slice(0, 20000) || m.subject;
-  const classification = classifyReplyText(text);
+  const text = stripQuotedReply(m.body).slice(0, 20000) || m.subject;
   const [send] = await sql`
     select id from prospect_outreach_sends where prospect_id = ${r.prospectId} and allowed and sent_at <= ${receivedAt}
     order by sent_at desc limit 1
   `;
-  await sql.begin(async (tx) => {
-    await tx`
-      insert into prospect_replies
-        (prospect_id, contact_id, send_id, body_text, received_at, classification, classifier_version, recorded_by, gmail_message_id)
-      values (${r.prospectId}, ${r.contactId}, ${(send?.id as string | null) ?? r.sendId}, ${text}, ${receivedAt},
-        ${classification}, ${REPLY_CLASSIFIER_VERSION}, ${r.sentBy}, ${m.id})
-      on conflict do nothing
-    `;
-    if (classification === "unsubscribe") {
-      await suppress(tx, {
-        scope: "email", value: r.email, reason: "opt_out",
-        detail: "Reply classified as unsubscribe (spec 127 reply sync).", projectId: null, userId: r.sentBy,
-      });
-    }
+  const user = await userById(r.sentBy);
+  if (!user) return false;
+  const res = await recordProspectReply(user, {
+    prospectId: r.prospectId,
+    contactId: r.contactId ?? undefined,
+    sendId: ((send?.id as string | null) ?? r.sendId) || undefined,
+    bodyText: text,
+    receivedAt,
+    gmailMessageId: m.id,
   });
-  log("info", "reply_sync.recorded", { prospectId: r.prospectId, classification, gmailMessageId: m.id });
+  if (!res.ok) {
+    log("warn", "reply_sync.record_failed", { prospectId: r.prospectId, gmailMessageId: m.id, error: res.error.message });
+    return false;
+  }
+  log("info", "reply_sync.recorded", { prospectId: r.prospectId, classification: res.data.classification, gmailMessageId: m.id });
   const seq = await sequenceForProspect(r.prospectId);
   if (seq) await applySequenceSignals(seq.id, new Date());
   return true;
