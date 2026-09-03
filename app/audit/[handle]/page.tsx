@@ -375,12 +375,11 @@ export default async function ProspectAuditPage({
   // side-by-side and the exact questions and answers, nothing else.
   if (snapshot.mismatch) {
     return (
-      <div className="mx-auto max-w-3xl px-6 py-12">
+      <div className="px-6 py-10">
         <EngagementBeacon viewId={viewId} />
         <MismatchReport
           snapshot={snapshot}
           block={snapshot.mismatch}
-          ctaBlock={ctaBlock}
           answersHref={answersHref}
           serifClass={serif.className}
         />

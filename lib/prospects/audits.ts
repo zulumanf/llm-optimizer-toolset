@@ -872,7 +872,12 @@ export async function publishAudit(
 
     // The snapshot IS the page. Internal fields (notes, scores, owners,
     // rationales) are structurally absent, not filtered at render time.
-    const mismatch = await mismatchBlockForProspect(input.prospectId);
+    const mismatch = await mismatchBlockForProspect(input.prospectId, {
+      topSources,
+      ownSiteCited: whyItHappens.some((w) => /your (own )?site (did not|didn't|wasn't|was not)/i.test(`${w.title} ${w.explanation}`))
+        ? false
+        : null,
+    });
     const snapshot: AuditSnapshot = {
       headline,
       prospectName: prospect.businessName,
