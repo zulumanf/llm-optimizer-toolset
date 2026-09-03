@@ -1,0 +1,370 @@
+/**
+ * Spec 127 follow-up sequences: enrollment, branch-at-render, stop/pause
+ * signals, fail-closed preflight, threading, completion. Gmail is mocked at
+ * the connector boundary; the benchmark review is stubbed to the frozen
+ * snapshot so the live-integrity check passes without a run.
+ */
+import { execSync } from "node:child_process";
+import { join } from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CurrentUser } from "@/lib/auth";
+import { seedTestActors } from "../helpers/actors";
+import { unwrap } from "../helpers/result";
+import { seedApprovedFinding, type PipelineModules } from "../helpers/prospect-fixtures";
+import { MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
+import type { MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
+
+const TEST_URL = process.env.TEST_DATABASE_URL;
+const ROOT = join(__dirname, "..", "..");
+const SENDER = "francisco@recommendedfirst.com";
+const RECIPIENT = "ryan@kane.example";
+let PROSPECT_CO = "";
+let COMPETITOR_CO = "";
+
+const operator: CurrentUser = {
+  id: "00000000-0000-4000-8000-000000000401", email: "op@test.local", name: "Operator", role: "operator",
+};
+const admin: CurrentUser = {
+  id: "00000000-0000-4000-8000-000000000001", email: "admin@test.local", name: "Admin", role: "admin",
+};
+
+const buildSnapshot = (): MismatchEvidenceSnapshot => ({
+  templateVersion: "competitive_mismatch_reply_v1",
+  runId: "11111111-1111-4111-8111-111111111111",
+  provider: "openai", answerCount: 64, modelCount: 1,
+  capturedAt: "2026-08-30T00:00:00Z", completedAt: "2026-08-30T00:00:00Z",
+  scopeCopy: "Reno buyer and seller questions", audiences: ["buyer", "seller"],
+  prospect: { companyId: PROSPECT_CO, prospectId: null, name: "Kane and Partners", recommendationCount: 7, productionSignalId: "p", productionSourceUrl: "https://rt.example", productionYear: 2025, productionValue: 47_200_000, productionDisplay: "$47.2M closed" },
+  competitor: { companyId: COMPETITOR_CO, prospectId: null, name: "Harbor View Group", recommendationCount: 14, productionSignalId: "c", productionSourceUrl: "https://rt.example", productionYear: 2025, productionValue: 29_400_000, productionDisplay: "$29.4M closed", productionRatio: 0.62, recommendationGap: 7 },
+  metricType: "closed_volume", thresholds: MISMATCH_THRESHOLDS,
+});
+let snapshot: MismatchEvidenceSnapshot;
+
+const executeCapability = vi.fn();
+vi.mock("@/lib/connectors/execute", () => ({ executeCapability: (...args: unknown[]) => executeCapability(...args) }));
+vi.mock("@/lib/prospects/mismatch", async (orig) => {
+  const real = await orig<typeof import("@/lib/prospects/mismatch")>();
+  return {
+    ...real,
+    competitiveMismatchReview: async () => ({
+      benchmark: { answerCount: 64, provider: "openai", modelCount: 1, capturedAt: new Date("2026-08-30T00:00:00Z"), recommendedByCompany: {} },
+      prospect: { recommendationCount: 7, companyId: PROSPECT_CO, displayName: "Rivera Team", production: null },
+      evaluation: {
+        eligible: true,
+        benchmarkAgeDays: 4,
+        candidates: [{ companyId: COMPETITOR_CO, recommendationCount: 14, displayName: "Harbor View Group" }],
+        eligibleCandidates: [{ companyId: COMPETITOR_CO, recommendationCount: 14, displayName: "Harbor View Group" }],
+      },
+    }),
+  };
+});
+
+const T1_BODY = [
+  "Ryan,", "",
+  "Earlier this week I ran Reno buyer and seller questions through the OpenAI model behind ChatGPT. It recommended Harbor View Group more often than your team, even though RealTrends has you ahead on closed volume.", "",
+  "Your team: $47.2M closed · recommended in 7 of 64 answers",
+  "Harbor View Group: $29.4M closed · recommended in 14 of 64 answers", "",
+  "When people use ChatGPT to research who to work with, they can see them before they see you.", "",
+  "I have the exact questions and the side-by-side. Want me to send them?", "",
+  "--", "Francisco Zuluaga · Recommended First", "www.RecommendedFirst.com",
+  "123 Grand St, Jersey City, NJ 07302",
+  'If you\'d rather not hear from us, reply "unsubscribe" and we will not contact you again.',
+].join("\n");
+const T1_SENT = new Date("2026-09-01T13:07:00Z"); // Tue 06:07 PDT
+
+describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
+  let sql: (typeof import("@/db/client"))["sql"];
+  let svc: typeof import("@/lib/prospects/service");
+  let fu: typeof import("@/lib/prospects/followups");
+  let suppression: typeof import("@/lib/outreach/suppression");
+  let m: PipelineModules;
+  let prospectId = "";
+  let contactId = "";
+  let t1SendId = "";
+
+  beforeAll(async () => {
+    process.env.DATABASE_URL = TEST_URL;
+    process.env.AUTH_MODE = "dev";
+    sql = (await import("@/db/client")).sql;
+    svc = await import("@/lib/prospects/service");
+    fu = await import("@/lib/prospects/followups");
+    suppression = await import("@/lib/outreach/suppression");
+    m = {
+      sql, svc,
+      projectSvc: await import("@/lib/projects/service"),
+      setSvc: await import("@/lib/prompts/set-service"),
+      promptSvc: await import("@/lib/prompts/prompt-service"),
+      runSvc: await import("@/lib/runs/service"),
+      execute: await import("@/lib/runs/execute"),
+      jobs: await import("@/db/jobs"),
+      companySvc: await import("@/lib/companies/service"),
+      claims: await import("@/lib/claims/service"),
+      parsing: await import("@/lib/parsing/service"),
+      scoring: await import("@/lib/scoring/compute"),
+      exclusivity: await import("@/lib/exclusivity/service"),
+    };
+    await sql.unsafe("drop schema public cascade; create schema public;");
+    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, { cwd: ROOT, stdio: "pipe" });
+    await seedTestActors(sql);
+  });
+  afterAll(async () => {
+    await sql.end();
+  });
+
+  beforeEach(async () => {
+    executeCapability.mockReset();
+    await sql.unsafe(
+      `truncate audit_log, jobs, suppression_entries, prospect_replies, outreach_email_opens, prospect_outreach_sends,
+       outreach_followup_sequences, outreach_drafts, prospect_activities, prospect_stage_history, screen_recording_plans,
+       prospect_contacts, prospect_audit_views, prospect_audits, prospect_findings, prospect_benchmarks,
+       prospect_authority_signals, prospects, market_launches, exclusivity_checks, exclusivity_scopes,
+       exclusivity_agreements, markets, connector_connections, claims, competitors, scores, sources, response_parses,
+       mentions, response_citations, brand_candidates, companies, responses, runs, prompt_set_versions, prompts,
+       prompt_sets, projects cascade`
+    );
+    (await import("@/lib/ai/mock")).resetMockProvider();
+    await sql`truncate outreach_sender_identity`;
+    unwrap(await (await import("@/lib/outreach/sender-identity")).setSenderIdentity(admin, {
+      senderName: "Francisco Zuluaga", companyName: "Recommended First",
+      postalAddress: "123 Grand St, Jersey City, NJ 07302", replyToEmail: SENDER,
+    }));
+    const fixture = await seedApprovedFinding(m, operator, admin, { projectKind: "prospect" });
+    prospectId = fixture.prospectId;
+    PROSPECT_CO = fixture.prospectCompanyId;
+    COMPETITOR_CO = fixture.subjectCompanyId;
+    snapshot = buildSnapshot();
+    await sql`update markets set state_code = 'NV', name = 'Reno, NV' where id = ${fixture.marketId}`;
+    const contact = unwrap(await svc.addContact(operator, { prospectId, name: "Ryan Kane", email: RECIPIENT, isPrimary: true }));
+    contactId = contact.contactId;
+    const findingId = fixture.findingId;
+    await sql`update prospects set stage = 'contacted' where id = ${prospectId}`;
+    const [draft] = await sql`
+      insert into outreach_drafts (prospect_id, finding_id, channel, contact_id, version, subject, body, tone, cta, generated_by,
+        prompt_version, evidence_snapshot, status, approved_by, approved_at, created_by, sent_recorded_at)
+      values (${prospectId}, ${findingId}, 'email', ${contactId}, 1, 'Ryan - Reno', ${T1_BODY}, 'direct', 'send them?', 'system',
+        'competitive_mismatch_reply_v1', ${sql.json(snapshot as never)}, 'approved', ${operator.id}, now(), ${operator.id}, ${T1_SENT})
+      returning id
+    `;
+    const [send] = await sql`
+      insert into prospect_outreach_sends (draft_id, prospect_id, channel, recipient_email, body_hash, business_purpose,
+        gate_verdict, allowed, provider_message_id, sent_by, sent_at, gmail_thread_id)
+      values (${draft!.id}, ${prospectId}, 'gmail', ${RECIPIENT}, 'h', 'test', '{}', true, 'gm-t1', ${operator.id}, ${T1_SENT}, 'thread-1')
+      returning id
+    `;
+    t1SendId = send!.id as string;
+  });
+
+  async function gmailConnected(lastSyncMinutesAgo = 5): Promise<void> {
+    await sql`
+      insert into connector_connections (project_id, provider, connection_name, external_account_id, status,
+        granted_scopes, config, last_sync_at, created_by)
+      values (null, 'gmail', 'platform', ${SENDER}, 'active', '{}', ${sql.json({ sendAsAddress: SENDER })},
+        now() - make_interval(mins => ${lastSyncMinutesAgo}), ${operator.id})
+    `;
+  }
+  const thread = (messages: unknown[]) =>
+    executeCapability.mockImplementation(async (args: { capability: string }) =>
+      args.capability === "email.read_thread" ? { ok: true, data: { messages } } : { ok: false, errorCode: "unsupported" }
+    );
+  const outbound = { id: "gm-t1", threadId: "thread-1", messageId: "<t1@mail.gmail.com>", from: `Francisco <${SENDER}>`, to: RECIPIENT, subject: "Ryan - Reno", date: T1_SENT.toISOString(), labelIds: ["SENT"], body: "…" };
+
+  async function enroll() {
+    return unwrap(await fu.enrollFollowupSequence(operator, { prospectId }));
+  }
+  async function renderNow(seqId: string) {
+    const seq = (await fu.getFollowupSequence(seqId))!;
+    const slot = fu.projectedSlot(seq, new Date())!;
+    return fu.scheduleDueFollowups(new Date(slot.getTime() - 5 * 60_000));
+  }
+  const queued = async (seqId: string) =>
+    sql`select id, subject, body, branch, prompt_version, engagement_state_at_dispatch, touch_number, scheduled_send_at
+        from outreach_drafts where sequence_id = ${seqId} and status = 'approved' and sent_recorded_at is null`;
+
+  it("enrolls from the delivered Touch 1 with the frozen snapshot, 3 business days out, idempotently", async () => {
+    const first = await enroll();
+    expect(first.created).toBe(true);
+    // Tue 09-01 + 3 business days = Fri 09-04, local midnight Pacific.
+    expect(first.nextDueAt?.toISOString()).toBe("2026-09-04T07:00:00.000Z");
+    const again = await enroll();
+    expect(again.created).toBe(false);
+    expect(again.sequenceId).toBe(first.sequenceId);
+    const seq = (await fu.getFollowupSequence(first.sequenceId))!;
+    expect(seq.timezone).toBe("America/Los_Angeles");
+    expect(seq.evidenceSnapshot.competitor.name).toBe("Harbor View Group");
+    expect(seq.touch1SendId).toBe(t1SendId);
+    expect((await fu.listFollowupSequences({ prospectId }, new Date("2026-09-03T12:00:00Z")))[0]!.displayState).toBe("T1_SENT");
+    expect((await fu.listFollowupSequences({ prospectId }, new Date("2026-09-05T12:00:00Z")))[0]!.displayState).toBe("T2_DUE");
+  });
+
+  it("renders Touch 2 within the lead, no-engagement branch in a new thread, never twice", async () => {
+    const { sequenceId } = await enroll();
+    const r1 = await renderNow(sequenceId);
+    expect(r1.rendered).toBe(1);
+    const [d] = await queued(sequenceId);
+    expect(d!.touchNumber).toBe(2);
+    expect(d!.branch).toBe("no_engagement");
+    expect(d!.promptVersion).toBe("competitive_mismatch_t2_no_engagement_v1");
+    expect(d!.engagementStateAtDispatch).toBe("NO_MEANINGFUL_ENGAGEMENT");
+    expect(d!.subject).toBe("Ryan - one thing I found");
+    expect(d!.body).toContain("Your team: recommended in 7 of 64 answers");
+    expect(d!.body).toContain("123 Grand St, Jersey City, NJ 07302");
+    const r2 = await renderNow(sequenceId);
+    expect(r2.rendered).toBe(0);
+    expect((await queued(sequenceId)).length).toBe(1);
+    // Far from the slot: nothing renders.
+    const seq = (await fu.getFollowupSequence(sequenceId))!;
+    await sql`update outreach_drafts set status = 'superseded' where sequence_id = ${sequenceId}`;
+    const early = await fu.scheduleDueFollowups(new Date(fu.projectedSlot(seq, new Date())!.getTime() - 3 * 3_600_000));
+    expect(early.rendered).toBe(0);
+    expect(early.waiting).toBe(1);
+  });
+
+  it("decides the branch at render time from credible opens; a single open stays no-engagement", async () => {
+    const { sequenceId } = await enroll();
+    const ua = "Mozilla/5.0 (Macintosh) AppleWebKit (via ggpht.com GoogleImageProxy)";
+    await sql`insert into outreach_email_opens (send_id, opened_at, user_agent) values (${t1SendId}, ${new Date(T1_SENT.getTime() + 40 * 60_000)}, ${ua})`;
+    await renderNow(sequenceId);
+    expect((await queued(sequenceId))[0]!.branch).toBe("no_engagement");
+    await sql`update outreach_drafts set status = 'superseded' where sequence_id = ${sequenceId}`;
+    await sql`insert into outreach_email_opens (send_id, opened_at, user_agent) values (${t1SendId}, ${new Date(T1_SENT.getTime() + 55 * 60_000)}, ${ua})`;
+    await renderNow(sequenceId);
+    const [d] = await queued(sequenceId);
+    expect(d!.branch).toBe("engaged");
+    expect(d!.promptVersion).toBe("competitive_mismatch_t2_engaged_v1");
+    expect(d!.subject).toBe("Re: Ryan - Reno");
+    expect(d!.body).toContain("side-by-side"); // 0 distinct questions on record → fallback, never "several"
+    expect(d!.body).not.toContain("several");
+  });
+
+  it("a human reply stops the sequence and cancels the queued touch", async () => {
+    const { sequenceId } = await enroll();
+    await renderNow(sequenceId);
+    unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Sure, send it over." }));
+    const seq = await fu.applySequenceSignals(sequenceId, new Date());
+    expect(seq?.status).toBe("replied");
+    expect((await queued(sequenceId)).length).toBe(0);
+    expect((await fu.scheduleDueFollowups(new Date())).rendered).toBe(0);
+    expect((await fu.listFollowupSequences({ prospectId }))[0]!.displayState).toBe("REPLIED");
+  });
+
+  it("an out-of-office reply pauses until the stated return date; hard bounce and suppression stop", async () => {
+    const { sequenceId } = await enroll();
+    unwrap(await svc.recordProspectReply(operator, {
+      prospectId, contactId, receivedAt: new Date("2026-09-02T15:00:00Z"),
+      bodyText: "Automatic reply: I am out of the office and will return on September 14. For urgent matters call the office.",
+    }));
+    let seq = await fu.applySequenceSignals(sequenceId, new Date("2026-09-03T12:00:00Z"));
+    expect(seq?.status).toBe("paused");
+    expect(seq?.pausedUntil?.toISOString()).toBe("2026-09-15T07:00:00.000Z");
+    expect((await fu.listFollowupSequences({ prospectId }, new Date("2026-09-03T12:00:00Z")))[0]!.displayState).toBe("OOO_PAUSED");
+    // Pause expired → resumes.
+    seq = await fu.applySequenceSignals(sequenceId, new Date("2026-09-16T12:00:00Z"));
+    expect(seq?.status).toBe("active");
+    await sql`update prospect_contacts set do_not_contact = true, do_not_contact_reason = 'hard_bounce 2026-09-03: address not found' where id = ${contactId}`;
+    seq = await fu.applySequenceSignals(sequenceId, new Date());
+    expect(seq?.status).toBe("stopped");
+    expect(seq?.stopReason).toBe("hard bounce");
+
+    // Suppression on a fresh sequence.
+    await sql`delete from outreach_followup_sequences`;
+    await sql`update prospect_contacts set do_not_contact = false, do_not_contact_reason = null where id = ${contactId}`;
+    const { sequenceId: s2 } = await enroll();
+    await sql.begin(async (tx) => {
+      await suppression.suppress(tx, { scope: "email", value: RECIPIENT, reason: "opt_out", detail: "test", projectId: null, userId: operator.id });
+    });
+    const stopped = await fu.applySequenceSignals(s2, new Date());
+    expect(stopped?.status).toBe("stopped");
+    expect(stopped?.stopReason).toContain("suppressed");
+  });
+
+  it("preflight fails closed without Gmail or with a stale sync, and stops on a live inbound reply", async () => {
+    const { sequenceId } = await enroll();
+    await renderNow(sequenceId);
+    const [d] = await queued(sequenceId);
+    // No Gmail connection at all.
+    let res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toContain("no Gmail connection");
+    const [ledger] = await sql`select allowed, gate_verdict from prospect_outreach_sends where draft_id = ${d!.id}`;
+    expect(ledger!.allowed).toBe(false);
+    expect(JSON.stringify(ledger!.gateVerdict)).toContain("followup_preflight");
+    // Stale sync.
+    await gmailConnected(180);
+    res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toContain("stale");
+    // Fresh sync but the recipient replied in the thread since Touch 1.
+    await sql`update connector_connections set last_sync_at = now()`;
+    thread([outbound, { id: "gm-in-1", threadId: "thread-1", messageId: "<r@kane>", from: `Ryan Kane <${RECIPIENT}>`, to: SENDER, subject: "Re: Ryan - Reno", date: "2026-09-02T18:00:00Z", labelIds: ["INBOX"], body: "What is this about?" }]);
+    res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toContain("inbound reply");
+    const [reply] = await sql`select classification, gmail_message_id from prospect_replies where prospect_id = ${prospectId}`;
+    expect(reply!.gmailMessageId).toBe("gm-in-1");
+    expect(reply!.classification).toBe("question");
+    expect((await fu.getFollowupSequence(sequenceId))!.status).toBe("replied");
+    // Gmail read failure also refuses.
+    await sql`truncate prospect_replies`;
+    await sql`update outreach_followup_sequences set status = 'active', stop_reason = null`;
+    executeCapability.mockImplementation(async () => ({ ok: false, errorCode: "http_500", error: "boom" }));
+    res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toContain("failing closed");
+  });
+
+  it("clean preflight sends Touch 2, schedules Touch 3 four business days later, Touch 3 completes the sequence", async () => {
+    const { sequenceId } = await enroll();
+    await gmailConnected();
+    thread([outbound]);
+    await renderNow(sequenceId);
+    const [t2] = await queued(sequenceId);
+    const sent = unwrap(await svc.sendProspectDraft(operator, { draftId: t2!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true }));
+    expect(sent.providerMessageId).toContain("mock-");
+    let seq = (await fu.getFollowupSequence(sequenceId))!;
+    expect(seq.nextTouch).toBe(3);
+    expect(seq.lastTouchSendId).toBe(sent.sendId);
+    const [t2Send] = await sql`select sent_at from prospect_outreach_sends where id = ${sent.sendId}`;
+    expect(seq.nextDueAt?.toISOString()).toBe(fu.dueDayStart(new Date(t2Send!.sentAt as Date), 4, "America/Los_Angeles").toISOString());
+    expect((await fu.listFollowupSequences({ prospectId }))[0]!.displayState).toBe("T2_SENT");
+
+    // Touch 3 due now: no engagement → final low-pressure note, threaded on the Touch 2 (new) thread.
+    await sql`update outreach_followup_sequences set next_due_at = now() - interval '1 day' where id = ${sequenceId}`;
+    seq = (await fu.getFollowupSequence(sequenceId))!;
+    await fu.scheduleDueFollowups(new Date(fu.projectedSlot(seq, new Date())!.getTime() - 60_000));
+    const [t3] = await queued(sequenceId);
+    expect(t3!.touchNumber).toBe(3);
+    expect(t3!.promptVersion).toBe("competitive_mismatch_t3_no_engagement_v1");
+    expect(t3!.subject).toBe("Re: Ryan - one thing I found");
+    expect(t3!.body).toContain("Last note from me on this.");
+    unwrap(await svc.sendProspectDraft(operator, { draftId: t3!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true }));
+    seq = (await fu.getFollowupSequence(sequenceId))!;
+    expect(seq.status).toBe("complete");
+    expect(seq.nextTouch).toBeNull();
+    expect((await fu.scheduleDueFollowups(new Date())).rendered).toBe(0);
+    const views = await fu.listFollowupSequences({ prospectId });
+    expect(views[0]!.displayState).toBe("COMPLETE_NO_REPLY");
+    expect(views[0]!.touches.map((t) => t.touch)).toEqual([1, 2, 3]);
+    const metrics = await fu.followupMetrics();
+    expect(metrics.delivered).toEqual({ t1: 1, t2: 1, t3: 1 });
+    expect(metrics.humanReplies).toBe(0);
+  });
+
+  it("operator controls: pause cancels the queued touch, resume re-renders, stop is terminal", async () => {
+    const { sequenceId } = await enroll();
+    await renderNow(sequenceId);
+    unwrap(await fu.pauseFollowupSequence(operator, { sequenceId, reason: "founder review" }));
+    expect((await queued(sequenceId)).length).toBe(0);
+    expect((await fu.listFollowupSequences({ prospectId }))[0]!.displayState).toBe("PAUSED");
+    expect((await fu.scheduleDueFollowups(new Date())).rendered).toBe(0);
+    unwrap(await fu.resumeFollowupSequence(operator, { sequenceId }));
+    await renderNow(sequenceId);
+    expect((await queued(sequenceId)).length).toBe(1);
+    unwrap(await fu.setAllFollowupsPaused(operator, { paused: true }));
+    expect((await fu.getFollowupSequence(sequenceId))!.status).toBe("paused");
+    unwrap(await fu.setAllFollowupsPaused(operator, { paused: false }));
+    expect((await fu.getFollowupSequence(sequenceId))!.status).toBe("active");
+    unwrap(await fu.stopFollowupSequence(operator, { sequenceId, reason: "wrong entity" }));
+    expect((await fu.getFollowupSequence(sequenceId))!.status).toBe("stopped");
+    expect((await fu.resumeFollowupSequence(operator, { sequenceId })).ok).toBe(false);
+  });
+});

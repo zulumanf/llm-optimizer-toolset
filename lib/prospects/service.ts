@@ -2212,9 +2212,21 @@ export async function sendProspectDraft(
   try {
     assertCanWrite(user);
     const channel = getEmailChannel(input.channel); // throws for guarded mock
+    // Spec 127: a follow-up touch re-verifies its sequence right before it
+    // leaves — replies (local + live Gmail threads), bounces, DNC, sync
+    // freshness, evidence, unchanged engagement. Runs BEFORE the gate
+    // transaction takes its row locks: its bookkeeping (recording a found
+    // reply, stopping the sequence) writes through other connections.
+    let preflight: import("@/lib/prospects/followups").PreflightResult | null = null;
+    const [pre] = await sql`select sequence_id from outreach_drafts where id = ${input.draftId}`;
+    if (pre?.sequenceId) {
+      const { followupPreflight } = await import("@/lib/prospects/followups");
+      preflight = await followupPreflight(input.draftId, new Date(), { excludeDraftId: input.draftId });
+    }
     const result = await sql.begin(async (tx) => {
       const [draft] = await tx`
-        select id, prospect_id, contact_id, subject, body, status, sent_recorded_at
+        select id, prospect_id, contact_id, subject, body, status, sent_recorded_at,
+          sequence_id, touch_number
         from outreach_drafts where id = ${input.draftId} for update
       `;
       if (!draft) throw new ClassifiedError("not_found", "Draft not found.");
@@ -2274,6 +2286,20 @@ export async function sendProspectDraft(
           : "human-initiated send — not gated on stage"
       );
 
+      let threading: { threadId: string | null; inReplyTo: string | null; references: string | null } = {
+        threadId: null,
+        inReplyTo: null,
+        references: null,
+      };
+      if (draft.sequenceId) {
+        check(
+          "followup_preflight",
+          preflight?.ok ?? false,
+          preflight?.detail ?? "follow-up preflight did not run — failing closed."
+        );
+        if (preflight?.ok) threading = preflight.threading;
+      }
+
       if ((email || phone) && !prospect.doNotContact && contactBlocked === null) {
         const suppression = await checkSuppression({ email, phone, projectId: null });
         check(
@@ -2316,7 +2342,7 @@ export async function sendProspectDraft(
         // Spec 120: scoped to this prospect's market (launch), matched on
         // the normalized name so suffix variants share one cap bucket.
         const [{ n } = { n: 0 }] = await tx`
-          select count(*)::int as n from prospect_outreach_sends s
+          select count(distinct s.prospect_id)::int as n from prospect_outreach_sends s
           join prospects p on p.id = s.prospect_id
           where s.allowed
             and p.launch_id = ${prospect.launchId}
@@ -2452,17 +2478,18 @@ export async function sendProspectDraft(
 
       const writeLedger = async (
         providerMessageId: string | null,
-        openToken: string | null
+        openToken: string | null,
+        gmailThreadId: string | null = null
       ): Promise<string> => {
         const [row] = await tx`
           insert into prospect_outreach_sends
             (draft_id, prospect_id, channel, recipient_email, body_hash,
              business_purpose, gate_verdict, allowed, provider_message_id,
-             sent_by, open_token)
+             sent_by, open_token, gmail_thread_id)
           values (${draft.id}, ${draft.prospectId}, ${channel.id}, ${email ?? null},
             ${bodyHash}, ${input.businessPurpose},
             ${tx.json({ version: SEND_GATE_VERSION, checks } as never)},
-            ${allowed}, ${providerMessageId}, ${user.id}, ${openToken})
+            ${allowed}, ${providerMessageId}, ${user.id}, ${openToken}, ${gmailThreadId})
           returning id
         `;
         return row?.id as string;
@@ -2503,8 +2530,22 @@ export async function sendProspectDraft(
         subject: (draft.subject as string) ?? null,
         body,
         htmlBody,
+        ...threading,
       });
-      const sendId = await writeLedger(dispatched.providerMessageId, openToken);
+      const sendId = await writeLedger(
+        dispatched.providerMessageId,
+        openToken,
+        dispatched.providerThreadId ?? null
+      );
+      if (draft.sequenceId) {
+        const { advanceSequenceAfterSend } = await import("@/lib/prospects/followups");
+        await advanceSequenceAfterSend(
+          tx,
+          { sequenceId: draft.sequenceId as string, touchNumber: Number(draft.touchNumber) },
+          sendId,
+          new Date()
+        );
+      }
 
       await tx`
         update outreach_drafts set sent_recorded_at = now(), sent_recorded_by = ${user.id}

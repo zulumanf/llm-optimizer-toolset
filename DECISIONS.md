@@ -2867,3 +2867,24 @@ office-local, so the cap now counts sends within the prospect's launch
 inc/llc) so suffix variants share one cap bucket — "Long & Foster Real
 Estate Inc." no longer dodges the plain form's count. Cap value and window
 unchanged; still a policy constant.
+
+
+## 2026-09-03 — Follow-up touches are drafts; enrollment is the human approval (spec 127)
+
+Touch 2/3 of the competitive-mismatch sequence are ordinary `outreach_drafts`
+rows so they inherit approval immutability, deterministic QA, the send gate,
+the insert-only ledger and the scheduled-send worker — no parallel outreach
+system. The branch (engaged / no engagement) cannot be known days ahead, so
+the worker renders the touch ≤ 30 min before its recipient-local slot from the
+FROZEN Touch 1 snapshot and inserts it already `approved`, with the enrolling
+operator as `approved_by`/`scheduled_by`. PRINCIPLES #8 is satisfied by the
+enrollment (a human confirms the sequence, both branch templates are fixed
+text over frozen numbers, nothing is generated); the dispatch preflight
+(`followup_preflight` gate check) re-verifies replies live in Gmail, bounces,
+DNC, suppression, sync freshness, evidence integrity and that the engagement
+state is unchanged, and fails closed. The brokerage 30-day cap now counts
+distinct prospects, so follow-ups to one team never consume another team's
+slot; every transmit still counts toward `GMAIL_DAILY_SEND_CAP`, and due
+follow-ups drain before new cold sends. Greeting/subject use the em-dash-free
+`{first},` / `{first} - …` forms the 2026-08-31 operator decision set, not the
+spec's `—`, so Touch 2/3 match what the prospect already received.

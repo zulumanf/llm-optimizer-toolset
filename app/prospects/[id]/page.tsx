@@ -44,6 +44,7 @@ import {
   type DraftContactOption,
 } from "@/components/prospects/draft-actions";
 import { MismatchPanel } from "@/components/prospects/mismatch-panel";
+import { FollowupSequenceCard } from "@/components/prospects/followup-sequence";
 import { competitiveMismatchReview } from "@/lib/prospects/mismatch";
 import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
 import { auditLinkForProspect } from "@/lib/prospects/links";
@@ -938,6 +939,7 @@ export default async function ProspectDetailPage({
         }
       >
         <MismatchPanel review={mismatchReview} />
+        <FollowupSequenceCard prospectId={id} />
         {drafts.length === 0 ? (
           <EmptyState message="No email yet. Approve a story first — the draft is written from it, nothing else." />
         ) : (

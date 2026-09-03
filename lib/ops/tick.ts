@@ -30,6 +30,7 @@ export interface AutomationTickReport {
   outcomes: Record<string, unknown>;
   notifications: Record<string, unknown>;
   scheduledSends: Record<string, unknown>;
+  followups: Record<string, unknown>;
   cityPipelines: Record<string, unknown>;
   assistantTasks: Record<string, unknown>;
 }
@@ -163,6 +164,23 @@ export async function runAutomationTick(
     });
   }
 
+  // Follow-up sequences (spec 127): ingest Gmail replies/bounces first (the
+  // preflight refuses to send on a stale sync), then stop/pause on signals
+  // and render any touch whose recipient-local slot is within the lead.
+  let followups: Record<string, unknown> = { skipped: true };
+  try {
+    const { syncProspectReplies } = await import("@/lib/prospects/reply-sync");
+    const { scheduleDueFollowups } = await import("@/lib/prospects/followups");
+    const sync = await syncProspectReplies();
+    const scheduled = await scheduleDueFollowups();
+    followups = { sync, scheduled };
+  } catch (err) {
+    log("error", "cron.followups_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    followups = { error: "follow-up pass failed; dispatch was unaffected" };
+  }
+
   // Scheduled prospect sends (spec 091): transmit approved drafts whose
   // human-named send time has arrived, through the same gated entry point a
   // human click uses. Claim-marked and windowed — safe at any frequency,
@@ -250,6 +268,7 @@ export async function runAutomationTick(
     outcomes,
     notifications,
     scheduledSends,
+    followups,
     cityPipelines,
     assistantTasks,
   };
