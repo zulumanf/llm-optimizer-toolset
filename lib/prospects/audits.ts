@@ -59,6 +59,7 @@ import { normalizeDomain } from "@/lib/knowledge/normalize";
 import { computeProspectScoreView } from "@/lib/prospects/final-score";
 import { validateAuditEvidence } from "@/lib/prospects/audit-evidence";
 import { todayIso } from "@/lib/prospects/constants";
+import { mismatchBlockForProspect, type AuditMismatchBlock } from "@/lib/prospects/audit-mismatch";
 
 const PROSPECT_FACING_DIAGNOSES: Record<string, string> = {
   no_organic_visibility: "AI doesn't surface you yet",
@@ -198,6 +199,11 @@ export interface AuditSnapshot {
   promptEvidence: PromptEvidence[];
   methodology: string;
   cta: string;
+  /** Spec 128: the mismatch "private report" — frozen side-by-side plus
+   * the exact questions and answers. Present only for prospects who
+   * received a competitive-mismatch Touch 1; the page renders the compact
+   * variant when set. */
+  mismatch?: AuditMismatchBlock;
   /** THE PROOF (spec 045): every captured answer, complete and verbatim, so
    * the reader can search for their own name and find nothing — an absence
    * can only be proven by publishing everything. Rendered on the appendix
@@ -866,6 +872,7 @@ export async function publishAudit(
 
     // The snapshot IS the page. Internal fields (notes, scores, owners,
     // rationales) are structurally absent, not filtered at render time.
+    const mismatch = await mismatchBlockForProspect(input.prospectId);
     const snapshot: AuditSnapshot = {
       headline,
       prospectName: prospect.businessName,
@@ -912,6 +919,7 @@ export async function publishAudit(
       ...(input.humanFinding ? { humanFinding: input.humanFinding } : {}),
       ...(input.adoptionStat ? { adoptionStat: input.adoptionStat } : {}),
       ...(exampleChats.length > 0 ? { exampleChats } : {}),
+      ...(mismatch ? { mismatch } : {}),
       preparedBy,
     };
 

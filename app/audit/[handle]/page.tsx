@@ -24,6 +24,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getAuditPageByToken } from "@/lib/prospects/service";
 import { EngagementBeacon } from "@/components/audit/engagement-beacon";
+import { MismatchReport } from "@/components/audit/mismatch-report";
 import {
   answersTestedPhrase,
   comparisonBasisNote,
@@ -369,6 +370,23 @@ export default async function ProspectAuditPage({
       </p>
     </div>
   );
+
+  // Spec 128: the mismatch private report is one screen — the promised
+  // side-by-side and the exact questions and answers, nothing else.
+  if (snapshot.mismatch) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-12">
+        <EngagementBeacon viewId={viewId} />
+        <MismatchReport
+          snapshot={snapshot}
+          block={snapshot.mismatch}
+          ctaBlock={ctaBlock}
+          answersHref={answersHref}
+          serifClass={serif.className}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
