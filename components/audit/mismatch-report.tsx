@@ -16,12 +16,17 @@ export function MismatchReport({
   block: b,
   answersHref,
   serifClass,
+  bookingUrl = null,
 }: {
   snapshot: AuditSnapshot;
   block: AuditMismatchBlock;
   answersHref: string;
   serifClass: string;
   ctaBlock?: ReactNode;
+  /** Scheduling page for the walkthrough (operator config). When set, the
+   * final CTA books a time instead of opening an email; the mid-report
+   * link and the small line still point at plain reply. */
+  bookingUrl?: string | null;
 }) {
   const market = snapshot.marketName.split(",")[0]!.trim();
   const captured = b.capturedAt ? fmtDate(b.capturedAt) : null;
@@ -29,7 +34,7 @@ export function MismatchReport({
   const mailto = replyEmail
     ? `mailto:${replyEmail}?subject=${encodeURIComponent(`Re: ${b.prospect.name} report`)}&body=${encodeURIComponent("Francisco —\n\nYes, walk me through what you found.\n")}`
     : null;
-  const receipts = b.questions.filter((q) => q.excerpts.length > 0).slice(0, 4);
+  const receipts = b.questions.filter((q) => q.excerpts.length > 0 && q.wellFormed !== false).slice(0, 4);
   const asked = pickRepresentative(b.questions);
   const prospectShort = firstName(b.prospect.name);
   const notFluke = b.distinctQuestions.competitor >= 3;
@@ -110,8 +115,8 @@ export function MismatchReport({
       <section className="grid gap-8 border-t py-10 lg:grid-cols-12" data-signal-section="why-flagged">
         <h2 className="text-xs uppercase tracking-wide text-muted-foreground lg:col-span-3">Why I flagged this</h2>
         <div className="max-w-[60ch] text-sm leading-relaxed lg:col-span-7">
-          <p>When a buyer or seller asks AI who to work with, the teams that appear in the answer can enter the conversation early.</p>
-          <p className="mt-3">Your sales record suggests you should be competitive in that conversation. In this test, {b.competitor.name} appeared more often.</p>
+          <p>When a buyer or seller asks AI who to hire, the names in the answer become part of their shortlist.</p>
+          <p className="mt-3">This doesn’t prove you lost business. It shows that in this test, {b.competitor.name} made that shortlist much more often despite a lower {b.metricLabel} record.</p>
         </div>
       </section>
 
@@ -190,9 +195,9 @@ export function MismatchReport({
                 <thead>
                   <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <th className="py-2 font-medium">Question type</th>
-                    <th className="py-2 text-right font-medium">Questions</th>
-                    <th className="py-2 text-right font-medium">Your team</th>
-                    <th className="py-2 text-right font-medium">{b.competitor.name}</th>
+                    <th className="py-2 text-right font-medium">Questions tested</th>
+                    <th className="py-2 text-right font-medium">Your team — recommendations</th>
+                    <th className="py-2 text-right font-medium">{b.competitor.name} — recommendations</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -206,6 +211,7 @@ export function MismatchReport({
                   ))}
                 </tbody>
               </table>
+              <p className="mt-2 text-xs text-muted-foreground">Each question was tested up to {b.repetitions} times. Question categories can overlap.</p>
             </figure>
           )}
         </section>
@@ -380,7 +386,11 @@ export function MismatchReport({
             <li>— and the first two or three things I’d investigate for your team.</li>
           </ul>
           <div className="mt-6">
-            {mailto ? (
+            {bookingUrl ? (
+              <a href={bookingUrl} target="_blank" rel="noopener noreferrer" data-signal-cta="walk-me-through" className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto">
+                Pick a time to walk through it
+              </a>
+            ) : mailto ? (
               <a href={mailto} data-signal-cta="walk-me-through" className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto">
                 Walk me through it
               </a>
@@ -430,6 +440,7 @@ function pickRepresentative(questions: MismatchQuestionRow[]): MismatchQuestionR
   const seen = new Set<string>();
   const out: MismatchQuestionRow[] = [];
   for (const q of questions) {
+    if (q.wellFormed === false) continue;
     const key = q.luxury ? "luxury" : `${q.audience}:${q.propertyType ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -438,7 +449,7 @@ function pickRepresentative(questions: MismatchQuestionRow[]): MismatchQuestionR
   }
   for (const q of questions) {
     if (out.length >= 8) break;
-    if (!out.includes(q) && q.competitorRecommended > 0) out.push(q);
+    if (!out.includes(q) && q.wellFormed !== false) out.push(q);
   }
   return out;
 }

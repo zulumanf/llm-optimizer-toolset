@@ -99,6 +99,7 @@ export function expandMarketPack(
           const text = template.text
             .replaceAll("{city}", place)
             .replaceAll("{area}", area)
+            .replaceAll("a {propertyType}", withArticle(singular(propertyType ?? "")))
             .replaceAll("{propertyType}", propertyType ?? "")
             .replaceAll("{priceTier}", priceTier ?? "")
             .replace(/\s+/g, " ")
@@ -193,3 +194,22 @@ export async function generateMarketPrompts(
     return fail(err);
   }
 }
+
+/** "condominiums" → "condominium", "single-family homes" → "single-family
+ * home", "townhomes" → "townhome". Packs may list plural property types; a
+ * seller question reads "sell a condominium", never "sell a condominiums"
+ * (found live in the Raleigh run, spec 128). */
+export function singular(term: string): string {
+  const t = term.trim();
+  if (/\b(ies)$/i.test(t)) return t.replace(/ies$/i, "y");
+  if (/(sses|xes|ches|shes)$/i.test(t)) return t.replace(/es$/i, "");
+  if (/[^s]s$/i.test(t)) return t.replace(/s$/i, "");
+  return t;
+}
+
+export function withArticle(term: string): string {
+  const t = term.trim();
+  if (!t) return "";
+  return `${/^[aeiou]/i.test(t) ? "an" : "a"} ${t}`;
+}
+

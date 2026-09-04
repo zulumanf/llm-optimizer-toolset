@@ -382,6 +382,7 @@ export default async function ProspectAuditPage({
           block={snapshot.mismatch}
           answersHref={answersHref}
           serifClass={serif.className}
+          bookingUrl={process.env.AUDIT_BOOKING_URL?.trim() || null}
         />
       </div>
     );
