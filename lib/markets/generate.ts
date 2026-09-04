@@ -202,7 +202,7 @@ export async function generateMarketPrompts(
 export function singular(term: string): string {
   const t = term.trim();
   if (/\b(ies)$/i.test(t)) return t.replace(/ies$/i, "y");
-  if (/(ses|xes|ches|shes)$/i.test(t)) return t.replace(/es$/i, "");
+  if (/(sses|xes|ches|shes)$/i.test(t)) return t.replace(/es$/i, "");
   if (/[^s]s$/i.test(t)) return t.replace(/s$/i, "");
   return t;
 }
