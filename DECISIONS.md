@@ -2905,3 +2905,23 @@ it had been applied to prod (097) without ever reaching `main`; its `down`
 drops that view only where 097 is not recorded. With N_POSITIVE_REPLIES = 1 the
 comparison the script prints is descriptive only — no copy, threshold, market,
 timing or cadence change is made on this observation.
+
+## 2026-09-04 — Follow-up copy v2 sells the reply, not the report or the call
+
+Touch 2/3 templates were rewritten (`*_v2`) before any Touch 2 left. Three
+decisions: (1) the offer line is gated on actual report state — a published
+`prospect_audits` row whose frozen `mismatch` block states the sequence's exact
+competitor, counts and denominator — because a report is generated only after a
+positive reply, so "I have the private report ready" would have been false for
+every cohort prospect; (2) agent-vs-team wording is read from the RealTrends
+`entity_type` behind the frozen `productionSignalId` (dataset row first, authority
+signal second) rather than stored on the sequence — no migration, no second copy
+of a fact, and an unknown level fails the render closed; (3) report generation
+after a positive reply is NOT automated yet: `publishAudit` needs a human
+acknowledgment for stale benchmarks and the classifier misfired once (Steve
+Wall's "Yes" first recorded as unsubscribe), so a mis-classified reply must not
+mint a prospect-facing page. The sequence records a `founder_action_required`
+activity and the operator view shows READY_TO_SEND / REPORT_NOT_GENERATED
+instead. Also: a 21-calendar-day sequence expiry from the actual Touch 1 send,
+and reply bodies that strip to nothing (all-quoted, redacted) are "unclear" —
+they stop the sequence for review and never suppress.

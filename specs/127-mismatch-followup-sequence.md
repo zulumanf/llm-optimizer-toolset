@@ -46,5 +46,15 @@ Gate check `followup_preflight`: sequence active and not paused; no `prospect_re
 - [ ] After T3 the sequence is `complete`; no fourth touch is ever created.
 - [ ] Caps: follow-ups count toward `GMAIL_DAILY_SEND_CAP`; brokerage cap counts distinct prospects.
 
+## Amendment 2026-09-04 — copy v2, expiry, reply safety (no migration)
+- Templates bumped to `*_v2` (docs/13-prompts.md): Touch 2 = the pattern ("came up across N different questions", N = frozen distinct count ≥ 3, else the side-by-side), Touch 3 = why you ("the numbers looked backwards"). No call ask, no links, one CTA, ≤ 120 words, no em/en dash, no ChatGPT by name.
+- Entity wording: "you" / "your team" from the RealTrends entity level behind the frozen production record (`prospectEntityType`); unknown → render fails closed.
+- Report truthfulness: "private report" may appear only when a PUBLISHED audit whose frozen mismatch block states this exact evidence exists (`reportReadyFor`); otherwise "the exact questions and answers pulled together".
+- Expiry: `FOLLOWUP_MAX_SEQUENCE_AGE_DAYS` = 21 calendar days from the successful Touch 1 → `complete` ("expired"); a deferred slot past it is never queued.
+- Reply safety: an all-quoted or redacted body strips to "" → `unclear` → sequence `replied` with "needs review" (display `REPLY_NEEDS_REVIEW`), no suppression. Our own footer never classifies a reply.
+- Positive reply → `founder_action_required` activity + `handoff` on the operator view (`READY_TO_SEND` / `REPORT_NOT_GENERATED`). Report generation and delivery stay founder-run.
+- Threading: an in-thread touch whose parent send has no Gmail thread id is refused.
+- Dispatch priority: human replies (`reply_to_id`) → due touches → cold Touch 1.
+
 ## Test cases
 `tests/unit/followups.test.ts` (business days/holidays/tz slots, engagement classifier, templates, claim gate, linter, branch selection), `tests/integration/followups.test.ts` (enroll/no-dup, stops, OOO pause, preflight fail-closed, T3 completes).

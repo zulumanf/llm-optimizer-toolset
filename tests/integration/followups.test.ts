@@ -20,6 +20,9 @@ const SENDER = "francisco@recommendedfirst.com";
 const RECIPIENT = "ryan@kane.example";
 let PROSPECT_CO = "";
 let COMPETITOR_CO = "";
+/** The licensed RealTrends row behind the prospect's frozen production —
+ * the deterministic source of agent-vs-team wording. */
+const PROSPECT_RECORD_ID = "44444444-4444-4444-8444-444444444444";
 
 const operator: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000401", email: "op@test.local", name: "Operator", role: "operator",
@@ -34,7 +37,7 @@ const buildSnapshot = (): MismatchEvidenceSnapshot => ({
   provider: "openai", answerCount: 64, modelCount: 1,
   capturedAt: "2026-08-30T00:00:00Z", completedAt: "2026-08-30T00:00:00Z",
   scopeCopy: "Reno buyer and seller questions", audiences: ["buyer", "seller"],
-  prospect: { companyId: PROSPECT_CO, prospectId: null, name: "Kane and Partners", recommendationCount: 7, productionSignalId: "p", productionSourceUrl: "https://rt.example", productionYear: 2025, productionValue: 47_200_000, productionDisplay: "$47.2M closed" },
+  prospect: { companyId: PROSPECT_CO, prospectId: null, name: "Kane and Partners", recommendationCount: 7, productionSignalId: PROSPECT_RECORD_ID, productionSourceUrl: "https://rt.example", productionYear: 2025, productionValue: 47_200_000, productionDisplay: "$47.2M closed" },
   competitor: { companyId: COMPETITOR_CO, prospectId: null, name: "Harbor View Group", recommendationCount: 14, productionSignalId: "c", productionSourceUrl: "https://rt.example", productionYear: 2025, productionValue: 29_400_000, productionDisplay: "$29.4M closed", productionRatio: 0.62, recommendationGap: 7 },
   metricType: "closed_volume", thresholds: MISMATCH_THRESHOLDS,
 });
@@ -117,7 +120,7 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
       `truncate audit_log, jobs, suppression_entries, prospect_replies, outreach_email_opens, prospect_outreach_sends,
        outreach_followup_sequences, outreach_drafts, prospect_activities, prospect_stage_history, screen_recording_plans,
        prospect_contacts, prospect_audit_views, prospect_audits, prospect_findings, prospect_benchmarks,
-       prospect_authority_signals, prospects, market_launches, exclusivity_checks, exclusivity_scopes,
+       prospect_authority_signals, realtrends_records, prospects, market_launches, exclusivity_checks, exclusivity_scopes,
        exclusivity_agreements, markets, connector_connections, claims, competitors, scores, sources, response_parses,
        mentions, response_citations, brand_candidates, companies, responses, runs, prompt_set_versions, prompts,
        prompt_sets, projects cascade`
@@ -134,6 +137,10 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     COMPETITOR_CO = fixture.subjectCompanyId;
     snapshot = buildSnapshot();
     await sql`update markets set state_code = 'NV', name = 'Reno, NV' where id = ${fixture.marketId}`;
+    await sql`
+      insert into realtrends_records (id, fingerprint, dataset_name, entity_type, entity_name, city, state, volume_usd, production_year, source_sheet, source_row)
+      values (${PROSPECT_RECORD_ID}, 'fp-kane', 'test', 'team', 'Kane and Partners', 'Reno', 'NV', 47200000, 2025, 'Teams', 1)
+    `;
     const contact = unwrap(await svc.addContact(operator, { prospectId, name: "Ryan Kane", email: RECIPIENT, isPrimary: true }));
     contactId = contact.contactId;
     const findingId = fixture.findingId;
@@ -203,7 +210,11 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     const [d] = await queued(sequenceId);
     expect(d!.touchNumber).toBe(2);
     expect(d!.branch).toBe("no_engagement");
-    expect(d!.promptVersion).toBe("competitive_mismatch_t2_no_engagement_v1");
+    expect(d!.promptVersion).toBe("competitive_mismatch_t2_no_engagement_v2");
+    expect(d!.body).toContain("RealTrends has your team at $47.2M closed versus $29.4M closed for Harbor View Group.");
+    expect(d!.body).toContain("I have the exact questions and answers pulled together.");
+    expect(d!.body).not.toContain("private report");
+    expect(d!.body).not.toMatch(/[—–]/);
     expect(d!.engagementStateAtDispatch).toBe("NO_MEANINGFUL_ENGAGEMENT");
     expect(d!.subject).toBe("Ryan - one thing I found");
     expect(d!.body).toContain("Your team: recommended in 7 of 64 answers");
@@ -230,10 +241,10 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     await renderNow(sequenceId);
     const [d] = await queued(sequenceId);
     expect(d!.branch).toBe("engaged");
-    expect(d!.promptVersion).toBe("competitive_mismatch_t2_engaged_v1");
+    expect(d!.promptVersion).toBe("competitive_mismatch_t2_engaged_v2");
     expect(d!.subject).toBe("Re: Ryan - Reno");
-    expect(d!.body).toContain("side-by-side"); // 0 distinct questions on record → fallback, never "several"
-    expect(d!.body).not.toContain("several");
+    expect(d!.body).toContain("The side-by-side is what stood out to me."); // 0 distinct questions on record → fallback
+    expect(d!.body).not.toContain("different questions");
   });
 
   it("a human reply stops the sequence and cancels the queued touch", async () => {
@@ -331,7 +342,8 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     await fu.scheduleDueFollowups(new Date(fu.projectedSlot(seq, new Date())!.getTime() - 60_000));
     const [t3] = await queued(sequenceId);
     expect(t3!.touchNumber).toBe(3);
-    expect(t3!.promptVersion).toBe("competitive_mismatch_t3_no_engagement_v1");
+    expect(t3!.promptVersion).toBe("competitive_mismatch_t3_no_engagement_v2");
+    expect(t3!.body).toContain("The only reason I emailed you is that RealTrends has your team at $47.2M closed versus $29.4M closed for Harbor View Group, but the recommendation results went the other way.");
     expect(t3!.subject).toBe("Re: Ryan - one thing I found");
     expect(t3!.body).toContain("Last note from me on this.");
     unwrap(await svc.sendProspectDraft(operator, { draftId: t3!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true }));
@@ -378,6 +390,97 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     expect(JSON.stringify(ledger!.gateVerdict)).toContain("replying in Gmail thread thread-1");
     // Gmail unreachable → refuses rather than opening a new thread.
     await sql`update outreach_drafts set sent_recorded_at = null where id = ${d!.id}`.catch(() => undefined);
+  });
+
+  it("an individual agent is addressed as 'you', a team as 'your team' — from the frozen RealTrends record", async () => {
+    await sql`update realtrends_records set entity_type = 'individual' where id = ${PROSPECT_RECORD_ID}`;
+    const { sequenceId } = await enroll();
+    await renderNow(sequenceId);
+    const [d] = await queued(sequenceId);
+    expect(d!.body).toContain("RealTrends has you at $47.2M closed versus $29.4M closed for Harbor View Group.");
+    expect(d!.body).toContain("You: recommended in 7 of 64 answers");
+    expect(d!.body).not.toMatch(/your team/i);
+    // Unknown entity type: nothing renders (fails closed).
+    await sql`update outreach_drafts set status = 'superseded' where sequence_id = ${sequenceId}`;
+    await sql`delete from realtrends_records where id = ${PROSPECT_RECORD_ID}`;
+    const r = await renderNow(sequenceId);
+    expect(r.qaFailed).toBe(1);
+    expect((await queued(sequenceId)).length).toBe(0);
+  });
+
+  it("an unreadable or ambiguous reply stops the sequence for review and never suppresses", async () => {
+    const { sequenceId } = await enroll();
+    await renderNow(sequenceId);
+    // Gmail ingestion of an all-quoted body falls back to the subject line.
+    unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Re: Ryan - Reno", gmailMessageId: "gm-blank" }));
+    const seq = await fu.applySequenceSignals(sequenceId, new Date());
+    expect(seq?.status).toBe("replied");
+    expect(seq?.stopReason).toContain("needs review");
+    expect((await queued(sequenceId)).length).toBe(0);
+    expect((await fu.listFollowupSequences({ prospectId }))[0]!.displayState).toBe("REPLY_NEEDS_REVIEW");
+    expect((await suppression.checkSuppression({ email: RECIPIENT, phone: null, projectId: null })).suppressed).toBe(false);
+    expect((await fu.scheduleDueFollowups(new Date())).rendered).toBe(0);
+  });
+
+  it("a positive reply stops the sequence and creates the founder handoff with the report state", async () => {
+    const { sequenceId } = await enroll();
+    await renderNow(sequenceId);
+    unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Yes", gmailMessageId: "gm-yes" }));
+    const seq = await fu.applySequenceSignals(sequenceId, new Date());
+    expect(seq?.status).toBe("replied");
+    const [act] = await sql`select detail from prospect_activities where prospect_id = ${prospectId} and kind = 'founder_action_required'`;
+    expect(act).toBeTruthy();
+    expect((act!.detail as { reportState: string }).reportState).toBe("REPORT_NOT_GENERATED");
+    const [view] = await fu.listFollowupSequences({ prospectId });
+    expect(view!.displayState).toBe("REPLIED");
+    expect(view!.handoff?.reportState).toBe("REPORT_NOT_GENERATED");
+    expect((await queued(sequenceId)).length).toBe(0);
+    // A published private report over the SAME frozen evidence flips the state.
+    const [finding] = await sql`select finding_id from outreach_drafts where prospect_id = ${prospectId} limit 1`;
+    await sql`
+      insert into prospect_audits (prospect_id, finding_id, headline, snapshot, status, access_token, published_at, published_by, created_by)
+      values (${prospectId}, ${finding!.findingId}, 'h', ${sql.json({ mismatch: { answerCount: 64, prospect: { name: "Kane and Partners", recommendationCount: 7 }, competitor: { name: "Harbor View Group", recommendationCount: 14 } } })},
+        'published', 'tok', now(), ${operator.id}, ${operator.id})
+    `;
+    expect((await fu.listFollowupSequences({ prospectId }))[0]!.handoff?.reportState).toBe("READY_TO_SEND");
+  });
+
+  it("the sequence expires 21 calendar days after the successful Touch 1 and completes with no reply", async () => {
+    const { sequenceId } = await enroll();
+    const seq0 = (await fu.getFollowupSequence(sequenceId))!;
+    expect(seq0.touch1SentAt.toISOString()).toBe(T1_SENT.toISOString());
+    expect(fu.sequenceExpiresAt(seq0.touch1SentAt).toISOString()).toBe("2026-09-22T13:07:00.000Z");
+    // Deferred to the day before expiry: still renders. Past it: completes.
+    let seq = await fu.applySequenceSignals(sequenceId, new Date("2026-09-21T12:00:00Z"));
+    expect(seq?.status).toBe("active");
+    seq = await fu.applySequenceSignals(sequenceId, new Date("2026-09-23T12:00:00Z"));
+    expect(seq?.status).toBe("complete");
+    expect(seq?.stopReason).toContain("expired");
+    expect((await fu.listFollowupSequences({ prospectId }))[0]!.displayState).toBe("COMPLETE_NO_REPLY");
+    expect((await fu.scheduleDueFollowups(new Date("2026-09-23T12:00:00Z"))).rendered).toBe(0);
+  });
+
+  it("an in-thread touch refuses to send when the parent thread id cannot be resolved", async () => {
+    const { sequenceId } = await enroll();
+    const ua = "Mozilla/5.0 (Macintosh) AppleWebKit (via ggpht.com GoogleImageProxy)";
+    await sql`insert into outreach_email_opens (send_id, opened_at, user_agent) values (${t1SendId}, ${new Date(T1_SENT.getTime() + 40 * 60_000)}, ${ua}), (${t1SendId}, ${new Date(T1_SENT.getTime() + 55 * 60_000)}, ${ua})`;
+    // The ledger is immutable, so stand in a parent send that never learned
+    // its Gmail thread (a transport that returned no thread id).
+    const [bare] = await sql`
+      insert into prospect_outreach_sends (draft_id, prospect_id, channel, recipient_email, body_hash, business_purpose,
+        gate_verdict, allowed, provider_message_id, sent_by, sent_at)
+      select draft_id, prospect_id, 'gmail', ${RECIPIENT}, 'h2', 'test', '{}', true, 'gm-bare', ${operator.id}, ${new Date(T1_SENT.getTime() + 60_000)}
+      from prospect_outreach_sends where id = ${t1SendId} returning id
+    `;
+    await sql`update outreach_followup_sequences set last_touch_send_id = ${bare!.id} where id = ${sequenceId}`;
+    await renderNow(sequenceId);
+    const [d] = await queued(sequenceId);
+    expect(d!.branch).toBe("engaged");
+    await gmailConnected();
+    thread([outbound]);
+    const res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toContain("no Gmail thread id");
   });
 
   it("operator controls: pause cancels the queued touch, resume re-renders, stop is terminal", async () => {

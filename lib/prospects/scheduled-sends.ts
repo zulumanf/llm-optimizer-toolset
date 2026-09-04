@@ -145,9 +145,10 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
       from outreach_drafts
       where status = 'approved' and sent_recorded_at is null
         and scheduled_send_at is not null and scheduled_send_at <= now()
-      -- Spec 127: due follow-ups (active conversations) drain before new
-      -- cold sends when the daily cap is tight.
-      order by (sequence_id is not null) desc, scheduled_send_at asc
+      -- Send priority when the daily cap is tight: human replies to active
+      -- prospects (reply_to_id) → due Touch 2/3 (sequence_id) → new cold
+      -- Touch 1. Warm conversations are never crowded out by cold sends.
+      order by (reply_to_id is not null) desc, (sequence_id is not null) desc, scheduled_send_at asc
       limit ${limit}
       for update skip locked
     `;

@@ -22,7 +22,7 @@ import {
   lintFollowupCopy,
   qaFollowupEvidence,
 } from "@/lib/prospects/followup-templates";
-import { isFollowupTemplate } from "@/lib/prospects/followups";
+import { followupQaContextForDraft, isFollowupTemplate } from "@/lib/prospects/followups";
 import type { FollowupTemplateVersion } from "@/lib/prospects/constants";
 
 /** A body that states every Touch 1 fragment, so qaMismatchClaims runs only
@@ -329,10 +329,10 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
     // Spec 127: follow-ups restate the frozen evidence in their own words —
     // template fragments + scoped copy linter replace the Touch 1 render
     // check; the live staleness/eligibility checks are shared.
-    mismatchIssues.push(
-      ...lintFollowupCopy((row.subject as string | null) ?? null, (row.body as string) ?? ""),
-      ...qaFollowupEvidence(row.promptVersion as FollowupTemplateVersion, (row.body as string) ?? "", snapshot)
-    );
+    const ctx = await followupQaContextForDraft(draftId);
+    mismatchIssues.push(...lintFollowupCopy((row.subject as string | null) ?? null, (row.body as string) ?? ""));
+    if (!ctx) mismatchIssues.push({ check: "followup_evidence", detail: "follow-up draft has no sequence context." });
+    else mismatchIssues.push(...qaFollowupEvidence(row.promptVersion as FollowupTemplateVersion, (row.body as string) ?? "", snapshot, ctx));
   }
   if (snapshot) {
     const review = await competitiveMismatchReview(row.prospectId as string, {
