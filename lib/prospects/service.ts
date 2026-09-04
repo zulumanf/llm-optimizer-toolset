@@ -2236,7 +2236,7 @@ export async function sendProspectDraft(
     const result = await sql.begin(async (tx) => {
       const [draft] = await tx`
         select id, prospect_id, contact_id, subject, body, status, sent_recorded_at,
-          sequence_id, touch_number
+          sequence_id, touch_number, reply_to_id
         from outreach_drafts where id = ${input.draftId} for update
       `;
       if (!draft) throw new ClassifiedError("not_found", "Draft not found.");
@@ -2286,13 +2286,19 @@ export async function sendProspectDraft(
       const stageBlocksUnattended = (
         UNATTENDED_SEND_BLOCKED_STAGES as readonly ProspectStage[]
       ).includes(prospect.stage);
+      // Spec 128: a human-composed reply to a specific recorded reply may be
+      // scheduled — it continues the conversation the prospect started, not
+      // a sequence past it. The draft names the reply it answers.
+      const scheduledReply = Boolean(draft.replyToId);
       check(
         "conversation_state",
-        !(input.unattended && stageBlocksUnattended),
+        !(input.unattended && stageBlocksUnattended && !scheduledReply),
         input.unattended
-          ? stageBlocksUnattended
-            ? `Prospect stage is "${prospect.stage}" — an unattended send would continue a sequence past a recorded reply or exit.`
-            : `stage "${prospect.stage}" allows unattended outreach`
+          ? scheduledReply
+            ? `scheduled human reply to recorded reply ${String(draft.replyToId).slice(0, 8)} — stage "${prospect.stage}" is expected`
+            : stageBlocksUnattended
+              ? `Prospect stage is "${prospect.stage}" — an unattended send would continue a sequence past a recorded reply or exit.`
+              : `stage "${prospect.stage}" allows unattended outreach`
           : "human-initiated send — not gated on stage"
       );
 
@@ -2308,6 +2314,13 @@ export async function sendProspectDraft(
           preflight?.detail ?? "follow-up preflight did not run — failing closed."
         );
         if (preflight?.ok) threading = preflight.threading;
+      } else if (draft.replyToId && channel.transmits) {
+        // Reply drafts land in the prospect's own thread; when Gmail cannot
+        // resolve it the send refuses rather than starting a new thread.
+        const { threadingForReply } = await import("@/lib/prospects/reply-threading");
+        const t = await threadingForReply(draft.replyToId as string);
+        check("reply_threading", t !== null, t ? `replying in Gmail thread ${t.threadId}` : "could not resolve the reply's Gmail thread — refusing to start a new one.");
+        if (t) threading = t;
       }
 
       if ((email || phone) && !prospect.doNotContact && contactBlocked === null) {
