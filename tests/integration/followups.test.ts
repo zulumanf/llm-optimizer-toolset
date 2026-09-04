@@ -293,8 +293,13 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.message).toContain("stale");
-    // Fresh sync but the recipient replied in the thread since Touch 1.
+    // Gmail read failure refuses before anything else is consulted.
     await sql`update connector_connections set last_sync_at = now()`;
+    executeCapability.mockImplementation(async () => ({ ok: false, errorCode: "http_500", error: "boom" }));
+    res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toContain("failing closed");
+    // Fresh sync but the recipient replied in the thread since Touch 1.
     thread([outbound, { id: "gm-in-1", threadId: "thread-1", messageId: "<r@kane>", from: `Ryan Kane <${RECIPIENT}>`, to: SENDER, subject: "Re: Ryan - Reno", date: "2026-09-02T18:00:00Z", labelIds: ["INBOX"], body: "What is this about?" }]);
     res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
     expect(res.ok).toBe(false);
@@ -303,14 +308,6 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     expect(reply!.gmailMessageId).toBe("gm-in-1");
     expect(reply!.classification).toBe("question");
     expect((await fu.getFollowupSequence(sequenceId))!.status).toBe("replied");
-    // Gmail read failure also refuses.
-    await sql`truncate prospect_replies`;
-    await sql`update outreach_followup_sequences set status = 'active', stop_reason = null`;
-    await sql`update prospects set stage = 'contacted' where id = ${prospectId}`;
-    executeCapability.mockImplementation(async () => ({ ok: false, errorCode: "http_500", error: "boom" }));
-    res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.message).toContain("failing closed");
   });
 
   it("clean preflight sends Touch 2, schedules Touch 3 four business days later, Touch 3 completes the sequence", async () => {
