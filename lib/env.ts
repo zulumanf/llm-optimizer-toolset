@@ -29,6 +29,9 @@ const envSchema = z
     AUTOMATION_CREDENTIAL_KEY: z.string().optional(),
     // Operator webhook for digests and system alerts (spec 059).
     DIGEST_WEBHOOK_URL: z.string().url().optional(),
+    // Spec 129 kill switch: "false" parks QA-passed report handoffs for a
+    // human send instead of scheduling the threaded reply.
+    REPORT_HANDOFF_AUTOSEND: z.string().optional(),
     // MCP server actor (spec 033) — required only by `npm run mcp`.
     MCP_USER_ID: z.string().optional(),
     // Spend ceiling override (lib/constants.ts falls back to $25).

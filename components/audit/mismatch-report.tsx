@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import type { AuditMismatchBlock, CategoryCount, MismatchQuestionRow } from "@/lib/prospects/audit-mismatch";
+import { entityRef, type AuditMismatchBlock, type CategoryCount, type MismatchQuestionRow } from "@/lib/prospects/audit-mismatch";
 import type { AuditSnapshot } from "@/lib/prospects/audits";
 
 /**
@@ -32,6 +32,7 @@ export function MismatchReport({
   walkthroughHref: string;
 }) {
   const market = snapshot.marketName.split(",")[0]!.trim();
+  const { ref, Ref, team } = entityRef(b.entityType);
   const captured = b.capturedAt ? fmtDate(b.capturedAt) : null;
   const replyEmail = snapshot.preparedBy?.email ?? null;
   const mailto = replyEmail
@@ -66,27 +67,27 @@ export function MismatchReport({
       <section className="grid gap-8 py-12 lg:grid-cols-12" data-signal-section="hero">
         <div className="lg:col-span-5">
           <h1 className={`${serifClass} text-balance text-3xl leading-tight sm:text-4xl`}>
-            Your team closes more. AI recommends {b.competitor.name} more often.
+            {Ref} {team ? "closes" : "close"} more. AI recommends {b.competitor.name} more often.
           </h1>
           <p className="mt-5 max-w-[48ch] text-sm leading-relaxed">
-            In our {market} test, your team had the stronger RealTrends sales record, but {b.competitor.name} was recommended more often.
+            In our {market} test, {ref} had the stronger RealTrends sales record, but {b.competitor.name} was recommended more often.
           </p>
         </div>
         <figure className="lg:col-span-7">
           <figcaption className="text-xs uppercase tracking-wide text-muted-foreground">Figure 01 · Production vs AI recommendations</figcaption>
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-y py-3 text-sm sm:hidden">
             <dt className="col-span-2 text-xs uppercase tracking-wide text-muted-foreground">{b.prospect.productionYear ?? ""} {b.metricLabel} · RealTrends</dt>
-            <dd><span className="block text-xs text-muted-foreground">Your team</span><span className="text-2xl tabular-nums">{b.prospect.productionDisplay.replace(/ closed$/, "")}</span></dd>
+            <dd><span className="block text-xs text-muted-foreground">{Ref}</span><span className="text-2xl tabular-nums">{b.prospect.productionDisplay.replace(/ closed$/, "")}</span></dd>
             <dd><span className="block text-xs text-muted-foreground">{b.competitor.name}</span><span className="text-2xl tabular-nums">{b.competitor.productionDisplay.replace(/ closed$/, "")}</span></dd>
             <dt className="col-span-2 mt-2 text-xs uppercase tracking-wide text-muted-foreground">AI recommendations · same {market} test</dt>
-            <dd><span className="block text-xs text-muted-foreground">Your team</span><span className="text-2xl tabular-nums text-destructive">{b.prospect.recommendationCount}</span> <span className="text-xs text-muted-foreground">/ {b.answerCount}</span></dd>
+            <dd><span className="block text-xs text-muted-foreground">{Ref}</span><span className="text-2xl tabular-nums text-destructive">{b.prospect.recommendationCount}</span> <span className="text-xs text-muted-foreground">/ {b.answerCount}</span></dd>
             <dd><span className="block text-xs text-muted-foreground">{b.competitor.name}</span><span className="text-2xl tabular-nums">{b.competitor.recommendationCount}</span> <span className="text-xs text-muted-foreground">/ {b.answerCount}</span></dd>
           </dl>
           <table className="mt-3 hidden w-full text-sm sm:table">
             <thead>
               <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="py-2 font-medium" />
-                <th className="py-2 font-medium">Your team</th>
+                <th className="py-2 font-medium">{Ref}</th>
                 <th className="py-2 font-medium">{b.competitor.name}</th>
               </tr>
             </thead>
@@ -109,7 +110,7 @@ export function MismatchReport({
               </tr>
             </tbody>
           </table>
-          <p className={`${serifClass} mt-4 text-lg`}>Your team sold more. {b.competitor.name} was recommended more.</p>
+          <p className={`${serifClass} mt-4 text-lg`}>{Ref} sold more. {b.competitor.name} was recommended more.</p>
           {notFluke && <p className="mt-1 text-sm text-muted-foreground">{b.competitor.name} appeared across <span className="tabular-nums">{b.distinctQuestions.competitor}</span> different questions.</p>}
         </figure>
       </section>
@@ -189,7 +190,7 @@ export function MismatchReport({
           <h2 className="text-xs uppercase tracking-wide text-muted-foreground lg:col-span-3">This wasn’t based on one answer</h2>
           <div className="grid gap-6 sm:grid-cols-2 lg:col-span-9">
             <Stat name={b.competitor.name} recs={b.competitor.recommendationCount} qs={b.distinctQuestions.competitor} />
-            <Stat name="Your team" recs={b.prospect.recommendationCount} qs={b.distinctQuestions.prospect} pain />
+            <Stat name={Ref} recs={b.prospect.recommendationCount} qs={b.distinctQuestions.prospect} pain />
           </div>
           {b.categories.length > 0 && (
             <figure className="lg:col-span-9 lg:col-start-4">
@@ -199,7 +200,7 @@ export function MismatchReport({
                   <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <th className="py-2 font-medium">Question type</th>
                     <th className="py-2 text-right font-medium">Questions tested</th>
-                    <th className="py-2 text-right font-medium">Your team — recommendations</th>
+                    <th className="py-2 text-right font-medium">{Ref} — recommendations</th>
                     <th className="py-2 text-right font-medium">{b.competitor.name} — recommendations</th>
                   </tr>
                 </thead>
@@ -225,7 +226,7 @@ export function MismatchReport({
         <section className="grid gap-8 border-t py-10 lg:grid-cols-12" data-signal-section="gap">
           <h2 className="text-xs uppercase tracking-wide text-muted-foreground lg:col-span-3">Where they’re showing up more</h2>
           <div className="grid gap-6 sm:grid-cols-3 lg:col-span-9">
-            {b.gaps.map((g) => <Gap key={g.key} g={g} competitor={b.competitor.name} />)}
+            {b.gaps.map((g) => <Gap key={g.key} g={g} competitor={b.competitor.name} you={Ref} />)}
           </div>
           {b.competitorNeighborhoods.length > 0 && (
             <p className="text-sm text-muted-foreground lg:col-span-9 lg:col-start-4">
@@ -302,7 +303,7 @@ export function MismatchReport({
       <section className="grid gap-8 border-t py-10 lg:grid-cols-12" data-signal-section="what-i-cant-tell">
         <div className="lg:col-span-5">
           <h2 className="text-xs uppercase tracking-wide text-muted-foreground">What I can’t tell from public data</h2>
-          <p className="mt-3 max-w-[40ch] text-sm leading-relaxed">The report can show me where the gap is. It can’t tell me which parts of the market matter most to your team.</p>
+          <p className="mt-3 max-w-[40ch] text-sm leading-relaxed">The report can show me where the gap is. It can’t tell me which parts of the market matter most to {ref}.</p>
           <p className="mt-3 max-w-[40ch] text-sm text-muted-foreground">Those answers would change what I’d prioritize first.</p>
         </div>
         <ul className="space-y-3 text-sm lg:col-span-5">
@@ -386,7 +387,7 @@ export function MismatchReport({
           <ul className="mt-2 max-w-[52ch] space-y-1 text-sm">
             <li>— which parts of this I think matter,</li>
             <li>— which parts I wouldn’t worry about,</li>
-            <li>— and the first two or three things I’d investigate for your team.</li>
+            <li>— and the first two or three things I’d investigate for {ref}.</li>
           </ul>
           <div className="mt-6">
             {bookingUrl ? (
@@ -498,11 +499,11 @@ function Stat({ name, recs, qs, pain }: { name: string; recs: number; qs: number
   );
 }
 
-function Gap({ g, competitor }: { g: CategoryCount; competitor: string }) {
+function Gap({ g, competitor, you }: { g: CategoryCount; competitor: string; you: string }) {
   return (
     <div>
       <p className="text-xs uppercase tracking-wide text-muted-foreground">{g.label}</p>
-      <p className="mt-1 text-sm">Your team: <span className="tabular-nums">{g.prospect}</span></p>
+      <p className="mt-1 text-sm">{you}: <span className="tabular-nums">{g.prospect}</span></p>
       <p className="text-sm">{competitor}: <span className="tabular-nums">{g.competitor}</span></p>
     </div>
   );

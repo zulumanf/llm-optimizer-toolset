@@ -91,6 +91,32 @@ export const auditSenseCheck = z.object({
 });
 export type AuditSenseCheckOutput = z.infer<typeof auditSenseCheck>;
 
+/** Spec 129: the private report read from the recipient's point of view.
+ * `verdict` is the only field the send gate acts on besides blocking
+ * concerns and confidence; everything else is for the founder's eyes. */
+export const reportProspectReview = z.object({
+  verdict: z.enum(["send", "fix"]),
+  concerns: z
+    .array(
+      z.object({
+        severity: z.enum(["blocking", "polish"]),
+        area: z
+          .enum(["clarity", "relevance", "jargon", "numbers", "tone", "structure", "missing", "other"])
+          .catch("other"),
+        detail: z.string().min(1),
+        quote: z.string().nullable().default(null),
+      })
+    )
+    .default([]),
+  /** What a busy agent takes away in the first thirty seconds. */
+  firstImpression: z.string().min(1),
+  /** The one question this reader would reply with. */
+  topQuestion: z.string().nullable().default(null),
+  confidence,
+  confidenceNote: z.string().min(1),
+});
+export type ReportProspectReviewOutput = z.infer<typeof reportProspectReview>;
+
 const replyClassification = z.object({
   intent: z.enum([
     "interested",
@@ -365,6 +391,7 @@ const AGENT_SCHEMAS = {
   detect_contradictions: contradictionDetection,
   generate_executive_narrative: executiveNarrative,
   repurpose_content: repurposedAsset,
+  report_prospect_review: reportProspectReview,
 } as const satisfies Record<AutomationAgentKey, z.ZodTypeAny>;
 
 export type AgentOutputFor<K extends AutomationAgentKey> = z.infer<(typeof AGENT_SCHEMAS)[K]>;

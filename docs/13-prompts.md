@@ -16,6 +16,7 @@ Single source of truth for every AI prompt **we author** (parsers, drafting aids
 | Content Brief | `content-brief-v1` | `lib/content/prompts.ts` (BRIEF_SYSTEM) | `gpt-5.4-2026-03-05` (AGENT_MODEL) |
 | Content Draft | `content-draft-v1` | `lib/content/prompts.ts` (DRAFT_SYSTEM) | same |
 | Fact Verifier | `fact-verify-v1` | `lib/content/prompts.ts` (VERIFY_SYSTEM) — fresh-context, never the drafter | same |
+| Report Prospect Review | `report-prospect-review-v1` | `lib/automation/prompts.ts` (`report_prospect_review`), run by `lib/prospects/report-handoff.ts` — reads the private report as the recipient (a busy top-producing agent who knows nothing about AI); verdict send/fix, blocking/polish concerns; gates the unattended report reply together with the deterministic evidence QA and the sense-check (spec 129) | `gpt-5.4-2026-03-05` (frontier via TASK_ROUTES) |
 | Audit Sense-Check | `audit-sense-check-v2` | `lib/automation/prompts.ts` (`audit_sense_check`), run by `lib/prospects/sense-check.ts` — describes concerns, never rewrites; concern-severity findings join the publish ack-gate (spec 077). v2 2026-08-20: output shape stated explicitly after live schema drift (invented area labels, omitted overallReadsFair); schema maps unknown areas to `other`, surfaced never dropped | `gpt-5.4-2026-03-05` (AGENT_MODEL, frontier via TASK_ROUTES) |
 
 > Spec 010 note: the three content prompts live as versioned constants in
@@ -235,4 +236,5 @@ recommendations (`categoryLineFor`); QA rejects any other category line.
 | Date | Template | Change |
 |---|---|---|
 | 2026-09-03 | competitive_mismatch_t2/t3_*_v1 | Initial (spec 127). Never sent. |
+| 2026-09-04 | mismatch_report_delivery_v1 | Spec 129 threaded report reply: `{first},` / "Here it is: {branded URL}" / one frozen-evidence observation ({comp} came up across {distinct} different questions[, especially around {top 3 neighborhoods}]; That surprised me given RealTrends has {ref} at {pd} versus {cd} for {comp}) / one question (areas or kind of business {you're|your team is} trying to grow) / "If so, there are a couple things in the results I'd look at first." / full signature. Rendered by `renderReportDelivery`, linted by `lintReportDelivery` (follow-up rules + exactly one link). |
 | 2026-09-04 | competitive_mismatch_t2/t3_*_v2 | Reply-only copy (Touch 2 = the pattern, Touch 3 = why you); agent vs team wording; no "private report" claim without a finished report; exact distinct-question count; em/en dash, ChatGPT, length and double-ask lint. |

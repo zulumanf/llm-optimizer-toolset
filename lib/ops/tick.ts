@@ -31,6 +31,7 @@ export interface AutomationTickReport {
   notifications: Record<string, unknown>;
   scheduledSends: Record<string, unknown>;
   followups: Record<string, unknown>;
+  reportHandoffs: Record<string, unknown>;
   cityPipelines: Record<string, unknown>;
   assistantTasks: Record<string, unknown>;
 }
@@ -181,6 +182,20 @@ export async function runAutomationTick(
     followups = { error: "follow-up pass failed; dispatch was unaffected" };
   }
 
+  // Positive-reply report handoffs (spec 129): generate the private report
+  // over the frozen evidence, QA it three ways, and queue the threaded reply.
+  // Isolated: a handoff failure never affects dispatch.
+  let reportHandoffs: Record<string, unknown> = { skipped: true };
+  try {
+    const { processReportHandoffs } = await import("@/lib/prospects/report-handoff");
+    reportHandoffs = { ...(await processReportHandoffs()) };
+  } catch (err) {
+    log("error", "cron.report_handoffs_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    reportHandoffs = { error: "report handoff pass failed; dispatch was unaffected" };
+  }
+
   // Scheduled prospect sends (spec 091): transmit approved drafts whose
   // human-named send time has arrived, through the same gated entry point a
   // human click uses. Claim-marked and windowed — safe at any frequency,
@@ -269,6 +284,7 @@ export async function runAutomationTick(
     notifications,
     scheduledSends,
     followups,
+    reportHandoffs,
     cityPipelines,
     assistantTasks,
   };

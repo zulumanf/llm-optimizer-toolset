@@ -101,6 +101,11 @@ export const TASK_ROUTES = {
     tier: "cheap",
     rationale: "Short-text intent classification; low-confidence routes to a human.",
   },
+  report_prospect_review: {
+    tier: "frontier",
+    rationale:
+      "Reads the whole private report as the recipient would before it is sent unattended — judgment about clarity and relevance for a non-technical reader (spec 129).",
+  },
   extract_claims: {
     tier: "cheap",
     rationale: "Narrow extraction, human-approved downstream (audit A4 downgrade).",

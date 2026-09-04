@@ -62,7 +62,7 @@ export async function FollowupSequenceCard({ prospectId }: { prospectId: string 
         {view.handoff && (
           <>
             <dt className="text-muted-foreground">Next action</dt>
-            <dd className="col-span-3 font-medium">Positive reply · Report: {view.handoff.reportState.replaceAll("_", " ")} · {view.handoff.nextAction}</dd>
+            <dd className="col-span-3 font-medium">Positive reply · Report: {view.handoff.reportState.replaceAll("_", " ")} · {view.handoff.nextAction}{view.handoff.reason ? <span className="block text-xs font-normal text-muted-foreground">{view.handoff.reason}</span> : null}</dd>
           </>
         )}
         {view.status === "active" && (

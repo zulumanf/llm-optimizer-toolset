@@ -1125,6 +1125,9 @@ export const SEQUENCE_DISPLAY_STATES = [
 ] as const;
 export type SequenceDisplayState = (typeof SEQUENCE_DISPLAY_STATES)[number];
 
+export type HandoffDisplayState =
+  | "REPORT_NOT_GENERATED" | "READY_TO_SEND" | "IN_PROGRESS" | "SCHEDULED" | "SENT" | "NEEDS_REVIEW" | "STOPPED";
+
 export interface FollowupSequenceView {
   sequenceId: string;
   prospectId: string;
@@ -1143,8 +1146,9 @@ export interface FollowupSequenceView {
   queued: { draftId: string; touch: number; branch: string | null; template: string | null; scheduledSendAt: Date | null; engagement: string | null } | null;
   touches: { touch: number; branch: string | null; template: string | null; sentAt: Date; opens: number; gmailThreadId: string | null }[];
   replies: { classification: string; receivedAt: Date; afterTouch: number }[];
-  /** Founder handoff after a positive reply: what to do next, made obvious. */
-  handoff: { reportState: "READY_TO_SEND" | "REPORT_NOT_GENERATED"; nextAction: string } | null;
+  /** After a positive reply: where the report handoff (spec 129) stands and
+   * what, if anything, the founder must do. */
+  handoff: { reportState: HandoffDisplayState; nextAction: string; reason: string | null } | null;
   expiresAt: Date;
 }
 
@@ -1160,7 +1164,10 @@ export async function listFollowupSequences(filter: { prospectId?: string; exper
         from prospect_outreach_sends s join outreach_drafts d on d.id = s.draft_id
         where s.allowed and (s.id = q.touch1_send_id or d.sequence_id = q.id)) as touches,
       (select coalesce(json_agg(json_build_object('classification', r.classification, 'receivedAt', r.received_at) order by r.received_at), '[]')
-        from prospect_replies r where r.prospect_id = q.prospect_id and r.received_at >= t1.sent_at) as replies
+        from prospect_replies r where r.prospect_id = q.prospect_id and r.received_at >= t1.sent_at) as replies,
+      (select json_build_object('status', h.status, 'reason', h.reason, 'scheduledAt', d.scheduled_send_at)
+        from prospect_report_handoffs h left join outreach_drafts d on d.id = h.draft_id
+        where h.prospect_id = q.prospect_id order by h.created_at desc limit 1) as handoff_row
     from outreach_followup_sequences q
     join prospects p on p.id = q.prospect_id
     join market_launches l on l.id = p.launch_id
@@ -1213,15 +1220,36 @@ export async function listFollowupSequences(filter: { prospectId?: string; exper
       touches,
       replies,
       handoff:
-        seq.status === "replied" && lastReply && POSITIVE.includes(lastReply.classification as ReplyClassification)
-          ? {
-              reportState: readiness.get(seq.id) ? "READY_TO_SEND" : "REPORT_NOT_GENERATED",
-              nextAction: readiness.get(seq.id) ? "Reply in thread with the private report" : "Generate + QA the private report, then reply in thread",
-            }
+        r.handoffRow || (seq.status === "replied" && lastReply && POSITIVE.includes(lastReply.classification as ReplyClassification))
+          ? handoffDisplay(r.handoffRow as { status: string; reason: string | null; scheduledAt: string | null } | null, readiness.get(seq.id) ?? false, seq.timezone)
           : null,
       expiresAt: sequenceExpiresAt(seq.touch1SentAt),
     };
   });
+}
+
+function handoffDisplay(
+  row: { status: string; reason: string | null; scheduledAt: string | null } | null,
+  reportReady: boolean,
+  tz: string
+): FollowupSequenceView["handoff"] {
+  if (!row) {
+    return reportReady
+      ? { reportState: "READY_TO_SEND", nextAction: "Reply in thread with the private report", reason: null }
+      : { reportState: "REPORT_NOT_GENERATED", nextAction: "Generate + QA the private report, then reply in thread", reason: null };
+  }
+  switch (row.status) {
+    case "sent": return { reportState: "SENT", nextAction: "Report delivered in thread; watch for the next reply", reason: null };
+    case "scheduled": {
+      const at = row.scheduledAt ? new Date(row.scheduledAt) : null;
+      const w = at ? wallClock(at, tz) : null;
+      return { reportState: "SCHEDULED", nextAction: `Report reply queued${w ? ` for ${String(w.hour).padStart(2, "0")}:${String(w.minute).padStart(2, "0")} local` : ""}`, reason: null };
+    }
+    case "needs_review": return { reportState: "NEEDS_REVIEW", nextAction: "Fix the report or send by hand", reason: row.reason };
+    case "stopped": return { reportState: "STOPPED", nextAction: "No report: the prospect opted out or is blocked", reason: row.reason };
+    case "qa_passed": return { reportState: "READY_TO_SEND", nextAction: "QA passed; autosend is off, reply in thread by hand", reason: row.reason };
+    default: return { reportState: "IN_PROGRESS", nextAction: "Generating and QA-ing the report", reason: row.reason };
+  }
 }
 
 // ------------------------------------------------------------ experiment metrics

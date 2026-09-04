@@ -2925,3 +2925,23 @@ activity and the operator view shows READY_TO_SEND / REPORT_NOT_GENERATED
 instead. Also: a 21-calendar-day sequence expiry from the actual Touch 1 send,
 and reply bodies that strip to nothing (all-quoted, redacted) are "unclear" —
 they stop the sequence for review and never suppress.
+
+## 2026-09-04 — Positive-reply report delivery is automated behind three QA gates (spec 129)
+
+Reverses the same-day decision above at the founder's request ("when they reply
+yes it works, is QA'd and goes out asap after multiple QA's"). The "yes" itself is
+still the only trigger (`positive_interest`; questions, proof requests and
+referrals stay with the founder). Between the reply and the send sit: the existing
+`publishAudit` gates (the automation may acknowledge exactly one warning, the
+incomplete-run one, because the frozen mismatch counts already use captured
+answers only); a deterministic evidence QA of the published block against the
+frozen Touch 1 snapshot; an LLM read of the whole report from the recipient's
+point of view (new `report_prospect_review` prompt, frontier tier — clarity,
+relevance, jargon, digestibility for someone who knows nothing about AI); and the
+existing sense-check agent over the same content hash. Any blocking concern, low
+confidence or failed call parks the handoff as `needs_review` with the reason — a
+report is still generated and kept, only the send waits. The reply reuses the
+spec 128 `reply_to_id` path (threaded under their message, refused without a
+thread), goes 4–12 minutes after the "yes" inside 07:00–20:00 recipient-local and
+next morning otherwise, and is deterministic copy (`mismatch_report_delivery_v1`).
+`REPORT_HANDOFF_AUTOSEND=false` is the kill switch: everything runs, the send waits.
