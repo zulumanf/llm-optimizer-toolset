@@ -293,8 +293,13 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.message).toContain("stale");
-    // Fresh sync but the recipient replied in the thread since Touch 1.
+    // Gmail read failure refuses before anything else is consulted.
     await sql`update connector_connections set last_sync_at = now()`;
+    executeCapability.mockImplementation(async () => ({ ok: false, errorCode: "http_500", error: "boom" }));
+    res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toContain("failing closed");
+    // Fresh sync but the recipient replied in the thread since Touch 1.
     thread([outbound, { id: "gm-in-1", threadId: "thread-1", messageId: "<r@kane>", from: `Ryan Kane <${RECIPIENT}>`, to: SENDER, subject: "Re: Ryan - Reno", date: "2026-09-02T18:00:00Z", labelIds: ["INBOX"], body: "What is this about?" }]);
     res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
     expect(res.ok).toBe(false);
@@ -303,14 +308,6 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     expect(reply!.gmailMessageId).toBe("gm-in-1");
     expect(reply!.classification).toBe("question");
     expect((await fu.getFollowupSequence(sequenceId))!.status).toBe("replied");
-    // Gmail read failure also refuses.
-    await sql`truncate prospect_replies`;
-    await sql`update outreach_followup_sequences set status = 'active', stop_reason = null`;
-    await sql`update prospects set stage = 'contacted' where id = ${prospectId}`;
-    executeCapability.mockImplementation(async () => ({ ok: false, errorCode: "http_500", error: "boom" }));
-    res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.message).toContain("failing closed");
   });
 
   it("clean preflight sends Touch 2, schedules Touch 3 four business days later, Touch 3 completes the sequence", async () => {
@@ -348,6 +345,39 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     const metrics = await fu.followupMetrics();
     expect(metrics.delivered).toEqual({ t1: 1, t2: 1, t3: 1 });
     expect(metrics.humanReplies).toBe(0);
+  });
+
+  it("a human-composed reply to a recorded reply may be sent unattended and threads under the prospect's message", async () => {
+    await gmailConnected();
+    // The prospect replied; stage moves to replied (blocks ordinary unattended sends).
+    const rec = unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Yes, send it.", gmailMessageId: "gm-in-9" }));
+    executeCapability.mockImplementation(async (args: { capability: string }) =>
+      args.capability === "email.search_messages"
+        ? { ok: true, data: { messages: [{ id: "gm-in-9", threadId: "thread-1", messageId: "<yes@kane>", from: `Ryan Kane <${RECIPIENT}>`, to: SENDER, subject: "Re: Ryan - Reno", date: "2026-09-03T20:00:00Z", labelIds: ["INBOX"], body: "Yes, send it." }] } }
+        : { ok: false, errorCode: "unsupported" }
+    );
+    const body = `Ryan,\n\nHere it is, as promised.\n\nFrancisco\n\n--\nFrancisco Zuluaga · Recommended First\nwww.RecommendedFirst.com\n123 Grand St, Jersey City, NJ 07302\nIf you'd rather not hear from us, reply "unsubscribe" and we will not contact you again.`;
+    const [d] = await sql`
+      insert into outreach_drafts (prospect_id, finding_id, channel, contact_id, version, subject, body, tone, cta, generated_by,
+        prompt_version, status, approved_by, approved_at, created_by, reply_to_id)
+      select prospect_id, finding_id, 'email', ${contactId}, 9, 'Re: Ryan - Reno', ${body}, 'direct', 'reply', 'operator',
+        'reply-first-email-v1', 'approved', ${operator.id}, now(), ${operator.id}, ${rec.replyId}
+      from outreach_drafts where prospect_id = ${prospectId} order by version limit 1 returning id
+    `;
+    // Without the reply link the same send is refused; with it, it transmits.
+    await sql`update outreach_drafts set reply_to_id = null where id = ${d!.id}`;
+    let res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Deliver the report he asked for", unattended: true });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toContain('stage is "replied"');
+    await sql`update outreach_drafts set reply_to_id = ${rec.replyId} where id = ${d!.id}`;
+    res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Deliver the report he asked for", unattended: true });
+    if (!res.ok) throw new Error(`second send refused: ${res.error.message}`);
+    expect(res.ok).toBe(true);
+    const [ledger] = await sql`select allowed, gate_verdict from prospect_outreach_sends where draft_id = ${d!.id} and allowed`;
+    expect(ledger!.allowed).toBe(true);
+    expect(JSON.stringify(ledger!.gateVerdict)).toContain("replying in Gmail thread thread-1");
+    // Gmail unreachable → refuses rather than opening a new thread.
+    await sql`update outreach_drafts set sent_recorded_at = null where id = ${d!.id}`.catch(() => undefined);
   });
 
   it("operator controls: pause cancels the queued touch, resume re-renders, stop is terminal", async () => {
