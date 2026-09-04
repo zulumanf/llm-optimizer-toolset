@@ -2888,3 +2888,20 @@ slot; every transmit still counts toward `GMAIL_DAILY_SEND_CAP`, and due
 follow-ups drain before new cold sends. Greeting/subject use the em-dash-free
 `{first},` / `{first} - …` forms the 2026-08-31 operator decision set, not the
 spec's `—`, so Touch 2/3 match what the prospect already received.
+
+## 2026-09-04 — Positive-reply learning log is a derived view, not a table
+
+First positive cold-outreach reply (Steve Wall, Raleigh, 2026-09-03) needed a
+per-prospect record joining frozen mismatch evidence, opens, reply, report and
+stage events. Chose migration 102's read-only view `outreach_reply_learning_log`
+over a parallel table: every column is a projection of canonical rows (sends,
+draft parent chain, `prospect_replies`, `outreach_open_signal`, audits, views,
+walkthroughs, stage history), so it can never drift from the ledger and nothing
+is written twice. Mismatch strength is deliberately absent from the view —
+`mismatchStrength` in `lib/prospects/mismatch.ts` stays the single
+implementation and `scripts/positive-reply-forensic.ts` applies it. The same
+migration restates spec 125's `outreach_open_signal` view idempotently because
+it had been applied to prod (097) without ever reaching `main`; its `down`
+drops that view only where 097 is not recorded. With N_POSITIVE_REPLIES = 1 the
+comparison the script prints is descriptive only — no copy, threshold, market,
+timing or cadence change is made on this observation.
