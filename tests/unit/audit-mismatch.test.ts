@@ -3,12 +3,13 @@ import {
   categorize,
   excerptAround,
   gapCategories,
+  isWellFormedQuestion,
   narrative,
   type MismatchQuestionRow,
 } from "@/lib/prospects/audit-mismatch";
 
 const q = (over: Partial<MismatchQuestionRow>): MismatchQuestionRow => ({
-  text: "Who should I use to sell a condominiums in Mordecai?",
+  text: "Who should I use to sell a condominiums in Mordecai?", wellFormed: false,
   audience: "seller", propertyType: "condominiums", neighborhood: "Mordecai", luxury: false,
   answers: 4, competitorRecommended: 0, prospectRecommended: 0, prospectMentioned: 0, excerpts: [],
   ...over,
@@ -37,6 +38,17 @@ describe("excerptAround — the sentence around the competitor, markdown strippe
   it("is case-insensitive and null when absent", () => {
     expect(excerptAround(text, "david worters")).not.toBeNull();
     expect(excerptAround(text, "Steve Wall")).toBeNull();
+  });
+});
+
+describe("isWellFormedQuestion — generator grammar slips stay evidence, leave the executive view", () => {
+  it("flags article + plural", () => {
+    expect(isWellFormedQuestion("Who should I use to sell a condominiums in Boylan Heights?")).toBe(false);
+    expect(isWellFormedQuestion("Who should I use to sell a single-family homes in Mordecai?")).toBe(false);
+    expect(isWellFormedQuestion("Who should I use to sell a townhomes in Mordecai?")).toBe(false);
+    expect(isWellFormedQuestion("Who should I use to sell a condo in Mordecai?")).toBe(true);
+    expect(isWellFormedQuestion("Who are the best luxury real estate agents in Raleigh, NC?")).toBe(true);
+    expect(isWellFormedQuestion("Which real estate agents specialize in Oberlin?")).toBe(true);
   });
 });
 
@@ -79,6 +91,8 @@ describe("narrative — typed, personalized, honest", () => {
     expect(n.diagnosis[1]!.observed).toContain("Mordecai");
     expect(n.diagnosis[2]!.observed).toContain("zillow.com");
     expect(n.diagnosis[2]!.observed).toContain("your own site was not among");
+    expect(n.diagnosis[2]!.mayMean).toContain("appeared far more often in the cited evidence");
+    expect(JSON.stringify(n.diagnosis)).not.toMatch(/carry more weight|drawing on|rely on/);
     for (const d of n.diagnosis) {
       expect(d.mayMean).toMatch(/may|appear/);
       expect(d.investigate.length).toBeGreaterThan(20);

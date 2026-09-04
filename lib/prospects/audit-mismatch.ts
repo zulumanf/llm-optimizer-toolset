@@ -20,6 +20,10 @@ export const PRIVATE_REPORT_TEMPLATE_VERSION = "private_ai_recommendation_report
 
 export interface MismatchQuestionRow {
   text: string;
+  /** False for frozen questions with a generator grammar slip ("sell a
+   * condominiums"). They stay in every count and in the appendix, exactly
+   * as asked; the executive sections show well-formed questions only. */
+  wellFormed: boolean;
   audience: string;
   propertyType: string | null;
   neighborhood: string | null;
@@ -116,6 +120,11 @@ export function excerptAround(text: string, name: string): string | null {
   return quote;
 }
 
+/** Article + plural noun ("a condominiums", "a single-family homes"). */
+export function isWellFormedQuestion(text: string): boolean {
+  return !/\ban? (?:[a-z-]+ )?(?:condominiums|townhomes|homes|houses|condos|apartments|lofts|units)\b/i.test(text);
+}
+
 const AUDIENCE_LABEL: Record<string, string> = { buyer: "Buyer questions", seller: "Seller questions", general: "General “who should I use” questions" };
 const PROPERTY_LABEL: Record<string, string> = { condominiums: "Condo questions", "single-family homes": "Single-family questions", townhomes: "Townhome questions" };
 
@@ -182,8 +191,8 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
   diagnosis.push({
     area: "Track record",
     observed: `Your ${p.productionDisplay} is well ahead of ${possessive(c.name)} ${c.productionDisplay} on the RealTrends record, but that advantage is not reflected in the answers: ${p.recommendationCount} recommendation${p.recommendationCount === 1 ? "" : "s"} for your team against ${c.recommendationCount} for ${c.name}, out of the same ${i.answerCount} answers.`,
-    mayMean: `${c.name} may have a clearer public trail connecting them with ${i.market} and the questions where they appeared. The sales record alone is not what the answers are drawing on.`,
-    investigate: "How consistently your production, specialties, neighborhoods and team identity are represented across your own site and the independent sources the answers rely on.",
+    mayMean: `${c.name} may have a clearer public trail connecting them with ${i.market} and the questions where they appeared.`,
+    investigate: "How consistently your production, specialties, neighborhoods and team identity are represented across your own site and the independent sources that repeatedly appeared in the captured answers.",
   });
   if (gapLead) {
     diagnosis.push({
@@ -197,7 +206,7 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
     diagnosis.push({
       area: "Where the information comes from",
       observed: `The answers cited ${list(platforms)} repeatedly${i.ownSiteCited === false ? "; your own site was not among the cited sources" : ""}.`,
-      mayMean: "The answers appear to lean on portal profiles and public listings more than on any team's own site. What those profiles say about each team may carry more weight than the site does.",
+      mayMean: "Those portal profiles appeared far more often in the cited evidence than either team's own site, which makes them one of the first places I'd inspect.",
       investigate: "Whether your team, brokerage, neighborhoods and specialties read the same way on those portals as they do on your site.",
     });
   }
@@ -317,6 +326,7 @@ export async function mismatchQuestions(s: MismatchEvidenceSnapshot): Promise<Mi
     const text = row.promptText as string;
     return {
       text,
+      wellFormed: isWellFormedQuestion(text),
       audience: (row.audience as string | null) ?? "general",
       propertyType: (row.propertyType as string | null) ?? null,
       neighborhood: (row.neighborhood as string | null) ?? null,

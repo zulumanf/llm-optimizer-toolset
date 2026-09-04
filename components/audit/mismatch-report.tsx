@@ -34,7 +34,7 @@ export function MismatchReport({
   const mailto = replyEmail
     ? `mailto:${replyEmail}?subject=${encodeURIComponent(`Re: ${b.prospect.name} report`)}&body=${encodeURIComponent("Francisco —\n\nYes, walk me through what you found.\n")}`
     : null;
-  const receipts = b.questions.filter((q) => q.excerpts.length > 0).slice(0, 4);
+  const receipts = b.questions.filter((q) => q.excerpts.length > 0 && q.wellFormed !== false).slice(0, 4);
   const asked = pickRepresentative(b.questions);
   const prospectShort = firstName(b.prospect.name);
   const notFluke = b.distinctQuestions.competitor >= 3;
@@ -115,8 +115,8 @@ export function MismatchReport({
       <section className="grid gap-8 border-t py-10 lg:grid-cols-12" data-signal-section="why-flagged">
         <h2 className="text-xs uppercase tracking-wide text-muted-foreground lg:col-span-3">Why I flagged this</h2>
         <div className="max-w-[60ch] text-sm leading-relaxed lg:col-span-7">
-          <p>When a buyer or seller asks AI who to work with, the teams that appear in the answer can enter the conversation early.</p>
-          <p className="mt-3">Your sales record suggests you should be competitive in that conversation. In this test, {b.competitor.name} appeared more often.</p>
+          <p>When a buyer or seller asks AI who to hire, the names in the answer become part of their shortlist.</p>
+          <p className="mt-3">This doesn’t prove you lost business. It shows that in this test, {b.competitor.name} made that shortlist much more often despite a lower {b.metricLabel} record.</p>
         </div>
       </section>
 
@@ -195,9 +195,9 @@ export function MismatchReport({
                 <thead>
                   <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <th className="py-2 font-medium">Question type</th>
-                    <th className="py-2 text-right font-medium">Questions</th>
-                    <th className="py-2 text-right font-medium">Your team</th>
-                    <th className="py-2 text-right font-medium">{b.competitor.name}</th>
+                    <th className="py-2 text-right font-medium">Questions tested</th>
+                    <th className="py-2 text-right font-medium">Your team — recommendations</th>
+                    <th className="py-2 text-right font-medium">{b.competitor.name} — recommendations</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -211,6 +211,7 @@ export function MismatchReport({
                   ))}
                 </tbody>
               </table>
+              <p className="mt-2 text-xs text-muted-foreground">Each question was tested up to {b.repetitions} times. Question categories can overlap.</p>
             </figure>
           )}
         </section>
@@ -439,6 +440,7 @@ function pickRepresentative(questions: MismatchQuestionRow[]): MismatchQuestionR
   const seen = new Set<string>();
   const out: MismatchQuestionRow[] = [];
   for (const q of questions) {
+    if (q.wellFormed === false) continue;
     const key = q.luxury ? "luxury" : `${q.audience}:${q.propertyType ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -447,7 +449,7 @@ function pickRepresentative(questions: MismatchQuestionRow[]): MismatchQuestionR
   }
   for (const q of questions) {
     if (out.length >= 8) break;
-    if (!out.includes(q) && q.competitorRecommended > 0) out.push(q);
+    if (!out.includes(q) && q.wellFormed !== false) out.push(q);
   }
   return out;
 }
