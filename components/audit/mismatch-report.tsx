@@ -17,6 +17,7 @@ export function MismatchReport({
   answersHref,
   serifClass,
   bookingUrl = null,
+  walkthroughHref,
 }: {
   snapshot: AuditSnapshot;
   block: AuditMismatchBlock;
@@ -27,6 +28,8 @@ export function MismatchReport({
    * final CTA books a time instead of opening an email; the mid-report
    * link and the small line still point at plain reply. */
   bookingUrl?: string | null;
+  /** In-house scheduling page under this report (spec 128). */
+  walkthroughHref: string;
 }) {
   const market = snapshot.marketName.split(",")[0]!.trim();
   const captured = b.capturedAt ? fmtDate(b.capturedAt) : null;
@@ -390,6 +393,10 @@ export function MismatchReport({
               <a href={bookingUrl} target="_blank" rel="noopener noreferrer" data-signal-cta="walk-me-through" className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto">
                 Pick a time to walk through it
               </a>
+            ) : walkthroughHref ? (
+              <Link href={walkthroughHref} data-signal-cta="walk-me-through" className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto">
+                Pick a time to walk through it
+              </Link>
             ) : mailto ? (
               <a href={mailto} data-signal-cta="walk-me-through" className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto">
                 Walk me through it

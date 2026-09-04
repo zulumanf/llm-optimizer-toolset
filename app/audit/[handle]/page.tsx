@@ -383,6 +383,7 @@ export default async function ProspectAuditPage({
           answersHref={answersHref}
           serifClass={serif.className}
           bookingUrl={process.env.AUDIT_BOOKING_URL?.trim() || null}
+          walkthroughHref={answersHref.replace(/\/answers$/, "/walkthrough")}
         />
       </div>
     );
