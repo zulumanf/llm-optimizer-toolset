@@ -29,11 +29,11 @@ export default async function WalkthroughPage({
   const days = groupSlotsByDay(walkthroughSlots(new Date(), ctx.timezone));
   const backHref = linkKey && slug ? `/audit/${slug}/${linkKey}` : `/audit/${token}`;
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12">
+    <div className="mx-auto max-w-3xl px-6 py-12">
       <p className="text-xs font-medium uppercase tracking-[0.18em]">Recommended First</p>
       <p className="mt-1 text-xs text-muted-foreground">{ctx.prospectName} · {ctx.marketName}</p>
       <h1 className={`${serif.className} mt-6 text-balance text-3xl leading-tight`}>Pick a time and I’ll walk you through it.</h1>
-      <p className="mt-3 max-w-[52ch] text-sm leading-relaxed text-muted-foreground">
+      <p className="mt-3 max-w-prose text-sm leading-relaxed text-muted-foreground">
         {WALKTHROUGH_MINUTES} minutes. Which parts of this I think matter, which I wouldn’t worry about, and the first two or three things I’d investigate for your team.
       </p>
       <div className="mt-8">

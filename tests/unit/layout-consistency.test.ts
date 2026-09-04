@@ -67,6 +67,8 @@ const INTENTIONAL_SHELLS = new Map<string, string>([
   ["app/audit/[handle]/answers/page.tsx", "prospect-facing appendix — same document shell"],
   ["app/audit/[handle]/[key]/page.tsx", "branded delegation wrapper — renders the document page"],
   ["app/audit/[handle]/[key]/answers/page.tsx", "branded delegation wrapper — renders the appendix"],
+  ["app/audit/[handle]/walkthrough/page.tsx", "prospect-facing scheduling page — same document shell (spec 128)"],
+  ["app/audit/[handle]/[key]/walkthrough/page.tsx", "branded delegation wrapper — renders the scheduling page"],
   ["app/portal/page.tsx", "client portal landing — the portal carries its own shell (spec 031)"],
   ["app/portal/[projectId]/page.tsx", "client portal overview — portal shell (specs 031/085)"],
   ["app/portal/[projectId]/work/page.tsx", "client portal — portal shell"],
