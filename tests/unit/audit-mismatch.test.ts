@@ -90,8 +90,8 @@ describe("narrative — typed, personalized, honest", () => {
     expect(n.diagnosis[0]!.observed).toContain("1 recommendation for your team against 6");
     expect(n.diagnosis[1]!.observed).toContain("Mordecai");
     expect(n.diagnosis[2]!.observed).toContain("zillow.com");
-    expect(n.diagnosis[2]!.observed).toContain("your own site was not among");
-    expect(n.diagnosis[2]!.mayMean).toContain("appeared far more often in the cited evidence");
+    expect(n.diagnosis[2]!.observed).toContain("your own website was not one of them");
+    expect(n.diagnosis[2]!.mayMean).toContain("appear to carry far more of the answers");
     expect(JSON.stringify(n.diagnosis)).not.toMatch(/carry more weight|drawing on|rely on/);
     for (const d of n.diagnosis) {
       expect(d.mayMean).toMatch(/may|appear/);

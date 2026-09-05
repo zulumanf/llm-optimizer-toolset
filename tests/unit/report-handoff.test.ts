@@ -58,9 +58,12 @@ describe("report serialization", () => {
     const a = serializeReportForReview(block, { prospectName: "Kane and Partners", market: "Reno" });
     expect(a).toBe(serializeReportForReview(block, { prospectName: "Kane and Partners", market: "Reno" }));
     expect(reportContentHash(a)).toBe(reportContentHash(a));
-    expect(a.indexOf("## Why I flagged this")).toBeLessThan(a.indexOf("## The receipts"));
+    expect(a.indexOf("## The finding")).toBeLessThan(a.indexOf("## The receipts"));
+    const pattern = serializeReportForReview({ ...block, distinctQuestions: { prospect: 3, competitor: 3 } }, { prospectName: "Kane and Partners", market: "Reno" });
+    expect(pattern).toContain("so the rows overlap and do not add up to 8");
+    expect(a).toContain("## Appendix");
     expect(a.indexOf("## The receipts")).toBeLessThan(a.indexOf("## What I'd look at first"));
-    expect(a).toContain("recommended in 14 of 64 answers");
+    expect(a).toContain("Harbor View Group 14 / 64");
     expect(a).toContain('"Harbor View Group is a strong choice for Midtown buyers."');
     expect(reportContentHash(serializeReportForReview({ ...block, priorities: [] }, { prospectName: "Kane and Partners", market: "Reno" }))).not.toBe(reportContentHash(a));
   });

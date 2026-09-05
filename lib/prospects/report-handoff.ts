@@ -92,53 +92,116 @@ function toHandoff(r: Record<string, unknown>): ReportHandoff {
 
 // ------------------------------------------------------------ pure: serialization
 
-/** The report as the recipient reads it, in page order, plain text. Both
- * agents judge exactly this string; its hash is stored with every verdict. */
+/** The report as the recipient reads it: the page's sections, in the page's
+ * order, with the page's own explanatory sentences (counting rule, receipts
+ * limited to well-formed questions, the full-question appendix, the overlap
+ * note, the sources caption, the methodology). Both agents judge exactly this
+ * string; its hash is stored with every verdict. Keep it in step with
+ * components/audit/mismatch-report.tsx. */
 export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prospectName: string; market: string }): string {
   const out: string[] = [];
   const h = (t: string): void => { out.push("", `## ${t}`); };
-  out.push(`PRIVATE AI RECOMMENDATION REPORT for ${ctx.prospectName} (${ctx.market})`);
-  h("Why I flagged this");
+  const you = block.entityType === "individual" ? "you" : "your team";
+  const You = block.entityType === "individual" ? "You" : "Your team";
+  const comp = block.competitor.name;
+  const captured = block.capturedAt ? block.capturedAt.slice(0, 10) : null;
+  const notFluke = block.distinctQuestions.competitor >= 3;
   out.push(
-    `${block.prospect.name}: ${block.prospect.productionDisplay} (${block.productionSource}${block.prospect.productionYear ? `, ${block.prospect.productionYear}` : ""}) · recommended in ${block.prospect.recommendationCount} of ${block.answerCount} answers`,
-    `${block.competitor.name}: ${block.competitor.productionDisplay} · recommended in ${block.competitor.recommendationCount} of ${block.answerCount} answers`
+    `PRIVATE AI RECOMMENDATION REPORT · Recommended First · Prepared for ${ctx.prospectName} (${ctx.market}) · Private`,
+    `Production source: RealTrends${block.prospect.productionYear ? ` ${block.prospect.productionYear}` : ""} · Test: ${block.questionCount} questions × ${block.repetitions} · Answers counted: ${block.answerCount}${captured ? ` · Answers recorded ${captured}` : ""}`
+  );
+  h("The finding");
+  out.push(
+    `RealTrends has ${you} ahead. AI recommends ${comp} more often.`,
+    `On the RealTrends record for ${block.metricLabel}, ${you} ${block.entityType === "individual" ? "are" : "is"} ahead of ${comp}. In our ${ctx.market} test, ${comp} was recommended more often.`,
+    `Figure 01 · Production vs AI recommendations`,
+    `${block.prospect.productionYear ?? ""} ${block.metricLabel} (RealTrends): ${You} ${block.prospect.productionDisplay.replace(/ closed$/, "")} · ${comp} ${block.competitor.productionDisplay.replace(/ closed$/, "")}`,
+    `AI recommendations, same ${ctx.market} test: ${You} ${block.prospect.recommendationCount} / ${block.answerCount} · ${comp} ${block.competitor.recommendationCount} / ${block.answerCount}`,
+    `${You} closed more ${block.metricLabel}. ${comp} was recommended more.${notFluke ? ` ${comp} appeared across ${block.distinctQuestions.competitor} different questions.` : ""}`
   );
   h("What we asked");
   out.push(
-    `${block.questionCount} ${ctx.market} buyer and seller questions, each asked ${block.repetitions} times to ${block.assistantPhrase}${block.webSearch ? " with web search on" : ""}${block.capturedAt ? `, captured ${block.capturedAt.slice(0, 10)}` : ""}. ${block.answerCount} answers counted.`
+    `We tested the kinds of questions a buyer or seller might ask while deciding who to work with in ${ctx.market}.`,
+    `We counted a team only when the answer actually recommended them, not simply when their name appeared.`,
+    `Examples:`
   );
-  h("The receipts");
-  for (const q of block.questions.filter((x) => x.competitorRecommended > 0)) {
-    out.push(`Q: ${q.text} — ${block.competitor.name} recommended ${q.competitorRecommended}/${q.answers}, ${block.prospect.name} ${q.prospectRecommended}/${q.answers}`);
-    for (const e of q.excerpts) out.push(`   "${e.quote}" (${e.model}, ${e.capturedAt.slice(0, 10)})`);
+  for (const q of block.questions.filter((q) => q.wellFormed !== false).slice(0, 6)) out.push(`- "${q.text}"`);
+  out.push(`View all ${block.questionCount} questions (expandable table; reproduced in the appendix below).`);
+  const receipts = block.questions.filter((q) => q.excerpts.length > 0 && q.wellFormed !== false).slice(0, 4);
+  if (receipts.length) {
+    h("The receipts");
+    out.push(`Every count in this report traces back to a saved answer: 01 Question → 02 Saved answer → 03 Recommendation recorded → 04 Count added to this report.`);
+    for (const q of receipts) {
+      const e = q.excerpts[0]!;
+      out.push(
+        ``, `Question: "${q.text}"`,
+        `Saved answer: "${e.quote}"`,
+        `Answer recorded ${e.capturedAt.slice(0, 10)} · ${block.assistant}`,
+        `What we recorded: ${comp}: recommended (${q.competitorRecommended} of ${q.answers} answers) · ${block.prospect.name}: ${q.prospectRecommended === 0 ? "not recommended" : `recommended (${q.prospectRecommended} of ${q.answers})`}`
+      );
+    }
+    out.push(`View all ${block.answerCount} saved answers (a link on the page opens every answer, exactly as it came back).`);
   }
-  h("This wasn't based on one answer");
-  out.push(`${block.competitor.name} was recommended in ${block.distinctQuestions.competitor} different questions; ${block.prospect.name} in ${block.distinctQuestions.prospect}.`);
-  h("Where they're showing up more");
-  for (const c of block.gaps) out.push(`${c.label}: ${block.competitor.name} ${c.competitor} vs ${block.prospect.name} ${c.prospect} across ${c.questions} questions`);
-  if (block.competitorNeighborhoods.length) out.push(`Neighborhoods: ${block.competitorNeighborhoods.join(", ")}`);
+  if (notFluke) {
+    h("This wasn't based on one answer");
+    out.push(
+      `${comp}: ${block.competitor.recommendationCount} recommendations across ${block.distinctQuestions.competitor} different questions.`,
+      `${You}: ${block.prospect.recommendationCount} recommendation${block.prospect.recommendationCount === 1 ? "" : "s"} across ${block.distinctQuestions.prospect} different question${block.distinctQuestions.prospect === 1 ? "" : "s"}.`
+    );
+    if (block.categories.length) {
+      out.push(`Figure 02 · Recommendations by question type (Question type · Questions tested · ${You} recommendations · ${comp} recommendations)`);
+      for (const c of block.categories) out.push(`- ${c.label} · ${c.questions} · ${c.prospect} · ${c.competitor}`);
+      out.push(`Counts are recommendations, not questions. One question can belong to several types (selling a condo in a named neighborhood counts as seller, condo and neighborhood), so the rows overlap and do not add up to ${block.questionCount}.`);
+    }
+  }
+  if (block.gaps.length) {
+    h("Where they're showing up more");
+    for (const g of block.gaps) out.push(`${g.label}: ${You} ${g.prospect} · ${comp} ${g.competitor}`);
+    if (block.competitorNeighborhoods.length) out.push(`Neighborhoods where ${comp} was recommended: ${block.competitorNeighborhoods.join(", ")}.`);
+  }
   if (block.sources?.length) {
     h("Where the information is coming from");
-    for (const s of block.sources) out.push(`${s.domain} (${s.citations}${s.category ? `, ${s.category}` : ""})`);
-    if (block.ownSiteCited === false) out.push(`${block.prospect.name}'s own site was not among the cited sources.`);
+    out.push(
+      `We also recorded the websites that appeared repeatedly in the answers.`,
+      `We can see which websites keep appearing. We cannot say that any one of them caused a recommendation.`,
+      `Figure 03 · Websites the answers pointed to · how many times, across all ${block.answerCount} answers (one answer can point to several websites)`
+    );
+    for (const s of block.sources) out.push(`- ${s.domain}${s.category === "competitor" ? " (competitor-owned)" : ""} · ${s.citations}`);
+    if (block.ownSiteCited === false) out.push(`Your own website was not one of them.`);
   }
   h("Why this may be happening");
-  for (const d of block.diagnosis) out.push(`${d.area}: observed — ${d.observed} / may mean — ${d.mayMean} / worth checking — ${d.investigate}`);
+  for (const d of block.diagnosis) out.push(`${d.area} · What we observed: ${d.observed} · What it may mean: ${d.mayMean} · Worth checking: ${d.investigate}`);
   h("What I'd look at first");
   for (const p of block.priorities) out.push(`${p.title}: ${p.body}`);
   if (block.contextQuestions.length) {
     h("What I can't tell from public data");
+    out.push(`The report can show me where the gap is. It can't tell me which parts of the market matter most to ${you}. Those answers would change what I'd prioritize first.`);
     for (const q of block.contextQuestions) out.push(`- ${q}`);
   }
   if (block.lessConcerned.length) {
     h("What would make me less concerned");
-    for (const l of block.lessConcerned) out.push(`- ${l.condition}: ${l.status}`);
+    for (const l of block.lessConcerned) out.push(`- If ${l.condition}: ${l.status}`);
   }
   h("Francisco's note");
   out.push(...block.note.paragraphs);
   if (block.note.question) out.push(block.note.question);
-  if (block.ctaBridge) out.push("", block.ctaBridge);
-  out.push("", "Want me to walk you through what I'd look at first?");
+  h("A quick note on what this means");
+  out.push(
+    `- This is a measured snapshot, not a guarantee of every future AI answer.`,
+    `- We count actual recommendations, not simple name mentions.`,
+    `- We can observe recurring patterns without claiming one source controls the result.`,
+    `- Results can change, which is why the same test can be run again later.`
+  );
+  h("How we ran the test");
+  out.push(
+    `${block.questionCount} buyer and seller questions × ${block.repetitions} repetitions = ${block.answerCount} answers counted. Raw answers preserved · Actual recommendations counted · RealTrends compared separately · Answer count published${captured ? ` · answers recorded ${captured}` : ""}.`,
+    `Methodology: We ask the kinds of questions buyers and sellers ask when looking for an agent in ${ctx.market}: ${block.questionCount} questions, each asked ${block.repetitions} times, through ${block.assistantPhrase}${block.webSearch ? " with web search on" : ""}. These are direct answers from the ${block.assistant} model, not screenshots of the consumer app. Every answer is saved exactly as it came back. We record which teams each answer actually recommended; a name that merely appears in passing is not counted. ${block.answerCount === block.questionCount * block.repetitions ? `Every one of the ${block.answerCount} answers we received is counted.` : `${block.answerCount} is the number of answers we received and counted; any answer that came back empty or failed is left out of every count in this report.`} We compare those counts with the RealTrends record for the same year, the same measure (${block.metricLabel}) and the same market. The two are kept separate.`
+  );
+  h("Want me to walk you through what I'd look at first?");
+  out.push(`I've already done the initial comparison. If you want, I can walk you through which parts of this I think matter, which parts I wouldn't worry about, and the first two or three things I'd investigate for ${you}.`);
+  if (block.ctaBridge) out.push(block.ctaBridge);
+  h(`Appendix · All ${block.questionCount} questions (Question · Answers · ${You} · ${comp})`);
+  for (const q of block.questions) out.push(`- "${q.text}" · ${q.answers} · ${q.prospectRecommended} · ${q.competitorRecommended}`);
   return out.join("\n");
 }
 

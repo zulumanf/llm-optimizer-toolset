@@ -205,7 +205,7 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
     area: "Track record",
     observed: `Your ${p.productionDisplay} is well ahead of ${possessive(c.name)} ${c.productionDisplay} on the RealTrends record, but that advantage is not reflected in the answers: ${p.recommendationCount} recommendation${p.recommendationCount === 1 ? "" : "s"} for ${ref} against ${c.recommendationCount} for ${c.name}, out of the same ${i.answerCount} answers.`,
     mayMean: `${c.name} may have a clearer public trail connecting them with ${i.market} and the questions where they appeared.`,
-    investigate: `How consistently your production, specialties, neighborhoods and ${team ? "team identity" : "name"} are represented across your own site and the independent sources that repeatedly appeared in the captured answers.`,
+    investigate: `How consistently your production, specialties, neighborhoods and ${team ? "team identity" : "name"} are represented across your own site and the independent websites that kept appearing in the answers.`,
   });
   if (gapLead) {
     diagnosis.push({
@@ -218,8 +218,8 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
   if (platforms.length > 0) {
     diagnosis.push({
       area: "Where the information comes from",
-      observed: `The answers cited ${list(platforms)} repeatedly${i.ownSiteCited === false ? "; your own site was not among the cited sources" : ""}.`,
-      mayMean: `Those portal profiles appeared far more often in the cited evidence than either ${team ? "team's" : "agent's"} own site, which makes them one of the first places I'd inspect.`,
+      observed: `The answers pointed to ${list(platforms)} again and again${i.ownSiteCited === false ? "; your own website was not one of them" : ""}.`,
+      mayMean: `Those portal profiles appear to carry far more of the answers than either ${team ? "team's" : "agent's"} own website, which makes them one of the first places I'd inspect.`,
       investigate: `Whether ${team ? "your team, brokerage," : "you, your brokerage,"} neighborhoods and specialties read the same way on those portals as they do on your site.`,
     });
   }
