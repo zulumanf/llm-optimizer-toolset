@@ -294,11 +294,13 @@ export const MISMATCH_TEMPLATE_VERSION = "competitive_mismatch_reply_v1";
 
 /** Prospect-readable labels per template version for analytics groupings. */
 /** Spec 127: follow-up touches over the frozen Touch 1 evidence. */
+// v2 (2026-09-04): reply-only copy, agent/team wording, no report claim
+// without a finished report, distinct-question count, no em/en dashes.
 export const FOLLOWUP_TEMPLATE_VERSIONS = {
-  t2NoEngagement: "competitive_mismatch_t2_no_engagement_v1",
-  t2Engaged: "competitive_mismatch_t2_engaged_v1",
-  t3Engaged: "competitive_mismatch_t3_engaged_v1",
-  t3NoEngagement: "competitive_mismatch_t3_no_engagement_v1",
+  t2NoEngagement: "competitive_mismatch_t2_no_engagement_v2",
+  t2Engaged: "competitive_mismatch_t2_engaged_v2",
+  t3Engaged: "competitive_mismatch_t3_engaged_v2",
+  t3NoEngagement: "competitive_mismatch_t3_no_engagement_v2",
 } as const;
 export type FollowupTemplateVersion =
   (typeof FOLLOWUP_TEMPLATE_VERSIONS)[keyof typeof FOLLOWUP_TEMPLATE_VERSIONS];
@@ -315,6 +317,34 @@ export const FOLLOWUP_RENDER_LEAD_MINUTES = 30;
 export const FOLLOWUP_REPLY_SYNC_MAX_AGE_MINUTES = 90;
 export const FOLLOWUP_SEVERAL_QUESTIONS_MIN = 3;
 export const FOLLOWUP_OOO_PAUSE_DAYS = 7;
+/** A cold sequence never sends past this many calendar days after the
+ * successful Touch 1: cap deferrals, holidays or OOO pauses must not
+ * produce a follow-up weeks later. After it: complete, no reply. */
+export const FOLLOWUP_MAX_SEQUENCE_AGE_DAYS = 21;
+/** Touch 3 (engaged) may add one frozen-evidence category line only when
+ * the competitor has at least this many recommendations in the category and
+ * the category holds more than this share of the recommendation gap. */
+export const FOLLOWUP_CATEGORY_LINE = { minCompetitor: 3, minGapShare: 0.5 } as const;
+/** Touch 2/3 bodies (before the signature) stay short: a note, not a newsletter. */
+export const FOLLOWUP_MAX_BODY_WORDS = 120;
+
+/** Spec 129: the threaded reply that delivers the private report after a
+ * positive reply. Version string IS the template identity on the draft. */
+export const REPORT_DELIVERY_TEMPLATE_VERSION = "mismatch_report_delivery_v1";
+export const REPORT_HANDOFF = {
+  /** Both agents must reach this confidence for an unattended send. */
+  minAgentConfidence: 0.6,
+  /** Recipient-local hours inside which the report reply goes out promptly. */
+  sendWindow: { startHour: 7, endHour: 20, morningHour: 8 },
+  /** Prompt delay so a "yes" is not answered the same second (minutes). */
+  promptDelayMinutes: { min: 4, max: 12 },
+  /** Next-morning dispersion when the reply lands overnight (minutes). */
+  morningOffsetMinutes: { min: 0, max: 30 },
+  /** The one publish warning the automation may acknowledge, and why. */
+  autoAckWarningPrefix: "The benchmark run is incomplete",
+  autoAckReason: "Spec 129 private report; the mismatch counts use captured answers only.",
+  maxAttempts: 3,
+} as const;
 export const FOLLOWUP_MEANINGFUL_OPEN_GAP_MINUTES = 10;
 /** Mail-provider scanners fetch pixels/links within this window of a send. */
 export const MAIL_SCANNER_WINDOW_SECONDS = 600;

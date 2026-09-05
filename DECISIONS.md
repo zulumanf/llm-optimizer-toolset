@@ -2888,3 +2888,60 @@ slot; every transmit still counts toward `GMAIL_DAILY_SEND_CAP`, and due
 follow-ups drain before new cold sends. Greeting/subject use the em-dash-free
 `{first},` / `{first} - …` forms the 2026-08-31 operator decision set, not the
 spec's `—`, so Touch 2/3 match what the prospect already received.
+
+## 2026-09-04 — Positive-reply learning log is a derived view, not a table
+
+First positive cold-outreach reply (Steve Wall, Raleigh, 2026-09-03) needed a
+per-prospect record joining frozen mismatch evidence, opens, reply, report and
+stage events. Chose migration 102's read-only view `outreach_reply_learning_log`
+over a parallel table: every column is a projection of canonical rows (sends,
+draft parent chain, `prospect_replies`, `outreach_open_signal`, audits, views,
+walkthroughs, stage history), so it can never drift from the ledger and nothing
+is written twice. Mismatch strength is deliberately absent from the view —
+`mismatchStrength` in `lib/prospects/mismatch.ts` stays the single
+implementation and `scripts/positive-reply-forensic.ts` applies it. The same
+migration restates spec 125's `outreach_open_signal` view idempotently because
+it had been applied to prod (097) without ever reaching `main`; its `down`
+drops that view only where 097 is not recorded. With N_POSITIVE_REPLIES = 1 the
+comparison the script prints is descriptive only — no copy, threshold, market,
+timing or cadence change is made on this observation.
+
+## 2026-09-04 — Follow-up copy v2 sells the reply, not the report or the call
+
+Touch 2/3 templates were rewritten (`*_v2`) before any Touch 2 left. Three
+decisions: (1) the offer line is gated on actual report state — a published
+`prospect_audits` row whose frozen `mismatch` block states the sequence's exact
+competitor, counts and denominator — because a report is generated only after a
+positive reply, so "I have the private report ready" would have been false for
+every cohort prospect; (2) agent-vs-team wording is read from the RealTrends
+`entity_type` behind the frozen `productionSignalId` (dataset row first, authority
+signal second) rather than stored on the sequence — no migration, no second copy
+of a fact, and an unknown level fails the render closed; (3) report generation
+after a positive reply is NOT automated yet: `publishAudit` needs a human
+acknowledgment for stale benchmarks and the classifier misfired once (Steve
+Wall's "Yes" first recorded as unsubscribe), so a mis-classified reply must not
+mint a prospect-facing page. The sequence records a `founder_action_required`
+activity and the operator view shows READY_TO_SEND / REPORT_NOT_GENERATED
+instead. Also: a 21-calendar-day sequence expiry from the actual Touch 1 send,
+and reply bodies that strip to nothing (all-quoted, redacted) are "unclear" —
+they stop the sequence for review and never suppress.
+
+## 2026-09-04 — Positive-reply report delivery is automated behind three QA gates (spec 129)
+
+Reverses the same-day decision above at the founder's request ("when they reply
+yes it works, is QA'd and goes out asap after multiple QA's"). The "yes" itself is
+still the only trigger (`positive_interest`; questions, proof requests and
+referrals stay with the founder). Between the reply and the send sit: the existing
+`publishAudit` gates (the automation may acknowledge exactly one warning, the
+incomplete-run one, because the frozen mismatch counts already use captured
+answers only); a deterministic evidence QA of the published block against the
+frozen Touch 1 snapshot; an LLM read of the whole report from the recipient's
+point of view (new `report_prospect_review` prompt, frontier tier — clarity,
+relevance, jargon, digestibility for someone who knows nothing about AI); and the
+existing sense-check agent over the same content hash. Any blocking concern, low
+confidence or failed call parks the handoff as `needs_review` with the reason — a
+report is still generated and kept, only the send waits. The reply reuses the
+spec 128 `reply_to_id` path (threaded under their message, refused without a
+thread), goes 4–12 minutes after the "yes" inside 07:00–20:00 recipient-local and
+next morning otherwise, and is deterministic copy (`mismatch_report_delivery_v1`).
+`REPORT_HANDOFF_AUTOSEND=false` is the kill switch: everything runs, the send waits.

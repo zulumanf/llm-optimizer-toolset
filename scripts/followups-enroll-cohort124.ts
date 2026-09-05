@@ -87,7 +87,7 @@ async function main(): Promise<void> {
     const due = dueDayStart(sentAt, FOLLOWUP_CADENCE_BUSINESS_DAYS[2], tz);
     const seq: FollowupSequence = existing ?? {
       id: prospectId, prospectId, experimentId: EXPERIMENT_ID, contactId: (r.contactId as string | null) ?? null,
-      touch1DraftId: r.draftId as string, touch1SendId: r.sendId as string, competitorCompanyId: snapshot.competitor.companyId,
+      touch1DraftId: r.draftId as string, touch1SendId: r.sendId as string, touch1SentAt: sentAt, competitorCompanyId: snapshot.competitor.companyId,
       evidenceSnapshot: snapshot, distinctCompetitorQuestions: await distinctCompetitorQuestions(snapshot), timezone: tz,
       status: "active", stopReason: null, pausedUntil: null, pauseReason: null, nextTouch: 2, nextDueAt: due,
       lastTouchSendId: r.sendId as string, enrolledBy: user.id,

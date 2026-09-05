@@ -9,12 +9,17 @@ import {
 } from "@/lib/prospects/business-days";
 import { classifyOpen, evaluateEngagement, type EngagementFacts } from "@/lib/prospects/engagement-state";
 import {
+  CATEGORY_LINE_PREFIX,
   followupStartsNewThread,
   followupTemplateFor,
   lintFollowupCopy,
   qaFollowupEvidence,
   renderFollowup,
+  type FollowupQaContext,
+  type FollowupRenderInput,
 } from "@/lib/prospects/followup-templates";
+import { sequenceExpired, sequenceExpiresAt } from "@/lib/prospects/followups";
+import { classifyReplyText, stripQuotedReply } from "@/lib/prospects/reply-classify";
 import { FOLLOWUP_TEMPLATE_VERSIONS, MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
 import type { MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
 
@@ -158,67 +163,170 @@ const snapshot: MismatchEvidenceSnapshot = {
   thresholds: MISMATCH_THRESHOLDS,
 };
 const TAIL = ["1399 Myrtle Ave, Brooklyn, NY 11237", 'If you\'d rather not hear from us, reply "unsubscribe" and we will not contact you again.'];
-const input = (distinct: number) => ({
+const input = (distinct: number, over: Partial<FollowupRenderInput> = {}): FollowupRenderInput => ({
   firstName: "Ryan", marketName: "Reno, NV", snapshot, distinctCompetitorQuestions: distinct, footerTail: TAIL,
+  entityType: "team", reportReady: false, categoryLine: null, ...over,
 });
+const ctx = (distinct: number, over: Partial<FollowupQaContext> = {}): FollowupQaContext => ({
+  entityType: "team", reportReady: false, distinctCompetitorQuestions: distinct, categoryLine: null, ...over,
+});
+const ALL = Object.values(FOLLOWUP_TEMPLATE_VERSIONS);
+const { t2NoEngagement, t2Engaged, t3Engaged, t3NoEngagement } = FOLLOWUP_TEMPLATE_VERSIONS;
 
-describe("follow-up templates — frozen evidence, claim gate, copy linter", () => {
-  it("renders every template from the frozen snapshot and passes QA", () => {
-    for (const version of Object.values(FOLLOWUP_TEMPLATE_VERSIONS)) {
-      const r = renderFollowup(version, input(4));
-      expect(lintFollowupCopy(r.subject, r.body)).toEqual([]);
-      expect(qaFollowupEvidence(version, r.body, snapshot)).toEqual([]);
-      expect(r.body.startsWith("Ryan,\n")).toBe(true);
-      expect(r.body).toContain("unsubscribe");
-      expect(r.body).not.toContain("—");
+describe("follow-up templates v2 — frozen evidence, entity wording, claim gates, copy linter", () => {
+  it("renders every template for teams and agents from the frozen snapshot and passes QA", () => {
+    for (const version of ALL) {
+      for (const entityType of ["team", "individual"] as const) {
+        const r = renderFollowup(version, input(4, { entityType }));
+        expect(lintFollowupCopy(r.subject, r.body)).toEqual([]);
+        expect(qaFollowupEvidence(version, r.body, snapshot, ctx(4, { entityType }))).toEqual([]);
+        expect(r.body.startsWith("Ryan,\n")).toBe(true);
+        expect(r.body).toContain("unsubscribe");
+        expect(r.body).not.toMatch(/[—–]/);
+        expect(r.body).not.toContain("private report");
+        expect(r.body).not.toMatch(/ChatGPT|AEO|GEO|LLM/);
+        expect(r.body.split("\n--\n")[0]!.split(/\s+/).length).toBeLessThanOrEqual(120);
+        expect((r.body.split("\n--\n")[0]!.match(/\?/g) ?? []).length).toBeLessThanOrEqual(1);
+        expect(r.body).toContain(r.cta);
+      }
     }
   });
+  it("a team gets 'your team'; an individual agent gets 'you'", () => {
+    const team = renderFollowup(t2NoEngagement, input(1, { entityType: "team" })).body;
+    expect(team).toContain("RealTrends has your team at $47.2M closed versus $29.4M closed for Harbor View Group.");
+    expect(team).toContain("Your team: recommended in 7 of 64 answers");
+    const agent = renderFollowup(t2NoEngagement, input(1, { entityType: "individual" })).body;
+    expect(agent).toContain("RealTrends has you at $47.2M closed versus $29.4M closed for Harbor View Group.");
+    expect(agent).toContain("You: recommended in 7 of 64 answers");
+    expect(agent).not.toMatch(/your team/i);
+    expect(renderFollowup(t3Engaged, input(1, { entityType: "individual" })).body).toContain("RealTrends has you ahead of Harbor View Group");
+    // Wrong wording is a QA failure either way; unknown entity type fails closed.
+    expect(qaFollowupEvidence(t2NoEngagement, team, snapshot, ctx(1, { entityType: "individual" })).map((i) => i.check)).toContain("followup_entity");
+    expect(qaFollowupEvidence(t2NoEngagement, agent, snapshot, ctx(1, { entityType: "team" })).map((i) => i.check)).toContain("followup_entity");
+    const unknown = renderFollowup(t2NoEngagement, input(1, { entityType: null }));
+    expect(lintFollowupCopy(unknown.subject, unknown.body).some((i) => i.detail.includes("placeholder"))).toBe(true);
+    expect(qaFollowupEvidence(t2NoEngagement, unknown.body, snapshot, ctx(1, { entityType: null })).map((i) => i.check)).toContain("followup_entity");
+  });
   it("T2 no-engagement opens a new thread with the frozen counts; the rest reply in-thread", () => {
-    const t2 = renderFollowup(FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement, input(1));
+    const t2 = renderFollowup(t2NoEngagement, input(1));
     expect(t2.subject).toBe("Ryan - one thing I found");
-    expect(t2.body).toContain("Your team: recommended in 7 of 64 answers");
+    expect(t2.body).toContain("One more thing on Reno.");
     expect(t2.body).toContain("Harbor View Group: recommended in 14 of 64");
-    expect(t2.body).toContain("$47.2M closed, ahead of Harbor View Group at $29.4M closed");
-    expect(followupStartsNewThread(FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement)).toBe(true);
-    expect(followupStartsNewThread(FOLLOWUP_TEMPLATE_VERSIONS.t2Engaged)).toBe(false);
-    expect(renderFollowup(FOLLOWUP_TEMPLATE_VERSIONS.t3Engaged, input(1)).subject).toBeNull();
+    expect(t2.cta).toBe("Want me to send them?");
+    expect(followupStartsNewThread(t2NoEngagement)).toBe(true);
+    expect(followupStartsNewThread(t2Engaged)).toBe(false);
+    expect(followupStartsNewThread(t3Engaged)).toBe(false);
+    expect(followupStartsNewThread(t3NoEngagement)).toBe(false);
+    expect(renderFollowup(t3Engaged, input(1)).subject).toBeNull();
   });
-  it("the 'several questions' claim needs ≥ 3 distinct questions, else the side-by-side fallback", () => {
-    const several = renderFollowup(FOLLOWUP_TEMPLATE_VERSIONS.t2Engaged, input(3));
-    expect(several.claimVariant).toBe("several_questions");
-    expect(several.body).toContain("showed up across several");
-    const fallback = renderFollowup(FOLLOWUP_TEMPLATE_VERSIONS.t2Engaged, input(2));
+  it("the distinct-questions claim needs ≥ 3 and the exact frozen count, else the side-by-side fallback", () => {
+    const several = renderFollowup(t2Engaged, input(9));
+    expect(several.claimVariant).toBe("distinct_questions");
+    expect(several.body).toContain("Harbor View Group came up across 9 different questions in the same Reno test.");
+    expect(qaFollowupEvidence(t2Engaged, several.body, snapshot, ctx(9))).toEqual([]);
+    expect(qaFollowupEvidence(t2Engaged, several.body, snapshot, ctx(8)).map((i) => i.check)).toContain("followup_claim");
+    const fallback = renderFollowup(t2Engaged, input(2));
     expect(fallback.claimVariant).toBe("side_by_side");
-    expect(fallback.body).not.toContain("several");
-    expect(fallback.body).toContain("your team closed more, but Harbor View Group was still recommended more often");
+    expect(fallback.body).not.toContain("different questions");
+    expect(fallback.body).toContain("RealTrends has your team at $47.2M closed versus $29.4M closed for Harbor View Group, but the recommendation results went the other way.");
+    expect(fallback.body).toContain("I already have the exact questions and answers pulled together.");
+    // A hand-edited claim of 3 over a frozen count of 2 fails.
+    const forged = fallback.body.replace("One more thing I noticed.", "Harbor View Group came up across 3 different questions in the same Reno test.");
+    expect(qaFollowupEvidence(t2Engaged, forged, snapshot, ctx(2)).map((i) => i.check)).toContain("followup_claim");
   });
-  it("T3 no-engagement restates the frozen comparison without a denominator drift", () => {
-    const r = renderFollowup(FOLLOWUP_TEMPLATE_VERSIONS.t3NoEngagement, input(1));
-    expect(r.body).toContain("recommended 14 times versus 7 for your team");
-    expect(qaFollowupEvidence(FOLLOWUP_TEMPLATE_VERSIONS.t3NoEngagement, r.body.replace("14 times", "13 times"), snapshot)).not.toEqual([]);
+  it("never claims a report exists unless one is finished for this evidence", () => {
+    for (const version of ALL) {
+      const plain = renderFollowup(version, input(4));
+      expect(plain.body).toContain("exact questions and answers pulled together");
+      const ready = renderFollowup(version, input(4, { reportReady: true }));
+      expect(ready.body).toContain("I have the private report ready");
+      expect(ready.body).toMatch(/send it/);
+      expect(qaFollowupEvidence(version, ready.body, snapshot, ctx(4, { reportReady: true }))).toEqual([]);
+      expect(qaFollowupEvidence(version, ready.body, snapshot, ctx(4, { reportReady: false })).map((i) => i.check)).toContain("followup_report");
+    }
+  });
+  it("Touch 3 carries the story: why you, last note, one ask, optional supported category line", () => {
+    const eng = renderFollowup(t3Engaged, input(4));
+    expect(eng.body).toContain("Last note from me on this.");
+    expect(eng.body).toContain("The only reason I reached out is that the numbers looked backwards to me.");
+    expect(eng.body).toContain("Just say yes and I'll send them.");
+    expect(eng.body).not.toContain(CATEGORY_LINE_PREFIX);
+    const line = `${CATEGORY_LINE_PREFIX}seller questions.`;
+    const withLine = renderFollowup(t3Engaged, input(4, { categoryLine: line }));
+    expect(withLine.body).toContain(`${line}\n\nThat's what made me take a closer look.`);
+    expect(qaFollowupEvidence(t3Engaged, withLine.body, snapshot, ctx(4, { categoryLine: line }))).toEqual([]);
+    expect(qaFollowupEvidence(t3Engaged, withLine.body, snapshot, ctx(4, { categoryLine: null })).map((i) => i.check)).toContain("followup_claim");
+    const no = renderFollowup(t3NoEngagement, input(1));
+    expect(no.body).toContain("The only reason I emailed you is that RealTrends has your team at $47.2M closed versus $29.4M closed for Harbor View Group, but the recommendation results went the other way.");
+    expect(no.body).toContain("If you want to see them, just say yes and I'll send them.");
   });
   it("evidence QA blocks drifted counts, denominators and competitors", () => {
-    const r = renderFollowup(FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement, input(1));
-    expect(qaFollowupEvidence(FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement, r.body.replace("7 of 64", "8 of 64"), snapshot).map((i) => i.check)).toContain("followup_evidence");
-    expect(qaFollowupEvidence(FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement, r.body.replaceAll("of 64", "of 65"), snapshot).length).toBeGreaterThan(0);
-    expect(qaFollowupEvidence(FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement, r.body.replaceAll("Harbor View Group", "Other Team"), snapshot).length).toBeGreaterThan(0);
+    const r = renderFollowup(t2NoEngagement, input(1));
+    const qa = (body: string) => qaFollowupEvidence(t2NoEngagement, body, snapshot, ctx(1));
+    expect(qa(r.body.replace("7 of 64", "8 of 64")).map((i) => i.check)).toContain("followup_evidence");
+    expect(qa(r.body.replaceAll("of 64", "of 65")).length).toBeGreaterThan(0);
+    expect(qa(r.body.replaceAll("Harbor View Group", "Other Team")).length).toBeGreaterThan(0);
+    expect(qa(r.body.replace("$47.2M", "$48.2M")).length).toBeGreaterThan(0);
   });
-  it("copy linter flags buzzwords, placeholders, links, legacy footer and sales moves", () => {
+  it("copy linter flags dashes, jargon, ChatGPT, links, placeholders, filler, sales moves, length and double asks", () => {
     const flags = (body: string): string[] => lintFollowupCopy(null, body).map((i) => i.detail);
-    const base = renderFollowup(FOLLOWUP_TEMPLATE_VERSIONS.t3Engaged, input(1)).body;
-    expect(flags(base.replace("AI keeps", "the LLM keeps"))).toEqual([expect.stringContaining("LLM")]);
-    expect(flags(base.replace("private report", "private benchmark"))[0]).toContain("benchmark");
+    const base = renderFollowup(t3Engaged, input(1)).body;
+    expect(flags(base)).toEqual([]);
+    expect(flags(base.replace("Last note", "Last note — really"))).toEqual([expect.stringContaining("em dash")]);
+    expect(flags(base.replace("Last note", "Last note – really"))).toEqual([expect.stringContaining("en dash")]);
+    expect(flags(base.replace("questions I tested", "prompts I tested")).join()).toContain("prompts");
+    expect(flags(base.replace("questions I tested", "questions I tested in ChatGPT")).join()).toContain("ChatGPT");
+    expect(flags(base.replace("questions I tested", "LLM questions I tested")).join()).toContain("LLM");
     expect(flags(base.replace("Ryan,", "{first_name},"))[0]).toContain("placeholder");
-    expect(flags(base.replace("Want me to send it?", "See https://app.recommendedfirst.com/x"))).toHaveLength(2);
-    expect(flags(base.replace("Want me to send it?", "Book a call on my Calendly."))).not.toEqual([]);
-    expect(flags(base.replace("Last note", "Just following up"))).toEqual([]);
-    expect(flags(base.replace("The part", "Just following up, the part"))).not.toEqual([]);
+    expect(flags(base.replace("Just say yes and I'll send them.", "See https://app.recommendedfirst.com/x"))).toHaveLength(2);
+    expect(flags(base.replace("Just say yes and I'll send them.", "Book 15 minutes on my Calendly."))).not.toEqual([]);
+    expect(flags(base.replace("Last note from me on this.", "Just following up on this."))).not.toEqual([]);
+    expect(flags(base.replace("Last note from me on this.", "Circling back, checking in, touching base."))).not.toEqual([]);
+    expect(flags(base.replace("Last note from me on this.", "This is your last chance for market exclusivity pricing."))).not.toEqual([]);
+    expect(flags(base.replace("Just say yes and I'll send them.", "Want them? Or a call?")).join()).toContain("more than one ask");
+    expect(flags(base.replace("Last note from me on this.", Array(130).fill("word").join(" "))).join()).toContain("words before the signature");
     expect(flags(base.replace("unsubscribe", "opt out"))).not.toEqual([]);
+    expect(flags(base.replace("\n--\n", "\n--\n--\n"))).not.toEqual([]);
   });
   it("branch → template mapping", () => {
-    expect(followupTemplateFor(2, "engaged")).toBe(FOLLOWUP_TEMPLATE_VERSIONS.t2Engaged);
-    expect(followupTemplateFor(2, "no_engagement")).toBe(FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement);
-    expect(followupTemplateFor(3, "engaged")).toBe(FOLLOWUP_TEMPLATE_VERSIONS.t3Engaged);
-    expect(followupTemplateFor(3, "no_engagement")).toBe(FOLLOWUP_TEMPLATE_VERSIONS.t3NoEngagement);
+    expect(followupTemplateFor(2, "engaged")).toBe(t2Engaged);
+    expect(followupTemplateFor(2, "no_engagement")).toBe(t2NoEngagement);
+    expect(followupTemplateFor(3, "engaged")).toBe(t3Engaged);
+    expect(followupTemplateFor(3, "no_engagement")).toBe(t3NoEngagement);
+    expect(ALL.every((v) => v.endsWith("_v2"))).toBe(true);
+  });
+});
+
+describe("sequence expiry — 21 calendar days from the successful Touch 1", () => {
+  it("expires exactly 21 days after the actual send, regardless of deferrals", () => {
+    const t1 = new Date("2026-09-01T13:07:00Z");
+    expect(sequenceExpiresAt(t1).toISOString()).toBe("2026-09-22T13:07:00.000Z");
+    expect(sequenceExpired(t1, new Date("2026-09-22T13:06:00Z"))).toBe(false);
+    expect(sequenceExpired(t1, new Date("2026-09-22T13:08:00Z"))).toBe(true);
+  });
+});
+
+describe("reply text — our own quoted footer and unreadable bodies never classify", () => {
+  const OUR_T1 = [
+    "On Thu, Sep 3, 2026 at 2:54 PM Francisco <f@recommendedfirst.com> wrote:",
+    "> Steve,", "> ...", "> --", "> Francisco Zuluaga · Recommended First",
+    '> If you\'d rather not hear from us, reply "unsubscribe" and we will not contact you again.',
+  ];
+  it("a one-word human reply above the quote is what gets classified", () => {
+    const text = stripQuotedReply(["Yes", "", ...OUR_T1].join("\n"));
+    expect(text).toBe("Yes");
+    expect(classifyReplyText(text)).toBe("positive_interest");
+  });
+  it("an all-quoted or redacted body yields '' → unclear, never unsubscribe", () => {
+    expect(stripQuotedReply(OUR_T1.join("\n"))).toBe("");
+    expect(classifyReplyText(stripQuotedReply(OUR_T1.join("\n")))).toBe("unclear");
+    expect(stripQuotedReply("[redacted]")).toBe("");
+    // Client that quotes without ">" markers or an "On … wrote:" line.
+    const flat = ["", "--", "Francisco Zuluaga · Recommended First", "www.RecommendedFirst.com", 'If you\'d rather not hear from us, reply "unsubscribe" and we will not contact you again.'].join("\n");
+    expect(classifyReplyText(stripQuotedReply(flat))).toBe("unclear");
+    expect(classifyReplyText(stripQuotedReply(`Sure, send it.${flat}`))).toBe("positive_interest");
+  });
+  it("a human who actually opts out still classifies as unsubscribe", () => {
+    expect(classifyReplyText(stripQuotedReply(["Please unsubscribe me.", ...OUR_T1].join("\n")))).toBe("unsubscribe");
   });
 });

@@ -55,7 +55,12 @@ const mockChannel: EmailChannel = {
     if (!message.recipientEmail) {
       throw new ClassifiedError("validation", "The mock channel requires a recipient email.");
     }
-    return { providerMessageId: `mock-${message.recipientEmail}` };
+    // Like Gmail, a reply stays in its thread and a fresh send opens one —
+    // the ledger learns a thread id either way (follow-up threading tests).
+    return {
+      providerMessageId: `mock-${message.recipientEmail}`,
+      providerThreadId: message.threadId ?? `mock-thread-${message.recipientEmail}`,
+    };
   },
 };
 

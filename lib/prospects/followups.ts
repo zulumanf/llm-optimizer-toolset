@@ -24,11 +24,14 @@ import { checkSuppression } from "@/lib/outreach/suppression";
 import { stripQuotedReply } from "@/lib/prospects/reply-classify";
 import {
   FOLLOWUP_CADENCE_BUSINESS_DAYS,
+  FOLLOWUP_CATEGORY_LINE,
   FOLLOWUP_EXPERIMENT_ID,
+  FOLLOWUP_MAX_SEQUENCE_AGE_DAYS,
   FOLLOWUP_OOO_PAUSE_DAYS,
   FOLLOWUP_RENDER_LEAD_MINUTES,
   FOLLOWUP_REPLY_SYNC_MAX_AGE_MINUTES,
   FOLLOWUP_SEND_WINDOW,
+  FOLLOWUP_TEMPLATE_VERSIONS,
   FOLLOWUP_TEMPLATE_VERSION_LIST,
   GMAIL_DAILY_SEND_CAP,
   MISMATCH_TEMPLATE_VERSION,
@@ -51,12 +54,15 @@ import {
 } from "@/lib/prospects/business-days";
 import { evaluateEngagement, type EngagementState } from "@/lib/prospects/engagement-state";
 import {
+  CATEGORY_LINE_PREFIX,
   followupStartsNewThread,
   followupTemplateFor,
   lintFollowupCopy,
   qaFollowupEvidence,
   renderFollowup,
   type FollowupBranch,
+  type FollowupQaContext,
+  type ProspectEntityType,
 } from "@/lib/prospects/followup-templates";
 import { competitiveMismatchReview, type MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
 import { prospectIntent } from "@/lib/prospects/dashboard";
@@ -72,6 +78,9 @@ export interface FollowupSequence {
   contactId: string | null;
   touch1DraftId: string;
   touch1SendId: string;
+  /** Actual Gmail-accepted transmit time of Touch 1 — the cadence and the
+   * 21-day expiry count from this, never from a draft or planned time. */
+  touch1SentAt: Date;
   competitorCompanyId: string;
   evidenceSnapshot: MismatchEvidenceSnapshot;
   distinctCompetitorQuestions: number;
@@ -88,6 +97,7 @@ export interface FollowupSequence {
 
 const SEQ_COLUMNS = sql`
   id, prospect_id, experiment_id, contact_id, touch1_draft_id, touch1_send_id,
+  (select s.sent_at from prospect_outreach_sends s where s.id = touch1_send_id) as touch1_sent_at,
   competitor_company_id, evidence_snapshot, distinct_competitor_questions, timezone,
   status, stop_reason, paused_until, pause_reason, next_touch, next_due_at,
   last_touch_send_id, enrolled_by
@@ -101,6 +111,7 @@ function toSequence(r: Record<string, unknown>): FollowupSequence {
     contactId: (r.contactId as string | null) ?? null,
     touch1DraftId: r.touch1DraftId as string,
     touch1SendId: r.touch1SendId as string,
+    touch1SentAt: new Date(r.touch1SentAt as Date),
     competitorCompanyId: r.competitorCompanyId as string,
     evidenceSnapshot: r.evidenceSnapshot as MismatchEvidenceSnapshot,
     distinctCompetitorQuestions: Number(r.distinctCompetitorQuestions ?? 0),
@@ -164,6 +175,15 @@ export function projectedSlot(seq: FollowupSequence, now: Date): Date | null {
   if (seq.status !== "active" || !seq.nextDueAt) return null;
   const earliest = new Date(Math.max(seq.nextDueAt.getTime(), now.getTime()));
   return slotFor(seq, earliest);
+}
+
+/** The instant after which no cold touch may leave (calendar days from the
+ * successful Touch 1). Pure. */
+export function sequenceExpiresAt(touch1SentAt: Date): Date {
+  return new Date(touch1SentAt.getTime() + FOLLOWUP_MAX_SEQUENCE_AGE_DAYS * 86_400_000);
+}
+export function sequenceExpired(touch1SentAt: Date, at: Date): boolean {
+  return at.getTime() > sequenceExpiresAt(touch1SentAt).getTime();
 }
 
 // ------------------------------------------------------------ OOO parsing
@@ -445,7 +465,27 @@ export async function applySequenceSignals(
   };
   if (human.length > 0) {
     const last = human[human.length - 1]!;
-    return stop("replied", `human reply (${last.classification}) at ${last.receivedAt.toISOString()}`);
+    // A reply whose body could not be read or classified still STOPS the
+    // sequence (a possible human is enough) but never suppresses: it is
+    // surfaced for review instead.
+    const needsReview = last.classification === "unclear";
+    const after = await stop(
+      "replied",
+      `human reply (${last.classification}) at ${last.receivedAt.toISOString()}${needsReview ? " - needs review" : ""}`
+    );
+    if (POSITIVE.includes(last.classification)) {
+      const reportReady = await reportReadyFor(seq);
+      await sql.begin(async (tx) => {
+        await logActivity(tx, seq.prospectId, "founder_action_required", {
+          sequenceId: seq.id, action: "send_private_report", classification: last.classification,
+          reportState: reportReady ? "READY_TO_SEND" : "REPORT_NOT_GENERATED",
+        }, seq.enrolledBy);
+      });
+    }
+    return after;
+  }
+  if (sequenceExpired(seq.touch1SentAt, now)) {
+    return stop("complete", `expired: ${FOLLOWUP_MAX_SEQUENCE_AGE_DAYS} calendar days since Touch 1`);
   }
   if (s.bounced) return stop("stopped", "hard bounce");
   if (s.contactDnc || s.prospectDnc) return stop("stopped", "do-not-contact");
@@ -530,11 +570,87 @@ export function firstNameFrom(touch1Body: string): string {
   return first.replace(/^Hi\s+/i, "").replace(/[,—-]\s*$/, "").trim();
 }
 
+/** RealTrends entity level behind the frozen prospect production record:
+ * the licensed-dataset row or the authority signal the snapshot points at.
+ * Null when neither states it — the render then fails closed. */
+export async function prospectEntityType(snapshot: MismatchEvidenceSnapshot): Promise<ProspectEntityType | null> {
+  const id = snapshot.prospect.productionSignalId;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const [row] = await sql`
+    select coalesce(
+      (select r.entity_type from realtrends_records r where r.id = ${id}::uuid),
+      (select coalesce(s.metadata->>'entity_type', s.metadata->>'entityType') from prospect_authority_signals s where s.id = ${id}::uuid)
+    ) as entity_type
+  `;
+  const t = row?.entityType as string | null | undefined;
+  return t === "individual" || t === "team" ? t : null;
+}
+
+/** True only when a PUBLISHED private report exists for the prospect whose
+ * frozen mismatch block states exactly this sequence's evidence. */
+export async function reportReadyFor(seq: Pick<FollowupSequence, "prospectId" | "evidenceSnapshot">): Promise<boolean> {
+  const s = seq.evidenceSnapshot;
+  const [row] = await sql`
+    select 1 as ok from prospect_audits a
+    where a.prospect_id = ${seq.prospectId} and a.status = 'published'
+      and a.snapshot->'mismatch'->'competitor'->>'name' = ${s.competitor.name}
+      and (a.snapshot->'mismatch'->>'answerCount')::int = ${s.answerCount}
+      and (a.snapshot->'mismatch'->'competitor'->>'recommendationCount')::int = ${s.competitor.recommendationCount}
+      and (a.snapshot->'mismatch'->'prospect'->>'recommendationCount')::int = ${s.prospect.recommendationCount}
+    limit 1
+  `;
+  return Boolean(row?.ok);
+}
+
+const CATEGORY_PHRASE: Record<string, string> = {
+  "audience:seller": "seller questions",
+  "audience:buyer": "buyer questions",
+  neighborhood: "neighborhood questions",
+  luxury: "luxury questions",
+  "property:condominiums": "condo questions",
+  "property:single-family homes": "single-family home questions",
+  "property:townhomes": "townhome questions",
+};
+
+/** Touch 3 (engaged) personalization: the one frozen-run category that holds
+ * more than half of the recommendation gap with ≥ 3 competitor
+ * recommendations, phrased in plain words; null otherwise. Deterministic over
+ * the frozen benchmark (spec 128 categorizer). */
+export async function categoryLineFor(snapshot: MismatchEvidenceSnapshot): Promise<string | null> {
+  const { mismatchQuestions, categorize } = await import("@/lib/prospects/audit-mismatch");
+  const questions = await mismatchQuestions(snapshot);
+  const totalGap = questions.reduce((acc, q) => acc + q.competitorRecommended - q.prospectRecommended, 0);
+  if (totalGap <= 0) return null;
+  const pick = categorize(questions)
+    .filter((c) => CATEGORY_PHRASE[c.key] && c.competitor >= FOLLOWUP_CATEGORY_LINE.minCompetitor && c.competitor > c.prospect)
+    .filter((c) => (c.competitor - c.prospect) / totalGap > FOLLOWUP_CATEGORY_LINE.minGapShare)
+    .sort((a, b) => (b.competitor - b.prospect) - (a.competitor - a.prospect))[0];
+  return pick ? `${CATEGORY_LINE_PREFIX}${CATEGORY_PHRASE[pick.key]}.` : null;
+}
+
+/** Everything the evidence QA needs beyond the snapshot, for one template. */
+export async function followupQaContext(seq: FollowupSequence, version: FollowupTemplateVersion): Promise<FollowupQaContext> {
+  const [entityType, reportReady] = await Promise.all([prospectEntityType(seq.evidenceSnapshot), reportReadyFor(seq)]);
+  const categoryLine = version === FOLLOWUP_TEMPLATE_VERSIONS.t3Engaged ? await categoryLineFor(seq.evidenceSnapshot) : null;
+  return { entityType, reportReady, distinctCompetitorQuestions: seq.distinctCompetitorQuestions, categoryLine };
+}
+
+/** Draft QA entry (draft-qa.ts): the context for a queued touch draft, or
+ * null when the draft belongs to no sequence. */
+export async function followupQaContextForDraft(draftId: string): Promise<FollowupQaContext | null> {
+  const [d] = await sql`select sequence_id, prompt_version from outreach_drafts where id = ${draftId}`;
+  if (!d?.sequenceId) return null;
+  const seq = await getFollowupSequence(d.sequenceId as string);
+  if (!seq) return null;
+  return followupQaContext(seq, d.promptVersion as FollowupTemplateVersion);
+}
+
 export interface RenderedTouch {
   version: FollowupTemplateVersion;
   branch: FollowupBranch;
   subject: string;
   body: string;
+  cta: string;
   newThread: boolean;
   parentSendId: string;
   engagement: SequenceEngagement;
@@ -556,12 +672,16 @@ export async function renderNextTouch(seq: FollowupSequence, now: Date): Promise
   const branch: FollowupBranch = engagement.state === "MEANINGFUL_ENGAGEMENT" ? "engaged" : "no_engagement";
   const version = followupTemplateFor(seq.nextTouch, branch);
   const { marketName } = await marketTimezone(seq.prospectId);
+  const ctx = await followupQaContext(seq, version);
   const rendered = renderFollowup(version, {
     firstName: firstNameFrom(t1.body as string),
     marketName,
     snapshot: seq.evidenceSnapshot,
     distinctCompetitorQuestions: seq.distinctCompetitorQuestions,
     footerTail: footerTailFrom(t1.body as string),
+    entityType: ctx.entityType,
+    reportReady: ctx.reportReady,
+    categoryLine: ctx.categoryLine,
   });
   const parentSendId = seq.lastTouchSendId ?? seq.touch1SendId;
   const [parent] = await sql`
@@ -574,10 +694,11 @@ export async function renderNextTouch(seq: FollowupSequence, now: Date): Promise
     : parentSubject.startsWith("Re: ") ? parentSubject : `Re: ${parentSubject}`;
   const qa = [
     ...lintFollowupCopy(subject, rendered.body),
-    ...qaFollowupEvidence(version, rendered.body, seq.evidenceSnapshot),
+    ...qaFollowupEvidence(version, rendered.body, seq.evidenceSnapshot, ctx),
   ];
+  if (!newThread && !parent) qa.push({ check: "followup_threading", detail: "parent send for in-thread reply not found." });
   return {
-    version, branch, subject, body: rendered.body, newThread, parentSendId, engagement,
+    version, branch, subject, body: rendered.body, cta: rendered.cta, newThread, parentSendId, engagement,
     claimVariant: rendered.claimVariant, qa,
   };
 }
@@ -621,6 +742,14 @@ export async function scheduleDueFollowups(now: Date = new Date()): Promise<Sche
       continue;
     }
     const slot = await capAwareSlot(seq, projectedSlot(seq, now)!);
+    if (sequenceExpired(seq.touch1SentAt, slot)) {
+      // Deferrals (cap, holidays, OOO) pushed the slot past the sequence age
+      // limit: a follow-up weeks later is never sent.
+      await setSequence(seq.id, { status: "complete", stopReason: `expired: next slot ${slot.toISOString()} is past ${FOLLOWUP_MAX_SEQUENCE_AGE_DAYS} days since Touch 1` });
+      await cancelQueuedTouches(seq.id, "Sequence complete: expired");
+      report.stopped += 1;
+      continue;
+    }
     if (slot.getTime() - now.getTime() > FOLLOWUP_RENDER_LEAD_MINUTES * 60_000) {
       report.waiting += 1;
       continue;
@@ -698,7 +827,7 @@ async function queueTouchDraft(seq: FollowupSequence, touch: RenderedTouch, slot
          created_by, scheduled_send_at, scheduled_by, scheduled_business_purpose,
          sequence_id, touch_number, branch, parent_send_id, engagement_state_at_dispatch)
       select d.prospect_id, d.finding_id, d.channel, ${seq.contactId}, ${Number(v!.v) + 1},
-        ${touch.subject}, ${touch.body}, 'direct, plain, peer-to-peer', ${"Want me to send it?"},
+        ${touch.subject}, ${touch.body}, 'direct, plain, peer-to-peer', ${touch.cta},
         'system', ${touch.version}, ${sql.json(seq.evidenceSnapshot as never)}, 'approved', ${seq.enrolledBy}, now(),
         ${seq.enrolledBy}, ${slot}, ${seq.enrolledBy}, ${purpose},
         ${seq.id}, ${seq.nextTouch}, ${touch.branch}, ${touch.parentSendId}, ${touch.engagement.state}
@@ -809,11 +938,15 @@ export async function followupPreflight(
   if (engagement.state !== (d.engagementStateAtDispatch as string)) {
     return { ok: false, detail: `engagement changed since render (${d.engagementStateAtDispatch} → ${engagement.state}); re-rendering.` };
   }
+  const version = await templateOf(draftId);
   const qa = lintFollowupCopy((d.subject as string | null) ?? null, d.body as string)
-    .concat(qaFollowupEvidence(await templateOf(draftId), d.body as string, seq.evidenceSnapshot));
+    .concat(qaFollowupEvidence(version, d.body as string, seq.evidenceSnapshot, await followupQaContext(seq, version)));
   if (qa.length) return { ok: false, detail: qa.map((i) => `[${i.check}] ${i.detail}`).join(" ") };
 
-  const newThread = followupStartsNewThread(await templateOf(draftId));
+  const newThread = followupStartsNewThread(version);
+  if (!newThread && !parentThreadId) {
+    return { ok: false, detail: "in-thread touch but the parent send has no Gmail thread id — refusing to open a new thread." };
+  }
   return {
     ok: true,
     detail: `sequence active, sync ${Math.round(syncAge)} min old, ${threads.length} thread(s) clean, engagement ${engagement.state}`,
@@ -988,9 +1121,12 @@ export async function setAllFollowupsPaused(
 
 export const SEQUENCE_DISPLAY_STATES = [
   "T1_SENT", "T2_DUE", "T2_SCHEDULED", "T2_SENT", "T3_DUE", "T3_SCHEDULED", "T3_SENT",
-  "REPLIED", "STOPPED", "BOUNCED", "OOO_PAUSED", "PAUSED", "SUPPRESSED", "COMPLETE_NO_REPLY",
+  "REPLIED", "REPLY_NEEDS_REVIEW", "STOPPED", "BOUNCED", "OOO_PAUSED", "PAUSED", "SUPPRESSED", "COMPLETE_NO_REPLY",
 ] as const;
 export type SequenceDisplayState = (typeof SEQUENCE_DISPLAY_STATES)[number];
+
+export type HandoffDisplayState =
+  | "REPORT_NOT_GENERATED" | "READY_TO_SEND" | "IN_PROGRESS" | "SCHEDULED" | "SENT" | "NEEDS_REVIEW" | "STOPPED";
 
 export interface FollowupSequenceView {
   sequenceId: string;
@@ -1010,6 +1146,10 @@ export interface FollowupSequenceView {
   queued: { draftId: string; touch: number; branch: string | null; template: string | null; scheduledSendAt: Date | null; engagement: string | null } | null;
   touches: { touch: number; branch: string | null; template: string | null; sentAt: Date; opens: number; gmailThreadId: string | null }[];
   replies: { classification: string; receivedAt: Date; afterTouch: number }[];
+  /** After a positive reply: where the report handoff (spec 129) stands and
+   * what, if anything, the founder must do. */
+  handoff: { reportState: HandoffDisplayState; nextAction: string; reason: string | null } | null;
+  expiresAt: Date;
 }
 
 export async function listFollowupSequences(filter: { prospectId?: string; experimentId?: string } = {}, now: Date = new Date()): Promise<FollowupSequenceView[]> {
@@ -1024,7 +1164,10 @@ export async function listFollowupSequences(filter: { prospectId?: string; exper
         from prospect_outreach_sends s join outreach_drafts d on d.id = s.draft_id
         where s.allowed and (s.id = q.touch1_send_id or d.sequence_id = q.id)) as touches,
       (select coalesce(json_agg(json_build_object('classification', r.classification, 'receivedAt', r.received_at) order by r.received_at), '[]')
-        from prospect_replies r where r.prospect_id = q.prospect_id and r.received_at >= t1.sent_at) as replies
+        from prospect_replies r where r.prospect_id = q.prospect_id and r.received_at >= t1.sent_at) as replies,
+      (select json_build_object('status', h.status, 'reason', h.reason, 'scheduledAt', d.scheduled_send_at)
+        from prospect_report_handoffs h left join outreach_drafts d on d.id = h.draft_id
+        where h.prospect_id = q.prospect_id order by h.created_at desc limit 1) as handoff_row
     from outreach_followup_sequences q
     join prospects p on p.id = q.prospect_id
     join market_launches l on l.id = p.launch_id
@@ -1033,6 +1176,9 @@ export async function listFollowupSequences(filter: { prospectId?: string; exper
       and (${filter.experimentId ?? null}::text is null or q.experiment_id = ${filter.experimentId ?? null})
     order by q.next_due_at asc nulls last, p.business_name
   `;
+  const positiveSeqs = rows.filter((r) => r.status === "replied");
+  const readiness = new Map<string, boolean>();
+  for (const r of positiveSeqs) readiness.set(r.id as string, await reportReadyFor(toSequence(r)));
   return rows.map((r) => {
     const seq = toSequence(r);
     const touches = ((r.touches as { touch: number; branch: string | null; template: string | null; sentAt: string; opens: number; gmailThreadId: string | null }[]) ?? [])
@@ -1045,8 +1191,9 @@ export async function listFollowupSequences(filter: { prospectId?: string; exper
       return { classification: x.classification, receivedAt: at, afterTouch: preceding.length ? preceding[preceding.length - 1]!.touch : 1 };
     });
     const lastTouch = touches.length ? touches[touches.length - 1]!.touch : 1;
+    const lastReply = replies.length ? replies[replies.length - 1]! : null;
     let displayState: SequenceDisplayState;
-    if (seq.status === "replied") displayState = "REPLIED";
+    if (seq.status === "replied") displayState = lastReply?.classification === "unclear" || /needs review/.test(seq.stopReason ?? "") ? "REPLY_NEEDS_REVIEW" : "REPLIED";
     else if (seq.status === "stopped") displayState = /bounce/i.test(seq.stopReason ?? "") ? "BOUNCED" : /suppress/i.test(seq.stopReason ?? "") ? "SUPPRESSED" : "STOPPED";
     else if (seq.status === "paused") displayState = seq.pauseReason?.startsWith("out of office") ? "OOO_PAUSED" : "PAUSED";
     else if (seq.status === "complete") displayState = "COMPLETE_NO_REPLY";
@@ -1072,8 +1219,37 @@ export async function listFollowupSequences(filter: { prospectId?: string; exper
       queued,
       touches,
       replies,
+      handoff:
+        r.handoffRow || (seq.status === "replied" && lastReply && POSITIVE.includes(lastReply.classification as ReplyClassification))
+          ? handoffDisplay(r.handoffRow as { status: string; reason: string | null; scheduledAt: string | null } | null, readiness.get(seq.id) ?? false, seq.timezone)
+          : null,
+      expiresAt: sequenceExpiresAt(seq.touch1SentAt),
     };
   });
+}
+
+function handoffDisplay(
+  row: { status: string; reason: string | null; scheduledAt: string | null } | null,
+  reportReady: boolean,
+  tz: string
+): FollowupSequenceView["handoff"] {
+  if (!row) {
+    return reportReady
+      ? { reportState: "READY_TO_SEND", nextAction: "Reply in thread with the private report", reason: null }
+      : { reportState: "REPORT_NOT_GENERATED", nextAction: "Generate + QA the private report, then reply in thread", reason: null };
+  }
+  switch (row.status) {
+    case "sent": return { reportState: "SENT", nextAction: "Report delivered in thread; watch for the next reply", reason: null };
+    case "scheduled": {
+      const at = row.scheduledAt ? new Date(row.scheduledAt) : null;
+      const w = at ? wallClock(at, tz) : null;
+      return { reportState: "SCHEDULED", nextAction: `Report reply queued${w ? ` for ${String(w.hour).padStart(2, "0")}:${String(w.minute).padStart(2, "0")} local` : ""}`, reason: null };
+    }
+    case "needs_review": return { reportState: "NEEDS_REVIEW", nextAction: "Fix the report or send by hand", reason: row.reason };
+    case "stopped": return { reportState: "STOPPED", nextAction: "No report: the prospect opted out or is blocked", reason: row.reason };
+    case "qa_passed": return { reportState: "READY_TO_SEND", nextAction: "QA passed; autosend is off, reply in thread by hand", reason: row.reason };
+    default: return { reportState: "IN_PROGRESS", nextAction: "Generating and QA-ing the report", reason: row.reason };
+  }
 }
 
 // ------------------------------------------------------------ experiment metrics

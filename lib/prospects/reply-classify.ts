@@ -95,21 +95,38 @@ const RULES: Rule[] = [
   },
 ];
 
-/** Drop quoted history and signature-less trailers so the classifier sees
- * only what the human typed: everything from an "On … wrote:" line, any
- * "> " quoted lines, and anything after a "--" / "From:" boundary. Our own
- * footer ("reply \"unsubscribe\"") must never classify the reply. */
+/** Marker the connector layer substitutes for unreadable content. A body
+ * that is (or contains) it cannot be classified — it stays "unclear". */
+const REDACTED_MARKER = /\[redacted[^\]]*\]/i;
+/** Our own outreach footer, as it comes back quoted in a reply. */
+const OWN_FOOTER = /rather not hear from us|reply "unsubscribe"|^Francisco( Zuluaga)? [·-] Recommended First$/i;
+
+/** Drop quoted history and trailers so the classifier sees only what the
+ * human typed: everything from an "On … wrote:" line, any "> " quoted line,
+ * and anything after a "--" / "—" / "From:" boundary or our own footer.
+ * Returns "" when nothing human-typed remains (an all-quoted or redacted
+ * body) — callers then record an "unclear" reply that stops the sequence
+ * for review and never suppresses. Our footer's "unsubscribe" must never
+ * classify the reply (2026-09-03 misfire). */
 export function stripQuotedReply(text: string): string {
+  if (REDACTED_MARKER.test(text)) return "";
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const out: string[] = [];
   for (const line of lines) {
     const t = line.trim();
-    if (/^on .{3,120} wrote:$/i.test(t) || /^-{2,}\s*(original|forwarded) message/i.test(t) || /^from:\s/i.test(t)) break;
+    if (
+      /^on .{3,120} wrote:$/i.test(t) ||
+      /^-{2,}\s*(original|forwarded) message/i.test(t) ||
+      /^from:\s/i.test(t) ||
+      /^(--|—)$/.test(t) ||
+      OWN_FOOTER.test(t)
+    ) {
+      break;
+    }
     if (t.startsWith(">")) continue;
     out.push(line);
   }
-  const body = out.join("\n").trim();
-  return body.length > 0 ? body : text.trim();
+  return out.join("\n").trim();
 }
 
 export function classifyReplyText(text: string): ReplyClassification {

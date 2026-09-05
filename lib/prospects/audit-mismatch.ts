@@ -12,7 +12,7 @@
 import { sql } from "@/db/client";
 import { CURRENT } from "@/lib/prospects/benchmark";
 import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
-import { deliveredTouch1 } from "@/lib/prospects/followups";
+import { deliveredTouch1, prospectEntityType } from "@/lib/prospects/followups";
 import { marketShortName, type MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
 import { consumerAnchoredModelPhrase, providerDisplayName } from "@/lib/prospects/terminology";
 
@@ -88,6 +88,17 @@ export interface AuditMismatchBlock {
   note: { paragraphs: string[]; question: string | null };
   /** One line before the final ask: their context is the missing variable. */
   ctaBridge: string | null;
+  /** RealTrends entity level of the prospect's frozen production record;
+   * "you" vs "your team" everywhere on the page. Absent on pre-2026-09-04
+   * snapshots (rendered as a team). */
+  entityType?: "individual" | "team";
+}
+
+/** Second-person reference for the prospect: an individual agent is "you",
+ * a team is "your team". */
+export function entityRef(entityType: "individual" | "team" | null | undefined): { ref: string; Ref: string; yours: string; team: boolean } {
+  const team = entityType !== "individual";
+  return { ref: team ? "your team" : "you", Ref: team ? "Your team" : "You", yours: team ? "your team's" : "your", team };
 }
 
 const MAX_QUOTE = 240;
@@ -175,6 +186,7 @@ export interface NarrativeInput {
   sources: AuditMismatchBlock["sources"];
   ownSiteCited: boolean | null;
   distinctQuestions: { prospect: number; competitor: number };
+  entityType?: "individual" | "team" | null;
 }
 
 /** Diagnosis, priorities, context questions, less-concerned checks and the
@@ -182,6 +194,7 @@ export interface NarrativeInput {
 export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosis" | "priorities" | "contextQuestions" | "lessConcerned" | "note" | "ctaBridge"> {
   const p = i.prospect;
   const c = i.competitor;
+  const { ref, team } = entityRef(i.entityType);
   const gapLead = i.gaps[0] ?? null;
   const gapLabels = i.gaps.map((g) => g.label.replace(" questions", "").toLowerCase());
   const nbhd = i.competitorNeighborhoods.slice(0, 3);
@@ -190,14 +203,14 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
   const diagnosis: DiagnosisArea[] = [];
   diagnosis.push({
     area: "Track record",
-    observed: `Your ${p.productionDisplay} is well ahead of ${possessive(c.name)} ${c.productionDisplay} on the RealTrends record, but that advantage is not reflected in the answers: ${p.recommendationCount} recommendation${p.recommendationCount === 1 ? "" : "s"} for your team against ${c.recommendationCount} for ${c.name}, out of the same ${i.answerCount} answers.`,
+    observed: `Your ${p.productionDisplay} is well ahead of ${possessive(c.name)} ${c.productionDisplay} on the RealTrends record, but that advantage is not reflected in the answers: ${p.recommendationCount} recommendation${p.recommendationCount === 1 ? "" : "s"} for ${ref} against ${c.recommendationCount} for ${c.name}, out of the same ${i.answerCount} answers.`,
     mayMean: `${c.name} may have a clearer public trail connecting them with ${i.market} and the questions where they appeared.`,
-    investigate: "How consistently your production, specialties, neighborhoods and team identity are represented across your own site and the independent sources that repeatedly appeared in the captured answers.",
+    investigate: `How consistently your production, specialties, neighborhoods and ${team ? "team identity" : "name"} are represented across your own site and the independent sources that repeatedly appeared in the captured answers.`,
   });
   if (gapLead) {
     diagnosis.push({
       area: "Where they show up",
-      observed: `${gapLead.competitor} of ${possessive(c.name)} ${c.recommendationCount} recommendations came from ${gapLead.label.toLowerCase()}${nbhd.length ? `, most often about ${list(nbhd)}` : ""}; your team had ${gapLead.prospect} there.`,
+      observed: `${gapLead.competitor} of ${possessive(c.name)} ${c.recommendationCount} recommendations came from ${gapLead.label.toLowerCase()}${nbhd.length ? `, most often about ${list(nbhd)}` : ""}; ${ref} had ${gapLead.prospect} there.`,
       mayMean: `${possessive(c.name)} name appears to be more strongly associated with ${gapLabels.length ? list(gapLabels) : "those searches"}${nbhd.length ? ` in ${list(nbhd)}` : ""} than yours is.`,
       investigate: `Why their name is tied to those specific searches: recent sales, listings and profiles that name ${nbhd.length ? list(nbhd) : "those areas"} explicitly.`,
     });
@@ -206,8 +219,8 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
     diagnosis.push({
       area: "Where the information comes from",
       observed: `The answers cited ${list(platforms)} repeatedly${i.ownSiteCited === false ? "; your own site was not among the cited sources" : ""}.`,
-      mayMean: "Those portal profiles appeared far more often in the cited evidence than either team's own site, which makes them one of the first places I'd inspect.",
-      investigate: "Whether your team, brokerage, neighborhoods and specialties read the same way on those portals as they do on your site.",
+      mayMean: `Those portal profiles appeared far more often in the cited evidence than either ${team ? "team's" : "agent's"} own site, which makes them one of the first places I'd inspect.`,
+      investigate: `Whether ${team ? "your team, brokerage," : "you, your brokerage,"} neighborhoods and specialties read the same way on those portals as they do on your site.`,
     });
   }
 
@@ -224,8 +237,8 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
       : []),
     ...(platforms.length > 0
       ? [{
-          title: "Make the team easy to understand everywhere",
-          body: `I'd check whether your agents, team, brokerage, neighborhoods and specialties are described the same way on ${list(platforms)} as on your own site.`,
+          title: team ? "Make the team easy to understand everywhere" : "Make yourself easy to understand everywhere",
+          body: `I'd check whether ${team ? "your agents, team, brokerage," : "your name, brokerage,"} neighborhoods and specialties are described the same way on ${list(platforms)} as on your own site.`,
         }]
       : []),
   ].slice(0, 3);
@@ -244,10 +257,10 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
         : `here they weren't: ${c.name} came up in ${i.distinctQuestions.competitor} different questions`,
     },
     {
-      condition: "your team dominated the questions that matter most to your business",
+      condition: `${ref} dominated the questions that matter most to your business`,
       status: i.distinctQuestions.prospect === 0
-        ? "I can't see that from the outside; your team was not recommended in any of the questions we asked"
-        : `possible: your team was recommended in ${i.distinctQuestions.prospect} question${i.distinctQuestions.prospect === 1 ? "" : "s"}, and only you know whether those are the ones that matter`,
+        ? `I can't see that from the outside; ${ref} ${team ? "was" : "were"} not recommended in any of the questions we asked`
+        : `possible: ${ref} ${team ? "was" : "were"} recommended in ${i.distinctQuestions.prospect} question${i.distinctQuestions.prospect === 1 ? "" : "s"}, and only you know whether those are the ones that matter`,
     },
     {
       condition: `${c.name} isn't someone you actually compete with`,
@@ -258,9 +271,9 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
   const ratio = c.productionDisplay && p.productionDisplay ? `${p.productionDisplay} against ${c.productionDisplay}` : "";
   const note = {
     paragraphs: [
-      "The reason I reached out wasn't simply because your team showed up less often.",
+      `The reason I reached out wasn't simply because ${ref} showed up less often.`,
       `It was because your production record is strong enough that the gap looked unusual: ${ratio} on the same RealTrends record, and ${p.recommendationCount} recommendation${p.recommendationCount === 1 ? "" : "s"} against ${c.recommendationCount}.`,
-      "If the real-world numbers clearly favored the other team, I probably wouldn't have contacted you. Here, they point in the opposite direction. That's what made this worth looking into.",
+      `If the real-world numbers clearly favored ${c.name}, I probably wouldn't have contacted you. Here, they point in the opposite direction. That's what made this worth looking into.`,
     ],
     question: gapLead
       ? `The part I'd want to understand from you is whether ${gapLead.label.toLowerCase()}${nbhd.length ? ` in ${list(nbhd)}` : ""} are the part of the market you care about most.`
@@ -378,12 +391,14 @@ export async function mismatchBlockForProspect(
     : null;
   const prospect = { name: s.prospect.name, productionDisplay: s.prospect.productionDisplay, productionYear: s.prospect.productionYear, recommendationCount: s.prospect.recommendationCount };
   const competitor = { name: s.competitor.name, productionDisplay: s.competitor.productionDisplay, productionYear: s.competitor.productionYear, recommendationCount: s.competitor.recommendationCount };
+  const entityType = await prospectEntityType(s);
   const story = narrative({
     prospect, competitor, market, answerCount: s.answerCount, questions, categories, gaps,
-    competitorNeighborhoods, sources, ownSiteCited: ctx.ownSiteCited ?? null, distinctQuestions,
+    competitorNeighborhoods, sources, ownSiteCited: ctx.ownSiteCited ?? null, distinctQuestions, entityType,
   });
   return {
     templateVersion: PRIVATE_REPORT_TEMPLATE_VERSION,
+    ...(entityType ? { entityType } : {}),
     prospect,
     competitor,
     productionSource: "RealTrends (licensed, verified)",

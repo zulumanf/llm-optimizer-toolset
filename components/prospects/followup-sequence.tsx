@@ -22,7 +22,7 @@ function local(d: Date | null, tz: string): string {
 }
 
 const STATE_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  REPLIED: "default", STOPPED: "destructive", BOUNCED: "destructive", SUPPRESSED: "destructive",
+  REPLIED: "default", REPLY_NEEDS_REVIEW: "destructive", STOPPED: "destructive", BOUNCED: "destructive", SUPPRESSED: "destructive",
   OOO_PAUSED: "secondary", PAUSED: "secondary", COMPLETE_NO_REPLY: "outline",
 };
 
@@ -59,6 +59,18 @@ export async function FollowupSequenceCard({ prospectId }: { prospectId: string 
         </dd>
         <dt className="text-muted-foreground">Replies</dt>
         <dd className="col-span-3">{view.replies.length === 0 ? "none recorded" : view.replies.map((r) => `${r.classification} after touch ${r.afterTouch}`).join(" · ")}</dd>
+        {view.handoff && (
+          <>
+            <dt className="text-muted-foreground">Next action</dt>
+            <dd className="col-span-3 font-medium">Positive reply · Report: {view.handoff.reportState.replaceAll("_", " ")} · {view.handoff.nextAction}{view.handoff.reason ? <span className="block text-xs font-normal text-muted-foreground">{view.handoff.reason}</span> : null}</dd>
+          </>
+        )}
+        {view.status === "active" && (
+          <>
+            <dt className="text-muted-foreground">Sequence expires</dt>
+            <dd className="col-span-3">{local(view.expiresAt, view.timezone)}</dd>
+          </>
+        )}
       </dl>
       {view.touches.length > 1 && (
         <ul className="text-xs text-muted-foreground">
@@ -111,7 +123,7 @@ export async function FollowupSequencesSection() {
                 <td className="pr-3"><StateBadge state={v.displayState} /></td>
                 <td className="pr-3 tabular-nums">{v.nextTouch ? `T${v.nextTouch} ${local(v.nextSlot, v.timezone)}` : "—"}</td>
                 <td className="pr-3">{v.queued?.branch ?? "—"}</td>
-                <td className="pr-3">{v.replies.length ? v.replies[v.replies.length - 1]!.classification.replaceAll("_", " ") : "—"}</td>
+                <td className="pr-3">{v.handoff ? `positive · report ${v.handoff.reportState.replaceAll("_", " ").toLowerCase()}` : v.replies.length ? v.replies[v.replies.length - 1]!.classification.replaceAll("_", " ") : "—"}</td>
                 <td className="text-muted-foreground">{v.stopReason ?? ""}</td>
               </tr>
             ))}
