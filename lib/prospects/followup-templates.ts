@@ -232,7 +232,7 @@ const BANNED_TERMS: RegExp[] = [
   // model behind ChatGPT" in Touch 1 and unnamed here (terminology rule).
   /\bChatGPT\b/,
 ];
-const PLACEHOLDER = /\{[^}]*\}|\bnull\b|\bundefined\b|\bNaN\b|\[object/;
+const PLACEHOLDER = /\{[^}]*\}|\bnull\b|\bundefined\b|\bNaN\b|\[object|\[[A-Z][A-Z0-9_]{2,}\]/;
 const URL = /https?:\/\/|\bcal\.com\b|\bwww\.(?!RecommendedFirst\.com)/i;
 const HTML = /<\/?[a-z][^>]*>|&[a-z]+;/i;
 const EM_DASH = /—|―/;

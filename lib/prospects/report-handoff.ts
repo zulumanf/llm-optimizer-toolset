@@ -110,6 +110,7 @@ export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prosp
     `PRIVATE AI RECOMMENDATION REPORT · Recommended First · Prepared for ${ctx.prospectName} (${ctx.market}) · Private`,
     `Production source: RealTrends${block.prospect.productionYear ? ` ${block.prospect.productionYear}` : ""} · Test: ${block.questionCount} questions × ${block.repetitions} · Answers counted: ${block.answerCount}${captured ? ` · Answers recorded ${captured}` : ""}`
   );
+  if (block.correction) out.push(block.correction.note);
   h("The finding");
   out.push(
     `RealTrends has ${you} ahead. AI recommends ${comp} more often.`,
@@ -119,6 +120,11 @@ export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prosp
     `AI recommendations, same ${ctx.market} test: ${You} ${block.prospect.recommendationCount} / ${block.answerCount} · ${comp} ${block.competitor.recommendationCount} / ${block.answerCount}`,
     `${You} closed more ${block.metricLabel.replace(/^closed /, "")}. ${comp} was recommended more.${notFluke ? ` ${comp} appeared across ${block.distinctQuestions.competitor} different questions.` : ""}`
   );
+  if (block.changeFirst?.length) {
+    h("What I'd change first");
+    out.push(`Observed in the answers, the smallest change I'd make, and how the same test would show whether it moved. None of this is a ranking promise.`);
+    for (const r of block.changeFirst) out.push(`- Observed: ${r.observed} · Change: ${r.change} · Test: ${r.test}`);
+  }
   h("What we asked");
   out.push(
     `We tested the kinds of questions a buyer or seller might ask while deciding who to work with in ${ctx.market}.`,

@@ -3,6 +3,7 @@
  * current-revision mentions + the parse ledger row, maintains sources, and
  * enqueues compute_scores once the run is fully parsed and review-clear.
  */
+import { identityFactsFor } from "@/lib/prospects/entity-aliases";
 import { sql } from "@/db/client";
 import { enqueueJob } from "@/db/jobs";
 import { listCompaniesForProject, getSubjectCompany } from "@/db/companies";
@@ -93,7 +94,11 @@ export async function parseResponse(responseId: string): Promise<void> {
       where project_id = ${projectId} and status = 'approved'
       order by key asc
     `;
+    // Spec 130: verified lead-agent relationships (RealTrends team lead) are
+    // identity facts for every candidate, so a team named by its lead agent
+    // resolves to the team instead of "a person, not the company".
     const identityContext: Record<string, string[]> = {
+      ...(await identityFactsFor(companyInputs.map((c) => c.id))),
       [subject.id]: claimRows.map((c) => c.canonicalText as string),
     };
     try {
@@ -363,7 +368,7 @@ export async function parseCompanyIntoRun(
           responseText: text,
           promptText: (response.promptText as string) ?? "",
           companies: single,
-          identityContext: subject ? { [subject.id]: [] } : {},
+          identityContext: { ...(await identityFactsFor([company.id])), ...(subject ? { [subject.id]: [] } : {}) },
           projectId,
         });
         parserUsed = PARSER_VERSION_LLM;

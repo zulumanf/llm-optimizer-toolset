@@ -92,6 +92,36 @@ export interface AuditMismatchBlock {
    * "you" vs "your team" everywhere on the page. Absent on pre-2026-09-04
    * snapshots (rendered as a team). */
   entityType?: "individual" | "team";
+  /** Spec 130: present when the counts on this page differ from the ones the
+   * email stated because entity resolution was corrected against the same
+   * answers. Both values are shown; nothing is hidden. */
+  correction?: ReportCorrection;
+  /** Spec 130: "What I'd change first" — at most three rows, each observed
+   * from counted evidence, with the smallest concrete change and how the
+   * same test would remeasure it. Empty when the evidence supports none. */
+  changeFirst?: ChangeFirstRow[];
+}
+
+export interface ReportCorrection {
+  original: { prospect: number; competitor: number };
+  corrected: { prospect: number; competitor: number };
+  /** Names the answers used for the prospect that the first count missed. */
+  aliasesCredited: string[];
+  correctedAt: string;
+  note: string;
+}
+
+export interface ChangeFirstRow {
+  observed: string;
+  change: string;
+  test: string;
+}
+
+/** Answers (of the frozen run and provider) whose text names each string,
+ * whole-word, case-insensitive. Appearance, not recommendation. */
+export interface NameAppearance {
+  name: string;
+  answers: number;
 }
 
 /** Second-person reference for the prospect: an individual agent is "you",
@@ -287,6 +317,93 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
   return { diagnosis, priorities, contextQuestions, lessConcerned, note, ctaBridge };
 }
 
+/** Spec 130: the quiet correction line. Deterministic over the two
+ * snapshots; states the email's number and the corrected one. */
+export function correctionNote(i: {
+  correction: Omit<ReportCorrection, "note">;
+  teamName: string;
+  competitor: string;
+  answerCount: number;
+  entityType?: "individual" | "team" | null;
+}): string {
+  const { ref } = entityRef(i.entityType);
+  const c = i.correction;
+  const named = c.aliasesCredited.length ? list(c.aliasesCredited.map((a) => `"${a}"`)) : "the lead agent";
+  const compPart = c.original.competitor !== c.corrected.competitor
+    ? `${c.corrected.competitor} of ${i.answerCount} for ${i.competitor} (the email said ${c.original.competitor})`
+    : `${c.corrected.competitor} of ${i.answerCount} for ${i.competitor}, unchanged`;
+  return `Correction: my first email counted answers that named ${i.teamName} and missed answers that named ${named} directly. This report resolves both to the same verified team and uses the corrected count throughout: ${c.corrected.prospect} of ${i.answerCount} for ${ref} (the email said ${c.original.prospect}); ${compPart}.`;
+}
+
+/** Spec 130: "What I'd change first". Every row is anchored to counted
+ * evidence; the wording never claims a cause ("first place I'd inspect",
+ * "then rerun the same questions"). */
+export function changeFirstRows(i: {
+  prospect: AuditMismatchBlock["prospect"];
+  competitor: AuditMismatchBlock["competitor"];
+  answerCount: number;
+  questionCount: number;
+  entityType?: "individual" | "team" | null;
+  correction: ReportCorrection | null;
+  appearances: NameAppearance[];
+  sources: AuditMismatchBlock["sources"];
+  ownSiteCited: boolean | null;
+  gaps: CategoryCount[];
+  competitorNeighborhoods: string[];
+}): ChangeFirstRow[] {
+  const rows: ChangeFirstRow[] = [];
+  const { ref, Ref, team } = entityRef(i.entityType);
+  const comp = i.competitor.name;
+  const rerun = `Rerun the same ${i.questionCount} questions, count the same way, and compare against this report's ${i.answerCount}-answer baseline.`;
+
+  if (i.correction && i.correction.aliasesCredited.length > 0) {
+    const teamHits = i.appearances.find((a) => a.name === i.prospect.name)?.answers ?? 0;
+    const aliasHits = i.correction.aliasesCredited
+      .map((a) => i.appearances.find((x) => x.name === a)?.answers ?? 0)
+      .reduce((m, n) => Math.max(m, n), 0);
+    const alias = i.correction.aliasesCredited[0]!;
+    rows.push({
+      observed: `The answers named ${ref} two ways: "${alias}" in ${aliasHits} of ${i.answerCount} answers and "${i.prospect.name}" in ${teamHits}. Our first count only caught the second.`,
+      change: `Make the lead agent and the team read as one entity on the pages that kept surfacing: the same name pairing, the same neighborhoods, the same production.`,
+      test: `Count both names as one, then ${rerun.charAt(0).toLowerCase()}${rerun.slice(1)}`,
+    });
+  }
+
+  const platforms = (i.sources ?? []).filter((s) => s.category === "platform").slice(0, 3);
+  if (platforms.length > 0) {
+    const cites = platforms.reduce((n, s) => n + s.citations, 0);
+    rows.push({
+      observed: `${list(platforms.map((s) => s.domain))} appeared in the answers ${cites} times across ${i.answerCount} answers${i.ownSiteCited === false ? `; ${team ? "your team's" : "your"} own website did not appear` : ""}.`,
+      change: `Audit ${team ? "the team's" : "your"} profiles on those sites first: production, neighborhoods, reviews and the ${team ? "team and lead-agent pairing" : "name and brokerage"} should match RealTrends and your own site.`,
+      test: `${rerun} Watch whether ${ref} appears more often in answers that point to those sites.`,
+    });
+  }
+
+  const nbhdGap = i.gaps.find((g) => g.key === "neighborhood");
+  const nbhd = i.competitorNeighborhoods.slice(0, 3);
+  if (nbhdGap && nbhd.length > 0) {
+    rows.push({
+      observed: `${comp} was recommended in ${nbhdGap.competitor} neighborhood answers, most often for ${list(nbhd)}; ${ref} in ${nbhdGap.prospect}.`,
+      change: `Name the neighborhoods you want on ${team ? "the team's" : "your"} own pages and profiles, with the sales that back them.`,
+      test: `Compare the neighborhood questions before and after: recommendations for ${Ref.toLowerCase()} in ${list(nbhd)}.`,
+    });
+  }
+  return rows.slice(0, 3);
+}
+
+async function nameAppearances(runId: string, provider: string, names: string[]): Promise<NameAppearance[]> {
+  const out: NameAppearance[] = [];
+  for (const name of [...new Set(names)].filter((n) => n.trim().length > 0)) {
+    const pattern = `\\m${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\M`;
+    const [row] = await sql`
+      select count(*)::int as n from responses
+      where run_id = ${runId} and provider = ${provider} and error is null and response_text ~* ${pattern}
+    `;
+    out.push({ name, answers: Number(row?.n ?? 0) });
+  }
+  return out;
+}
+
 /** Every non-holdout question with counts; excerpts where the competitor
  * was recommended. */
 export async function mismatchQuestions(s: MismatchEvidenceSnapshot): Promise<MismatchQuestionRow[]> {
@@ -396,9 +513,33 @@ export async function mismatchBlockForProspect(
     prospect, competitor, market, answerCount: s.answerCount, questions, categories, gaps,
     competitorNeighborhoods, sources, ownSiteCited: ctx.ownSiteCited ?? null, distinctQuestions, entityType,
   });
+  // Spec 130: when the delivered email's counts were corrected against the
+  // same answers, say so on the page and derive the identity row from what
+  // the answers actually called the prospect.
+  let correction: ReportCorrection | null = null;
+  let appearances: NameAppearance[] = [];
+  if (t1.correction) {
+    const c = t1.correction;
+    const aliasesCredited = c.entityResolutionChange.aliasesAdded?.[s.prospect.companyId]?.aliases ?? [];
+    appearances = await nameAppearances(s.runId, s.provider, [s.prospect.name, ...aliasesCredited]);
+    const credited = aliasesCredited.filter((a) => (appearances.find((x) => x.name === a)?.answers ?? 0) > 0);
+    const base = {
+      original: { prospect: c.originalSnapshot.prospect.recommendationCount, competitor: c.originalSnapshot.competitor.recommendationCount },
+      corrected: { prospect: s.prospect.recommendationCount, competitor: s.competitor.recommendationCount },
+      aliasesCredited: credited.length ? credited : aliasesCredited,
+      correctedAt: c.correctedAt.toISOString(),
+    };
+    correction = { ...base, note: correctionNote({ correction: base, teamName: s.prospect.name, competitor: s.competitor.name, answerCount: s.answerCount, entityType }) };
+  }
+  const changeFirst = changeFirstRows({
+    prospect, competitor, answerCount: s.answerCount, questionCount, entityType, correction, appearances,
+    sources, ownSiteCited: ctx.ownSiteCited ?? null, gaps, competitorNeighborhoods,
+  });
   return {
     templateVersion: PRIVATE_REPORT_TEMPLATE_VERSION,
     ...(entityType ? { entityType } : {}),
+    ...(correction ? { correction } : {}),
+    changeFirst,
     prospect,
     competitor,
     productionSource: "RealTrends (licensed, verified)",

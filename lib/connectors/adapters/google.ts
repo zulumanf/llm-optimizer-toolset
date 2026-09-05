@@ -361,21 +361,53 @@ export interface ParsedGmailMessage {
   body: string;
 }
 
-function firstTextPart(part: RawGmailPart | undefined): RawGmailPart | undefined {
+function firstPartOf(part: RawGmailPart | undefined, mimeType: string): RawGmailPart | undefined {
   if (!part) return undefined;
-  if (part.mimeType === "text/plain" && part.body?.data) return part;
+  if (part.mimeType === mimeType && part.body?.data) return part;
   for (const p of part.parts ?? []) {
-    const found = firstTextPart(p);
+    const found = firstPartOf(p, mimeType);
     if (found) return found;
   }
   return undefined;
+}
+
+/** Plain text of an HTML-only message (spec 130): a reply sent from a
+ * client that emits no text/plain part must still yield its words, not an
+ * empty body that ingestion replaces with the subject line. */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|tr|h[1-6]|blockquote)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+/** Body text of a message: the first text/plain part, else the first
+ * text/html part stripped to text, else the top-level body. */
+export function gmailBodyText(payload: RawGmailPart | undefined): string {
+  const plain = firstPartOf(payload, "text/plain");
+  if (plain) return decodeBody(plain.body);
+  const html = firstPartOf(payload, "text/html");
+  if (html) return htmlToText(decodeBody(html.body));
+  const top = decodeBody(payload?.body);
+  return payload?.mimeType === "text/html" ? htmlToText(top) : top;
 }
 
 function parseGmailMessage(message: RawGmailMessage): ParsedGmailMessage {
   const headers = new Map(
     (message.payload?.headers ?? []).map((h) => [(h.name ?? "").toLowerCase(), h.value ?? ""])
   );
-  const textPart = firstTextPart(message.payload);
   return {
     id: message.id ?? "",
     threadId: message.threadId ?? null,
@@ -385,7 +417,7 @@ function parseGmailMessage(message: RawGmailMessage): ParsedGmailMessage {
     subject: headers.get("subject") ?? "",
     date: message.internalDate ? new Date(Number(message.internalDate)).toISOString() : null,
     labelIds: message.labelIds ?? [],
-    body: decodeBody(textPart?.body ?? message.payload?.body),
+    body: gmailBodyText(message.payload),
   };
 }
 
