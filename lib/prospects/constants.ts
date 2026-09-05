@@ -337,13 +337,16 @@ export const REPORT_DELIVERY_TEMPLATE_VERSION = "mismatch_report_delivery_v1";
 export const ENGAGEMENT_OFFER = {
   monthlyUsd: 7_500,
   initialDays: 90,
+  initialMonths: 3,
   includes: [
-    "baseline and diagnosis",
+    "diagnosis",
     "implementation of the highest-confidence changes",
-    "monitoring",
-    "rerunning the same test to measure movement",
+    "ongoing monitoring",
+    "rerunning the same test",
   ],
 } as const;
+/** Free-mail hosts never count as a prospect's owned website. */
+export const FREEMAIL_DOMAINS = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "aol.com", "me.com", "live.com", "msn.com"] as const;
 /** A positive reply that asked for a price (deterministic, same rule as the
  * learning-log view's pricing_requested). */
 export const PRICING_REQUEST_RE = /\b(pric\w*|cost\w*|fees?|how much|rates?)\b/i;

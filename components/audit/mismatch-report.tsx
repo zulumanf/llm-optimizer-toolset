@@ -77,6 +77,19 @@ export function MismatchReport({
           <p className="mt-5 max-w-[48ch] text-sm leading-relaxed">
             On the RealTrends record for {b.metricLabel}, {ref} {team ? "is" : "are"} ahead of {b.competitor.name}. In our {market} test, {b.competitor.name} was recommended more often.
           </p>
+          <p className="mt-3 text-sm">
+            Difference: <span className="tabular-nums">{b.competitor.recommendationCount - b.prospect.recommendationCount}</span> recommendations on the same <span className="tabular-nums">{b.answerCount}</span> answers.
+          </p>
+          {(b.changeFirst?.length ?? 0) > 0 && (
+            <div className="mt-6">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">What I’d change first</p>
+              <ol className="mt-1 space-y-1 text-sm">
+                {b.changeFirst!.map((r, i) => (
+                  <li key={r.title}><span className="mr-2 tabular-nums text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>{r.title}</li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
         <figure className="lg:col-span-7">
           <figcaption className="text-xs uppercase tracking-wide text-muted-foreground">Figure 01 · Production vs AI recommendations</figcaption>
@@ -125,22 +138,22 @@ export function MismatchReport({
         <section className="grid gap-8 border-t py-10 lg:grid-cols-12" data-signal-section="change-first">
           <div className="lg:col-span-3">
             <h2 className="text-xs uppercase tracking-wide text-muted-foreground">What I’d change first</h2>
-            <p className="mt-3 max-w-[32ch] text-xs leading-relaxed text-muted-foreground">Observed in the answers, the smallest change I’d make, and how the same test would show whether it moved. None of this is a ranking promise.</p>
+            <p className="mt-3 max-w-[32ch] text-xs leading-relaxed text-muted-foreground">What the answers showed, the exact change, where, why it comes first, and how the same test would show whether it moved. None of this is a ranking promise.</p>
           </div>
-          <div className="lg:col-span-9">
-            <div className="hidden grid-cols-3 gap-6 border-b pb-2 text-xs uppercase tracking-wide text-muted-foreground sm:grid">
-              <span>What we observed</span><span>What I’d change</span><span>How we’d test it</span>
-            </div>
-            <ol className="divide-y">
-              {b.changeFirst!.map((r, i) => (
-                <li key={r.observed} className="grid gap-3 py-4 text-sm leading-relaxed sm:grid-cols-3 sm:gap-6">
-                  <p><span className="mr-2 text-xs tabular-nums text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>{r.observed}</p>
-                  <p><span className="block text-xs uppercase tracking-wide text-muted-foreground sm:hidden">What I’d change</span>{r.change}</p>
-                  <p><span className="block text-xs uppercase tracking-wide text-muted-foreground sm:hidden">How we’d test it</span>{r.test}</p>
-                </li>
-              ))}
-            </ol>
-          </div>
+          <ol className="divide-y lg:col-span-9">
+            {b.changeFirst!.map((r, i) => (
+              <li key={r.title} className="py-5">
+                <p className="text-sm font-medium uppercase tracking-wide"><span className="mr-2 tabular-nums text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>{r.title}</p>
+                <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm leading-relaxed sm:grid-cols-[9rem_1fr]">
+                  <dt className="text-xs uppercase tracking-wide text-muted-foreground">Observed</dt><dd>{r.observed}</dd>
+                  <dt className="text-xs uppercase tracking-wide text-muted-foreground">Change</dt><dd>{r.change}</dd>
+                  <dt className="text-xs uppercase tracking-wide text-muted-foreground">Where</dt><dd>{r.where}</dd>
+                  <dt className="text-xs uppercase tracking-wide text-muted-foreground">Why first</dt><dd>{r.whyFirst}</dd>
+                  <dt className="text-xs uppercase tracking-wide text-muted-foreground">How we’d test it</dt><dd>{r.test}</dd>
+                </dl>
+              </li>
+            ))}
+          </ol>
         </section>
       )}
 
@@ -413,6 +426,7 @@ export function MismatchReport({
           <h2 className="text-xs uppercase tracking-wide text-muted-foreground lg:col-span-3">{b.offer.title}</h2>
           <div className="max-w-[56ch] text-sm leading-relaxed lg:col-span-7">
             <p className={`${serifClass} text-xl tabular-nums`}>{b.offer.price}</p>
+            <p className="mt-1 tabular-nums">{b.offer.total}</p>
             <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">Includes</p>
             <ul className="mt-1 list-disc space-y-1 pl-5">
               {b.offer.includes.map((x) => <li key={x}>{x}</li>)}

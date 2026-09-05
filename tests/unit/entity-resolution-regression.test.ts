@@ -113,6 +113,8 @@ describe("report correction note and change-first rows", () => {
     expect(note).toContain("the email said 11");
     expect(note).toContain("23 of 256 for your team");
     expect(note).toContain("38 of 256 for Josh May, unchanged");
+    expect(note).toContain("were often surfaced separately");
+    expect(note).toContain("reconciles the verified Ryan Ogle / Blu House Properties relationship");
     expect(note).not.toMatch(/—|–/);
   });
   it("derives at most three evidence-backed rows and never promises a ranking", () => {
@@ -126,14 +128,20 @@ describe("report correction note and change-first rows", () => {
       ownSiteCited: false,
       gaps: [{ key: "neighborhood", label: "Neighborhood questions", questions: 59, prospect: 7, competitor: 33 }],
       competitorNeighborhoods: ["Eastown", "John Ball Park", "Ridgemoor", "Michigan Oaks"],
+      facts: { ownedDomain: "thinkbluhouse.com", leadRole: "Owner", brokerage: "eXp Realty" },
     });
     expect(rows).toHaveLength(3);
     expect(rows[0]!.observed).toContain('"Ryan Ogle" in 45 of 256');
-    expect(rows[1]!.observed).toContain("zillow.com and realtor.com");
+    expect(rows[0]!.change).toContain("Ryan Ogle, Owner, Blu House Properties (eXp Realty)");
+    expect(rows[0]!.where).toContain("thinkbluhouse.com");
+    expect(rows[0]!.where).toContain("confirmed at the start of the work");
+    expect(rows[1]!.observed).toContain("zillow.com and realtor.com appeared repeatedly");
+    expect(rows[1]!.observed).not.toMatch(/\b(172|140|488|396)\b/);
     expect(rows[1]!.observed).toContain("own website did not appear");
+    expect(rows[2]!.title).toContain("if those are areas you want to win");
     expect(rows[2]!.observed).toContain("Eastown, John Ball Park and Ridgemoor");
-    const text = rows.map((r) => `${r.observed} ${r.change} ${r.test}`).join(" ");
-    expect(text).not.toMatch(/will (get you )?rank|would have changed|causes/i);
+    const text = rows.map((r) => `${r.title} ${r.observed} ${r.change} ${r.where} ${r.whyFirst} ${r.test}`).join(" ");
+    expect(text).not.toMatch(/will (get you )?rank|would have changed|causes|doesn't know|ChatGPT/i);
     expect(text).toMatch(/Rerun the same 64 questions/);
   });
   it("omits rows without evidence", () => {
@@ -149,11 +157,13 @@ describe("report correction note and change-first rows", () => {
 describe("the offer section (only when pricing was asked for)", () => {
   it("states one number, the 90-day term, no long-term commitment and no ranking promise", () => {
     const o = offerSection();
-    expect(o.price).toBe("$7,500/month for an initial 90-day engagement.");
+    expect(o.title).toBe("Pricing");
+    expect(o.price).toBe("$7,500/month for 3 months");
+    expect(o.total).toBe("$22,500 total initial engagement");
     expect(o.includes).toEqual([...ENGAGEMENT_OFFER.includes]);
-    expect(o.commitment).toContain("No long-term commitment after the first 90 days");
+    expect(o.commitment).toContain("No long-term commitment after the initial 90 days");
     expect(o.promise).toContain("can't promise a ranking");
-    const text = `${o.title} ${o.price} ${o.includes.join(" ")} ${o.commitment} ${o.promise}`;
+    const text = `${o.title} ${o.price} ${o.total} ${o.includes.join(" ")} ${o.commitment} ${o.promise}`;
     expect(text).not.toMatch(/discount|founding|special|pilot|beta|starting at|depending|—|–/i);
   });
   it("recognises a pricing ask the way the learning log does", () => {

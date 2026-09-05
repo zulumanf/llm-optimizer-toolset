@@ -118,12 +118,13 @@ export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prosp
     `Figure 01 · Production vs AI recommendations`,
     `${block.prospect.productionYear ?? ""} ${block.metricLabel} (RealTrends): ${You} ${block.prospect.productionDisplay.replace(/ closed$/, "")} · ${comp} ${block.competitor.productionDisplay.replace(/ closed$/, "")}`,
     `AI recommendations, same ${ctx.market} test: ${You} ${block.prospect.recommendationCount} / ${block.answerCount} · ${comp} ${block.competitor.recommendationCount} / ${block.answerCount}`,
-    `${You} closed more ${block.metricLabel.replace(/^closed /, "")}. ${comp} was recommended more.${notFluke ? ` ${comp} appeared across ${block.distinctQuestions.competitor} different questions.` : ""}`
+    `${You} closed more ${block.metricLabel.replace(/^closed /, "")}. ${comp} was recommended more.${notFluke ? ` ${comp} appeared across ${block.distinctQuestions.competitor} different questions.` : ""}`,
+    `Difference: ${block.competitor.recommendationCount - block.prospect.recommendationCount} recommendations on the same ${block.answerCount} answers.`
   );
   if (block.changeFirst?.length) {
     h("What I'd change first");
     out.push(`Observed in the answers, the smallest change I'd make, and how the same test would show whether it moved. None of this is a ranking promise.`);
-    for (const r of block.changeFirst) out.push(`- Observed: ${r.observed} · Change: ${r.change} · Test: ${r.test}`);
+    for (const r of block.changeFirst) out.push(`- ${r.title} · Observed: ${r.observed} · Change: ${r.change} · Where: ${r.where} · Why first: ${r.whyFirst} · Test: ${r.test}`);
   }
   h("What we asked");
   out.push(
@@ -205,7 +206,7 @@ export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prosp
   );
   if (block.offer) {
     h(block.offer.title);
-    out.push(block.offer.price, `Includes: ${block.offer.includes.join("; ")}.`, block.offer.commitment, block.offer.promise);
+    out.push(block.offer.price, block.offer.total, `Includes: ${block.offer.includes.join("; ")}.`, block.offer.commitment, block.offer.promise);
   }
   h("Want me to walk you through what I'd look at first?");
   out.push(`I've already done the initial comparison. If you want, I can walk you through which parts of this I think matter, which parts I wouldn't worry about, and the first two or three things I'd investigate for ${you}.`);
