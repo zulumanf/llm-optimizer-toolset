@@ -64,6 +64,7 @@ describe("report serialization", () => {
     expect(a).toContain("## Appendix");
     expect(a.indexOf("## The receipts")).toBeLessThan(a.indexOf("## What I'd look at first"));
     expect(a).toContain("Harbor View Group 14 / 64");
+    expect(a).toContain("Your team closed more volume. Harbor View Group was recommended more.");
     expect(a).toContain('"Harbor View Group is a strong choice for Midtown buyers."');
     expect(reportContentHash(serializeReportForReview({ ...block, priorities: [] }, { prospectName: "Kane and Partners", market: "Reno" }))).not.toBe(reportContentHash(a));
   });

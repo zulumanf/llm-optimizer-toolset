@@ -110,7 +110,7 @@ export function MismatchReport({
               </tr>
             </tbody>
           </table>
-          <p className={`${serifClass} mt-4 text-lg`}>{Ref} closed more {b.metricLabel}. {b.competitor.name} was recommended more.</p>
+          <p className={`${serifClass} mt-4 text-lg`}>{Ref} closed more {b.metricLabel.replace(/^closed /, "")}. {b.competitor.name} was recommended more.</p>
           {notFluke && <p className="mt-1 text-sm text-muted-foreground">{b.competitor.name} appeared across <span className="tabular-nums">{b.distinctQuestions.competitor}</span> different questions.</p>}
         </figure>
       </section>

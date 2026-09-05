@@ -117,7 +117,7 @@ export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prosp
     `Figure 01 · Production vs AI recommendations`,
     `${block.prospect.productionYear ?? ""} ${block.metricLabel} (RealTrends): ${You} ${block.prospect.productionDisplay.replace(/ closed$/, "")} · ${comp} ${block.competitor.productionDisplay.replace(/ closed$/, "")}`,
     `AI recommendations, same ${ctx.market} test: ${You} ${block.prospect.recommendationCount} / ${block.answerCount} · ${comp} ${block.competitor.recommendationCount} / ${block.answerCount}`,
-    `${You} closed more ${block.metricLabel}. ${comp} was recommended more.${notFluke ? ` ${comp} appeared across ${block.distinctQuestions.competitor} different questions.` : ""}`
+    `${You} closed more ${block.metricLabel.replace(/^closed /, "")}. ${comp} was recommended more.${notFluke ? ` ${comp} appeared across ${block.distinctQuestions.competitor} different questions.` : ""}`
   );
   h("What we asked");
   out.push(
