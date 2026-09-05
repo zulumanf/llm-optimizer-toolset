@@ -2945,3 +2945,31 @@ spec 128 `reply_to_id` path (threaded under their message, refused without a
 thread), goes 4–12 minutes after the "yes" inside 07:00–20:00 recipient-local and
 next morning otherwise, and is deterministic copy (`mismatch_report_delivery_v1`).
 `REPORT_HANDOFF_AUTOSEND=false` is the kill switch: everything runs, the send waits.
+
+## 2026-09-05 — Lead-agent aliases come from the RealTrends relationship; corrections sit beside frozen evidence (spec 130)
+
+Ryan Ogle (Blu House Properties) replied to a Touch 1 that said "recommended in 11 of
+256". The same 256 answers named "Ryan Ogle" in 45 of them; the company had no aliases,
+so those answers never became parser candidates, and the classifier's identity gate had
+no fact tying the person to the team. Corrected on the same run: 29 of 256 (Josh May 38,
+unchanged). Decisions: (1) a person name becomes a team alias ONLY from
+`realtrends_records.team_lead` on a high-confidence/confirmed match, written through the
+registry's collision check, with the "First Last" form derived deterministically and
+single-token leads sent to review — never fuzzy matching, never LLM inference at parse
+time; individuals and brokerages get no person alias (agent ≠ team ≠ brokerage). (2) The
+relationship reaches `mention-classifier-v2` as an identity fact in the existing
+`identityContext` (data, not a prompt-template change, so the classifier version stays).
+(3) A delivered Touch 1's snapshot and sent body are never edited; `outreach_evidence_corrections`
+(insert-only) records ORIGINAL and CORRECTED snapshots with reason, run and actor, and
+`deliveredTouch1` / `getFollowupSequence` overlay the latest row so the report,
+follow-ups and handoff QA state corrected counts while the ledger keeps the sent claim.
+The learning-log view exposes `sent_claim_*` next to `corrected_*`. (4) The private report
+carries a quiet correction line and a three-column "What I'd change first" (observed /
+change / test) — no causal claims, remeasurement by the same questions. (5) Unsent
+drafts that restate corrected counts are superseded and the sequence paused for the
+operator; already-sent emails are flagged, not auto-corrected by email. (6) A bracketed
+ALL-CAPS placeholder (`[FOUNDER_PRICING]`) fails deterministic draft QA, so a founder
+reply cannot be approved with the price missing. Cohort audit (74 mismatch prospects):
+several sent claims were materially wrong once the lead agent is credited (Brace Homes
+5→51, Hamilton and Co. 0→31, Caul Team 0→26, all no longer eligible); see
+scripts/entity-alias-audit.ts output for the full table.
