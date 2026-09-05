@@ -407,6 +407,22 @@ export function MismatchReport({
         </div>
       </section>
 
+      {/* ------------------------------------------------ 13b · the offer (spec 130; only when pricing was asked for) */}
+      {b.offer && (
+        <section className="grid gap-8 border-t py-10 lg:grid-cols-12" data-signal-section="offer">
+          <h2 className="text-xs uppercase tracking-wide text-muted-foreground lg:col-span-3">{b.offer.title}</h2>
+          <div className="max-w-[56ch] text-sm leading-relaxed lg:col-span-7">
+            <p className={`${serifClass} text-xl tabular-nums`}>{b.offer.price}</p>
+            <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">Includes</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              {b.offer.includes.map((x) => <li key={x}>{x}</li>)}
+            </ul>
+            <p className="mt-3">{b.offer.commitment}</p>
+            <p className="mt-3 text-muted-foreground">{b.offer.promise}</p>
+          </div>
+        </section>
+      )}
+
       {/* ------------------------------------------------ 14 · CTA */}
       <section className="grid gap-8 border-t py-12 lg:grid-cols-12" data-signal-section="cta">
         <div className="lg:col-span-7">

@@ -203,6 +203,10 @@ export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prosp
     `${block.questionCount} buyer and seller questions × ${block.repetitions} repetitions = ${block.answerCount} answers counted. Raw answers preserved · Actual recommendations counted · RealTrends compared separately · Answer count published${captured ? ` · answers recorded ${captured}` : ""}.`,
     `Methodology: We ask the kinds of questions buyers and sellers ask when looking for an agent in ${ctx.market}: ${block.questionCount} questions, each asked ${block.repetitions} times, through ${block.assistantPhrase}${block.webSearch ? " with web search on" : ""}. These are direct answers from the ${block.assistant} model, not screenshots of the consumer app. Every answer is saved exactly as it came back. We record which teams each answer actually recommended; a name that merely appears in passing is not counted. ${block.answerCount === block.questionCount * block.repetitions ? `Every one of the ${block.answerCount} answers we received is counted.` : `${block.answerCount} is the number of answers we received and counted; any answer that came back empty or failed is left out of every count in this report.`} We compare those counts with the RealTrends record for the same year, the same measure (${block.metricLabel}) and the same market. The two are kept separate.`
   );
+  if (block.offer) {
+    h(block.offer.title);
+    out.push(block.offer.price, `Includes: ${block.offer.includes.join("; ")}.`, block.offer.commitment, block.offer.promise);
+  }
   h("Want me to walk you through what I'd look at first?");
   out.push(`I've already done the initial comparison. If you want, I can walk you through which parts of this I think matter, which parts I wouldn't worry about, and the first two or three things I'd investigate for ${you}.`);
   if (block.ctaBridge) out.push(block.ctaBridge);

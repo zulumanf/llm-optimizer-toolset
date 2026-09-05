@@ -10,7 +10,8 @@ import { qaDraftContent } from "@/lib/prospects/draft-qa";
 import { lintFollowupCopy } from "@/lib/prospects/followup-templates";
 import { gmailBodyText, htmlToText } from "@/lib/connectors/adapters/google";
 import { stripQuotedReply, classifyReplyText } from "@/lib/prospects/reply-classify";
-import { changeFirstRows, correctionNote } from "@/lib/prospects/audit-mismatch";
+import { changeFirstRows, correctionNote, offerSection } from "@/lib/prospects/audit-mismatch";
+import { ENGAGEMENT_OFFER, PRICING_REQUEST_RE } from "@/lib/prospects/constants";
 
 const BLU = "85eba138-983b-4eec-b615-d56cf0c4dfe3";
 const JOSH = "9081edd5-0ff0-4614-9358-bab85ac9caf4";
@@ -142,5 +143,21 @@ describe("report correction note and change-first rows", () => {
       answerCount: 64, questionCount: 16, entityType: "individual", correction: null, appearances: [], sources: null, ownSiteCited: null, gaps: [], competitorNeighborhoods: [],
     });
     expect(rows).toEqual([]);
+  });
+});
+
+describe("the offer section (only when pricing was asked for)", () => {
+  it("states one number, the 90-day term, no long-term commitment and no ranking promise", () => {
+    const o = offerSection();
+    expect(o.price).toBe("$7,500/month for an initial 90-day engagement.");
+    expect(o.includes).toEqual([...ENGAGEMENT_OFFER.includes]);
+    expect(o.commitment).toContain("No long-term commitment after the first 90 days");
+    expect(o.promise).toContain("can't promise a ranking");
+    const text = `${o.title} ${o.price} ${o.includes.join(" ")} ${o.commitment} ${o.promise}`;
+    expect(text).not.toMatch(/discount|founding|special|pilot|beta|starting at|depending|—|–/i);
+  });
+  it("recognises a pricing ask the way the learning log does", () => {
+    expect(PRICING_REQUEST_RE.test("Spell out your pricing and I will review and consider.")).toBe(true);
+    expect(PRICING_REQUEST_RE.test("Yes, send it over.")).toBe(false);
   });
 });

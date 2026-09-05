@@ -10,6 +10,7 @@
  * filled.
  */
 import { sql } from "@/db/client";
+import { ENGAGEMENT_OFFER, PRICING_REQUEST_RE } from "@/lib/prospects/constants";
 import { CURRENT } from "@/lib/prospects/benchmark";
 import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
 import { deliveredTouch1, prospectEntityType } from "@/lib/prospects/followups";
@@ -100,6 +101,17 @@ export interface AuditMismatchBlock {
    * from counted evidence, with the smallest concrete change and how the
    * same test would remeasure it. Empty when the evidence supports none. */
   changeFirst?: ChangeFirstRow[];
+  /** Spec 130: the engagement offer, present only when the prospect asked
+   * for pricing in a positive reply. One number; no tiers. */
+  offer?: ReportOffer;
+}
+
+export interface ReportOffer {
+  title: string;
+  price: string;
+  includes: string[];
+  commitment: string;
+  promise: string;
 }
 
 export interface ReportCorrection {
@@ -391,6 +403,26 @@ export function changeFirstRows(i: {
   return rows.slice(0, 3);
 }
 
+/** Spec 130: the commercial section, deterministic over ENGAGEMENT_OFFER. */
+export function offerSection(): ReportOffer {
+  const usd = ENGAGEMENT_OFFER.monthlyUsd.toLocaleString("en-US");
+  return {
+    title: "If you want me to work on it",
+    price: `$${usd}/month for an initial ${ENGAGEMENT_OFFER.initialDays}-day engagement.`,
+    includes: [...ENGAGEMENT_OFFER.includes],
+    commitment: `No long-term commitment after the first ${ENGAGEMENT_OFFER.initialDays} days.`,
+    promise: "I can't promise a ranking. What I can give you is the before, what we changed, and the same test afterward.",
+  };
+}
+
+/** Whether a positive reply from this prospect asked for a price. */
+async function pricingRequested(prospectId: string): Promise<boolean> {
+  const rows = await sql`
+    select body_text from prospect_replies where prospect_id = ${prospectId} and classification = 'positive_interest'
+  `;
+  return rows.some((r) => PRICING_REQUEST_RE.test((r.bodyText as string) ?? ""));
+}
+
 async function nameAppearances(runId: string, provider: string, names: string[]): Promise<NameAppearance[]> {
   const out: NameAppearance[] = [];
   for (const name of [...new Set(names)].filter((n) => n.trim().length > 0)) {
@@ -535,10 +567,12 @@ export async function mismatchBlockForProspect(
     prospect, competitor, answerCount: s.answerCount, questionCount, entityType, correction, appearances,
     sources, ownSiteCited: ctx.ownSiteCited ?? null, gaps, competitorNeighborhoods,
   });
+  const offer = (await pricingRequested(prospectId)) ? offerSection() : null;
   return {
     templateVersion: PRIVATE_REPORT_TEMPLATE_VERSION,
     ...(entityType ? { entityType } : {}),
     ...(correction ? { correction } : {}),
+    ...(offer ? { offer } : {}),
     changeFirst,
     prospect,
     competitor,

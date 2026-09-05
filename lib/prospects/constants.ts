@@ -331,6 +331,23 @@ export const FOLLOWUP_MAX_BODY_WORDS = 120;
 /** Spec 129: the threaded reply that delivers the private report after a
  * positive reply. Version string IS the template identity on the draft. */
 export const REPORT_DELIVERY_TEMPLATE_VERSION = "mismatch_report_delivery_v1";
+/** Spec 130 (founder decision 2026-09-05): the one engagement offer stated
+ * on a private report when, and only when, the prospect asked for pricing.
+ * A single number, no tiers, no anchors, no scarcity. */
+export const ENGAGEMENT_OFFER = {
+  monthlyUsd: 7_500,
+  initialDays: 90,
+  includes: [
+    "baseline and diagnosis",
+    "implementation of the highest-confidence changes",
+    "monitoring",
+    "rerunning the same test to measure movement",
+  ],
+} as const;
+/** A positive reply that asked for a price (deterministic, same rule as the
+ * learning-log view's pricing_requested). */
+export const PRICING_REQUEST_RE = /\b(pric\w*|cost\w*|fees?|how much|rates?)\b/i;
+
 export const REPORT_HANDOFF = {
   /** Both agents must reach this confidence for an unattended send. */
   minAgentConfidence: 0.6,
