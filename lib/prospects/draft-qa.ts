@@ -66,7 +66,10 @@ export const BROKERAGE_EMAIL_DOMAINS: Record<string, string> = {
   "psre.com": "Patterson-Schwartz",
 };
 
-const ARTIFACT_RE = /\bnull\b|undefined|\{\{|\[object/;
+/** Template artifacts plus bracketed ALL-CAPS placeholders such as
+ * [FOUNDER_PRICING] (spec 130): a draft is not sendable until a human has
+ * replaced every one of them. */
+const ARTIFACT_RE = /\bnull\b|undefined|\{\{|\[object|\[[A-Z][A-Z0-9_]{2,}\]/;
 const AUDIT_URL_RE = /https?:\/\/[^\s")]+\/audit\/[^\s")]+/g;
 /** "N of M" / "N of the same M" citations and "(K monitored responses)". */
 const N_OF_M_RE = /\b\d+\s+of(?:\s+the)?(?:\s+same)?\s+(\d+)\b/g;
@@ -104,7 +107,7 @@ export function qaDraftContent(input: DraftQaInput): DraftQaIssue[] {
   const subject = input.subject ?? "";
 
   if (ARTIFACT_RE.test(body) || ARTIFACT_RE.test(subject)) {
-    add("artifacts", "subject or body contains a template artifact (null/undefined/{{/[object).");
+    add("artifacts", "subject or body contains a template artifact or an unfilled placeholder (null/undefined/{{/[object/[ALL_CAPS]).");
   }
   if (subject.length < 10 || subject.length > 90) {
     add("subject", `subject length ${subject.length} outside 10–90.`);

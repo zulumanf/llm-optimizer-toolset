@@ -8,6 +8,7 @@
  * dispatcher. Every reply, bounce, DNC, suppression or exit stops the
  * sequence; preflight fails closed.
  */
+import { latestEvidenceCorrection, type EvidenceCorrection } from "@/lib/prospects/evidence-corrections";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { sql } from "@/db/client";
@@ -82,7 +83,10 @@ export interface FollowupSequence {
    * 21-day expiry count from this, never from a draft or planned time. */
   touch1SentAt: Date;
   competitorCompanyId: string;
+  /** Effective evidence (spec 130 correction overlaid); the stored row keeps
+   * the frozen original. */
   evidenceSnapshot: MismatchEvidenceSnapshot;
+  evidenceCorrection?: EvidenceCorrection | null;
   distinctCompetitorQuestions: number;
   timezone: string;
   status: SequenceStatus;
@@ -114,6 +118,7 @@ function toSequence(r: Record<string, unknown>): FollowupSequence {
     touch1SentAt: new Date(r.touch1SentAt as Date),
     competitorCompanyId: r.competitorCompanyId as string,
     evidenceSnapshot: r.evidenceSnapshot as MismatchEvidenceSnapshot,
+    evidenceCorrection: null,
     distinctCompetitorQuestions: Number(r.distinctCompetitorQuestions ?? 0),
     timezone: r.timezone as string,
     status: r.status as SequenceStatus,
@@ -133,9 +138,21 @@ export async function userById(id: string): Promise<CurrentUser | null> {
   return u ? { id: u.id as string, email: u.email as string, name: u.name as string, role: u.role as CurrentUser["role"] } : null;
 }
 
+/** Spec 130: overlay the latest evidence correction for the sequence's
+ * delivered Touch 1 so every reader (renderer, QA, handoff, report) states
+ * corrected counts while the stored row keeps the frozen original. */
+export function withEvidenceCorrection(seq: FollowupSequence, correction: EvidenceCorrection | null): FollowupSequence {
+  if (!correction) return seq;
+  return { ...seq, evidenceSnapshot: correction.correctedSnapshot, evidenceCorrection: correction };
+}
+
+async function overlayCorrection(seq: FollowupSequence): Promise<FollowupSequence> {
+  return withEvidenceCorrection(seq, await latestEvidenceCorrection(seq.prospectId, seq.touch1SendId));
+}
+
 export async function getFollowupSequence(id: string): Promise<FollowupSequence | null> {
   const [row] = await sql`select ${SEQ_COLUMNS} from outreach_followup_sequences where id = ${id}`;
-  return row ? toSequence(row) : null;
+  return row ? overlayCorrection(toSequence(row)) : null;
 }
 
 export async function sequenceForProspect(
@@ -146,7 +163,7 @@ export async function sequenceForProspect(
     select ${SEQ_COLUMNS} from outreach_followup_sequences
     where prospect_id = ${prospectId} and experiment_id = ${experimentId}
   `;
-  return row ? toSequence(row) : null;
+  return row ? overlayCorrection(toSequence(row)) : null;
 }
 
 // ------------------------------------------------------------ cadence
@@ -256,7 +273,11 @@ export interface DeliveredTouch1 {
   sentAt: Date;
   body: string;
   subject: string | null;
+  /** Effective evidence: the frozen snapshot with the latest spec 130
+   * correction overlaid. What was SENT is `originalSnapshot`. */
   evidenceSnapshot: MismatchEvidenceSnapshot;
+  originalSnapshot: MismatchEvidenceSnapshot;
+  correction: EvidenceCorrection | null;
   /** Draft that carries the snapshot (the sent draft or an ancestor). */
   evidenceDraftId: string;
 }
@@ -296,6 +317,7 @@ export async function deliveredTouch1(prospectId: string): Promise<DeliveredTouc
   if (!stated) {
     throw new ClassifiedError("validation", "The sent Touch 1 body no longer states its ancestor's frozen evidence — refusing to enroll.");
   }
+  const correction = await latestEvidenceCorrection(prospectId, r.sendId as string);
   return {
     sendId: r.sendId as string,
     draftId: r.sentDraftId as string,
@@ -303,7 +325,9 @@ export async function deliveredTouch1(prospectId: string): Promise<DeliveredTouc
     sentAt: new Date(r.sentAt as Date),
     body,
     subject: (r.subject as string | null) ?? null,
-    evidenceSnapshot: snapshot,
+    evidenceSnapshot: correction?.correctedSnapshot ?? snapshot,
+    originalSnapshot: snapshot,
+    correction,
     evidenceDraftId: r.draftId as string,
   };
 }

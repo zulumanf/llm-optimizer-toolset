@@ -10,6 +10,7 @@
  * filled.
  */
 import { sql } from "@/db/client";
+import { ENGAGEMENT_OFFER, FREEMAIL_DOMAINS, PRICING_REQUEST_RE } from "@/lib/prospects/constants";
 import { CURRENT } from "@/lib/prospects/benchmark";
 import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
 import { deliveredTouch1, prospectEntityType } from "@/lib/prospects/followups";
@@ -92,6 +93,53 @@ export interface AuditMismatchBlock {
    * "you" vs "your team" everywhere on the page. Absent on pre-2026-09-04
    * snapshots (rendered as a team). */
   entityType?: "individual" | "team";
+  /** Spec 130: present when the counts on this page differ from the ones the
+   * email stated because entity resolution was corrected against the same
+   * answers. Both values are shown; nothing is hidden. */
+  correction?: ReportCorrection;
+  /** Spec 130: "What I'd change first" — at most three rows, each observed
+   * from counted evidence, with the smallest concrete change and how the
+   * same test would remeasure it. Empty when the evidence supports none. */
+  changeFirst?: ChangeFirstRow[];
+  /** Spec 130: the engagement offer, present only when the prospect asked
+   * for pricing in a positive reply. One number; no tiers. */
+  offer?: ReportOffer;
+}
+
+export interface ReportOffer {
+  title: string;
+  price: string;
+  total: string;
+  includes: string[];
+  commitment: string;
+  promise: string;
+}
+
+export interface ReportCorrection {
+  original: { prospect: number; competitor: number };
+  corrected: { prospect: number; competitor: number };
+  /** Names the answers used for the prospect that the first count missed. */
+  aliasesCredited: string[];
+  correctedAt: string;
+  note: string;
+}
+
+export interface ChangeFirstRow {
+  /** Short label for the above-the-fold preview. */
+  title: string;
+  observed: string;
+  change: string;
+  /** Pages or profiles we would touch; states what must be confirmed when unknown. */
+  where: string;
+  whyFirst: string;
+  test: string;
+}
+
+/** Answers (of the frozen run and provider) whose text names each string,
+ * whole-word, case-insensitive. Appearance, not recommendation. */
+export interface NameAppearance {
+  name: string;
+  answers: number;
 }
 
 /** Second-person reference for the prospect: an individual agent is "you",
@@ -287,6 +335,152 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
   return { diagnosis, priorities, contextQuestions, lessConcerned, note, ctaBridge };
 }
 
+/** Spec 130: the quiet correction line. Deterministic over the two
+ * snapshots; states the email's number and the corrected one. */
+export function correctionNote(i: {
+  correction: Omit<ReportCorrection, "note">;
+  teamName: string;
+  competitor: string;
+  answerCount: number;
+  entityType?: "individual" | "team" | null;
+}): string {
+  const { ref } = entityRef(i.entityType);
+  const c = i.correction;
+  const person = c.aliasesCredited[0] ?? "the lead agent";
+  const compPart = c.original.competitor !== c.corrected.competitor
+    ? `${c.corrected.competitor} of ${i.answerCount} for ${i.competitor} (the email said ${c.original.competitor})`
+    : `${c.corrected.competitor} of ${i.answerCount} for ${i.competitor}, unchanged`;
+  return `Correction: my initial email counted recommendations credited to ${i.teamName} but did not include answers that named ${person} directly. In the captured answers, those names were often surfaced separately. This report reconciles the verified ${person} / ${i.teamName} relationship across the same ${i.answerCount} answers and uses the corrected count throughout: ${c.corrected.prospect} of ${i.answerCount} for ${ref} (the email said ${c.original.prospect}); ${compPart}.`;
+}
+
+/** Spec 130: "What I'd change first". Every row is anchored to counted
+ * evidence; the wording never claims a cause ("first place I'd inspect",
+ * "then rerun the same questions"). */
+export function changeFirstRows(i: {
+  prospect: AuditMismatchBlock["prospect"];
+  competitor: AuditMismatchBlock["competitor"];
+  answerCount: number;
+  questionCount: number;
+  entityType?: "individual" | "team" | null;
+  correction: ReportCorrection | null;
+  appearances: NameAppearance[];
+  sources: AuditMismatchBlock["sources"];
+  ownSiteCited: boolean | null;
+  gaps: CategoryCount[];
+  competitorNeighborhoods: string[];
+  /** Verified facts about the prospect, when on file; never guessed. */
+  facts?: { ownedDomain?: string | null; leadRole?: string | null; brokerage?: string | null };
+}): ChangeFirstRow[] {
+  const rows: ChangeFirstRow[] = [];
+  const { ref, team } = entityRef(i.entityType);
+  const comp = i.competitor.name;
+  const teamName = i.prospect.name;
+  const own = i.facts?.ownedDomain ?? null;
+  const platforms = (i.sources ?? []).filter((s) => s.category === "platform").slice(0, 3).map((s) => s.domain);
+  const platformList = platforms.length ? list(platforms) : "the third-party profiles the answers pointed to";
+  const rerun = `Rerun the same ${i.questionCount} questions and count the same way against this report's ${i.answerCount}-answer baseline`;
+
+  const alias = i.correction?.aliasesCredited[0] ?? null;
+  if (i.correction && alias) {
+    const teamHits = i.appearances.find((a) => a.name === teamName)?.answers ?? 0;
+    const aliasHits = i.correction.aliasesCredited
+      .map((a) => i.appearances.find((x) => x.name === a)?.answers ?? 0)
+      .reduce((m, n) => Math.max(m, n), 0);
+    const role = i.facts?.leadRole ?? null;
+    const brokerage = i.facts?.brokerage ?? null;
+    const line = role ? `${alias}, ${role}, ${teamName}${brokerage ? ` (${brokerage})` : ""}` : null;
+    rows.push({
+      title: `${alias} and ${teamName} as one identity`,
+      observed: `In the captured answers, "${alias}" and "${teamName}" were often surfaced separately rather than as one business identity: "${alias}" in ${aliasHits} of ${i.answerCount} answers, "${teamName}" in ${teamHits}.`,
+      change: line
+        ? `Use one consistent relationship line everywhere both names appear: ${line}.`
+        : `Use one consistent line connecting ${alias} with ${teamName} everywhere both names appear.`,
+      where: `${own ? `Your own site (${own}) and ${platformList}` : platformList.charAt(0).toUpperCase() + platformList.slice(1)} profiles for the team and its lead agent. The exact profile pages get confirmed at the start of the work.`,
+      whyFirst: `The split affected our own first count, and it is visible in the captured answers themselves. If the public evidence does not consistently connect ${alias} with ${teamName}, the team's track record can be represented under different names.`,
+      test: `${rerun}; check recommendation frequency and whether the answers still name ${ref} two ways.`,
+    });
+  }
+
+  if (platforms.length > 0) {
+    rows.push({
+      title: `The profiles the answers already use`,
+      observed: `${list(platforms)} appeared repeatedly across the ${i.answerCount} captured answers${i.ownSiteCited === false ? `; ${team ? "the team's" : "your"} own website did not appear` : ""}.`,
+      change: `Audit ${team ? "the team's" : "your"} profiles on those sites so the same facts appear everywhere: ${team ? "team name, the lead-agent-to-team relationship, " : "name, brokerage, "}production, neighborhoods covered and bio wording.`,
+      where: `${list(platforms)} profile pages for ${team ? "the team and its lead agent" : "you"}. The specific fields to fix get identified in the audit, not guessed here.`,
+      whyFirst: `These pages are already appearing in the answers, so they are more relevant to inspect than any website that is not.`,
+      test: `${rerun}; compare recommendation frequency, which websites the answers point to, and how ${ref} ${team ? "is" : "are"} named.`,
+    });
+  }
+
+  const nbhdGap = i.gaps.find((g) => g.key === "neighborhood");
+  const nbhd = i.competitorNeighborhoods.slice(0, 3);
+  if (nbhdGap && nbhd.length > 0) {
+    rows.push({
+      title: `${list(nbhd)}, if those are areas you want to win`,
+      observed: `${comp} was recommended in ${nbhdGap.competitor} neighborhood answers, most often for ${list(nbhd)}; ${ref} in ${nbhdGap.prospect}.`,
+      change: `If those are areas you're trying to win, make ${team ? "the team's" : "your"} track record there explicit on your own pages and supporting profiles, with the sales behind it.`,
+      where: `${own ? `Your own site (${own}) area pages` : "Your own site's area pages"}, then the supporting profiles.`,
+      whyFirst: `That is where the captured gap shows up. If those neighborhoods are not priorities for you, this one matters less.`,
+      test: `Compare the same neighborhood questions before and after: recommendations for ${ref} in ${list(nbhd)}.`,
+    });
+  }
+  return rows.slice(0, 3);
+}
+
+/** Spec 130: the commercial section, deterministic over ENGAGEMENT_OFFER. */
+export function offerSection(): ReportOffer {
+  const usd = ENGAGEMENT_OFFER.monthlyUsd.toLocaleString("en-US");
+  const total = (ENGAGEMENT_OFFER.monthlyUsd * ENGAGEMENT_OFFER.initialMonths).toLocaleString("en-US");
+  return {
+    title: "Pricing",
+    price: `$${usd}/month for ${ENGAGEMENT_OFFER.initialMonths} months`,
+    total: `$${total} total initial engagement`,
+    includes: [...ENGAGEMENT_OFFER.includes],
+    commitment: `No long-term commitment after the initial ${ENGAGEMENT_OFFER.initialDays} days.`,
+    promise: "I can't promise a ranking. I can show you the before, what we changed, and whether the same test moved.",
+  };
+}
+
+/** Facts on file for the "where" and "change" lines: the owned website
+ * (prospect website, else the primary contact's email domain when it is not
+ * a free-mail host), the lead's recorded role and the brokerage. Null when
+ * not on file — never guessed. */
+async function verifiedFacts(prospectId: string): Promise<{ ownedDomain: string | null; leadRole: string | null; brokerage: string | null }> {
+  const [row] = await sql`
+    select p.brokerage_affiliation, p.website,
+      (select c.role from prospect_contacts c where c.prospect_id = p.id and c.is_primary and c.archived_at is null order by c.created_at limit 1) as lead_role,
+      (select c.email from prospect_contacts c where c.prospect_id = p.id and c.is_primary and c.archived_at is null order by c.created_at limit 1) as lead_email
+    from prospects p where p.id = ${prospectId}
+  `;
+  const site = (row?.website as string | null) ?? null;
+  const emailDomain = ((row?.leadEmail as string | null) ?? "").split("@")[1]?.toLowerCase() ?? null;
+  const ownedDomain = site
+    ? site.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "")
+    : emailDomain && !(FREEMAIL_DOMAINS as readonly string[]).includes(emailDomain) ? emailDomain : null;
+  return { ownedDomain, leadRole: (row?.leadRole as string | null) ?? null, brokerage: (row?.brokerageAffiliation as string | null) ?? null };
+}
+
+/** Whether a positive reply from this prospect asked for a price. */
+async function pricingRequested(prospectId: string): Promise<boolean> {
+  const rows = await sql`
+    select body_text from prospect_replies where prospect_id = ${prospectId} and classification = 'positive_interest'
+  `;
+  return rows.some((r) => PRICING_REQUEST_RE.test((r.bodyText as string) ?? ""));
+}
+
+async function nameAppearances(runId: string, provider: string, names: string[]): Promise<NameAppearance[]> {
+  const out: NameAppearance[] = [];
+  for (const name of [...new Set(names)].filter((n) => n.trim().length > 0)) {
+    const pattern = `\\m${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\M`;
+    const [row] = await sql`
+      select count(*)::int as n from responses
+      where run_id = ${runId} and provider = ${provider} and error is null and response_text ~* ${pattern}
+    `;
+    out.push({ name, answers: Number(row?.n ?? 0) });
+  }
+  return out;
+}
+
 /** Every non-holdout question with counts; excerpts where the competitor
  * was recommended. */
 export async function mismatchQuestions(s: MismatchEvidenceSnapshot): Promise<MismatchQuestionRow[]> {
@@ -396,9 +590,36 @@ export async function mismatchBlockForProspect(
     prospect, competitor, market, answerCount: s.answerCount, questions, categories, gaps,
     competitorNeighborhoods, sources, ownSiteCited: ctx.ownSiteCited ?? null, distinctQuestions, entityType,
   });
+  // Spec 130: when the delivered email's counts were corrected against the
+  // same answers, say so on the page and derive the identity row from what
+  // the answers actually called the prospect.
+  let correction: ReportCorrection | null = null;
+  let appearances: NameAppearance[] = [];
+  if (t1.correction) {
+    const c = t1.correction;
+    const aliasesCredited = c.entityResolutionChange.aliasesAdded?.[s.prospect.companyId]?.aliases ?? [];
+    appearances = await nameAppearances(s.runId, s.provider, [s.prospect.name, ...aliasesCredited]);
+    const credited = aliasesCredited.filter((a) => (appearances.find((x) => x.name === a)?.answers ?? 0) > 0);
+    const base = {
+      original: { prospect: c.originalSnapshot.prospect.recommendationCount, competitor: c.originalSnapshot.competitor.recommendationCount },
+      corrected: { prospect: s.prospect.recommendationCount, competitor: s.competitor.recommendationCount },
+      aliasesCredited: credited.length ? credited : aliasesCredited,
+      correctedAt: c.correctedAt.toISOString(),
+    };
+    correction = { ...base, note: correctionNote({ correction: base, teamName: s.prospect.name, competitor: s.competitor.name, answerCount: s.answerCount, entityType }) };
+  }
+  const facts = await verifiedFacts(prospectId);
+  const changeFirst = changeFirstRows({
+    prospect, competitor, answerCount: s.answerCount, questionCount, entityType, correction, appearances,
+    sources, ownSiteCited: ctx.ownSiteCited ?? null, gaps, competitorNeighborhoods, facts,
+  });
+  const offer = (await pricingRequested(prospectId)) ? offerSection() : null;
   return {
     templateVersion: PRIVATE_REPORT_TEMPLATE_VERSION,
     ...(entityType ? { entityType } : {}),
+    ...(correction ? { correction } : {}),
+    ...(offer ? { offer } : {}),
+    changeFirst,
     prospect,
     competitor,
     productionSource: "RealTrends (licensed, verified)",

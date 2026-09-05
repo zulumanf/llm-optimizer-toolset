@@ -331,6 +331,26 @@ export const FOLLOWUP_MAX_BODY_WORDS = 120;
 /** Spec 129: the threaded reply that delivers the private report after a
  * positive reply. Version string IS the template identity on the draft. */
 export const REPORT_DELIVERY_TEMPLATE_VERSION = "mismatch_report_delivery_v1";
+/** Spec 130 (founder decision 2026-09-05): the one engagement offer stated
+ * on a private report when, and only when, the prospect asked for pricing.
+ * A single number, no tiers, no anchors, no scarcity. */
+export const ENGAGEMENT_OFFER = {
+  monthlyUsd: 7_500,
+  initialDays: 90,
+  initialMonths: 3,
+  includes: [
+    "diagnosis",
+    "implementation of the highest-confidence changes",
+    "ongoing monitoring",
+    "rerunning the same test",
+  ],
+} as const;
+/** Free-mail hosts never count as a prospect's owned website. */
+export const FREEMAIL_DOMAINS = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "aol.com", "me.com", "live.com", "msn.com"] as const;
+/** A positive reply that asked for a price (deterministic, same rule as the
+ * learning-log view's pricing_requested). */
+export const PRICING_REQUEST_RE = /\b(pric\w*|cost\w*|fees?|how much|rates?)\b/i;
+
 export const REPORT_HANDOFF = {
   /** Both agents must reach this confidence for an unattended send. */
   minAgentConfidence: 0.6,

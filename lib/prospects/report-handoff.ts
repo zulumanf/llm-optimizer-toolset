@@ -110,6 +110,7 @@ export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prosp
     `PRIVATE AI RECOMMENDATION REPORT · Recommended First · Prepared for ${ctx.prospectName} (${ctx.market}) · Private`,
     `Production source: RealTrends${block.prospect.productionYear ? ` ${block.prospect.productionYear}` : ""} · Test: ${block.questionCount} questions × ${block.repetitions} · Answers counted: ${block.answerCount}${captured ? ` · Answers recorded ${captured}` : ""}`
   );
+  if (block.correction) out.push(block.correction.note);
   h("The finding");
   out.push(
     `RealTrends has ${you} ahead. AI recommends ${comp} more often.`,
@@ -117,8 +118,14 @@ export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prosp
     `Figure 01 · Production vs AI recommendations`,
     `${block.prospect.productionYear ?? ""} ${block.metricLabel} (RealTrends): ${You} ${block.prospect.productionDisplay.replace(/ closed$/, "")} · ${comp} ${block.competitor.productionDisplay.replace(/ closed$/, "")}`,
     `AI recommendations, same ${ctx.market} test: ${You} ${block.prospect.recommendationCount} / ${block.answerCount} · ${comp} ${block.competitor.recommendationCount} / ${block.answerCount}`,
-    `${You} closed more ${block.metricLabel.replace(/^closed /, "")}. ${comp} was recommended more.${notFluke ? ` ${comp} appeared across ${block.distinctQuestions.competitor} different questions.` : ""}`
+    `${You} closed more ${block.metricLabel.replace(/^closed /, "")}. ${comp} was recommended more.${notFluke ? ` ${comp} appeared across ${block.distinctQuestions.competitor} different questions.` : ""}`,
+    `Difference: ${block.competitor.recommendationCount - block.prospect.recommendationCount} recommendations on the same ${block.answerCount} answers.`
   );
+  if (block.changeFirst?.length) {
+    h("What I'd change first");
+    out.push(`Observed in the answers, the smallest change I'd make, and how the same test would show whether it moved. None of this is a ranking promise.`);
+    for (const r of block.changeFirst) out.push(`- ${r.title} · Observed: ${r.observed} · Change: ${r.change} · Where: ${r.where} · Why first: ${r.whyFirst} · Test: ${r.test}`);
+  }
   h("What we asked");
   out.push(
     `We tested the kinds of questions a buyer or seller might ask while deciding who to work with in ${ctx.market}.`,
@@ -197,6 +204,10 @@ export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prosp
     `${block.questionCount} buyer and seller questions × ${block.repetitions} repetitions = ${block.answerCount} answers counted. Raw answers preserved · Actual recommendations counted · RealTrends compared separately · Answer count published${captured ? ` · answers recorded ${captured}` : ""}.`,
     `Methodology: We ask the kinds of questions buyers and sellers ask when looking for an agent in ${ctx.market}: ${block.questionCount} questions, each asked ${block.repetitions} times, through ${block.assistantPhrase}${block.webSearch ? " with web search on" : ""}. These are direct answers from the ${block.assistant} model, not screenshots of the consumer app. Every answer is saved exactly as it came back. We record which teams each answer actually recommended; a name that merely appears in passing is not counted. ${block.answerCount === block.questionCount * block.repetitions ? `Every one of the ${block.answerCount} answers we received is counted.` : `${block.answerCount} is the number of answers we received and counted; any answer that came back empty or failed is left out of every count in this report.`} We compare those counts with the RealTrends record for the same year, the same measure (${block.metricLabel}) and the same market. The two are kept separate.`
   );
+  if (block.offer) {
+    h(block.offer.title);
+    out.push(block.offer.price, block.offer.total, `Includes: ${block.offer.includes.join("; ")}.`, block.offer.commitment, block.offer.promise);
+  }
   h("Want me to walk you through what I'd look at first?");
   out.push(`I've already done the initial comparison. If you want, I can walk you through which parts of this I think matter, which parts I wouldn't worry about, and the first two or three things I'd investigate for ${you}.`);
   if (block.ctaBridge) out.push(block.ctaBridge);
