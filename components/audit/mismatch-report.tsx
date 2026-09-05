@@ -58,7 +58,7 @@ export function MismatchReport({
           <dt className="text-muted-foreground">Production source</dt><dd className="tabular-nums">RealTrends{b.prospect.productionYear ? ` ${b.prospect.productionYear}` : ""}</dd>
           <dt className="text-muted-foreground">AI test</dt><dd>{b.assistant}{b.webSearch ? ", web search on" : ""}</dd>
           <dt className="text-muted-foreground">Questions tested</dt><dd className="tabular-nums">{b.questionCount}</dd>
-          <dt className="text-muted-foreground">Valid answers</dt><dd className="tabular-nums">{b.answerCount}</dd>
+          <dt className="text-muted-foreground">Answers counted</dt><dd className="tabular-nums">{b.answerCount}</dd>
           {captured && <><dt className="text-muted-foreground">Captured</dt><dd className="tabular-nums">{captured}</dd></>}
         </dl>
       </header>
@@ -67,10 +67,10 @@ export function MismatchReport({
       <section className="grid gap-8 py-12 lg:grid-cols-12" data-signal-section="hero">
         <div className="lg:col-span-5">
           <h1 className={`${serifClass} text-balance text-3xl leading-tight sm:text-4xl`}>
-            {Ref} {team ? "closes" : "close"} more. AI recommends {b.competitor.name} more often.
+            RealTrends has {ref} ahead. AI recommends {b.competitor.name} more often.
           </h1>
           <p className="mt-5 max-w-[48ch] text-sm leading-relaxed">
-            In our {market} test, {ref} had the stronger RealTrends sales record, but {b.competitor.name} was recommended more often.
+            On the RealTrends record for {b.metricLabel}, {ref} {team ? "is" : "are"} ahead of {b.competitor.name}. In our {market} test, {b.competitor.name} was recommended more often.
           </p>
         </div>
         <figure className="lg:col-span-7">
@@ -110,7 +110,7 @@ export function MismatchReport({
               </tr>
             </tbody>
           </table>
-          <p className={`${serifClass} mt-4 text-lg`}>{Ref} sold more. {b.competitor.name} was recommended more.</p>
+          <p className={`${serifClass} mt-4 text-lg`}>{Ref} closed more {b.metricLabel}. {b.competitor.name} was recommended more.</p>
           {notFluke && <p className="mt-1 text-sm text-muted-foreground">{b.competitor.name} appeared across <span className="tabular-nums">{b.distinctQuestions.competitor}</span> different questions.</p>}
         </figure>
       </section>
@@ -152,10 +152,10 @@ export function MismatchReport({
         <section className="grid gap-8 border-t py-10 lg:grid-cols-12" data-signal-section="evidence">
           <div className="lg:col-span-4">
             <h2 className="text-xs uppercase tracking-wide text-muted-foreground">The receipts</h2>
-            <p className="mt-3 max-w-[36ch] text-sm leading-relaxed">Every count in this report traces back to a captured answer.</p>
+            <p className="mt-3 max-w-[36ch] text-sm leading-relaxed">Every count in this report traces back to a saved answer.</p>
             <ol className="mt-6 space-y-2 text-xs text-muted-foreground">
               <li><span className="tabular-nums">01</span> Question</li>
-              <li><span className="tabular-nums">02</span> Captured answer</li>
+              <li><span className="tabular-nums">02</span> Saved answer</li>
               <li><span className="tabular-nums">03</span> Recommendation recorded</li>
               <li><span className="tabular-nums">04</span> Count added to this report</li>
             </ol>
@@ -166,9 +166,9 @@ export function MismatchReport({
                 <div className="sm:col-span-8">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Question</p>
                   <p className="mt-1 text-sm">“{q.text}”</p>
-                  <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">Captured answer</p>
+                  <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">Saved answer</p>
                   <blockquote className="mt-1 text-sm leading-relaxed">{q.excerpts[0]!.quote}</blockquote>
-                  <p className="mt-2 text-xs text-muted-foreground">Captured {fmtDate(q.excerpts[0]!.capturedAt)} · Provider: {b.assistant}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">Answer recorded {fmtDate(q.excerpts[0]!.capturedAt)} · {b.assistant}</p>
                 </div>
                 <dl className="text-xs sm:col-span-4">
                   <dt className="uppercase tracking-wide text-muted-foreground">What we recorded</dt>
@@ -215,7 +215,7 @@ export function MismatchReport({
                   ))}
                 </tbody>
               </table>
-              <p className="mt-2 text-xs text-muted-foreground">Each question was tested up to {b.repetitions} times. Question categories can overlap.</p>
+              <p className="mt-2 text-xs text-muted-foreground">Counts are recommendations, not questions. One question can belong to several types (selling a condo in a named neighborhood counts as seller, condo and neighborhood), so the rows overlap and do not add up to {b.questionCount}.</p>
             </figure>
           )}
         </section>
@@ -242,10 +242,10 @@ export function MismatchReport({
           <div className="lg:col-span-4">
             <h2 className="text-xs uppercase tracking-wide text-muted-foreground">Where the information is coming from</h2>
             <p className="mt-3 max-w-[36ch] text-sm leading-relaxed">We also recorded the websites that appeared repeatedly in the answers.</p>
-            <p className="mt-3 max-w-[36ch] text-xs text-muted-foreground">Observed association, not claimed causation. We can see which sources keep appearing. We cannot claim that one website caused the recommendation.</p>
+            <p className="mt-3 max-w-[36ch] text-xs text-muted-foreground">We can see which websites keep appearing. We cannot say that any one of them caused a recommendation.</p>
           </div>
           <figure className="lg:col-span-8">
-            <figcaption className="text-xs uppercase tracking-wide text-muted-foreground">Figure 03 · Sources observed in answers · times cited across all captured answers</figcaption>
+            <figcaption className="text-xs uppercase tracking-wide text-muted-foreground">Figure 03 · Websites the answers pointed to · how many times, across all {b.answerCount} answers (one answer can point to several websites)</figcaption>
             <ul className="mt-3 divide-y border-y text-sm">
               {b.sources.map((s) => (
                 <li key={s.domain} className="flex items-baseline justify-between py-2">
@@ -254,7 +254,7 @@ export function MismatchReport({
                 </li>
               ))}
             </ul>
-            {b.ownSiteCited === false && <p className="mt-2 text-xs text-muted-foreground">Your own site was not among the cited sources.</p>}
+            {b.ownSiteCited === false && <p className="mt-2 text-xs text-muted-foreground">Your own website was not one of them.</p>}
           </figure>
         </section>
       )}
@@ -358,19 +358,19 @@ export function MismatchReport({
             <span className="text-muted-foreground">×</span>
             <span className="text-2xl tabular-nums">{b.repetitions}</span> repetitions
             <span className="text-muted-foreground">=</span>
-            <span className="text-2xl tabular-nums">{b.answerCount}</span> valid answers
+            <span className="text-2xl tabular-nums">{b.answerCount}</span> answers counted
           </p>
           <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
             <li>✓ Raw answers preserved</li>
             <li>✓ Actual recommendations counted</li>
             <li>✓ RealTrends compared separately</li>
-            <li>✓ Valid answer count published{captured ? ` · captured ${captured}` : ""}</li>
+            <li>✓ Answer count published{captured ? ` · answers recorded ${captured}` : ""}</li>
           </ul>
           <details className="mt-4 text-sm" data-signal-evidence="methodology">
             <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">View full methodology</summary>
             <div className="mt-2 max-w-[65ch] space-y-2 text-sm leading-relaxed text-muted-foreground">
               <p>We ask the kinds of questions buyers and sellers ask when looking for an agent in {market}: {b.questionCount} questions, each asked {b.repetitions} times, through {b.assistantPhrase}{b.webSearch ? " with web search on" : ""}{captured ? `, on ${captured}` : ""}. These are direct answers from the {b.assistant} model, not screenshots of the consumer app. Every answer is saved exactly as it came back.</p>
-              <p>We record which teams each answer actually recommended. A name that merely appears in passing is not counted. Answers that came back empty or failed are left out, which is why the count is out of {b.answerCount} valid answers rather than the number we asked.</p>
+              <p>We record which teams each answer actually recommended. A name that merely appears in passing is not counted. {b.answerCount === b.questionCount * b.repetitions ? `Every one of the ${b.answerCount} answers we received is counted.` : `${b.answerCount} is the number of answers we received and counted; any answer that came back empty or failed is left out of every count in this report.`}</p>
               <p>We compare those counts with the RealTrends record for the same year, the same measure ({b.metricLabel}) and the same market, at team level. The two are kept separate: the sales record never changes the recommendation count, and the other way round.</p>
               <p>When a team selling less than you shows up more often, we investigate why and what may be worth improving. Running the same test again later shows whether anything moved.</p>
             </div>
