@@ -46,7 +46,9 @@ test("generate-draft opens the recipient dialog when contacts exist, or generate
   page,
 }) => {
   await page.goto(path);
-  const generate = page.getByRole("button", { name: /generate reply-first draft/i });
+  // The button dropped "reply-first" when it learned the competitive-mismatch
+  // template (spec 124); with no seeded contacts there is exactly one.
+  const generate = page.getByRole("button", { name: /^generate draft$/i });
   await expect(generate).toBeVisible();
   await generate.click();
   // Seed has no contacts → the button generates directly and toasts.
