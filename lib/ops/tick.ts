@@ -34,6 +34,7 @@ export interface AutomationTickReport {
   reportHandoffs: Record<string, unknown>;
   cityPipelines: Record<string, unknown>;
   assistantTasks: Record<string, unknown>;
+  campaignDigest: Record<string, unknown>;
   deliveryQa: Record<string, unknown>;
 }
 
@@ -264,6 +265,50 @@ export async function runAutomationTick(
     notifications = { error: "notification sync failed; dispatch was unaffected" };
   }
 
+  // Campaign digests (2026-09-06): the morning pre-flight, evening ledger and
+  // Monday weekly report the outbound week is run against. Read only, once
+  // per operator-local window (ops_alerts arbitration), emitted as structured
+  // log events and to DIGEST_WEBHOOK_URL when configured. Cannot render,
+  // schedule or send anything. Isolated: a digest failure never fails dispatch.
+  let campaignDigest: Record<string, unknown> = { skipped: true };
+  try {
+    const { campaignDigestDue, campaignLedger, campaignPreflight, claimCampaignDigest } = await import("@/lib/prospects/campaign-ledger");
+    const { followupMetrics } = await import("@/lib/prospects/followups");
+    const now = new Date();
+    const due = campaignDigestDue(now);
+    const emitted: string[] = [];
+    const post = async (kind: string, payload: Record<string, unknown>): Promise<void> => {
+      log("info", `campaign.${kind}`, payload);
+      const webhook = process.env.DIGEST_WEBHOOK_URL;
+      if (webhook) {
+        try {
+          await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: `[avos] ${kind} ${JSON.stringify(payload)}` }) });
+        } catch (err) {
+          log("error", "campaign.digest_webhook_failed", { kind, error: err instanceof Error ? err.message : "unknown" });
+        }
+      }
+    };
+    if (due.preflight && (await claimCampaignDigest("campaign_preflight", due.day))) {
+      await post("preflight", { ...(await campaignPreflight(now)) });
+      emitted.push("preflight");
+    }
+    if (due.ledger && (await claimCampaignDigest("campaign_ledger", due.day))) {
+      await post("ledger", { ...(await campaignLedger([due.day])) });
+      emitted.push("ledger");
+    }
+    if (due.weekly && (await claimCampaignDigest("campaign_weekly", due.day))) {
+      const m = await followupMetrics();
+      await post("weekly", { ...m, attribution: "reply occurred after Touch N; no touch is claimed as the cause" });
+      emitted.push("weekly");
+    }
+    campaignDigest = { day: due.day, due: { preflight: due.preflight, ledger: due.ledger, weekly: due.weekly }, emitted };
+  } catch (err) {
+    log("error", "cron.campaign_digest_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    campaignDigest = { error: "campaign digest failed; dispatch was unaffected" };
+  }
+
   if ((events.deadLettered as number) > 0 || triggers.failed > 0 || (health.failing as number) > 0) {
     log("warn", "cron.automation.degraded", {
       deadLettered: events.deadLettered,
@@ -298,6 +343,7 @@ export async function runAutomationTick(
     reportHandoffs,
     cityPipelines,
     assistantTasks,
+    campaignDigest,
     deliveryQa,
   };
 }
