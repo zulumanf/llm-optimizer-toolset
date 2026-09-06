@@ -320,7 +320,7 @@ describe.skipIf(!TEST_URL)("multi-client portfolio QA (integration)", () => {
     const eClosed = post.clients.find((c) => c.clientName === "E Team")!;
     expect(eClosed.offboarding.map((i) => i.code)).toContain("PORTAL_GRANTS_OPEN");
     expect(eClosed.alerts.map((x) => x.code)).toContain("OFFBOARDING_INCOMPLETE");
-  });
+  }, 60_000);
 
   it("10 and 25 active clients scan in a bounded number of queries and reasonable time", async () => {
     // Distinct metros: each city is its own root node (unrelated territories).
@@ -373,5 +373,7 @@ describe.skipIf(!TEST_URL)("multi-client portfolio QA (integration)", () => {
     console.log(JSON.stringify({ persistMs: Date.now() - t, opened: persisted.opened }));
     const drift = await portfolio.evidenceDriftScan();
     expect(drift.checked).toBe(25);
-  });
+    // Building 25 clients through the real services is the slow part (CI runner
+    // Postgres); the scans themselves are milliseconds and asserted above.
+  }, 180_000);
 });
