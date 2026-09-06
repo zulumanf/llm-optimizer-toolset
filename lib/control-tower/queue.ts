@@ -485,6 +485,15 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
     }
     if (view.renewalStatus === "due") push("renewal_review", `Renewal review due (term ends ${view.engagement.endsOn})`, "Prepare baseline vs latest, work delivered, remaining opportunity.", "high", new Date(`${view.engagement.endsOn}T12:00:00Z`));
     if (view.billing.overdueCount > 0) push("invoice_overdue", `${view.billing.overdueCount} invoice(s) overdue`, "Follow up on payment.", "high", null);
+    // The two easy-to-forget beats of a retained engagement (spec 131): the
+    // weekly update, and approved work that is cleared to start but has not.
+    const communicating = view.derivedStage === "onboarding" || view.derivedStage === "active" || view.derivedStage === "renewal_review";
+    const updateStale = view.signals.find((s) => s.key === "communication")?.state === "attention";
+    if (communicating && updateStale) {
+      push("client_update_due", view.lastClientUpdate ? `Weekly client update due (last sent ${view.lastClientUpdate.at.toISOString().slice(0, 10)})` : "First client update not yet sent", "Review the composed weekly draft on the Engagement page, send it, record it.", "medium", null);
+    }
+    const ready = view.work.filter((t) => t.status === "approved" && !t.blockedReason && (t.clientApproval === "not_required" || t.clientApproval === "approved")).length;
+    if (ready > 0 && communicating) push("work_ready", `${ready} approved work item(s) cleared to start`, "Start the work and record the before state.", "low", null);
   }
 
   return items.sort((a, b) => b.priority.total - a.priority.total).slice(0, limit);
