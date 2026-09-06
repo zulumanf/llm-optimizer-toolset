@@ -192,7 +192,7 @@ export async function campaignPreflight(now: Date = new Date()): Promise<Campaig
       order by coalesce(r.gmail_message_id, r.id::text), r.created_at desc
     ) x order by x.received_at`;
   const [excl] = await sql`select count(*)::int as n from exclusivity_agreements where status = 'active'`;
-  const [parked] = await sql`select count(*)::int as n from outreach_drafts where status = 'approved' and sent_recorded_at is null and scheduled_send_at is null and last_send_error is not null and updated_at > now() - interval '24 hours'`;
+  const [parked] = await sql`select count(*)::int as n from outreach_drafts where status = 'approved' and sent_recorded_at is null and scheduled_send_at is null and last_send_error is not null`;
   return {
     day,
     gmailSyncAgeMinutes: syncAge,
