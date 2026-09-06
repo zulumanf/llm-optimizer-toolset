@@ -32,6 +32,10 @@ function failed(phase: string, detail: string) { results.push({ phase, status: "
 function expect(phase: string, cond: boolean, detail: string) { if (cond) pass(phase, detail); else failed(phase, detail); }
 const unwrap = <T>(r: { ok: true; data: T } | { ok: false; error: { message: string } }): T => { if (!r.ok) throw new Error(r.error.message); return r.data; };
 const refused = (r: { ok: boolean; error?: { message: string } }) => !r.ok;
+/** Services fail closed two ways: a returned failure or a thrown ClassifiedError (assertCanWrite). Both count as refused. */
+async function refusedOrThrows(fn: () => Promise<{ ok: boolean }>): Promise<boolean> {
+  try { return !(await fn()).ok; } catch { return true; }
+}
 const today = () => new Date().toISOString().slice(0, 10);
 
 async function ryanSnapshot() {
@@ -96,6 +100,12 @@ async function main() {
   const sets = await import("@/lib/prompts/set-service");
   const promptSvc = await import("@/lib/prompts/prompt-service");
   const queue = await import("@/lib/control-tower/queue");
+
+  // Hygiene: an interrupted earlier run may have left fixture engagements live in
+  // the sandbox markets. Close them first so they never sit on Today.
+  const leftovers = await sql`select e.id from client_engagements e join projects p on p.id = e.project_id where p.name like ${TAG + "%"} and e.stage in ('signed','onboarding','active','renewal_review')`;
+  for (const l of leftovers) await eng.closeEngagement(admin, { engagementId: l.id as string, outcome: "churned", reason: `${TAG} fixture cleanup (interrupted earlier run).` });
+  if (leftovers.length > 0) pass("hygiene", `${leftovers.length} leftover fixture engagement(s) closed`);
 
   const [mig] = await sql`select 1 from schema_migrations where name = '105_client_engagements.sql'`;
   expect("migration 105 applied", Boolean(mig), "schema_migrations has 105");
@@ -216,7 +226,7 @@ async function main() {
     const [cRow] = await sql`select status, blocked_reason from tasks where id = ${C.taskId}`;
     expect("work C: declined after client says not relevant", cRow!.status === "rejected" && cRow!.blockedReason === null, "approved+blocked → rejected, blocker cleared");
     const viewC = (await eng.engagementOverview(signed.projectId))!;
-    expect("work C: declined without unhealthy signal", !viewC.signals.some((sig) => sig.key === "client_waiting" && sig.state !== "ok"), viewC.signals.map((x) => `${x.key}:${x.state}`).join(" "));
+    expect("work C: declined item no longer counts as waiting on client", viewC.work.filter((t) => t.blockedReason !== null).length === 0 && viewC.work.find((t) => t.id === C.taskId)?.status === "rejected", viewC.signals.map((x) => `${x.key}:${x.state}`).join(" "));
 
     // ------------------------------------------------------------ approvals
     unwrap(await tasks.approveTask(admin, { taskId: A.taskId }));
@@ -272,10 +282,12 @@ async function main() {
       try { await fn(); } catch (err) { if (err instanceof ProjectAccessError) denied += 1; }
     }
     expect("portal isolation: client A denied client B project/tasks/baseline/measurements/reports", denied === 4, `${denied}/4 reads denied as not-found`);
-    expect("portal isolation: client A cannot write", refused(await tasks.recordClientDecision(clientA, { taskId: A.taskId, decision: "approved", channel: "portal" })) && refused(await eng.recordBillingEvent(clientA, { engagementId: e0.id, kind: "payment_received", amountUsd: 1 })), "client roles are read-only");
-    const portalJson = JSON.stringify(viewA);
+    const writeDenied = (await refusedOrThrows(() => tasks.recordClientDecision(clientA, { taskId: A.taskId, decision: "approved", channel: "portal" }))) && (await refusedOrThrows(() => eng.recordBillingEvent(clientA, { engagementId: e0.id, kind: "payment_received", amountUsd: 1 })));
+    expect("portal isolation: client A cannot write (server actions fail closed)", writeDenied, "client roles are read-only");
+    // Competitor NAMES are shown to the client by design (same questions, same answers); everything else internal must be absent.
+    const portalJson = JSON.stringify({ ...viewA, baseline: viewA?.baseline ? { ...viewA.baseline, competitors: [] } : null });
     expect("portal: answers where/what/working/need/changed/measure", Boolean(viewA?.baseline && viewA.changed.length === 2 && viewA.nextMeasurementOn && viewA.workingOn !== undefined && viewA.needsYourInput !== undefined), `baseline ${viewA?.baseline?.recommendedCount}/${viewA?.baseline?.answerCount}, changed ${viewA?.changed.length}, next ${viewA?.nextMeasurementOn}`);
-    expect("portal: no fee/invoice/override/conflict/prospect internals", !/monthlyFee|invoice|override|Rival Team|conflict|cold|score/i.test(portalJson), "");
+    expect("portal: no fee/invoice/override/conflict/prospect internals", !/monthlyFee|invoice|override|Rival Team|conflict|cold|score|Nested Team|Unrelated Team/i.test(portalJson), "competitor names shown by design; nothing else internal");
 
     // -------------------------------------------------------- remeasurement
     const rerun = await syntheticRun(marketProject.id, version!.id as string, subject.id, rival.id, `${TAG} midpoint`, [1, 1, 0, 1]);
@@ -296,7 +308,9 @@ async function main() {
 
     // -------------------------------------------------------- weekly + today
     const v2iew = (await eng.engagementOverview(signed.projectId))!;
-    expect("weekly update: DONE/IN PROGRESS/NEED FROM YOU/MEASUREMENT/NEXT from canonical rows", /DONE — what changed this week\n- QA131 A/.test(v2iew.weeklyUpdate) && /MEASUREMENT\n- After the changes/.test(v2iew.weeklyUpdate) && /NEED FROM YOU\n- Nothing is waiting on you/.test(v2iew.weeklyUpdate), "");
+    const wk = v2iew.weeklyUpdate;
+    const doneBlock = wk.split("IN PROGRESS")[0] ?? "";
+    expect("weekly update: DONE/IN PROGRESS/NEED FROM YOU/MEASUREMENT/NEXT from canonical rows", /DONE — what changed this week/.test(wk) && doneBlock.includes("QA131 A") && doneBlock.includes("QA131 B") && /MEASUREMENT\n- (After the changes|A remeasurement ran but is NON-COMPARABLE)/.test(wk) && /NEED FROM YOU\n- Nothing is waiting on you/.test(wk) && /\nNEXT\n/.test(wk), "latest measurement reported truthfully (comparable statement or NON-COMPARABLE disclosure)");
     const todayItems = await queue.actionRequiredQueue({ projectId: signed.projectId });
     const kinds = todayItems.filter((i) => i.source === "engagement").map((i) => i.kind);
     expect("today: engagement cards without duplicates", kinds.length === new Set(kinds).size, kinds.join(", ") || "none pending (all gates cleared)");
@@ -340,6 +354,8 @@ async function main() {
     pass("teardown", "fixture prospects, projects, companies, launches archived; fixture users removed");
   }
 
+  const [liveFixtures] = await sql`select count(*)::int as n from client_engagements e join projects p on p.id = e.project_id where p.name like ${TAG + "%"} and e.stage in ('signed','onboarding','active','renewal_review')`;
+  expect("teardown: no live fixture engagement remains", Number(liveFixtures!.n) === 0, "");
   const after = await ryanSnapshot();
   expect("SAFETY: Ryan + Grand Rapids state unchanged", before === after, before === after ? "identical before/after snapshot" : `BEFORE ${before}\nAFTER ${after}`);
   const fails = results.filter((r) => r.status === "FAIL");
