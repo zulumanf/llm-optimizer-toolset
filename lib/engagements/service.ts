@@ -27,6 +27,7 @@ import { logActivity } from "@/lib/prospects/shared";
 import {
   ACCESS_STATUSES,
   BILLING_CADENCES,
+  BILLING_KINDS,
   CONTEXT_KINDS,
   CONTEXT_PROVENANCES,
   CONTRACT_STATUSES,
@@ -473,13 +474,6 @@ export async function recordContractStatus(user: CurrentUser, raw: unknown): Pro
     return fail(err);
   }
 }
-
-export const BILLING_KINDS = [
-  "invoice_created",
-  "invoice_sent",
-  "payment_received",
-  "invoice_overdue",
-] as const;
 
 const billingSchema = z.object({
   engagementId: idSchema,

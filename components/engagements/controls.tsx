@@ -25,6 +25,7 @@ import * as actions from "@/app/projects/[id]/engagement/actions";
 import type { ActionResult } from "@/lib/actions/result";
 import {
   ACCESS_STATUSES,
+  BILLING_KINDS,
   BLOCKED_REASONS,
   CLIENT_DECISIONS,
   CONTEXT_KINDS,
@@ -35,7 +36,6 @@ import {
   TASK_CONTROL,
   TASK_SCOPE,
 } from "@/lib/engagements/constants";
-import { BILLING_KINDS } from "@/lib/engagements/service";
 
 const human = (s: string) => s.replace(/_/g, " ");
 

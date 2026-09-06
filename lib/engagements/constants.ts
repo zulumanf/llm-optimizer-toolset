@@ -142,3 +142,12 @@ export const RESOLVER_POLICY_VERSION = "verified-lead-agent-alias-v1";
 export const MEASUREMENT_REPETITION_RATIO_LIMIT = 2;
 /** Valid-answer ratio below which two measurements grade `low`. */
 export const MEASUREMENT_ANSWER_RATIO_FLOOR = 0.75;
+
+/** Manual invoice ledger events an operator records (subset of billing_events kinds). */
+export const BILLING_KINDS = [
+  "invoice_created",
+  "invoice_sent",
+  "payment_received",
+  "invoice_overdue",
+] as const;
+export type BillingKind = (typeof BILLING_KINDS)[number];

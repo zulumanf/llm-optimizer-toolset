@@ -26,25 +26,69 @@ async function run<T>(
   }
 }
 
-export const signClient = (projectId: string, input: unknown) => run(projectId, (u) => engagements.signClient(u, input));
-export const recordContractStatus = (projectId: string, input: unknown) => run(projectId, (u) => engagements.recordContractStatus(u, input));
-export const recordBillingEvent = (projectId: string, input: unknown) => run(projectId, (u) => engagements.recordBillingEvent(u, input));
-export const confirmMarketDefinition = (projectId: string, input: unknown) => run(projectId, (u) => engagements.confirmMarketDefinition(u, input));
-export const setMarketingPermissions = (projectId: string, input: unknown) => run(projectId, (u) => engagements.setMarketingPermissions(u, input));
-export const startOnboarding = (projectId: string, input: unknown) => run(projectId, (u) => engagements.startOnboarding(u, input));
-export const activateExclusivity = (projectId: string, input: unknown) => run(projectId, (u) => engagements.activateExclusivity(u, input));
-export const markActive = (projectId: string, input: unknown) => run(projectId, (u) => engagements.markActive(u, input));
-export const addContextItem = (projectId: string, input: unknown) => run(projectId, (u) => engagements.addContextItem(u, input));
-export const setAccessStatus = (projectId: string, input: unknown) => run(projectId, (u) => engagements.setAccessStatus(u, input));
-export const freezeBaseline = (projectId: string, input: unknown) => run(projectId, (u) => engagements.freezeBaseline(u, input));
-export const recordMeasurement = (projectId: string, input: unknown) => run(projectId, (u) => engagements.recordMeasurement(u, input));
-export const recordClientUpdateSent = (projectId: string, input: unknown) => run(projectId, (u) => engagements.recordClientUpdateSent(u, input));
-export const pauseMarketOutreach = (projectId: string, input: unknown) => run(projectId, (u) => engagements.pauseMarketOutreach(u, input));
-export const setRenewalStatus = (projectId: string, input: unknown) => run(projectId, (u) => engagements.setRenewalStatus(u, input));
-export const renewEngagement = (projectId: string, input: unknown) => run(projectId, (u) => engagements.renewEngagement(u, input));
-export const closeEngagement = (projectId: string, input: unknown) => run(projectId, (u) => engagements.closeEngagement(u, input));
-export const updateTaskProvenance = (projectId: string, input: unknown) => run(projectId, (u) => tasks.updateTaskProvenance(u, input));
-export const blockTask = (projectId: string, input: unknown) => run(projectId, (u) => tasks.blockTask(u, input));
-export const unblockTask = (projectId: string, input: unknown) => run(projectId, (u) => tasks.unblockTask(u, input));
-export const recordClientDecision = (projectId: string, input: unknown) => run(projectId, (u) => tasks.recordClientDecision(u, input));
-export const suggestTask = (projectId: string, input: unknown) => run(projectId, (u) => tasks.suggestTask(u, input));
+export async function signClient(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.signClient(u, input));
+}
+export async function recordContractStatus(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.recordContractStatus(u, input));
+}
+export async function recordBillingEvent(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.recordBillingEvent(u, input));
+}
+export async function confirmMarketDefinition(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.confirmMarketDefinition(u, input));
+}
+export async function setMarketingPermissions(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.setMarketingPermissions(u, input));
+}
+export async function startOnboarding(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.startOnboarding(u, input));
+}
+export async function activateExclusivity(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.activateExclusivity(u, input));
+}
+export async function markActive(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.markActive(u, input));
+}
+export async function addContextItem(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.addContextItem(u, input));
+}
+export async function setAccessStatus(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.setAccessStatus(u, input));
+}
+export async function freezeBaseline(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.freezeBaseline(u, input));
+}
+export async function recordMeasurement(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.recordMeasurement(u, input));
+}
+export async function recordClientUpdateSent(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.recordClientUpdateSent(u, input));
+}
+export async function pauseMarketOutreach(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.pauseMarketOutreach(u, input));
+}
+export async function setRenewalStatus(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.setRenewalStatus(u, input));
+}
+export async function renewEngagement(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.renewEngagement(u, input));
+}
+export async function closeEngagement(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.closeEngagement(u, input));
+}
+export async function updateTaskProvenance(projectId: string, input: unknown) {
+  return run(projectId, (u) => tasks.updateTaskProvenance(u, input));
+}
+export async function blockTask(projectId: string, input: unknown) {
+  return run(projectId, (u) => tasks.blockTask(u, input));
+}
+export async function unblockTask(projectId: string, input: unknown) {
+  return run(projectId, (u) => tasks.unblockTask(u, input));
+}
+export async function recordClientDecision(projectId: string, input: unknown) {
+  return run(projectId, (u) => tasks.recordClientDecision(u, input));
+}
+export async function suggestTask(projectId: string, input: unknown) {
+  return run(projectId, (u) => tasks.suggestTask(u, input));
+}
