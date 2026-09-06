@@ -2396,11 +2396,19 @@ export async function sendProspectDraft(
           from market_launches where id = ${prospect.launchId}
         `;
         if (launch) {
-          const detection = await detectLaunchConflicts(tx, {
-            marketId: launch.marketId as string,
-            serviceCategory: (launch.serviceCategory as string) ?? null,
-            priceSegment: (launch.priceSegment as string) ?? null,
-          });
+          // Spec 131: the client's own prospect record (promoted to the project
+          // that holds the agreement) is exempt — replying to our client is not
+          // selling against them.
+          const [own] = await tx`select promoted_project_id from prospects where id = ${prospect.id}`;
+          const detection = await detectLaunchConflicts(
+            tx,
+            {
+              marketId: launch.marketId as string,
+              serviceCategory: (launch.serviceCategory as string) ?? null,
+              priceSegment: (launch.priceSegment as string) ?? null,
+            },
+            { exceptProjectId: (own?.promotedProjectId as string | null) ?? null }
+          );
           check(
             "territory_conflict",
             detection.worstVerdict === "clear",
