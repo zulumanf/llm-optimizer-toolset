@@ -137,8 +137,10 @@ async function loadEngagements(filter: { projectId?: string; includeRecentlyClos
       `
     : await sql`
         ${ENGAGEMENT_SELECT}
-        where e.stage in ('signed','onboarding','active','renewal_review')
-          ${filter.includeRecentlyClosed ? sql`or (e.stage in ('completed','churned') and e.closed_at >= ${since})` : sql``}
+        where (e.stage in ('signed','onboarding','active','renewal_review')
+          ${filter.includeRecentlyClosed ? sql`or (e.stage in ('completed','churned') and e.closed_at >= ${since})` : sql``})
+          -- An archived project has left the operating portfolio (fixtures, retired clients).
+          and exists (select 1 from projects p where p.id = e.project_id and p.status = 'active')
         order by e.starts_on asc
       `;
   return rows.map(mapEngagementRow);
