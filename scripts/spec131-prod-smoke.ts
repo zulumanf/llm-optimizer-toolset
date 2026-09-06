@@ -125,6 +125,7 @@ async function main() {
   const [version] = await sql`select id from prompt_set_versions where prompt_set_id = ${set.id}`;
   const baselineRun = await syntheticRun(marketProject.id, version!.id as string, subject.id, rival.id, `${TAG} baseline`, [1, 0, 0, 1]);
   const prospect = unwrap(await prospects.createProspect(admin, { launchId: launch.launchId, businessName: subject.name ?? `${TAG} Fixture Team ${stamp}`, prospectType: "team", companyId: subject.id }));
+  const competitors = await import("@/lib/competitors/service");
   await sql`insert into prospect_benchmarks (prospect_id, run_id, company_id, created_by) values (${prospect.prospectId}, ${baselineRun}, ${subject.id}, ${admin.id})`;
   const rivalProspect = unwrap(await prospects.createProspect(admin, { launchId: launch.launchId, businessName: `${TAG} Rival Team ${stamp}`, prospectType: "team", companyId: rival.id }));
   const nestedProspect = unwrap(await prospects.createProspect(admin, { launchId: nestedLaunch.launchId, businessName: `${TAG} Nested Team ${stamp}`, prospectType: "team", companyId: nestedCo.id }));
@@ -136,6 +137,9 @@ async function main() {
     // ---------------------------------------------------- commercial gates
     const signed = unwrap(await eng.signClient(admin, { prospectId: prospect.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, scopeSummary: SCOPE, primaryContactName: `${TAG} Contact` }));
     const e0 = (await eng.engagementForProject(signed.projectId))!;
+    // No delivered Touch 1 on the fixture, so signing carried no rival in; the
+    // operator confirms the competitor set before freezing (checklist STEP 5).
+    unwrap(await competitors.addCompetitor(admin, { projectId: signed.projectId, companyId: rival.id, tier: "primary" }));
     expect("signed: promotion reused (no duplicate universe)", signed.promoted && (await sql`select promoted_project_id from prospects where id = ${prospect.prospectId}`)[0]!.promotedProjectId === signed.projectId, "prospect.promoted_project_id = client project");
     expect("signed: territory reserved, not active", e0.exclusivityStatus === "reserved" && e0.stage === "signed", `status ${e0.exclusivityStatus}`);
     expect("gate: onboarding refused without contract", refused(await eng.startOnboarding(admin, { engagementId: e0.id })), "no contract, no payment");
@@ -206,8 +210,11 @@ async function main() {
     unwrap(await tasks.blockTask(admin, { taskId: C.taskId, reason: "client_input", note: "Confirm whether the neighborhood matters." }));
     const q1 = await queue.actionRequiredQueue({ projectId: signed.projectId });
     expect("work C: blocked item is not overdue", !q1.some((i) => i.source === "task_overdue" && i.id === C.taskId), `${q1.length} queue items`);
-    expect("work C: cannot proceed while blocked", refused(await tasks.approveTask(admin, { taskId: C.taskId })) || refused(await tasks.startTask(admin, { taskId: C.taskId })), "");
+    unwrap(await tasks.approveTask(admin, { taskId: C.taskId }));
+    expect("work C: cannot proceed while blocked", refused(await tasks.startTask(admin, { taskId: C.taskId })), "start refused while blocked on client input");
     unwrap(await tasks.rejectTask(admin, { taskId: C.taskId }));
+    const [cRow] = await sql`select status, blocked_reason from tasks where id = ${C.taskId}`;
+    expect("work C: declined after client says not relevant", cRow!.status === "rejected" && cRow!.blockedReason === null, "approved+blocked → rejected, blocker cleared");
     const viewC = (await eng.engagementOverview(signed.projectId))!;
     expect("work C: declined without unhealthy signal", !viewC.signals.some((sig) => sig.key === "client_waiting" && sig.state !== "ok"), viewC.signals.map((x) => `${x.key}:${x.state}`).join(" "));
 

@@ -208,8 +208,13 @@ describe.skipIf(!TEST_URL)("client engagement dry run (integration)", () => {
     unwrap(await tasks.updateTaskProvenance(operator, { taskId: w2.taskId, observation: "Zillow / Realtor.com repeatedly appeared.", confidence: "medium_confidence", control: "third_party" }));
     const w3 = unwrap(await tasks.suggestTask(operator, { projectId: signed.projectId, title: "Neighborhood questions where the rival leads", evidence: [{ kind: "response", refId: evidenceResponse, note: "Rival recommended on neighborhood questions." }] }));
     unwrap(await tasks.blockTask(operator, { taskId: w3.taskId, reason: "client_input", note: "Confirm whether these neighborhoods matter." }));
-    // Failure mode 4: the client says the neighborhood is irrelevant → the item is dropped, not worked.
+    unwrap(await tasks.approveTask(operator, { taskId: w3.taskId }));
+    expect((await tasks.startTask(operator, { taskId: w3.taskId })).ok).toBe(false);
+    // Failure mode 4: the client says the neighborhood is irrelevant → the
+    // approved-but-blocked item is declined, not worked; its blocker clears.
     unwrap(await tasks.rejectTask(operator, { taskId: w3.taskId }));
+    const [w3Row] = await sql`select status, blocked_reason from tasks where id = ${w3.taskId}`;
+    expect(w3Row).toMatchObject({ status: "rejected", blockedReason: null });
 
     // Approval gate: a public change never starts before the client's decision.
     unwrap(await tasks.approveTask(operator, { taskId: w1.taskId }));

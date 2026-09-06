@@ -43,8 +43,11 @@ Check: prospect stage `contracted`, project listed under Clients.
 ### STEP 5 — Freeze the paid baseline
 Engagement page → "Freeze baseline". Defaults: the prospect's linked benchmark
 run, provider OpenAI, subject = client company, competitors = tracked rivals.
-Before pressing: confirm the run is the corrected one (spec 130 aliases applied)
-and the counts match the private report. The package is immutable once frozen;
+Before pressing: confirm the run is the corrected one (spec 130 aliases applied),
+the counts match the private report, and the competitor set on the project is
+the one the client will be measured against (signing carries in the Touch 1
+rival; add others on the Competitors tab first — the package is frozen with
+whatever competitors exist at that moment). The package is immutable once frozen;
 a second freeze is refused.
 
 ### STEP 6 — Activate exclusivity
