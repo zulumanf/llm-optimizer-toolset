@@ -370,6 +370,17 @@ const repurposedAsset = z.object({
 });
 
 /** The agent catalogue: key → schema. Prompts live in prompts.ts. */
+const clientReview = z.object({
+  pass: z.boolean(),
+  issues: z.array(
+    z.object({
+      kind: z.enum(["unsupported_claim", "causal_overclaim", "contradiction", "technical_language", "salesy"]).catch("unsupported_claim"),
+      quote: z.string().max(400),
+      why: z.string().max(600),
+    })
+  ),
+});
+
 const AGENT_SCHEMAS = {
   classify_lead: leadClassification,
   draft_outreach: outreachDraft,
@@ -392,6 +403,9 @@ const AGENT_SCHEMAS = {
   generate_executive_narrative: executiveNarrative,
   repurpose_content: repurposedAsset,
   report_prospect_review: reportProspectReview,
+  // Spec 132 constrained reviewers: advisory issues over a supplied fact pack.
+  client_communication_review: clientReview,
+  client_evidence_review: clientReview,
 } as const satisfies Record<AutomationAgentKey, z.ZodTypeAny>;
 
 export type AgentOutputFor<K extends AutomationAgentKey> = z.infer<(typeof AGENT_SCHEMAS)[K]>;

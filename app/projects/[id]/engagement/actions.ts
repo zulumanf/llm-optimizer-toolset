@@ -5,6 +5,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import * as engagements from "@/lib/engagements/service";
 import * as tasks from "@/lib/tasks/service";
+import * as portfolio from "@/lib/engagements/portfolio";
+import * as reviewers from "@/lib/engagements/reviewers";
 
 /** Thin wrappers (ui-conventions): identity → service → revalidate. */
 async function run<T>(
@@ -91,4 +93,10 @@ export async function recordClientDecision(projectId: string, input: unknown) {
 }
 export async function suggestTask(projectId: string, input: unknown) {
   return run(projectId, (u) => tasks.suggestTask(u, input));
+}
+export async function reviewClientDraft(projectId: string, input: unknown) {
+  return run(projectId, (u) => reviewers.reviewClientDraft(u, input));
+}
+export async function overrideQaEvent(projectId: string, input: unknown) {
+  return run(projectId, (u) => portfolio.overrideQaEvent(u, input));
 }

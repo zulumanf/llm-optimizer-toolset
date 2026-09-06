@@ -15,8 +15,10 @@ import {
   MarketDefinitionDialog,
   NewWorkItemDialog,
   PermissionToggles,
+  OverrideQaDialog,
   ProvenanceDialog,
   RecordMeasurementDialog,
+  ReviewDraftDialog,
   RenewDialog,
   RenewalStatusButtons,
   SignClientDialog,
@@ -28,7 +30,9 @@ import { activateExclusivity, freezeBaseline, markActive, pauseMarketOutreach } 
 import { sql } from "@/db/client";
 import { getProject } from "@/db/projects";
 import { getCurrentUser } from "@/lib/auth";
-import { engagementOverview, marketOutreachConflicts } from "@/lib/engagements/service";
+import { marketOutreachConflicts } from "@/lib/engagements/service";
+import { listQaEvents, portfolioClient } from "@/lib/engagements/portfolio";
+import { renderQuestions } from "@/lib/engagements/onboarding-questions";
 import { daysBetween, todayIso } from "@/lib/engagements/rules";
 import { formatDate } from "@/lib/format";
 
@@ -57,9 +61,10 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const [project, user] = await Promise.all([getProject(id), getCurrentUser()]);
   if (!project) notFound();
-  const view = await engagementOverview(id);
+  const client = await portfolioClient(id);
+  const view = client?.overview ?? null;
 
-  if (!view) {
+  if (!view || !client) {
     const [linked] = await sql`
       select id, business_name, stage from prospects
       where (promoted_project_id = ${id} or benchmark_project_id = ${id}) and archived_at is null
@@ -85,7 +90,8 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
   const daysLeft = daysBetween(today, e.endsOn);
   const baseline = view.measurements.find((m) => m.role === "baseline" && m.status === "frozen");
   const plannedSlots = view.measurements.filter((m) => m.status === "planned").map((m) => ({ id: m.id, role: m.role, scheduledFor: m.scheduledFor }));
-  const outreachConflicts = await marketOutreachConflicts(e.id);
+  const [outreachConflicts, qaEvents] = await Promise.all([marketOutreachConflicts(e.id), listQaEvents(e.id)]);
+  const qaVariant = client.qaStatus === "CLEAR" ? "outline" : client.qaStatus === "P0" ? "destructive" : "secondary";
   const isAdmin = user.role === "admin";
   const evidenceOptions = baseline?.snapshot
     ? baseline.snapshot.questions
@@ -124,10 +130,68 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
       />
       <Card className="mt-4 border-primary/40">
         <CardContent className="p-4">
-          <p className="text-xs text-muted-foreground">Next action</p>
-          <p className="mt-1 text-sm font-medium">{view.nextAction}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs text-muted-foreground">Next action</p>
+              <p className="mt-1 text-sm font-medium">{client.alerts[0]?.nextAction ?? view.nextAction}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={qaVariant as "outline" | "destructive" | "secondary"}>QA {client.qaStatus}</Badge>
+              <Badge variant={client.billingState === "PAYMENT_CURRENT" ? "outline" : "destructive"}>{human(client.billingState).toLowerCase()}</Badge>
+              {client.waitingOn && <Badge variant="secondary">waiting on {human(client.waitingOn)}</Badge>}
+              <Badge variant="outline">day {client.engagementDay}</Badge>
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Loop: baseline {client.loop.baseline ? "frozen" : "missing"} · {client.loop.hypotheses} hypotheses · {client.loop.activeWork} active · {client.loop.implemented} implemented · next measurement {client.loop.nextMeasurementOn ?? "none"} · next decision: {client.loop.nextDecision}
+            {client.loop.missing.length > 0 && ` · missing: ${client.loop.missing.join(", ")}`}
+          </p>
         </CardContent>
       </Card>
+
+      <Section title="Delivery QA" description="Deterministic alerts for this client, ranked; open events persist until resolved or overridden with a reason.">
+        {client.alerts.length === 0 && qaEvents.length === 0 ? (
+          <EmptyState message="No QA alert. Every lane is clear for this client." />
+        ) : (
+          <ul className="space-y-2 text-sm">
+            {client.alerts.map((a) => (
+              <li key={a.code + a.message} className="flex flex-wrap items-start justify-between gap-2 rounded-md border p-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={a.severity === "P0" ? "destructive" : a.severity === "P1" ? "secondary" : "outline"}>{a.severity}</Badge>
+                    <span className="font-medium">{human(a.code).toLowerCase()}</span>
+                    {a.waitingOn && <span className="text-xs text-muted-foreground">waiting on {human(a.waitingOn)}</span>}
+                  </div>
+                  <p className="mt-1">{a.message}</p>
+                  <p className="text-xs text-muted-foreground">Next: {a.nextAction}</p>
+                </div>
+              </li>
+            ))}
+            {qaEvents.map((ev) => (
+              <li key={ev.id} className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-dashed p-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={ev.severity === "P0" ? "destructive" : "secondary"}>{ev.severity}</Badge>
+                    <span className="font-medium">{ev.lane} · {human(ev.code).toLowerCase()}</span>
+                    <span className="text-xs text-muted-foreground">open since {formatDate(ev.firstSeenAt)}</span>
+                  </div>
+                  <p className="mt-1">{ev.message}</p>
+                </div>
+                {isAdmin && <OverrideQaDialog projectId={id} eventId={ev.id} code={ev.code} />}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      {client.questions.length > 0 && (
+        <Section title="Ask the client" description="Only what the record cannot answer and that changes the work. Hidden once a context item answers it.">
+          <pre className="whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-xs">{renderQuestions(client.questions)}</pre>
+          <ul className="mt-2 text-xs text-muted-foreground">
+            {client.questions.map((q) => <li key={q.key}>{q.kind === "required_core" ? "core" : "conditional"} · {q.reason} → recorded as {q.recordsAs}</li>)}
+          </ul>
+        </Section>
+      )}
 
       <Section title="Status at a glance">
         <StatGrid columns={4}>
@@ -328,7 +392,11 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
         </ul>
       </Section>
 
-      <Section title="Weekly update (draft)" description="Composed from the record. Send it yourself; record that you did." actions={<UpdateSentDialog projectId={id} engagementId={e.id} draft={view.weeklyUpdate} />}>
+      <Section title="Weekly update (draft)" description="Composed from the record and checked against it. Send it yourself; record that you did." actions={<><ReviewDraftDialog projectId={id} engagementId={e.id} draft={view.weeklyUpdate} /><UpdateSentDialog projectId={id} engagementId={e.id} draft={view.weeklyUpdate} /></>}>
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+          <Badge variant={client.weeklyUpdateQa.verdict === "PASS" ? "outline" : "destructive"}>communication QA {client.weeklyUpdateQa.verdict}</Badge>
+          {client.weeklyUpdateQa.issues.map((i) => <span key={i.code + i.message} className="text-muted-foreground">{human(i.code).toLowerCase()}: {i.message}</span>)}
+        </div>
         <pre className="overflow-x-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-xs">{view.weeklyUpdate}</pre>
       </Section>
 

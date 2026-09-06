@@ -2994,3 +2994,18 @@ append-only. (5) Contract and payment remain manual and are recorded truthfully;
 commercial gate is signed contract + payment_received or an admin override with a reason,
 never an override of the contract. (6) A former client is flagged do-not-contact with a
 cooldown at close so cold prospecting cannot resume by accident.
+
+## 2026-09-06 — Deterministic QA lanes over one batched portfolio read (spec 132)
+Multi-client delivery is enforced by canonical data + deterministic evaluators, not by agents.
+(1) `lib/engagements/qa.ts` is pure; every lane is a function of canonical state so the same
+rule answers on Today, the Clients index, the Engagement page and in tests. (2) The portfolio
+is read once (`loadPortfolioData`: a fixed set of `any(ids)` queries) and assembled per client;
+`engagementOverview` delegates to it so one client and twenty-five take the same query count —
+the N×12 per-client overview the first Today integration used was the obvious pathology and
+is gone. (3) Material QA outcomes persist as `engagement_qa_events` with one open row per
+(engagement, lane, code); PASS is never logged; overrides keep actor, time, reason and the
+previous result. (4) Two LLM roles only — communication reviewer and evidence reviewer — fed
+a fact pack the portfolio service assembles; findings are P2 advisory events; the founder
+sends. (5) Execution QA gates apply only to projects with a live engagement so measurement-only
+projects keep the lighter task flow. (6) Billing UNKNOWN is a first-class state; it never
+reads as current.

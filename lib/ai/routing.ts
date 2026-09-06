@@ -92,6 +92,16 @@ export const TASK_ROUTES = {
     tier: "frontier",
     rationale: "First outbound touch to a high-value prospect — outward-facing prose.",
   },
+  client_communication_review: {
+    tier: "frontier",
+    rationale:
+      "Reads a client update for overclaims and contradictions against a fact pack; advisory, founder still sends (spec 132).",
+  },
+  client_evidence_review: {
+    tier: "frontier",
+    rationale:
+      "Reads client-facing measurement interpretation for causal overreach against the canonical fact pack; advisory only (spec 132).",
+  },
   audit_sense_check: {
     tier: "frontier",
     rationale:

@@ -496,3 +496,37 @@ export function PermissionToggles({ projectId, engagementId, values }: { project
     </div>
   );
 }
+
+// ------------------------------------------------------------------ QA
+
+export function ReviewDraftDialog({ projectId, engagementId, draft }: { projectId: string; engagementId: string; draft: string }) {
+  const [text, setText] = useState(draft);
+  const [role, setRole] = useState<string>("COMMUNICATION_REVIEWER");
+  const [result, setResult] = useState<string | null>(null);
+  return (
+    <ActionDialog trigger="Ask the reviewer" title="Advisory review against the fact pack" submitLabel="Review"
+      onSubmit={async () => {
+        const r = await actions.reviewClientDraft(projectId, { engagementId, draft: text, role });
+        if (r.ok) {
+          const out = (r.data as { output: { pass: boolean; issues: { kind: string; quote: string; why: string }[] } | null; error: string | null }).output;
+          setResult(out ? (out.pass ? "Reviewer found nothing to trip on." : out.issues.map((i) => `${human(i.kind)}: "${i.quote}" — ${i.why}`).join("\n")) : "Reviewer call failed; nothing recorded as a finding.");
+        }
+        return r;
+      }}>
+      <Field label="Reviewer"><Pick value={role} onChange={setRole} options={["COMMUNICATION_REVIEWER", "EVIDENCE_REVIEWER"]} /></Field>
+      <Field label="Draft (read against the canonical fact pack; never rewritten)"><Textarea rows={10} value={text} onChange={(e) => setText(e.target.value)} /></Field>
+      {result && <pre className="whitespace-pre-wrap rounded-md border bg-muted/40 p-2 text-xs">{result}</pre>}
+      <p className="text-xs text-muted-foreground">Advisory only. Deterministic QA and the founder decide; the reviewer sees the fact pack and this text, nothing else.</p>
+    </ActionDialog>
+  );
+}
+
+export function OverrideQaDialog({ projectId, eventId, code }: { projectId: string; eventId: string; code: string }) {
+  const [reason, setReason] = useState("");
+  return (
+    <ActionDialog trigger="Override" title={`Override ${human(code)}`} variant="secondary"
+      onSubmit={() => actions.overrideQaEvent(projectId, { eventId, reason })}>
+      <Field label="Reason (recorded with your name, the time and the previous result)"><Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+    </ActionDialog>
+  );
+}
