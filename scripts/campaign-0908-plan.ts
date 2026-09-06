@@ -139,7 +139,15 @@ async function main(): Promise<void> {
     let review_required = false, pending = false;
     for (const rel of sides) {
       const d = deriveLeadAgentAliases(rel);
-      if (d.status === "ENTITY_REVIEW_REQUIRED") { review_required = true; rej(`entity review required (${rel.companyName}: ${d.reason})`, name); break; }
+      if (d.status === "ENTITY_REVIEW_REQUIRED") {
+        // A single-name RealTrends lead is resolved when an operator-verified
+        // full-name alias (authoritative public page, audited with its source)
+        // is already on the company and starts with that recorded name.
+        const lead = (rel.teamLead ?? "").trim().toLowerCase();
+        const manual = lead && rel.existingAliases.some((a) => a.toLowerCase().split(/\s+/)[0] === lead && a.trim().split(/\s+/).length >= 2);
+        if (!manual) { review_required = true; rej(`entity review required (${rel.companyName}: ${d.reason})`, name); break; }
+        continue;
+      }
       if (d.status === "aliases") {
         if (!ENTITY_QA) { pending = true; break; }
         const applied = await applyVerifiedAliases(user, rel.companyId);
