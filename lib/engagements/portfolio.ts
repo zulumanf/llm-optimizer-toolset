@@ -17,7 +17,7 @@ import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
 import { geoRelation, type MarketNode } from "@/lib/exclusivity/detect";
-import { RESOLVER_POLICY_VERSION, type EngagementStage } from "@/lib/engagements/constants";
+import { RESOLVER_POLICY_VERSION } from "@/lib/engagements/constants";
 import {
   commercialGate,
   composeWeeklyUpdate,
