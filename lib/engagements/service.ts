@@ -50,7 +50,6 @@ import {
   healthSignals,
   measurementSchedule,
   nextAction,
-  onboardingChecklist,
   onboardingComplete,
   termDates,
   todayIso,
@@ -113,7 +112,7 @@ function toIso(d: unknown): string {
   return d instanceof Date ? d.toISOString().slice(0, 10) : String(d);
 }
 
-function mapRow(r: Record<string, unknown>): EngagementRow {
+export function mapEngagementRow(r: Record<string, unknown>): EngagementRow {
   return {
     id: r.id as string,
     projectId: r.projectId as string,
@@ -153,7 +152,7 @@ function mapRow(r: Record<string, unknown>): EngagementRow {
   };
 }
 
-const ENGAGEMENT_SELECT = sql`
+export const ENGAGEMENT_SELECT = sql`
   select e.*, m.name as market_name, a.status as agreement_status
   from client_engagements e
   join markets m on m.id = e.market_id
@@ -162,7 +161,7 @@ const ENGAGEMENT_SELECT = sql`
 
 export async function getEngagement(id: string): Promise<EngagementRow | null> {
   const [row] = await sql`${ENGAGEMENT_SELECT} where e.id = ${id}`;
-  return row ? mapRow(row) : null;
+  return row ? mapEngagementRow(row) : null;
 }
 
 /** The live engagement for a client project (at most one by index), else the
@@ -174,7 +173,7 @@ export async function engagementForProject(projectId: string): Promise<Engagemen
     order by (e.stage in ('signed','onboarding','active','renewal_review')) desc, e.created_at desc
     limit 1
   `;
-  return row ? mapRow(row) : null;
+  return row ? mapEngagementRow(row) : null;
 }
 
 export async function listLiveEngagements(): Promise<EngagementRow[]> {
@@ -183,7 +182,7 @@ export async function listLiveEngagements(): Promise<EngagementRow[]> {
     where e.stage in ('signed','onboarding','active','renewal_review')
     order by e.starts_on asc
   `;
-  return rows.map(mapRow);
+  return rows.map(mapEngagementRow);
 }
 
 async function loadEngagementForWrite(tx: TransactionSql, id: string): Promise<EngagementRow> {
@@ -195,7 +194,7 @@ async function loadEngagementForWrite(tx: TransactionSql, id: string): Promise<E
     where e.id = ${id} for update of e
   `;
   if (!row) throw new ClassifiedError("not_found", "Engagement not found.");
-  return mapRow(row);
+  return mapEngagementRow(row);
 }
 
 async function setStage(
@@ -329,10 +328,15 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
     }
 
     if (prospect.stage !== "contracted") {
+      // A "possible" territory overlap (e.g. a sibling city in the same metro)
+      // blocks the prospect ladder by design (spec 028); the founder's written
+      // rationale at signing is the confirmed-boundary decision that clears it.
       const moved = await transitionStage(user, {
         prospectId: prospect.id,
         toStage: "contracted",
         reason: "Signed engagement recorded (spec 131).",
+        override: Boolean(input.conflictOverrideRationale),
+        overrideRationale: input.conflictOverrideRationale,
       });
       if (!moved.ok) return moved;
     }
@@ -741,10 +745,42 @@ export async function markActive(user: CurrentUser, raw: unknown): Promise<Actio
     const e = await getEngagement(parsed.data.engagementId);
     if (!e) return fail(new ClassifiedError("not_found", "Engagement not found."));
     if (e.stage !== "onboarding") return fail(new ClassifiedError("conflict", `Engagement is ${e.stage}, not onboarding.`));
-    const checklist = await computeChecklist(e);
+    const { portfolioClient } = await import("@/lib/engagements/portfolio");
+    const client = await portfolioClient(e.projectId);
+    if (!client) return fail(new ClassifiedError("not_found", "Engagement not found."));
+    const checklist = client.overview.checklist;
     if (!onboardingComplete(checklist)) {
       const open = checklist.filter((c) => !c.done).map((c) => c.label);
       return fail(new ClassifiedError("validation", `Onboarding is not complete: ${open.join("; ")}.`));
+    }
+    // Spec 132 activation QA: the deterministic lane must not block. Its input
+    // is evaluated as if the engagement were already active.
+    const { activationQa } = await import("@/lib/engagements/qa");
+    const activation = activationQa({
+      stage: "active",
+      subjectLinked: checklist.find((c) => c.key === "identity")?.done ?? false,
+      primaryContactNamed: e.primaryContactName.trim().length > 0,
+      startsOn: e.startsOn,
+      endsOn: e.endsOn,
+      monthlyFeeUsd: e.monthlyFeeUsd,
+      totalValueUsd: e.totalValueUsd,
+      contractStatus: e.contractStatus,
+      contractRef: e.contractRef,
+      paymentsReceivedCents: client.overview.billing.receivedCents,
+      activationOverrideReason: e.activationOverrideReason,
+      marketDefinitionConfirmed: Boolean(e.marketDefinitionConfirmedAt),
+      exclusivityStatus: e.exclusivityStatus,
+      marketConflicts: client.overview.marketConflicts.length,
+      competitorCount: client.overview.measurements.find((m) => m.role === "baseline")?.snapshot?.competitors.length ?? 0,
+      competitorConfirmed: client.overview.context.some((i) => (i.kind === "competitor" || i.kind === "excluded_competitor") && i.provenance === "client_confirmed"),
+      baseline: client.overview.measurements.find((m) => m.role === "baseline" && m.status === "frozen")?.snapshot ?? null,
+      baselineImmutableTrigger: client.activation.issues.every((i) => i.code !== "BASELINE_NOT_IMMUTABLE"),
+      priorityItems: client.overview.context.filter((i) => i.provenance === "client_priority").length,
+      accessUnknown: client.overview.context.filter((i) => i.kind === "access" && i.accessStatus === "requested").length,
+      today: todayIso(),
+    });
+    if (activation.verdict === "BLOCKED") {
+      return fail(new ClassifiedError("validation", `Activation QA blocked: ${activation.issues.filter((i) => i.severity === "P0").map((i) => i.message).join(" ")}`));
     }
     await sql.begin(async (tx) => {
       const locked = await loadEngagementForWrite(tx, e.id);
@@ -1367,32 +1403,6 @@ export async function changeLog(projectId: string): Promise<ChangeLogEntry[]> {
   return entries.sort((a, b) => b.at.getTime() - a.at.getTime());
 }
 
-async function computeChecklist(e: EngagementRow): Promise<ChecklistItem[]> {
-  const [subject, items, measurements, tasks, cents, conflicts] = await Promise.all([
-    getSubjectCompany(e.projectId),
-    listContextItems(e.id),
-    listMeasurements(e.id),
-    listWorkItems(e.projectId),
-    paymentsReceivedCents(e.id, e.projectId),
-    liveEngagementConflicts(e.marketId, e.projectId),
-  ]);
-  return onboardingChecklist({
-    contractStatus: e.contractStatus,
-    paymentsReceivedCents: cents,
-    activationOverrideReason: e.activationOverrideReason,
-    subjectLinked: Boolean(subject),
-    primaryContactNamed: e.primaryContactName.trim().length > 0,
-    marketDefinitionConfirmed: Boolean(e.marketDefinitionConfirmedAt),
-    exclusivityStatus: e.exclusivityStatus,
-    exclusivityConflictFree: conflicts.length === 0,
-    priorityItems: items.filter((i) => i.provenance === "client_priority").length,
-    assetItems: items.filter((i) => i.kind === "asset").length,
-    accessRequestedOpen: items.filter((i) => i.kind === "access" && i.accessStatus === "requested").length,
-    baselineFrozen: measurements.some((m) => m.role === "baseline" && m.status === "frozen"),
-    planItems: tasks.filter((t) => t.status !== "rejected").length,
-  });
-}
-
 export interface EngagementOverview {
   engagement: EngagementRow;
   derivedStage: EngagementStage;
@@ -1414,102 +1424,13 @@ export interface EngagementOverview {
   portalGrants: number;
 }
 
-/** Everything the operator client page needs, in one read. */
+/** Everything the operator client page needs, in one read. Assembled by the
+ * batched portfolio loader (spec 132) so one client and twenty-five clients
+ * take the same handful of queries. */
 export async function engagementOverview(projectId: string, now = new Date()): Promise<EngagementOverview | null> {
-  const e = await engagementForProject(projectId);
-  if (!e) return null;
-  const today = todayIso(now);
-  const [checklist, work, context, measurements, billing, changes, lastUpdateRows, marketConflicts, grants, projectRow] = await Promise.all([
-    computeChecklist(e),
-    listWorkItems(e.projectId),
-    listContextItems(e.id),
-    listMeasurements(e.id),
-    billingSummary(e.id, e.projectId, today),
-    changeLog(e.projectId),
-    sql`select at, detail from audit_log where entity = 'client_engagement' and entity_id = ${e.id} and action = 'engagement.client_update_sent' order by at desc limit 1`,
-    liveEngagementConflicts(e.marketId, e.projectId),
-    listPortalGrants(e.projectId),
-    sql`select name from projects where id = ${e.projectId}`,
-  ]);
-  const commercial = commercialGate({
-    contractStatus: e.contractStatus,
-    paymentsReceivedCents: await paymentsReceivedCents(e.id, e.projectId),
-    activationOverrideReason: e.activationOverrideReason,
-  });
-  const derivedStage = deriveStage(e.stage, e.renewalReviewOn, today);
-  const renewalStatus = deriveRenewalStatus({ endsOn: e.endsOn, renewalReviewOn: e.renewalReviewOn, stored: e.renewalStatus, stage: e.stage }, today);
-  const planned = measurements.filter((m) => m.status === "planned" && m.scheduledFor).sort((a, b) => a.scheduledFor!.localeCompare(b.scheduledFor!));
-  const nextMeasurement = planned[0] ?? null;
-  const openApprovals = work.filter((t) => t.clientApproval === "required" && t.status !== "rejected").length;
-  const blockedOnClient = work.filter((t) => t.blockedReason === "client_access" || t.blockedReason === "client_approval" || t.blockedReason === "client_input").length;
-  const blockedOnUs = work.filter((t) => t.blockedReason === "third_party" || t.blockedReason === "internal").length;
-  const lastUpdate = lastUpdateRows[0]
-    ? { at: lastUpdateRows[0].at as Date, channel: String((lastUpdateRows[0].detail as Record<string, unknown>).channel), summary: String((lastUpdateRows[0].detail as Record<string, unknown>).summary) }
-    : null;
-  const onboardingDone = onboardingComplete(checklist);
-  const signals = healthSignals({
-    stage: derivedStage,
-    onboardingDone,
-    openApprovals,
-    blockedOnClient,
-    blockedOnUs,
-    tasksInProgress: work.filter((t) => t.status === "in_progress").length,
-    tasksDone: work.filter((t) => t.status === "done").length,
-    nextMeasurementOn: nextMeasurement?.scheduledFor ?? null,
-    overdueInvoices: billing.overdueCount,
-    lastClientUpdateOn: lastUpdate ? lastUpdate.at.toISOString().slice(0, 10) : null,
-    renewalStatus,
-    today,
-  });
-  const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
-  const latestFrozen = measurements.filter((m) => m.role !== "baseline" && m.status !== "planned" && m.frozenAt && m.frozenAt >= weekAgo)[0];
-  const weeklyUpdate = composeWeeklyUpdate({
-    clientName: (projectRow[0]?.name as string) ?? "Client",
-    weekEnding: today,
-    done: changes.filter((c) => c.clientVisible && c.at >= weekAgo).map((c) => `${c.title}${c.targetUrl ? ` (${c.targetUrl})` : ""}${c.after ? ` — now: ${c.after}` : ""}`),
-    inProgress: work.filter((t) => t.status === "in_progress" && t.clientVisible).map((t) => t.title),
-    needFromYou: [
-      ...work.filter((t) => t.clientApproval === "required" && t.clientVisible).map((t) => `Approve: ${t.title}`),
-      ...work.filter((t) => (t.blockedReason === "client_access" || t.blockedReason === "client_input") && t.clientVisible).map((t) => `${t.blockedReason === "client_access" ? "Access" : "Input"} needed: ${t.title}${t.blockedNote ? ` — ${t.blockedNote}` : ""}`),
-    ],
-    measurement: latestFrozen
-      ? latestFrozen.comparison
-        ? `- ${latestFrozen.comparison.statement} Comparability: ${latestFrozen.comparability?.grade}.`
-        : `- A remeasurement ran but is NON-COMPARABLE to the baseline (${latestFrozen.statusDetail ?? "instrument changed"}); no before/after is claimed.`
-      : null,
-    next: [
-      ...work.filter((t) => t.status === "approved" && t.clientVisible).slice(0, 3).map((t) => `Start: ${t.title}`),
-      ...(nextMeasurement ? [`Remeasurement (${nextMeasurement.role}) scheduled for ${nextMeasurement.scheduledFor}.`] : []),
-    ],
-  });
-  return {
-    engagement: e,
-    derivedStage,
-    renewalStatus,
-    commercial,
-    checklist,
-    onboardingDone,
-    signals,
-    nextAction: nextAction({
-      stage: derivedStage,
-      commercial,
-      checklist,
-      openApprovals,
-      blockedOnClient,
-      measurementDue: Boolean(nextMeasurement && nextMeasurement.scheduledFor! <= today),
-      renewalStatus,
-    }),
-    work,
-    context,
-    measurements,
-    nextMeasurement,
-    billing,
-    changes,
-    lastClientUpdate: lastUpdate,
-    weeklyUpdate,
-    marketConflicts,
-    portalGrants: grants.length,
-  };
+  const { portfolioClient } = await import("@/lib/engagements/portfolio");
+  const client = await portfolioClient(projectId, now);
+  return client?.overview ?? null;
 }
 
 // --------------------------------------------- market outreach conflicts

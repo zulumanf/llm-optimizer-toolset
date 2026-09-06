@@ -138,7 +138,10 @@ async function transition(
   try {
     await sql.begin(async (tx) => {
       const [task] = await tx`
-        select status, approved_by, client_approval, blocked_reason from tasks where id = ${taskId} for update
+        select id, project_id, title, description, status, approved_by, client_approval, blocked_reason,
+          observation, hypothesis, confidence, control, scope, target_url, before_state, after_state,
+          measurement_note, owner_id, cardinality(evidence_ids) as evidence_count
+        from tasks where id = ${taskId} for update
       `;
       if (!task) throw new ClassifiedError("not_found", "Task not found.");
       if (!rule.from.includes(task.status as string)) {
@@ -167,6 +170,47 @@ async function transition(
           "conflict",
           `Task is blocked (${String(task.blockedReason).replace(/_/g, " ")}) — unblock it with a note first.`
         );
+      }
+      // Spec 132 execution QA: for a project with a live retained engagement,
+      // START requires scope/evidence/approval, COMPLETE requires the change
+      // itself (where, before, after) — "optimized profile" is not a change.
+      if (action === "start" || action === "complete") {
+        const [live] = await tx`
+          select scope_summary from client_engagements
+          where project_id = ${task.projectId} and stage in ('signed','onboarding','active','renewal_review')
+          limit 1
+        `;
+        if (live) {
+          const { executionStartQa, executionCompleteQa } = await import("@/lib/engagements/qa");
+          const shape = {
+            title: task.title as string,
+            description: (task.description as string | null) ?? null,
+            status: task.status as string,
+            evidenceCount: Number(task.evidenceCount ?? 0),
+            observation: (task.observation as string | null) ?? null,
+            hypothesis: (task.hypothesis as string | null) ?? null,
+            confidence: (task.confidence as string | null) ?? null,
+            control: (task.control as string | null) ?? null,
+            scope: task.scope as string,
+            clientApproval: task.clientApproval as string,
+            blockedReason: (task.blockedReason as string | null) ?? null,
+            targetUrl: (task.targetUrl as string | null) ?? null,
+            beforeState: (task.beforeState as string | null) ?? null,
+            afterState: (task.afterState as string | null) ?? null,
+            measurementNote: (task.measurementNote as string | null) ?? null,
+            ownerId: (task.ownerId as string | null) ?? null,
+          };
+          const issues = (action === "start"
+            ? executionStartQa(shape, (live.scopeSummary as string) ?? "")
+            : executionCompleteQa(shape)
+          ).filter((i) => i.severity !== "P2");
+          if (issues.length > 0) {
+            throw new ClassifiedError(
+              "conflict",
+              `Execution QA refused ${action}: ${issues.map((i) => i.message).join(" ")}`
+            );
+          }
+        }
       }
       await tx`
         update tasks set status = ${rule.to},

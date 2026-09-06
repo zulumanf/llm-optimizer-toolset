@@ -317,6 +317,19 @@ async function main() {
     const eUview = (await eng.engagementOverview(eU.projectId))!;
     expect("today: payment-missing / onboarding surfaced for the unpaid engagement", eUview.nextAction.includes("commercial gate"), eUview.nextAction);
 
+    // ------------------------------------------------------ portfolio QA (spec 132)
+    const portfolioMod = await import("@/lib/engagements/portfolio");
+    const scan = await portfolioMod.portfolioScan();
+    const mine = scan.clients.find((c) => c.overview.engagement.id === e0.id);
+    expect("portfolio: fixture client scanned with QA status and headline", Boolean(mine && mine.headline && mine.qaStatus), `${mine?.qaStatus} — ${mine?.headline.slice(0, 80)}`);
+    expect("portfolio: no Ryan/Grand Rapids client in the scan", !scan.clients.some((c) => /Blu House|Grand Rapids/i.test(`${c.clientName} ${c.overview.engagement.marketName}`)), `${scan.clients.length} client(s) scanned`);
+    expect("portfolio: fact pack excludes other clients' data", Boolean(mine && !mine.factPack.otherClientNames.includes(mine.clientName)), "");
+    expect("portfolio: batched scan under 3s for the whole portfolio", (await (async () => { const t = Date.now(); await portfolioMod.portfolioScan(); return Date.now() - t; })()) < 3000, "");
+    const persisted = await portfolioMod.persistPortfolioScan(scan, 1);
+    expect("portfolio: material alerts persisted once (rerun opens none)", (await portfolioMod.persistPortfolioScan(await portfolioMod.portfolioScan(), 1)).opened === 0, `first run opened ${persisted.opened}`);
+    const drift = await portfolioMod.evidenceDriftScan();
+    expect("evidence drift: baselines recomputed without mutation", drift.checked >= 1, `${drift.checked} checked, ${drift.flagged} flagged`);
+
     // ------------------------------------------------------------- renewal
     const at70 = new Date(Date.now() + 70 * 86_400_000);
     const late = (await eng.engagementOverview(signed.projectId, at70))!;
@@ -351,7 +364,8 @@ async function main() {
     for (const pr of fixtureProjects) await projects.archiveProject(admin, { id: pr.id as string });
     await sql`update companies set archived_at = now() where name like ${TAG + "%"} and archived_at is null`;
     await sql`update market_launches set archived_at = now() where name like ${TAG + "%"}`;
-    pass("teardown", "fixture prospects, projects, companies, launches archived; fixture users removed");
+    await sql`delete from engagement_qa_events where engagement_id in (select e.id from client_engagements e join projects p on p.id = e.project_id where p.name like ${TAG + "%"})`;
+    pass("teardown", "fixture prospects, projects, companies, launches archived; fixture users and QA events removed");
   }
 
   const [liveFixtures] = await sql`select count(*)::int as n from client_engagements e join projects p on p.id = e.project_id where p.name like ${TAG + "%"} and e.stage in ('signed','onboarding','active','renewal_review')`;

@@ -34,6 +34,7 @@ export interface AutomationTickReport {
   reportHandoffs: Record<string, unknown>;
   cityPipelines: Record<string, unknown>;
   assistantTasks: Record<string, unknown>;
+  deliveryQa: Record<string, unknown>;
 }
 
 /**
@@ -229,6 +230,16 @@ export async function runAutomationTick(
   // running ones through the chat loop's own dispatch — read/direct only,
   // confirm-tier stages and parks. Isolated: a task failure never fails
   // dispatch.
+  let deliveryQa: Record<string, unknown> = { skipped: true };
+  try {
+    const { runDailyDeliveryQa } = await import("@/lib/engagements/portfolio");
+    deliveryQa = await runDailyDeliveryQa();
+  } catch (err) {
+    log("error", "cron.delivery_qa_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    deliveryQa = { error: "delivery QA failed; dispatch was unaffected" };
+  }
   let assistantTasks: Record<string, unknown> = { skipped: true };
   try {
     const { advanceAssistantTasks } = await import("@/lib/assistant/tasks");
@@ -287,6 +298,7 @@ export async function runAutomationTick(
     reportHandoffs,
     cityPipelines,
     assistantTasks,
+    deliveryQa,
   };
 }
 

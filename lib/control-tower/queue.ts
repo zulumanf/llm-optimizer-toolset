@@ -438,62 +438,40 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
     });
   }
 
-  // 8. Client engagements (spec 131) — what needs the founder now for a paying
-  // client: commercial gate, onboarding, approvals, client input, due
-  // remeasurement, renewal review, overdue invoices. Derived, never stored.
-  const { listLiveEngagements, engagementOverview } = await import("@/lib/engagements/service");
-  const live = (await listLiveEngagements()).filter((e) => !projectFilter || e.projectId === projectFilter);
-  for (const e of live) {
-    const view = await engagementOverview(e.projectId);
-    if (!view) continue;
-    const push = (kind: string, summary: string, action: string, severity: RiskLevel, dueAt: Date | null) => {
+  // 8. Client delivery (spec 131/132): the portfolio scan is the ONE source of
+  // client items — deterministic alerts ranked safety → client waiting on us →
+  // measurement → approvals/communication → routine. One batched read for the
+  // whole portfolio; no per-client queries here.
+  const { portfolioScan } = await import("@/lib/engagements/portfolio");
+  const scan = await portfolioScan(new Date(), { includeRecentlyClosed: true });
+  const RANK_SEVERITY: Record<number, RiskLevel> = { 0: "critical", 1: "high", 2: "high", 3: "medium", 4: "low" };
+  for (const c of scan.clients) {
+    if (projectFilter && c.overview.engagement.projectId !== projectFilter) continue;
+    for (const a of c.alerts) {
+      const severity: RiskLevel = a.severity === "P0" ? "critical" : RANK_SEVERITY[a.rank] ?? "medium";
       items.push({
-        id: `${e.id}:${kind}`,
+        id: `${c.overview.engagement.id}:${a.code}`,
         source: "engagement",
-        kind,
-        projectId: e.projectId,
-        projectName: view.engagement.marketName ? `${view.engagement.primaryContactName || "Client"} · ${view.engagement.marketName}` : e.projectId,
-        summary,
-        recommendedAction: action,
+        kind: a.code.toLowerCase(),
+        projectId: c.overview.engagement.projectId,
+        projectName: c.clientName,
+        summary: a.message,
+        recommendedAction: a.nextAction,
         severity,
-        dueAt,
-        createdAt: new Date(),
-        href: `/projects/${e.projectId}/engagement`,
+        dueAt: null,
+        createdAt: scan.scannedAt,
+        href: `/projects/${c.overview.engagement.projectId}/engagement`,
         priority: computePriority({
           severity,
-          hoursUntilDue: hoursUntil(dueAt),
-          commercialValue: clientValue.get(e.projectId) ?? 0.8,
-          dependencyImpact: 0.6,
-          risk: 0.4,
+          hoursUntilDue: null,
+          commercialValue: clientValue.get(c.overview.engagement.projectId) ?? 0.8,
+          // A client waiting on us outranks routine internal work by construction.
+          dependencyImpact: a.rank === 0 ? 1 : a.rank === 1 ? 0.9 : a.rank === 2 ? 0.7 : a.rank === 3 ? 0.5 : 0.3,
+          risk: a.severity === "P0" ? 1 : 0.4,
           effortMinutes: EFFORT_MINUTES.engagement,
         }),
       });
-    };
-    if (view.derivedStage === "signed" && !view.commercial.ready) {
-      push("commercial_gate", `Signed, not onboarding: ${view.commercial.reasons.join(" ")}`, "Record the contract/payment, then start onboarding.", "high", null);
     }
-    if (view.derivedStage === "onboarding" && !view.onboardingDone) {
-      const open = view.checklist.filter((c) => !c.done).map((c) => c.label.toLowerCase());
-      push("onboarding_incomplete", `Onboarding incomplete: ${open.join("; ")}`, "Finish the checklist, then mark active.", "medium", null);
-    }
-    const approvals = view.work.filter((t) => t.clientApproval === "required").length;
-    if (approvals > 0) push("client_approval", `${approvals} change(s) await the client's approval`, "Send the approval request or record the client's decision.", "medium", null);
-    const clientInput = view.work.filter((t) => t.blockedReason === "client_input" || t.blockedReason === "client_access").length;
-    if (clientInput > 0) push("client_input", `${clientInput} item(s) blocked on client input or access`, "Ask in the weekly update.", "medium", null);
-    if (view.nextMeasurement && view.nextMeasurement.scheduledFor && view.nextMeasurement.scheduledFor <= new Date().toISOString().slice(0, 10)) {
-      push("measurement_due", `Remeasurement (${view.nextMeasurement.role}) due ${view.nextMeasurement.scheduledFor}`, "Start the run on the baseline question set and record it.", "high", new Date(`${view.nextMeasurement.scheduledFor}T12:00:00Z`));
-    }
-    if (view.renewalStatus === "due") push("renewal_review", `Renewal review due (term ends ${view.engagement.endsOn})`, "Prepare baseline vs latest, work delivered, remaining opportunity.", "high", new Date(`${view.engagement.endsOn}T12:00:00Z`));
-    if (view.billing.overdueCount > 0) push("invoice_overdue", `${view.billing.overdueCount} invoice(s) overdue`, "Follow up on payment.", "high", null);
-    // The two easy-to-forget beats of a retained engagement (spec 131): the
-    // weekly update, and approved work that is cleared to start but has not.
-    const communicating = view.derivedStage === "onboarding" || view.derivedStage === "active" || view.derivedStage === "renewal_review";
-    const updateStale = view.signals.find((s) => s.key === "communication")?.state === "attention";
-    if (communicating && updateStale) {
-      push("client_update_due", view.lastClientUpdate ? `Weekly client update due (last sent ${view.lastClientUpdate.at.toISOString().slice(0, 10)})` : "First client update not yet sent", "Review the composed weekly draft on the Engagement page, send it, record it.", "medium", null);
-    }
-    const ready = view.work.filter((t) => t.status === "approved" && !t.blockedReason && (t.clientApproval === "not_required" || t.clientApproval === "approved")).length;
-    if (ready > 0 && communicating) push("work_ready", `${ready} approved work item(s) cleared to start`, "Start the work and record the before state.", "low", null);
   }
 
   return items.sort((a, b) => b.priority.total - a.priority.total).slice(0, limit);
