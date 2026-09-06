@@ -115,7 +115,10 @@ export async function suggestTask(
 
 const TRANSITIONS: Record<string, { from: string[]; to: string }> = {
   approve: { from: ["suggested"], to: "approved" },
-  reject: { from: ["suggested"], to: "rejected" },
+  // A task may be declined after approval or mid-flight — the client says the
+  // neighborhood is not important, the change is no longer relevant (spec 131).
+  // Declining clears its blocker so it never lingers as "waiting".
+  reject: { from: ["suggested", "approved", "in_progress"], to: "rejected" },
   start: { from: ["approved"], to: "in_progress" },
   complete: { from: ["in_progress", "approved"], to: "done" },
 };
@@ -169,6 +172,9 @@ async function transition(
         update tasks set status = ${rule.to},
           approved_by = ${action === "approve" ? user.id : (task.approvedBy as string | null)},
           implemented_at = case when ${action === "complete"} then coalesce(implemented_at, now()) else implemented_at end,
+          blocked_reason = case when ${action === "reject"} then null else blocked_reason end,
+          blocked_note = case when ${action === "reject"} then null else blocked_note end,
+          blocked_at = case when ${action === "reject"} then null else blocked_at end,
           updated_at = now()
         where id = ${taskId}
       `;
