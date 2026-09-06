@@ -2368,6 +2368,7 @@ export async function sendProspectDraft(
           select count(distinct s.prospect_id)::int as n from prospect_outreach_sends s
           join prospects p on p.id = s.prospect_id
           where s.allowed
+            and s.prospect_id != ${draft.prospectId}
             and p.launch_id = ${prospect.launchId}
             and trim(regexp_replace(regexp_replace(lower(trim(p.brokerage_affiliation)),
                   ${BROKERAGE_CUT_COMMA}, ''), ${BROKERAGE_CUT_SUFFIX}, '')) = ${normalizeBrokerage(brokerage)}
