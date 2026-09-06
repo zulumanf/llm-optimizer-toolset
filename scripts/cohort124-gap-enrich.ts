@@ -14,48 +14,17 @@
  * Run: npx tsx scripts/cohort124-gap-enrich.ts [--limit 20]
  */
 import "dotenv/config";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { sql } from "@/db/client";
 import type { CurrentUser } from "@/lib/auth";
 import { enrichProspect } from "@/lib/prospects/enrichment";
 import { addContact, updateProspect } from "@/lib/prospects/service";
-
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
+import { emailOnPage } from "@/lib/prospects/contact-verify";
 
 async function operatorUser(): Promise<CurrentUser> {
   const [u] = await sql`select id, email, name, role from users where email = 'zulumanf@gmail.com'`;
   if (!u) throw new Error("Operator user not found.");
   return { id: u.id as string, email: u.email as string, name: u.name as string, role: u.role as CurrentUser["role"] };
-}
-
-/** Fetch a page and report whether the literal email appears (plain or
- * Cloudflare-encoded — cfemail decode is deterministic XOR). */
-function emailOnPage(url: string, email: string): boolean {
-  let html = "";
-  try {
-    html = execFileSync(
-      "curl",
-      ["-sL", "--max-time", "20", "-A", UA, url],
-      { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }
-    );
-  } catch {
-    return false;
-  }
-  const target = email.toLowerCase();
-  if (html.toLowerCase().includes(target)) return true;
-  // Cloudflare-obfuscated mailtos: data-cfemail="<hex>" — first byte is the
-  // XOR key over the remaining bytes.
-  for (const m of html.matchAll(/data-cfemail="([0-9a-f]+)"/gi)) {
-    const hex = m[1]!;
-    const bytes: number[] = [];
-    for (let i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.slice(i, i + 2), 16));
-    const key = bytes[0]!;
-    const decoded = bytes.slice(1).map((b) => String.fromCharCode(b ^ key)).join("");
-    if (decoded.toLowerCase() === target) return true;
-  }
-  return false;
 }
 
 async function main(): Promise<void> {
