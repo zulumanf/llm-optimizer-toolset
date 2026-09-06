@@ -443,7 +443,7 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
   // measurement → approvals/communication → routine. One batched read for the
   // whole portfolio; no per-client queries here.
   const { portfolioScan } = await import("@/lib/engagements/portfolio");
-  const scan = await portfolioScan(new Date(), { includeRecentlyClosed: true });
+  const scan = await portfolioScan(new Date(), { includeRecentlyClosed: true, cache: true });
   const RANK_SEVERITY: Record<number, RiskLevel> = { 0: "critical", 1: "high", 2: "high", 3: "medium", 4: "low" };
   for (const c of scan.clients) {
     if (projectFilter && c.overview.engagement.projectId !== projectFilter) continue;
