@@ -8,6 +8,16 @@ import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
+import {
+  BLOCKED_REASONS,
+  CLIENT_APPROVAL_BLOCKS_START,
+  CLIENT_DECISIONS,
+  DECISION_CHANNELS,
+  TASK_CONFIDENCE,
+  TASK_CONTROL,
+  TASK_SCOPE,
+  type ClientApprovalState,
+} from "@/lib/engagements/constants";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
 import {
@@ -125,7 +135,7 @@ async function transition(
   try {
     await sql.begin(async (tx) => {
       const [task] = await tx`
-        select status, approved_by from tasks where id = ${taskId} for update
+        select status, approved_by, client_approval, blocked_reason from tasks where id = ${taskId} for update
       `;
       if (!task) throw new ClassifiedError("not_found", "Task not found.");
       if (!rule.from.includes(task.status as string)) {
@@ -137,9 +147,28 @@ async function transition(
       if ((action === "start" || action === "complete") && !task.approvedBy) {
         throw new ClassifiedError("conflict", "Task was never approved.");
       }
+      // Spec 131: a public/client-facing change that requires the client's
+      // approval never starts (or completes) before that approval is
+      // captured; a blocked task is unblocked explicitly first.
+      if (
+        (action === "start" || action === "complete") &&
+        CLIENT_APPROVAL_BLOCKS_START.includes(task.clientApproval as ClientApprovalState)
+      ) {
+        throw new ClassifiedError(
+          "conflict",
+          `Client approval is "${String(task.clientApproval).replace(/_/g, " ")}" — record the client's decision before executing.`
+        );
+      }
+      if ((action === "start" || action === "complete") && task.blockedReason) {
+        throw new ClassifiedError(
+          "conflict",
+          `Task is blocked (${String(task.blockedReason).replace(/_/g, " ")}) — unblock it with a note first.`
+        );
+      }
       await tx`
         update tasks set status = ${rule.to},
           approved_by = ${action === "approve" ? user.id : (task.approvedBy as string | null)},
+          implemented_at = case when ${action === "complete"} then coalesce(implemented_at, now()) else implemented_at end,
           updated_at = now()
         where id = ${taskId}
       `;
@@ -505,6 +534,181 @@ export async function suggestTasksFromIntervention(
       if (result.ok) created += 1;
     }
     return ok({ created });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ------------------------------------------------------------ spec 131
+
+const provenanceSchema = z
+  .object({
+    taskId: z.string().uuid(),
+    observation: z.string().trim().max(2000).nullable().optional(),
+    hypothesis: z.string().trim().max(2000).nullable().optional(),
+    confidence: z.enum(TASK_CONFIDENCE).nullable().optional(),
+    control: z.enum(TASK_CONTROL).nullable().optional(),
+    scope: z.enum(TASK_SCOPE).optional(),
+    /** true → client approval required before execution; false → not required. */
+    clientApprovalRequired: z.boolean().optional(),
+    targetUrl: z.string().trim().url().max(1000).nullable().optional(),
+    beforeState: z.string().trim().max(4000).nullable().optional(),
+    afterState: z.string().trim().max(4000).nullable().optional(),
+    measurementNote: z.string().trim().max(1000).nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 1, { message: "Nothing to update." });
+
+/**
+ * The provenance a paid change carries (spec 131): observation → hypothesis
+ * → change → proof. Confidence and control are deterministic labels, not a
+ * score. Flipping approval to "required" on a task already approved by the
+ * client resets it — the client must approve the changed proposal.
+ */
+export async function updateTaskProvenance(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ taskId: string }>> {
+  assertCanWrite(user);
+  const parsed = provenanceSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const i = parsed.data;
+  try {
+    await sql.begin(async (tx) => {
+      const [task] = await tx`
+        select id, project_id, status, client_approval, observation, hypothesis, confidence, control, scope,
+          target_url, before_state, after_state, measurement_note
+        from tasks where id = ${i.taskId} for update
+      `;
+      if (!task) throw new ClassifiedError("not_found", "Task not found.");
+      let approval = task.clientApproval as string;
+      if (i.clientApprovalRequired === true && approval !== "approved") approval = "required";
+      if (i.clientApprovalRequired === true && approval === "approved") approval = "required";
+      if (i.clientApprovalRequired === false) approval = "not_required";
+      const pick = <T,>(next: T | undefined, current: T): T => (next === undefined ? current : next);
+      await tx`
+        update tasks set
+          observation = ${pick(i.observation, task.observation as string | null)},
+          hypothesis = ${pick(i.hypothesis, task.hypothesis as string | null)},
+          confidence = ${pick(i.confidence, task.confidence as string | null)},
+          control = ${pick(i.control, task.control as string | null)},
+          scope = ${pick(i.scope, task.scope as string)},
+          client_approval = ${approval},
+          target_url = ${pick(i.targetUrl, task.targetUrl as string | null)},
+          before_state = ${pick(i.beforeState, task.beforeState as string | null)},
+          after_state = ${pick(i.afterState, task.afterState as string | null)},
+          measurement_note = ${pick(i.measurementNote, task.measurementNote as string | null)},
+          updated_at = now()
+        where id = ${i.taskId}
+      `;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "task.provenance",
+        entity: "task",
+        entityId: i.taskId,
+        projectId: task.projectId as string,
+        detail: JSON.parse(JSON.stringify({ ...i, clientApproval: approval })) as Record<string, never>,
+      });
+    });
+    return ok({ taskId: i.taskId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+const blockSchema = z.object({
+  taskId: z.string().uuid(),
+  reason: z.enum(BLOCKED_REASONS),
+  note: z.string().trim().min(3).max(1000),
+});
+
+/** A blocked task is explicit about who it waits on; it is not "late". */
+export async function blockTask(user: CurrentUser, raw: unknown): Promise<ActionResult<{ taskId: string }>> {
+  assertCanWrite(user);
+  const parsed = blockSchema.safeParse(raw);
+  if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  const i = parsed.data;
+  try {
+    await sql.begin(async (tx) => {
+      const [task] = await tx`select id, project_id, status from tasks where id = ${i.taskId} for update`;
+      if (!task) throw new ClassifiedError("not_found", "Task not found.");
+      if (task.status === "done" || task.status === "rejected") {
+        throw new ClassifiedError("conflict", `A ${task.status} task cannot be blocked.`);
+      }
+      await tx`
+        update tasks set blocked_reason = ${i.reason}, blocked_note = ${i.note}, blocked_at = now(), updated_at = now()
+        where id = ${i.taskId}
+      `;
+      await writeAudit(tx, { userId: user.id, action: "task.blocked", entity: "task", entityId: i.taskId, projectId: task.projectId as string, detail: { reason: i.reason, note: i.note } });
+    });
+    return ok({ taskId: i.taskId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function unblockTask(user: CurrentUser, raw: unknown): Promise<ActionResult<{ taskId: string }>> {
+  assertCanWrite(user);
+  const parsed = z.object({ taskId: z.string().uuid(), note: z.string().trim().min(3).max(1000) }).safeParse(raw);
+  if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  const i = parsed.data;
+  try {
+    await sql.begin(async (tx) => {
+      const [task] = await tx`select id, project_id, blocked_reason from tasks where id = ${i.taskId} for update`;
+      if (!task) throw new ClassifiedError("not_found", "Task not found.");
+      if (!task.blockedReason) throw new ClassifiedError("conflict", "Task is not blocked.");
+      await tx`update tasks set blocked_reason = null, blocked_note = null, blocked_at = null, updated_at = now() where id = ${i.taskId}`;
+      await writeAudit(tx, { userId: user.id, action: "task.unblocked", entity: "task", entityId: i.taskId, projectId: task.projectId as string, detail: { was: task.blockedReason as string, note: i.note } });
+    });
+    return ok({ taskId: i.taskId });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+const decisionSchema = z.object({
+  taskId: z.string().uuid(),
+  decision: z.enum(CLIENT_DECISIONS),
+  channel: z.enum(DECISION_CHANNELS),
+  note: z.string().trim().max(2000).default(""),
+});
+
+/**
+ * Capture the client's decision on a change that required it. The trail is
+ * append-only (task_client_decisions); the task carries the current state.
+ * Recorded by staff from the channel the client used — the portal shows the
+ * pending request, the founder records the answer.
+ */
+export async function recordClientDecision(user: CurrentUser, raw: unknown): Promise<ActionResult<{ taskId: string; decisionId: string }>> {
+  assertCanWrite(user);
+  const parsed = decisionSchema.safeParse(raw);
+  if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  const i = parsed.data;
+  try {
+    const decisionId = await sql.begin(async (tx) => {
+      const [task] = await tx`select id, project_id, client_approval, blocked_reason from tasks where id = ${i.taskId} for update`;
+      if (!task) throw new ClassifiedError("not_found", "Task not found.");
+      if (task.clientApproval === "not_required") {
+        throw new ClassifiedError("conflict", "This task does not require client approval.");
+      }
+      const [row] = await tx`
+        insert into task_client_decisions (task_id, project_id, decision, channel, note, recorded_by)
+        values (${i.taskId}, ${task.projectId}, ${i.decision}, ${i.channel}, ${i.note}, ${user.id})
+        returning id
+      `;
+      await tx`
+        update tasks set client_approval = ${i.decision},
+          blocked_reason = case when blocked_reason = 'client_approval' and ${i.decision === "approved"} then null else blocked_reason end,
+          blocked_note = case when blocked_reason = 'client_approval' and ${i.decision === "approved"} then null else blocked_note end,
+          blocked_at = case when blocked_reason = 'client_approval' and ${i.decision === "approved"} then null else blocked_at end,
+          updated_at = now()
+        where id = ${i.taskId}
+      `;
+      await writeAudit(tx, { userId: user.id, action: "task.client_decision", entity: "task", entityId: i.taskId, projectId: task.projectId as string, detail: { decision: i.decision, channel: i.channel, note: i.note } });
+      return row!.id as string;
+    });
+    return ok({ taskId: i.taskId, decisionId });
   } catch (err) {
     return fail(err);
   }

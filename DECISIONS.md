@@ -2973,3 +2973,24 @@ reply cannot be approved with the price missing. Cohort audit (74 mismatch prosp
 several sent claims were materially wrong once the lead agent is credited (Brace Homes
 5→51, Hamilton and Co. 0→31, Caul Team 0→26, all no longer eligible); see
 scripts/entity-alias-audit.ts output for the full table.
+
+## 2026-09-05 — Client engagement record over existing systems (spec 131)
+The first-client readiness audit (Ryan Ogle / Blu House, Grand Rapids, $7,500/mo × 3) found
+promotion, exclusivity, tasks, interventions, comparability, billing_events, encrypted
+credentials and the portal already built, but no commercial record, no baseline package for
+a prospect whose evidence lives on a SHARED market run, no dispatch-time exclusivity check,
+and no client-approval/provenance state on work. Decisions: (1) `client_engagements` is the
+commercial row; the client stays a `projects` row and the prospect keeps pre-sale history —
+no parallel CRM. (2) The baseline is an immutable JSON package over an immutable run
+(`engagement_measurements`, trigger-protected), because reports/verdicts key on
+`runs.project_id` and the shared-capture instrument is the true baseline; remeasurement is
+the same shared instrument re-run, compared under explicit comparability rules with
+`non_comparable` as a first-class outcome. (3) Exclusivity is enforced where it can fail —
+the existing spec 052 send-time re-check inside `sendProspectDraft`, now with the client's own
+promoted prospect exempt (no second gate); signing refuses a second
+live engagement in the same/contained market without an admin reason. (4) Client approvals
+are captured by staff from the channel the client used (portal stays read-only); the trail is
+append-only. (5) Contract and payment remain manual and are recorded truthfully; the
+commercial gate is signed contract + payment_received or an admin override with a reason,
+never an override of the contract. (6) A former client is flagged do-not-contact with a
+cooldown at close so cold prospecting cannot resume by accident.

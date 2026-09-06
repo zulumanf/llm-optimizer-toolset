@@ -27,7 +27,8 @@ export type QueueSource =
   | "accuracy_finding"
   | "content_approval"
   | "task_overdue"
-  | "intervention_blocked";
+  | "intervention_blocked"
+  | "engagement";
 
 export interface QueueItem {
   id: string;
@@ -62,6 +63,9 @@ const EFFORT_MINUTES: Record<QueueSource, number> = {
   // Unblocking usually means a decision (reschedule, re-baseline, cancel),
   // not a build — but a stalled experiment stalls the client's proof.
   intervention_blocked: 20,
+  // A client-engagement gate (payment, approval, remeasurement, renewal) is a
+  // founder decision or a short admin act.
+  engagement: 20,
 };
 
 /** Risk exposure by exception kind — legal/privacy/publication weight. */
@@ -174,6 +178,8 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
         join projects p on p.id = t.project_id
         where t.status in ('approved', 'in_progress')
           and t.due_date is not null and t.due_date < current_date
+          -- A blocked task waits on someone by design; it is not late (spec 131).
+          and t.blocked_reason is null
           ${projectFilter ? sql`and t.project_id = ${projectFilter}` : sql``}
         order by t.due_date asc
         limit ${limit}
@@ -430,6 +436,55 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
         effortMinutes: EFFORT_MINUTES.intervention_blocked,
       }),
     });
+  }
+
+  // 8. Client engagements (spec 131) — what needs the founder now for a paying
+  // client: commercial gate, onboarding, approvals, client input, due
+  // remeasurement, renewal review, overdue invoices. Derived, never stored.
+  const { listLiveEngagements, engagementOverview } = await import("@/lib/engagements/service");
+  const live = (await listLiveEngagements()).filter((e) => !projectFilter || e.projectId === projectFilter);
+  for (const e of live) {
+    const view = await engagementOverview(e.projectId);
+    if (!view) continue;
+    const push = (kind: string, summary: string, action: string, severity: RiskLevel, dueAt: Date | null) => {
+      items.push({
+        id: `${e.id}:${kind}`,
+        source: "engagement",
+        kind,
+        projectId: e.projectId,
+        projectName: view.engagement.marketName ? `${view.engagement.primaryContactName || "Client"} · ${view.engagement.marketName}` : e.projectId,
+        summary,
+        recommendedAction: action,
+        severity,
+        dueAt,
+        createdAt: new Date(),
+        href: `/projects/${e.projectId}/engagement`,
+        priority: computePriority({
+          severity,
+          hoursUntilDue: hoursUntil(dueAt),
+          commercialValue: clientValue.get(e.projectId) ?? 0.8,
+          dependencyImpact: 0.6,
+          risk: 0.4,
+          effortMinutes: EFFORT_MINUTES.engagement,
+        }),
+      });
+    };
+    if (view.derivedStage === "signed" && !view.commercial.ready) {
+      push("commercial_gate", `Signed, not onboarding: ${view.commercial.reasons.join(" ")}`, "Record the contract/payment, then start onboarding.", "high", null);
+    }
+    if (view.derivedStage === "onboarding" && !view.onboardingDone) {
+      const open = view.checklist.filter((c) => !c.done).map((c) => c.label.toLowerCase());
+      push("onboarding_incomplete", `Onboarding incomplete: ${open.join("; ")}`, "Finish the checklist, then mark active.", "medium", null);
+    }
+    const approvals = view.work.filter((t) => t.clientApproval === "required").length;
+    if (approvals > 0) push("client_approval", `${approvals} change(s) await the client's approval`, "Send the approval request or record the client's decision.", "medium", null);
+    const clientInput = view.work.filter((t) => t.blockedReason === "client_input" || t.blockedReason === "client_access").length;
+    if (clientInput > 0) push("client_input", `${clientInput} item(s) blocked on client input or access`, "Ask in the weekly update.", "medium", null);
+    if (view.nextMeasurement && view.nextMeasurement.scheduledFor && view.nextMeasurement.scheduledFor <= new Date().toISOString().slice(0, 10)) {
+      push("measurement_due", `Remeasurement (${view.nextMeasurement.role}) due ${view.nextMeasurement.scheduledFor}`, "Start the run on the baseline question set and record it.", "high", new Date(`${view.nextMeasurement.scheduledFor}T12:00:00Z`));
+    }
+    if (view.renewalStatus === "due") push("renewal_review", `Renewal review due (term ends ${view.engagement.endsOn})`, "Prepare baseline vs latest, work delivered, remaining opportunity.", "high", new Date(`${view.engagement.endsOn}T12:00:00Z`));
+    if (view.billing.overdueCount > 0) push("invoice_overdue", `${view.billing.overdueCount} invoice(s) overdue`, "Follow up on payment.", "high", null);
   }
 
   return items.sort((a, b) => b.priority.total - a.priority.total).slice(0, limit);
