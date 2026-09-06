@@ -76,6 +76,24 @@ const PORTFOLIO_SCAN_WINDOW_HOURS = 20;
 
 const toIso = (d: unknown): string => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d));
 
+/** Production runs behind a session-mode pooler with a small client cap
+ * (15 on Supabase); a 15-way Promise.all from one process can exhaust it.
+ * The loader runs its fixed query set a few at a time instead. */
+const LOADER_CONCURRENCY = 4;
+
+async function inBatches<T>(thunks: (() => Promise<T>)[], size = LOADER_CONCURRENCY): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < thunks.length; i += size) {
+    const chunk = thunks.slice(i, i + size);
+    out.push(...(await Promise.all(chunk.map((fn) => fn()))));
+  }
+  return out;
+}
+
+/** Opt-in short cache so one page load (Today: feed + queue + section) scans once. */
+const SCAN_CACHE_MS = 15_000;
+const scanCache = new Map<string, { at: number; scan: PortfolioScan }>();
+
 // ------------------------------------------------------------ batched load
 
 interface PortfolioData {
@@ -131,38 +149,38 @@ async function loadPortfolioData(engagements: EngagementRow[]): Promise<Portfoli
   const engagementIds = engagements.map((e) => e.id);
   const contractRefs = engagementIds.map((id) => `engagement:${id}`);
   const prospectIds = engagements.map((e) => e.prospectId).filter((x): x is string => Boolean(x));
-  const [projects, subjects, competitors, tasks, context, measurements, billing, updates, grants, qaEvents, interventions, content, prospects, markets, trigger] = await Promise.all([
-    sql`select id, name from projects where id = any(${projectIds}::uuid[])`,
-    sql`select p.id as project_id, c.id, c.name, c.aliases from projects p join companies c on c.id = p.subject_company_id where p.id = any(${projectIds}::uuid[])`,
-    sql`select k.project_id, c.id as company_id, c.name, (c.archived_at is not null or c.merged_into is not null) as archived
+  const [projects, subjects, competitors, tasks, context, measurements, billing, updates, grants, qaEvents, interventions, content, prospects, markets, trigger] = (await inBatches<Record<string, unknown>[]>([
+    () => sql`select id, name from projects where id = any(${projectIds}::uuid[])`,
+    () => sql`select p.id as project_id, c.id, c.name, c.aliases from projects p join companies c on c.id = p.subject_company_id where p.id = any(${projectIds}::uuid[])`,
+    () => sql`select k.project_id, c.id as company_id, c.name, (c.archived_at is not null or c.merged_into is not null) as archived
         from competitors k join companies c on c.id = k.company_id
         where k.project_id = any(${projectIds}::uuid[]) and k.archived_at is null`,
-    sql`select id, project_id, title, status, priority, client_visible, observation, hypothesis, confidence, control, scope,
+    () => sql`select id, project_id, title, status, priority, client_visible, observation, hypothesis, confidence, control, scope,
           client_approval, blocked_reason, blocked_note, target_url, before_state, after_state, implemented_at,
           due_date, updated_at, cardinality(evidence_ids) as evidence_count
         from tasks where project_id = any(${projectIds}::uuid[])
         order by (status = 'in_progress') desc, (status = 'approved') desc, (status = 'suggested') desc, updated_at desc`,
-    sql`select id, engagement_id, kind, label, value, provenance, access_status, source_ref, created_at
+    () => sql`select id, engagement_id, kind, label, value, provenance, access_status, source_ref, created_at
         from engagement_context_items where engagement_id = any(${engagementIds}::uuid[]) order by kind, created_at`,
-    sql`select id, engagement_id, role, status, scheduled_for, reason, run_id, provider, snapshot, comparability, comparison, frozen_at, status_detail
+    () => sql`select id, engagement_id, role, status, scheduled_for, reason, run_id, provider, snapshot, comparability, comparison, frozen_at, status_detail
         from engagement_measurements where engagement_id = any(${engagementIds}::uuid[])
         order by (role = 'baseline') desc, coalesce(scheduled_for, frozen_at::date, created_at::date) asc, created_at asc`,
-    sql`select id, contract_ref, kind, amount_cents, due_date, occurred_at, external_invoice_id
+    () => sql`select id, contract_ref, kind, amount_cents, due_date, occurred_at, external_invoice_id
         from billing_events where contract_ref = any(${contractRefs}::text[]) order by occurred_at asc`,
-    sql`select distinct on (entity_id) entity_id, at, detail from audit_log
+    () => sql`select distinct on (entity_id) entity_id, at, detail from audit_log
         where entity = 'client_engagement' and action = 'engagement.client_update_sent' and entity_id = any(${engagementIds}::uuid[])
         order by entity_id, at desc`,
-    sql`select a.project_id, count(*)::int as n from user_project_access a join users u on u.id = a.user_id
+    () => sql`select a.project_id, count(*)::int as n from user_project_access a join users u on u.id = a.user_id
         where a.project_id = any(${projectIds}::uuid[]) and u.role = 'client_viewer' group by a.project_id`,
-    sql`select engagement_id, lane, code, severity, message, detail from engagement_qa_events
+    () => sql`select engagement_id, lane, code, severity, message, detail from engagement_qa_events
         where engagement_id = any(${engagementIds}::uuid[]) and status = 'open'`,
-    sql`select id, project_id, title, shipped_at, urls, hypothesis, client_visible from interventions
+    () => sql`select id, project_id, title, shipped_at, urls, hypothesis, client_visible from interventions
         where project_id = any(${projectIds}::uuid[]) and archived_at is null`,
-    sql`select id, project_id, title, updated_at from content_assets where project_id = any(${projectIds}::uuid[]) and status = 'published'`,
-    prospectIds.length > 0 ? sql`select id, do_not_contact from prospects where id = any(${prospectIds}::uuid[])` : Promise.resolve([] as Record<string, unknown>[]),
-    sql<MarketNode[]>`select id, name, parent_id from markets`,
-    sql`select 1 from pg_trigger where tgname = 'engagement_measurements_immutable'`,
-  ]);
+    () => sql`select id, project_id, title, updated_at from content_assets where project_id = any(${projectIds}::uuid[]) and status = 'published'`,
+    () => (prospectIds.length > 0 ? sql`select id, do_not_contact from prospects where id = any(${prospectIds}::uuid[])` : Promise.resolve([] as Record<string, unknown>[])),
+    () => sql<MarketNode[]>`select id, name, parent_id from markets` as unknown as Promise<Record<string, unknown>[]>,
+    () => sql`select 1 from pg_trigger where tgname = 'engagement_measurements_immutable'`,
+  ])) as [Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], Record<string, unknown>[], MarketNode[], Record<string, unknown>[]];
   return {
     engagements,
     projectNames: new Map(projects.map((p) => [p.id as string, p.name as string])),
@@ -565,7 +583,18 @@ export interface PortfolioScan {
   priorities: { client: PortfolioClient; alert: PortfolioAlert | null }[];
 }
 
-export async function portfolioScan(now = new Date(), opts: { includeRecentlyClosed?: boolean } = {}): Promise<PortfolioScan> {
+export async function portfolioScan(now = new Date(), opts: { includeRecentlyClosed?: boolean; cache?: boolean } = {}): Promise<PortfolioScan> {
+  const key = `${opts.includeRecentlyClosed ?? true}`;
+  if (opts.cache) {
+    const hit = scanCache.get(key);
+    if (hit && now.getTime() - hit.at < SCAN_CACHE_MS) return hit.scan;
+  }
+  const scan = await portfolioScanUncached(now, opts);
+  if (opts.cache) scanCache.set(key, { at: now.getTime(), scan });
+  return scan;
+}
+
+async function portfolioScanUncached(now: Date, opts: { includeRecentlyClosed?: boolean }): Promise<PortfolioScan> {
   const engagements = await loadEngagements({ includeRecentlyClosed: opts.includeRecentlyClosed ?? true }, now);
   if (engagements.length === 0) {
     return { scannedAt: now, clients: [], capacity: { liveEngagements: 0, activeWorkItems: 0, approvalsWaiting: 0, blockedOnClient: 0, measurementsDue: 0, clientWaitingOnUs: 0, p0: 0 }, priorities: [] };

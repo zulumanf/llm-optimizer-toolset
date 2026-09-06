@@ -49,7 +49,7 @@ export default async function OperationsPage() {
     combinedAttentionFeed(),
     clientCostRollup(),
     actionRequiredQueue({ limit: 5 }),
-    portfolioScan(),
+    portfolioScan(new Date(), { cache: true }),
   ]);
   const WAITING_LABEL: Record<string, string> = { us: "waiting on us", client: "waiting on client", third_party: "waiting on third party" };
 

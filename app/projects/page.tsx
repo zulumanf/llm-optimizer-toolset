@@ -38,7 +38,7 @@ export default async function ProjectsPage({
       ownerId: owner ?? null,
       serviceTier: tierFilter,
     }),
-    portfolioScan(new Date(), { includeRecentlyClosed: false }),
+    portfolioScan(new Date(), { includeRecentlyClosed: false, cache: true }),
   ]);
   const human = (v: string | null | undefined) => (v ?? "").replaceAll("_", " ");
   const WAITING: Record<string, string> = { us: "us", client: "client", third_party: "third party" };
