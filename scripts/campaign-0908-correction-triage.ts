@@ -16,8 +16,8 @@ import { dirname } from "node:path";
 import { sql } from "@/db/client";
 import { MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
 import { deriveLeadAgentAliases, leadAgentRelationships } from "@/lib/prospects/entity-aliases";
-import { deliveredTouch1, distinctCompetitorQuestions, firstNameFrom, sequenceForProspect } from "@/lib/prospects/followups";
-import { lintFollowupCopy } from "@/lib/prospects/followup-templates";
+import { deliveredTouch1, distinctCompetitorQuestions, firstNameFrom, marketTimezone, sequenceForProspect } from "@/lib/prospects/followups";
+import { qaStrongCorrection, renderStrongCorrection } from "@/lib/prospects/correction-templates";
 import { mismatchStrength, type MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
 
 const oi = process.argv.indexOf("--out");
@@ -48,23 +48,7 @@ async function sideConfidence(companyId: string): Promise<{ level: "high" | "med
   return { level: "high", why: rel.entityType === "team" ? `lead ${rel.teamLead} resolved (${rel.existingAliases.length} aliases)` : "individual record" };
 }
 
-function render(first: string, o: MismatchEvidenceSnapshot, n: MismatchEvidenceSnapshot, entity: "team" | "individual" | null, footer: string[]): string {
-  const you = entity === "team" ? "Your team" : "You";
-  const comp = n.competitor.name, N = n.answerCount;
-  return [
-    `${first},`, ``,
-    `I caught an entity-matching issue while checking these results again.`, ``,
-    `My first email said:`,
-    `${you}: recommended in ${o.prospect.recommendationCount} of ${N} answers`,
-    `${comp}: recommended in ${o.competitor.recommendationCount} of ${N}`, ``,
-    `Using the same ${N} answers, the corrected count is:`, ``,
-    `${you}: recommended in ${n.prospect.recommendationCount} of ${N} answers`,
-    `${comp}: recommended in ${n.competitor.recommendationCount} of ${N}`, ``,
-    `The direction of the finding is still the same, but I wanted to give you the right numbers rather than repeat the old ones.`, ``,
-    `If you want the exact questions, I'll send them.`, ``,
-    ...footer,
-  ].join("\n");
-}
+// Rendering + QA live in lib/prospects/correction-templates (founder framing 2026-09-06).
 
 interface Row { name: string; market: string; sent: string; pc: number; cc: number; gap: number; prodP: string; prodC: string; ratio: number | null; distinct: number; conf: string; touch: string; rec: Rec; tier: string; why: string; preview: string | null; lint: string }
 
@@ -93,11 +77,12 @@ async function main(): Promise<void> {
     else if (tier === "strong" && distinct >= 3) { rec = "STRONG_CORRECTION_CANDIDATE"; why = `strong tier (ratio ${n.competitor.productionRatio?.toFixed(2)}, gap ${gap}) across ${distinct} distinct questions`; }
     else { rec = "VALID_BUT_LOW_PRIORITY"; why = tier === "strong" ? `strong tier but only ${distinct} distinct competitor questions` : `valid tier only (ratio ${n.competitor.productionRatio?.toFixed(2)}, gap ${gap})`; }
     let preview: string | null = null, lint = "";
-    if (rec === "STRONG_CORRECTION_CANDIDATE") {
+    if (rec === "STRONG_CORRECTION_CANDIDATE" && entity) {
       const lines = t1.body.split("\n");
       const sepIdx = lines.findIndex((l) => l.trim() === "--" || l.trim() === "—");
-      preview = render(firstNameFrom(t1.body), o, n, entity, sepIdx >= 0 ? lines.slice(sepIdx) : ["--", "Francisco"]);
-      const issues = lintFollowupCopy(`Re: ${t1.subject ?? ""}`, preview);
+      const { marketName } = await marketTimezone(r.prospectId as string);
+      preview = renderStrongCorrection({ firstName: firstNameFrom(t1.body), marketName, entityType: entity, original: o, corrected: n, footer: sepIdx >= 0 ? lines.slice(sepIdx) : ["--", "Francisco"] }).body;
+      const issues = qaStrongCorrection(`Re: ${t1.subject ?? ""}`, preview, o, n, { touch1Body: t1.body, entityType: entity, entityConfidence: conf as "high" | "medium" | "low" });
       lint = issues.length ? issues.map((i) => `[${i.check}] ${i.detail}`).join(" ") : "pass";
     }
     rows.push({ name: r.businessName as string, market: r.market as string, sent: `${o.prospect.recommendationCount}/${o.competitor.recommendationCount} of ${o.answerCount}`, pc: n.prospect.recommendationCount, cc: n.competitor.recommendationCount, gap, prodP: n.prospect.productionDisplay, prodC: n.competitor.productionDisplay, ratio: n.competitor.productionRatio, distinct, conf: `${conf} (prospect: ${pConf.why}; competitor: ${cConf.why})`, touch: `next T${seq.nextTouch} (paused)`, rec, tier, why, preview, lint });
