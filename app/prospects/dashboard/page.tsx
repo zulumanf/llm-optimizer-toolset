@@ -48,6 +48,7 @@ import { executiveBrief } from "@/lib/prospects/brief";
 import { ExecutiveBriefSection } from "@/components/prospects/executive-brief";
 import { DAILY_SEND_QUOTA, QA_FIXTURE_NAME_PREFIX } from "@/lib/prospects/constants";
 import { reportAccessSummary } from "@/lib/prospects/report-access";
+import { pricingLearning } from "@/lib/pricing/quotes";
 import { dashboardHref, type DashboardFilters } from "@/lib/prospects/dashboard-url";
 import { outreachMetrics, type Rate } from "@/lib/prospects/analytics";
 import { AnalyzeView, OPEN_SIGNAL_CAVEAT, POSITIVE_REPLY_CAVEAT } from "@/components/prospects/analyze-view";
@@ -256,7 +257,9 @@ export default async function ProspectingDashboardPage({
     const mo: Momentum | null = view === "operate" ? await momentum(now) : null;
     // Analyze = the acquisition control panel: one facts bundle, derived once.
     const panel: AcquisitionPanel | null = view === "analyze" ? deriveAcquisition(await acquisitionFacts(), now) : null;
-    data = { c, health, upcoming, launchId, all, mo, panel, reportAccess };
+    // Spec 135: pricing learning rides the Analyze view only.
+    const pricing = view === "analyze" ? await pricingLearning() : null;
+    data = { c, health, upcoming, launchId, all, mo, panel, reportAccess, pricing };
   } catch {
     return (
       <PageShell>
@@ -265,7 +268,7 @@ export default async function ProspectingDashboardPage({
       </PageShell>
     );
   }
-  const { c, health, upcoming, launchId, all, mo, panel, reportAccess } = data;
+  const { c, health, upcoming, launchId, all, mo, panel, reportAccess, pricing } = data;
   const { cohort } = c;
   const launch = c.launches.find((l) => l.id === launchId);
   const cohortName = launch ? `${launch.name} · Batch 1` : "All active cohorts";
@@ -428,6 +431,7 @@ export default async function ProspectingDashboardPage({
       {view === "analyze" && panel && (
         <AcquisitionPanelView
           panel={panel}
+          pricing={pricing ?? undefined}
           diagnostics={
             <AnalyzeView
               prospects={c.prospects}

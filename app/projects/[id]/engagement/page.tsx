@@ -425,6 +425,10 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
             <p className="mt-1">{e.scopeSummary}</p>
             {e.scopeExclusions && <p className="mt-2 text-xs text-muted-foreground">{e.scopeExclusions}</p>}
             <p className="mt-2 text-xs text-muted-foreground">Payment terms: {e.paymentTerms || "not stated"} · {human(e.billingCadence)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Pricing policy: {e.pricingPolicyVersion ?? "pre-policy (recorded before spec 135)"}
+              {e.priceOverrideReason ? ` · founder override (default $${(e.defaultTotalValueUsd ?? 0).toLocaleString("en-US")}): ${e.priceOverrideReason}` : ""}
+            </p>
           </div>
           <div className="rounded-md border p-3 text-sm">
             <p className="text-xs text-muted-foreground">Marketing permissions (default: no public use)</p>

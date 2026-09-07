@@ -20,12 +20,12 @@
 import { sql } from "@/db/client";
 import { humanViews, machineHealth } from "@/lib/prospects/dashboard";
 import {
-  ENGAGEMENT_OFFER,
   MISMATCH_TEMPLATE_VERSION,
   PRICING_REQUEST_RE,
   QA_FIXTURE_NAME_PREFIX,
   REPORT_DELIVERY_TEMPLATE_VERSION,
 } from "@/lib/prospects/constants";
+import { policyStatedIn } from "@/lib/pricing/policy";
 import { STRONG_CORRECTION_TEMPLATE_VERSION } from "@/lib/prospects/correction-templates";
 import { MISMATCH_PROVIDER } from "@/lib/prospects/mismatch";
 import { CURRENT } from "@/lib/prospects/benchmark";
@@ -155,7 +155,6 @@ async function sequences(): Promise<SequenceFact[]> {
 
 /** Follow-up touches, founder replies (report deliveries) and corrections. */
 async function touchSends(): Promise<TouchSendFact[]> {
-  const offerMarker = `%${ENGAGEMENT_OFFER.monthlyUsd.toLocaleString("en-US")}%`;
   const rows = await sql`
     select s.prospect_id, s.sent_at,
       case
@@ -164,7 +163,7 @@ async function touchSends(): Promise<TouchSendFact[]> {
         when dr.sequence_id is not null and dr.touch_number = 2 then 'T2'
         when dr.sequence_id is not null and dr.touch_number = 3 then 'T3'
       end as kind,
-      (dr.body like ${offerMarker}) as offer_presented
+      dr.body
     from prospect_outreach_sends s join outreach_drafts dr on dr.id = s.draft_id join prospects p on p.id = s.prospect_id
     where s.allowed and p.archived_at is null
       and (dr.prompt_version in (${STRONG_CORRECTION_TEMPLATE_VERSION}, ${REPORT_DELIVERY_TEMPLATE_VERSION})
@@ -174,7 +173,7 @@ async function touchSends(): Promise<TouchSendFact[]> {
     prospectId: r.prospectId as string,
     kind: r.kind as TouchSendFact["kind"],
     sentAt: new Date(r.sentAt as Date),
-    offerPresented: Boolean(r.offerPresented),
+        offerPresented: policyStatedIn((r.body as string) ?? "") !== null,
   }));
 }
 
