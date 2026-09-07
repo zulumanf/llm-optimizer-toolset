@@ -228,25 +228,28 @@ export async function ingestRealTrendsRecord(
   }
 }
 
-/** Newest RealTrends production record for a prospect, shaped for the audit
- * snapshot; null when none ingested. */
-export async function latestVerifiedProduction(
-  prospectId: string
-): Promise<VerifiedProduction | null> {
-  const [row] = await sql`
-    select metadata, source_url, retrieved_at
-    from prospect_authority_signals
-    where prospect_id = ${prospectId}
-      and metadata->>'record_type' = ${REALTRENDS_RECORD_TYPE}
-      and kind = 'transaction_volume'
-    order by created_at desc
-    limit 1
-  `;
-  if (!row) return null;
+/** A verified production record together with the signal row that carries
+ * it — the reference an outreach evidence snapshot stores (spec 124). */
+export interface ProductionEvidence extends VerifiedProduction {
+  /** Authority-signal id, or the realtrends_records id for licensed-dataset
+   * evidence (spec 124 data pass). */
+  signalId: string;
+  /** Null for dataset-sourced evidence — a comparison entity does not need
+   * to be an outreach prospect. */
+  prospectId: string | null;
+  entityType: "individual" | "team" | null;
+}
+
+function parseProductionRow(row: Record<string, unknown>): ProductionEvidence {
   const m = row.metadata as Record<string, unknown>;
   const volumeUsd = Number(m.volumeUsd ?? m["volume_usd"]);
   const sides = Number(m.sides);
+  const entityType = m.entityType ?? m["entity_type"];
   return {
+    signalId: row.id as string,
+    prospectId: row.prospectId as string,
+    entityType:
+      entityType === "individual" || entityType === "team" ? entityType : null,
     source: REALTRENDS_SOURCE_NAME,
     rank: m.rank === null || m.rank === undefined ? null : Number(m.rank),
     rankScope: String(m.rankScope ?? m["rank_scope"] ?? ""),
@@ -261,4 +264,35 @@ export async function latestVerifiedProduction(
     sourceUrl: row.sourceUrl as string,
     retrievedOn: String(m.capturedOn ?? m["captured_on"] ?? ""),
   };
+}
+
+/** Newest RealTrends production record for a prospect, shaped for the audit
+ * snapshot; null when none ingested. */
+export async function latestVerifiedProduction(
+  prospectId: string
+): Promise<VerifiedProduction | null> {
+  const map = await latestVerifiedProductionByProspect([prospectId]);
+  return map.get(prospectId) ?? null;
+}
+
+/** Newest RealTrends production per prospect, one round trip — the
+ * competitive-mismatch candidate loader (spec 124). Prospects with no
+ * structured RealTrends record are simply absent from the map. */
+export async function latestVerifiedProductionByProspect(
+  prospectIds: string[]
+): Promise<Map<string, ProductionEvidence>> {
+  const out = new Map<string, ProductionEvidence>();
+  if (prospectIds.length === 0) return out;
+  const rows = await sql`
+    select distinct on (prospect_id) id, prospect_id, metadata, source_url
+    from prospect_authority_signals
+    where prospect_id = any(${prospectIds}::uuid[])
+      and metadata->>'record_type' = ${REALTRENDS_RECORD_TYPE}
+      and kind = 'transaction_volume'
+    order by prospect_id, created_at desc
+  `;
+  for (const row of rows) {
+    out.set(row.prospectId as string, parseProductionRow(row));
+  }
+  return out;
 }

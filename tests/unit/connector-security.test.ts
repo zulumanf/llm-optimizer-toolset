@@ -427,3 +427,54 @@ describe("connector registry", () => {
     }
   });
 });
+
+describe("connectorFetch redaction vs the token-refresh exception", () => {
+  const tokenResponse = () =>
+    new Response(
+      JSON.stringify({
+        access_token: "ya29.a0AfB_byC1234567890abcdefghijklmnopqrstuvwxyz",
+        refresh_token: "1//0gABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefg",
+        expires_in: 3599,
+        token_type: "Bearer",
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+
+  it("redacts token-like response fields by default", async () => {
+    const { connectorFetch } = await import("@/lib/connectors/http");
+    const res = await connectorFetch(
+      { url: "https://oauth2.googleapis.com/token", method: "POST", form: { a: "b" } },
+      { provider: "gmail", capability: "email.send_approved_message", fetchImpl: async () => tokenResponse() }
+    );
+    const data = res.data as Record<string, unknown>;
+    expect(data.access_token).toBe("[redacted]");
+  });
+
+  it("rawSecrets returns the credential intact — the live failure was '[redacted]' stored and replayed as a bearer token", async () => {
+    const { connectorFetch } = await import("@/lib/connectors/http");
+    const res = await connectorFetch(
+      {
+        url: "https://oauth2.googleapis.com/token",
+        method: "POST",
+        form: { a: "b" },
+        rawSecrets: true,
+      },
+      { provider: "gmail", capability: "email.send_approved_message", fetchImpl: async () => tokenResponse() }
+    );
+    const data = res.data as Record<string, unknown>;
+    expect(data.access_token).toContain("ya29.");
+    expect(data.access_token).not.toContain("redacted");
+  });
+
+  it("the credential store refuses the redaction placeholder outright", async () => {
+    const { storeCredential } = await import("@/lib/connectors/credentials");
+    await expect(
+      storeCredential({
+        connectionId: "00000000-0000-4000-8000-00000000c0de",
+        kind: "oauth2",
+        secret: "[redacted]",
+        userId: "00000000-0000-4000-8000-000000000001",
+      })
+    ).rejects.toThrow(/redacted placeholder/);
+  });
+});

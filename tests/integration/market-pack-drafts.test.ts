@@ -100,7 +100,7 @@ describe.skipIf(!TEST_URL)("market pack drafts (integration)", () => {
     const [installRow] = await sql`select pack_key from market_pack_installs`;
     expect(installRow?.packKey).toBe("draft:hoboken");
 
-    // Deciding twice refuses.
+    // Deciding the SAME draft twice refuses.
     const again = await research.installMarketPackDraft(operator, {
       draftId: drafted.draftId,
     });
@@ -112,6 +112,24 @@ describe.skipIf(!TEST_URL)("market pack drafts (integration)", () => {
       where agent_version = ${research.PACK_DRAFT_VERSION} and success
     `;
     expect(Number(ledger?.n)).toBe(1);
+
+    // A SECOND research draft for the same city installs idempotently:
+    // the existing launch is the outcome, never a name-collision dead end
+    // (found live — the Wilmington chain stalled exactly here).
+    const redrafted = unwrap(
+      await research.draftMarketPack(
+        operator,
+        { cityName: "Hoboken", state: "New Jersey" },
+        cannedCaller(RESEARCH)
+      )
+    );
+    const reinstalled = unwrap(
+      await research.installMarketPackDraft(operator, { draftId: redrafted.draftId })
+    );
+    expect(reinstalled.alreadyInstalled).toBe(true);
+    expect(reinstalled.launchId).toBe(installed.launchId);
+    const [launchCount] = await sql`select count(*)::int as n from market_launches`;
+    expect(Number(launchCount?.n)).toBe(1);
   });
 
   it("rejection installs nothing; a failed call stores a failed draft", async () => {

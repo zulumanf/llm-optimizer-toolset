@@ -14,7 +14,7 @@ import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import * as store from "@/db/connectors";
 import { ClassifiedError } from "@/lib/errors";
-import { CURRENT_KEY_VERSION, open, seal } from "@/lib/security/envelope";
+import { CURRENT_KEY_VERSION, open, seal, REDACTED } from "@/lib/security/envelope";
 import type { CredentialKind } from "@/lib/connectors/types";
 
 export interface StoreCredentialInput {
@@ -35,6 +35,15 @@ export interface StoreCredentialInput {
 export async function storeCredential(input: StoreCredentialInput): Promise<void> {
   if (input.secret.trim().length === 0) {
     throw new ClassifiedError("validation", "A credential cannot be empty.");
+  }
+  // The literal redaction placeholder once reached this store (the http
+  // layer redacted a token-refresh response; found live 2026-08-20) and
+  // poisoned the connection for hours. A redacted value is never a secret.
+  if (input.secret.includes(REDACTED) || input.refreshToken?.includes(REDACTED)) {
+    throw new ClassifiedError(
+      "internal",
+      "Refusing to store a redacted placeholder as a credential — the value was scrubbed upstream (pass rawSecrets on the refresh call)."
+    );
   }
   const sealed = seal(input.secret, input.connectionId);
   const sealedRefresh =

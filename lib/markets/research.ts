@@ -166,7 +166,7 @@ export async function draftMarketPack(
 export async function installMarketPackDraft(
   user: CurrentUser,
   raw: unknown
-): Promise<ActionResult<{ launchId: string; cityName: string }>> {
+): Promise<ActionResult<{ launchId: string; cityName: string; alreadyInstalled: boolean }>> {
   const parsed = z
     .object({
       draftId: z.string().uuid(),
@@ -194,8 +194,38 @@ export async function installMarketPackDraft(
         new ClassifiedError("internal", "The draft installed but its city node was not found.")
       );
     }
+    const launchName = `${pack.cityName} — ${parsed.data.priceSegment} residential`;
+    // Idempotent by launch (found live: re-researching a city produced a
+    // second draft whose install died on the name collision, dead-ending
+    // the chain): an existing launch for this market IS the installed
+    // outcome — return it, and the duplicate draft is recorded installed.
+    const [existing] = await sql`
+      select id from market_launches
+      where name = ${launchName} and market_id = ${installed.data.cityMarketId}
+        and archived_at is null
+    `;
+    if (existing) {
+      await decideStagedRow({
+        table: "market_pack_drafts",
+        id: draft.id as string,
+        user,
+        to: "installed",
+        auditAction: "market.pack_draft_install",
+        auditEntity: "market_pack_draft",
+        auditDetail: {
+          cityName: draft.cityName,
+          launchId: existing.id,
+          alreadyInstalled: true,
+        },
+      });
+      return ok({
+        launchId: existing.id as string,
+        cityName: pack.cityName,
+        alreadyInstalled: true,
+      });
+    }
     const launch = await createLaunch(user, {
-      name: `${pack.cityName} — ${parsed.data.priceSegment} residential`,
+      name: launchName,
       marketId: installed.data.cityMarketId,
       priceSegment: parsed.data.priceSegment,
       serviceCategory: "residential brokerage",
@@ -210,7 +240,7 @@ export async function installMarketPackDraft(
       auditEntity: "market_pack_draft",
       auditDetail: { cityName: draft.cityName, launchId: launch.data.launchId },
     });
-    return ok({ launchId: launch.data.launchId, cityName: pack.cityName });
+    return ok({ launchId: launch.data.launchId, cityName: pack.cityName, alreadyInstalled: false });
   } catch (err) {
     return fail(err);
   }

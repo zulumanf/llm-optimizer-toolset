@@ -120,20 +120,22 @@ describe.skipIf(!TEST_URL)("workspace assistant (integration)", () => {
     expect(all.length).toBe(4);
   });
 
-  it("mutating tools and unknown tools come back as tool errors, and the turn still answers", async () => {
+  it("raw MCP operator tools and unknown tools come back as tool errors, and the turn still answers", async () => {
     const reply = unwrap(
       await assistant.askAssistant(
         operator,
         { message: "start a run", pathname: "/" },
         scripted([
-          // run_prompt_set is an OPERATOR tool — invisible to the assistant.
+          // run_prompt_set is an MCP OPERATOR tool — never in the assistant
+          // belt by that name (spec 096 wraps live runs as the confirm-gated
+          // start_benchmark_run instead), so it stays unknown here.
           { action: "tool", tool: "run_prompt_set", input: { project_id: "x" } },
           { action: "answer", answer: "I can't start runs — use the Runs page." },
         ])
       )
     );
     expect(reply.toolCalls[0]).toMatchObject({ tool: "run_prompt_set", ok: false });
-    expect(reply.toolCalls[0]?.summary).toContain("read-only");
+    expect(reply.toolCalls[0]?.summary).toContain("Unknown tool");
     expect(reply.reply).toContain("Runs page");
   });
 
@@ -148,6 +150,103 @@ describe.skipIf(!TEST_URL)("workspace assistant (integration)", () => {
     );
     expect(reply.toolCalls.length).toBe(assistant.MAX_TOOL_CALLS);
     expect(reply.reply).toContain("lookup limit");
+  });
+
+  it("sends only the last HISTORY_LIMIT messages, chronological, new user message last", async () => {
+    const [conv] = await sql`
+      insert into assistant_conversations (user_id, title)
+      values (${operator.id}, 'long thread') returning id
+    `;
+    const conversationId = conv!.id as string;
+    // 30 alternating messages, oldest first — msg-01 … msg-30.
+    for (let i = 1; i <= 30; i += 1) {
+      await sql`
+        insert into assistant_messages (conversation_id, role, content, created_at)
+        values (${conversationId}, ${i % 2 === 1 ? "user" : "assistant"},
+          ${"msg-" + String(i).padStart(2, "0")},
+          now() - make_interval(mins => ${60 - i}))
+      `;
+    }
+    let captured = "";
+    const capturing: AgentCaller = async (args) => {
+      captured = args.user;
+      return {
+        text: JSON.stringify({ action: "answer", answer: "ok" }),
+        tokensIn: 1,
+        tokensOut: 1,
+      };
+    };
+    unwrap(
+      await assistant.askAssistant(
+        operator,
+        { conversationId, message: "the newest question", pathname: "/" },
+        capturing
+      )
+    );
+    // Window: exactly the last 20 stored messages plus the new user turn.
+    const entries = captured.split("\n\n");
+    expect(entries.length).toBe(assistant.HISTORY_LIMIT + 1);
+    expect(captured).toContain("msg-11");
+    expect(captured).toContain("msg-30");
+    expect(captured).not.toContain("msg-10");
+    expect(captured).not.toContain("msg-01");
+    // Chronological, oldest of the window first.
+    expect(entries[0]).toBe("USER: msg-11");
+    expect(captured.indexOf("msg-11")).toBeLessThan(captured.indexOf("msg-12"));
+    expect(captured.indexOf("msg-29")).toBeLessThan(captured.indexOf("msg-30"));
+    // The new user message rides last.
+    expect(entries[entries.length - 1]).toBe("USER: the newest question");
+  });
+
+  it("attributes the turn to the current prompt version in the llm ledger", async () => {
+    const { ASSISTANT_PROMPT_VERSION } = await import("@/lib/assistant/prompt");
+    unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "version check", pathname: "/" },
+        scripted([{ action: "answer", answer: "ok" }])
+      )
+    );
+    const [row] = await sql`
+      select agent_version from llm_calls order by called_at desc limit 1
+    `;
+    expect(row?.agentVersion).toBe(ASSISTANT_PROMPT_VERSION);
+    expect(row?.agentVersion).toBe("workspace-assistant-v4");
+  });
+
+  it("persists the turn when the agent loop throws after tool calls — the thread stays the record", async () => {
+    let calls = 0;
+    const failing: AgentCaller = async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          text: JSON.stringify({ action: "tool", tool: "list_projects", input: {} }),
+          tokensIn: 100,
+          tokensOut: 20,
+        };
+      }
+      throw new Error("provider melted down");
+    };
+    const result = await assistant.askAssistant(
+      operator,
+      { message: "doomed turn", pathname: "/" },
+      failing
+    );
+    // The failure still surfaces to the caller…
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain("provider melted down");
+    // …but the turn was recorded first: user + assistant rows with the
+    // executed tool log, and the conversation's activity clock bumped.
+    const [conv] = await sql`
+      select id, last_message_at from assistant_conversations where title = 'doomed turn'
+    `;
+    expect(conv).toBeDefined();
+    expect(conv?.lastMessageAt).not.toBeNull();
+    const messages = await assistant.getConversationMessages(operator, conv!.id as string);
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(messages[0]?.content).toBe("doomed turn");
+    expect(messages[1]?.content).toContain("provider melted down");
+    expect(messages[1]?.toolCalls?.[0]).toMatchObject({ tool: "list_projects", ok: true });
   });
 
   it("enforces the boundaries: staff-only, own conversations only, insert-only messages", async () => {

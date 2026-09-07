@@ -33,8 +33,8 @@ function parseMigration(file: string): { up: string; down: string } {
 
 async function main(): Promise<void> {
   const direction = process.argv[2];
-  if (direction !== "up" && direction !== "down") {
-    console.error("Usage: tsx scripts/migrate.ts up|down");
+  if (direction !== "up" && direction !== "down" && direction !== "status") {
+    console.error("Usage: tsx scripts/migrate.ts up|down|status");
     process.exit(1);
   }
   const dbFlagIdx = process.argv.indexOf("--db");
@@ -59,6 +59,14 @@ async function main(): Promise<void> {
       (await sql`select name from schema_migrations`).map((r) => r.name as string)
     );
 
+    if (direction === "status") {
+      // Read-only: what is applied, what is pending — for pre-deploy checks.
+      const appliedList = files.filter((f) => applied.has(f));
+      const pending = files.filter((f) => !applied.has(f));
+      console.log(`applied: ${appliedList.length} (latest ${appliedList.at(-1) ?? "none"})`);
+      console.log(pending.length === 0 ? "pending: none" : `pending: ${pending.join(", ")}`);
+      return;
+    }
     if (direction === "up") {
       const pending = files.filter((f) => !applied.has(f));
       if (pending.length === 0) {

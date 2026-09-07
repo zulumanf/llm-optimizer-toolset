@@ -42,6 +42,47 @@ export function newLinkKey(): string {
   return randomBytes(KEY_BYTES).toString("base64url");
 }
 
+/** Smallest human-readable disambiguation (spec 134): base, base-<market>,
+ * then base-2, base-3 … Pure; known-answer tested. */
+export function disambiguateSlug(base: string, marketSlug: string | null, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  if (marketSlug && marketSlug !== base) {
+    const withMarket = `${base}-${marketSlug}`.slice(0, SLUG_MAX).replace(/-+$/g, "");
+    if (!taken.has(withMarket)) return withMarket;
+  }
+  for (let n = 2; n < 10_000; n++) {
+    const candidate = `${base}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${base}-${randomBytes(3).toString("hex")}`;
+}
+
+/**
+ * The prospect's clean report slug (prospects.report_slug), assigned once and
+ * never changed: the URL a prospect has seen must keep working. Presentation
+ * only — the audit's identity is its id/token, never the slug.
+ */
+export async function ensureReportSlug(
+  tx: Sql | TransactionSql,
+  prospectId: string,
+  businessName: string
+): Promise<string> {
+  const [p] = await tx`
+    select p.report_slug, m.name as market_name from prospects p
+    join market_launches ml on ml.id = p.launch_id
+    join markets m on m.id = ml.market_id
+    where p.id = ${prospectId}`;
+  if (p?.reportSlug) return p.reportSlug as string;
+  const base = slugifyBusinessName(businessName);
+  const marketSlug = p?.marketName ? slugifyBusinessName(String(p.marketName).split(",")[0] ?? "") : null;
+  const rows = await tx`select report_slug from prospects where report_slug like ${`${base}%`}`;
+  const taken = new Set(rows.map((r) => r.reportSlug as string));
+  const slug = disambiguateSlug(base, marketSlug, taken);
+  await tx`update prospects set report_slug = ${slug} where id = ${prospectId} and report_slug is null`;
+  const [after] = await tx`select report_slug from prospects where id = ${prospectId}`;
+  return (after?.reportSlug as string | null) ?? slug;
+}
+
 export interface AuditLink {
   slug: string;
   key: string;
@@ -118,7 +159,7 @@ export async function mintAuditLink(
         update prospect_audit_links set revoked_at = now()
         where prospect_id = ${prospectId} and revoked_at is null
       `;
-      const slug = slugifyBusinessName(prospect.businessName as string);
+      const slug = await ensureReportSlug(tx, prospectId, prospect.businessName as string);
       const key = newLinkKey();
       await tx`
         insert into prospect_audit_links (prospect_id, slug, key, created_by)
@@ -155,9 +196,10 @@ export async function ensureAuditLink(
     where prospect_id = ${prospectId} and revoked_at is null
   `;
   if (existing) return;
+  const slug = await ensureReportSlug(tx, prospectId, businessName);
   await tx`
     insert into prospect_audit_links (prospect_id, slug, key, created_by)
-    values (${prospectId}, ${slugifyBusinessName(businessName)}, ${newLinkKey()}, ${userId})
+    values (${prospectId}, ${slug}, ${newLinkKey()}, ${userId})
   `;
 }
 
