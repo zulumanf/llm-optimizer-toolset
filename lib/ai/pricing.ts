@@ -16,6 +16,9 @@ import { ClassifiedError } from "@/lib/errors";
 export interface ModelPricing {
   inputPerMTok: number;
   outputPerMTok: number;
+  /** Flat per-call fee in micro-dollars (spec 117) — e.g. OpenAI bills the
+   * web_search tool per call, on top of tokens. Omitted = 0. */
+  perCallFeeMicroUsd?: number;
   verified: boolean;
   lastVerified: string;
 }
@@ -47,17 +50,21 @@ export const PRICING: Record<string, ModelPricing> = {
   },
   // "+search" = same snapshot through the Responses API with the web_search
   // tool (lib/ai/openai.ts). Token prices identical; OpenAI bills the search
-  // tool itself separately per call — that fee is NOT in our cost math, so
-  // these stay flagged unverified to surface the caveat in run estimates.
+  // tool separately per call — carried as perCallFeeMicroUsd (spec 117).
+  // $0.01/call is an ESTIMATE (2026-08-25 ledger showed ~2× real spend vs
+  // token-only math): verify on the OpenAI billing dashboard, correct the
+  // number, and flip verified.
   "gpt-5.4-2026-03-05+search": {
     inputPerMTok: 2.5,
     outputPerMTok: 15,
+    perCallFeeMicroUsd: 10_000,
     verified: false,
     lastVerified: "2026-07-28",
   },
   "gpt-5.4-mini-2026-03-17+search": {
     inputPerMTok: 0.75,
     outputPerMTok: 4.5,
+    perCallFeeMicroUsd: 10_000,
     verified: false,
     lastVerified: "2026-07-28",
   },
@@ -154,7 +161,9 @@ export function costMicroUsd(
     );
   }
   return Math.round(
-    tokensIn * pricing.inputPerMTok + tokensOut * pricing.outputPerMTok
+    tokensIn * pricing.inputPerMTok +
+      tokensOut * pricing.outputPerMTok +
+      (pricing.perCallFeeMicroUsd ?? 0)
   );
 }
 

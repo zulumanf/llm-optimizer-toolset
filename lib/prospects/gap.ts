@@ -20,6 +20,9 @@ export interface GapSignalDetail {
   provenance: string;
   scope: string;
   sourceUrl: string | null;
+  /** Evidence classification (migration 074/085): independent,
+   * self_reported, sponsored, derived. Null = legacy/unclassified. */
+  sourceType: string | null;
 }
 
 export interface AuthorityGapView {
@@ -61,6 +64,7 @@ async function loadSignals(
       provenance: r.provenance as string,
       scope: r.scope as string,
       sourceUrl: (r.sourceUrl as string | null) ?? null,
+      sourceType: (r.sourceType as string | null) ?? null,
     })),
   };
 }

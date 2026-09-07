@@ -6,6 +6,7 @@
  * Tier mapping mirrors the vertical packs' hand-authored tiers.
  */
 import type { PromptCategory } from "@/lib/constants";
+import { escapeRegex } from "@/lib/parsing/prepass";
 
 export const PROMPT_CLASSIFIER_VERSION = "prompt-classifier-v1+deterministic";
 
@@ -21,10 +22,6 @@ const HOW_TO = /^how (do|to|can|should)\b|\bhow to\b/i;
 const RECOMMENDATION = /\bbest\b|\btop \d|\brecommend|\bwhich .{0,40}\bshould (i|we)\b/i;
 const PROBLEM =
   /can'?t\b|\bcannot\b|\bstruggl|\bproblem\b|\bissue\b|\bhelp me\b|\bi (need|want) to\b/i;
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 /**
  * First matching rule wins; order is specificity, not preference — "best

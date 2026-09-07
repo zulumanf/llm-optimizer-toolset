@@ -15,13 +15,16 @@
  * crawler: a 500 on robots.txt is a broken server, not a prohibition.
  */
 import { log } from "@/lib/logger";
-import { isPrivateHost } from "@/lib/security/safe-fetch";
+import { safeFetch } from "@/lib/security/safe-fetch";
+import { CRAWLER_USER_AGENT } from "@/lib/knowledge/sources/discover";
 
-/** Ours, matching discover.ts so a webmaster sees one identity, not two. */
-export const DISCOVERY_USER_AGENT =
-  "AvosVisibilityAudit/1.0 (internal AI-visibility audit; contact the operator who scheduled it)";
+/** Ours — the SAME constant discover.ts sends, so a webmaster sees one
+ * identity, not two copies that can drift (cleanup audit 2026-08-18). */
+export const DISCOVERY_USER_AGENT = CRAWLER_USER_AGENT;
 
 const ROBOTS_TIMEOUT_MS = 5_000;
+/** robots.txt has no business being megabytes. */
+const ROBOTS_MAX_BYTES = 262_144;
 
 export interface RobotsRules {
   /** Path prefixes that may not be fetched. */
@@ -148,41 +151,33 @@ export async function isFetchAllowed(
 }
 
 async function loadRobots(origin: string, fetchImpl: typeof fetch): Promise<RobotsRules> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ROBOTS_TIMEOUT_MS);
   try {
-    // Redirects are followed manually so a robots.txt cannot bounce the
-    // crawler onto a private address (audit 2026-08-01 §H.1). Cross-host
-    // robots redirects (www → apex) remain honoured.
-    let url = `${origin}/robots.txt`;
-    let res: Response;
-    for (let hop = 0; ; hop += 1) {
-      const parsed = new URL(url);
-      if (isPrivateHost(parsed.hostname)) return PERMISSIVE;
-      res = await fetchImpl(url, {
+    // Central outbound policy (lib/security/safe-fetch.ts): private hosts and
+    // private redirect targets refused, redirects re-validated per hop, size
+    // capped while streaming. This module used to carry its own redirect loop
+    // and isPrivateHost check — one SSRF guard, not two (cleanup 2026-08-18).
+    // Cross-host robots redirects (www → apex) remain honoured.
+    const res = await safeFetch(
+      `${origin}/robots.txt`,
+      {
+        timeoutMs: ROBOTS_TIMEOUT_MS,
+        maxBytes: ROBOTS_MAX_BYTES,
+        maxRedirects: 3,
         headers: { "user-agent": DISCOVERY_USER_AGENT },
-        signal: controller.signal,
-        redirect: "manual",
-      });
-      const location = res.headers.get("location");
-      if (!location || ![301, 302, 303, 307, 308].includes(res.status) || hop >= 3) {
-        break;
-      }
-      url = new URL(location, parsed).toString();
-    }
+      },
+      fetchImpl === fetch ? {} : { fetchImpl }
+    );
     // 4xx means no usable robots policy — the standard reading is "allowed".
     if (!res.ok) return PERMISSIVE;
-    const body = await res.text();
-    return parseRobots(body);
+    return parseRobots(res.bytes.toString("utf8"));
   } catch (err) {
-    // Unreachable robots.txt is a broken server, not a prohibition. Logged so a
-    // run that fetched widely on a bad assumption is diagnosable afterwards.
+    // Unreachable robots.txt (and a robots URL that redirects somewhere the
+    // egress policy refuses) is a broken server, not a prohibition. Logged so
+    // a run that fetched widely on a bad assumption is diagnosable afterwards.
     log("warn", "discovery.robots_unreachable", {
       origin,
       reason: err instanceof Error ? err.message : "unknown",
     });
     return PERMISSIVE;
-  } finally {
-    clearTimeout(timer);
   }
 }

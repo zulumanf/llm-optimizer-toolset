@@ -18,6 +18,7 @@ import {
   FileEdit,
   FileText,
   Flag,
+  Handshake,
   FlaskConical,
   History,
   LayoutDashboard,
@@ -45,6 +46,9 @@ export const PROJECT_SECTIONS: ProjectSection[] = [
   // Second because it answers "what are we doing for this client?" — the
   // question asked most often, and previously three clicks deep.
   { path: "/plan", label: "Plan", icon: MapIcon },
+  // The paying client's one page: commercial state, onboarding, work,
+  // baseline vs remeasurement, renewal (spec 131).
+  { path: "/engagement", label: "Engagement", icon: Handshake },
   { path: "/knowledge", label: "Knowledge", icon: BookOpen },
   { path: "/prompts", label: "Prompts", icon: MessageSquareText },
   { path: "/runs", label: "Runs", icon: PlayCircle },
@@ -98,7 +102,7 @@ export interface NavGroup {
 }
 
 export const PROJECT_NAV_GROUPS: NavGroup[] = [
-  { label: "Overview", paths: ["", "/plan", "/knowledge"] },
+  { label: "Overview", paths: ["", "/engagement", "/plan", "/knowledge"] },
   { label: "Measure", paths: ["/prompts", "/runs"] },
   { label: "Findings", paths: ["/gaps", "/competitors"] },
   { label: "Act", paths: ["/content", "/tasks", "/reports", "/activity"] },

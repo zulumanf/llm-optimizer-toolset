@@ -33,8 +33,8 @@ function parseMigration(file: string): { up: string; down: string } {
 
 async function main(): Promise<void> {
   const direction = process.argv[2];
-  if (direction !== "up" && direction !== "down") {
-    console.error("Usage: tsx scripts/migrate.ts up|down");
+  if (direction !== "up" && direction !== "down" && direction !== "status") {
+    console.error("Usage: tsx scripts/migrate.ts up|down|status");
     process.exit(1);
   }
   const dbFlagIdx = process.argv.indexOf("--db");
@@ -59,6 +59,14 @@ async function main(): Promise<void> {
       (await sql`select name from schema_migrations`).map((r) => r.name as string)
     );
 
+    if (direction === "status") {
+      // Read-only: what is applied, what is pending — for pre-deploy checks.
+      const appliedList = files.filter((f) => applied.has(f));
+      const pending = files.filter((f) => !applied.has(f));
+      console.log(`applied: ${appliedList.length} (latest ${appliedList.at(-1) ?? "none"})`);
+      console.log(pending.length === 0 ? "pending: none" : `pending: ${pending.join(", ")}`);
+      return;
+    }
     if (direction === "up") {
       const pending = files.filter((f) => !applied.has(f));
       if (pending.length === 0) {
@@ -74,10 +82,25 @@ async function main(): Promise<void> {
         console.log(`applied  ${file}`);
       }
     } else {
-      const last = files.filter((f) => applied.has(f)).pop();
+      // Roll back the most recently APPLIED migration, not the
+      // lexicographically last one. The two differ whenever a branch merges
+      // a lower-numbered migration after a higher one has shipped — with a
+      // filename sort, `down` would unwind a migration that other applied
+      // migrations may depend on (cleanup audit 2026-08-18).
+      const [lastApplied] = await sql`
+        select name from schema_migrations
+        order by applied_at desc, name desc limit 1
+      `;
+      const last = lastApplied?.name as string | undefined;
       if (!last) {
         console.log("Nothing to roll back.");
         return;
+      }
+      if (!files.includes(last)) {
+        console.error(
+          `Cannot roll back ${last}: its file is missing from ${MIGRATIONS_DIR}.`
+        );
+        process.exit(1);
       }
       const { down } = parseMigration(last);
       await sql.begin(async (tx) => {

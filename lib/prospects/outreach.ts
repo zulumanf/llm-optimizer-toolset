@@ -6,7 +6,20 @@
  * competitive context → low-friction question. No calendar links, no jargon,
  * no urgency.
  */
-import { OUTREACH_TEMPLATE_VERSION } from "@/lib/prospects/constants";
+import {
+  MISMATCH_TEMPLATE_VERSION,
+  OUTREACH_TEMPLATE_VERSION,
+} from "@/lib/prospects/constants";
+import { consumerAnchoredModelPhrase } from "@/lib/prospects/terminology";
+import {
+  formatProductionDisplay,
+  implicationLine,
+  marketShortName,
+  recencyPhrase,
+  PRODUCTION_METRIC_COPY,
+  type CompetitiveMismatchReview,
+  type MismatchCandidate,
+} from "@/lib/prospects/mismatch";
 
 export interface OutreachDraftInput {
   prospectName: string;
@@ -59,10 +72,70 @@ export function generateReplyFirstEmail(input: OutreachDraftInput): GeneratedDra
   ].join("\n");
 
   return {
-    subject: `A ${input.marketName} benchmark result about ${input.prospectName}`,
+    subject: `${/^[AEIOU]/i.test(input.marketName) ? "An" : "A"} ${input.marketName} benchmark result about ${input.prospectName}`,
     body,
     tone: "curious, factual, low-pressure",
     cta,
     promptVersion: OUTREACH_TEMPLATE_VERSION,
+  };
+}
+
+/**
+ * Competitive-mismatch template (spec 124). Touch 1 sells only the
+ * comparison: no bio, no links, no attachments, no meeting ask, no jargon.
+ * Plain text; the compliant footer is appended by the caller
+ * (optOutFooter), exactly like the reply-first template. The tested system
+ * is named per the terminology rule — the OpenAI model(s) behind ChatGPT,
+ * never "we asked ChatGPT".
+ * Caller guarantees `review.evaluation.eligible` and passes the selected
+ * (or operator-chosen eligible) candidate — this function only renders.
+ */
+export function generateCompetitiveMismatchEmail(
+  review: CompetitiveMismatchReview,
+  competitor: MismatchCandidate,
+  now: Date = new Date()
+): GeneratedDraft {
+  const firstName = review.firstName!;
+  const benchmark = review.benchmark!;
+  const metricType = competitor.metricType!;
+  const prospectValue =
+    metricType === "closed_volume"
+      ? review.prospect.production!.volumeUsd
+      : review.prospect.production!.sides;
+  const competitorValue =
+    metricType === "closed_volume"
+      ? competitor.production!.volumeUsd
+      : competitor.production!.sides;
+  const recency = recencyPhrase(
+    benchmark.capturedAt ?? review.benchmarkCompletedAt ?? now,
+    now
+  );
+  const systemPhrase = consumerAnchoredModelPhrase(
+    benchmark.provider,
+    benchmark.modelCount
+  );
+  const pronoun = benchmark.modelCount > 1 ? "They" : "It";
+  const n = benchmark.answerCount;
+  const cta = "I have the exact questions and the side-by-side. Want me to send them?";
+  const body = [
+    `${firstName} —`,
+    ``,
+    `${recency} I ran ${review.scopeCopy} through ${systemPhrase}. ` +
+      `${pronoun} recommended ${competitor.displayName} more often than your team, ` +
+      `even though RealTrends has you ahead on ${PRODUCTION_METRIC_COPY[metricType]}.`,
+    ``,
+    `Your team: ${formatProductionDisplay(metricType, prospectValue)} · recommended in ${review.prospect.recommendationCount} of ${n} answers`,
+    `${competitor.displayName}: ${formatProductionDisplay(metricType, competitorValue)} · recommended in ${competitor.recommendationCount} of ${n} answers`,
+    ``,
+    implicationLine(review.audiences),
+    ``,
+    cta,
+  ].join("\n");
+  return {
+    subject: `${firstName} — ${marketShortName(review.marketName)}`,
+    body,
+    tone: "direct, factual, peer-to-peer",
+    cta,
+    promptVersion: MISMATCH_TEMPLATE_VERSION,
   };
 }

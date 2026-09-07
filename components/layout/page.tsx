@@ -83,7 +83,7 @@ export function PageHeader({
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>
           )}
         </div>
-        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+        {actions && <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
     </header>
   );
@@ -113,7 +113,7 @@ export function Section({
               <p className="mt-1 text-sm text-muted-foreground">{description}</p>
             )}
           </div>
-          {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+          {actions && <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
         </div>
       )}
       {children}
@@ -168,7 +168,7 @@ export function Stat({
   value,
   hint,
 }: {
-  label: string;
+  label: ReactNode;
   /** Pass the string "not measured" rather than 0 when nothing was observed. */
   value: ReactNode;
   hint?: ReactNode;

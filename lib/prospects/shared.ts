@@ -84,11 +84,19 @@ export async function readProspect(prospectId: string): Promise<ProspectRow> {
  * exclusivity service's one AgreementInput adapter.
  */
 export async function detectLaunchConflicts(
-  tx: TransactionSql,
-  launch: { marketId: string; serviceCategory: string | null; priceSegment: string | null }
+  db: TransactionSql | typeof sql,
+  launch: { marketId: string; serviceCategory: string | null; priceSegment: string | null },
+  opts: {
+    /** Agreements owned by this project do not conflict — the client's own
+     * promoted prospect record is not a competitor of the client (spec 131). */
+    exceptProjectId?: string | null;
+    today?: string;
+  } = {}
 ) {
-  const markets = await tx<MarketNode[]>`select id, name, parent_id from markets`;
-  const agreements = await loadAgreementInputs();
+  const markets = await db<MarketNode[]>`select id, name, parent_id from markets`;
+  const agreements = (await loadAgreementInputs()).filter(
+    (a) => !opts.exceptProjectId || a.projectId !== opts.exceptProjectId
+  );
   return detectConflicts(
     {
       marketId: launch.marketId,
@@ -97,7 +105,7 @@ export async function detectLaunchConflicts(
     },
     agreements,
     markets,
-    todayIso()
+    opts.today ?? todayIso()
   );
 }
 

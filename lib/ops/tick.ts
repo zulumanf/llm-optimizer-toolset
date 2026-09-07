@@ -29,6 +29,13 @@ export interface AutomationTickReport {
   alerts: Record<string, unknown>;
   outcomes: Record<string, unknown>;
   notifications: Record<string, unknown>;
+  scheduledSends: Record<string, unknown>;
+  followups: Record<string, unknown>;
+  reportHandoffs: Record<string, unknown>;
+  cityPipelines: Record<string, unknown>;
+  assistantTasks: Record<string, unknown>;
+  campaignDigest: Record<string, unknown>;
+  deliveryQa: Record<string, unknown>;
 }
 
 /**
@@ -45,6 +52,20 @@ export async function runAutomationTick(
   // zero API calls until something is 30 days stale. Staged proposals
   // only; every approval stays human (PRINCIPLES #8). Isolated: a sweep
   // failure must never fail dispatch.
+  // Evidence-link health (2026-08-19) rides the daily lane too: receipts on
+  // LIVE audits get re-fetched weekly (staleness window inside the sweep),
+  // so a moved or dead source link becomes a known state instead of a
+  // silently-healthy render. Isolated: a sweep failure never fails dispatch.
+  if (opts.includeHealth) {
+    try {
+      const { sweepEvidenceLinks } = await import("@/lib/evidence/link-health");
+      await sweepEvidenceLinks();
+    } catch (err) {
+      log("error", "cron.evidence_link_sweep_failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+  }
   if (opts.includeHealth) {
     try {
       const { systemUser } = await import("@/lib/auth");
@@ -146,6 +167,91 @@ export async function runAutomationTick(
     });
   }
 
+  // Follow-up sequences (spec 127): ingest Gmail replies/bounces first (the
+  // preflight refuses to send on a stale sync), then stop/pause on signals
+  // and render any touch whose recipient-local slot is within the lead.
+  let followups: Record<string, unknown> = { skipped: true };
+  try {
+    const { syncProspectReplies } = await import("@/lib/prospects/reply-sync");
+    const { scheduleDueFollowups } = await import("@/lib/prospects/followups");
+    const sync = await syncProspectReplies();
+    const scheduled = await scheduleDueFollowups();
+    followups = { sync, scheduled };
+  } catch (err) {
+    log("error", "cron.followups_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    followups = { error: "follow-up pass failed; dispatch was unaffected" };
+  }
+
+  // Positive-reply report handoffs (spec 129): generate the private report
+  // over the frozen evidence, QA it three ways, and queue the threaded reply.
+  // Isolated: a handoff failure never affects dispatch.
+  let reportHandoffs: Record<string, unknown> = { skipped: true };
+  try {
+    const { processReportHandoffs } = await import("@/lib/prospects/report-handoff");
+    reportHandoffs = { ...(await processReportHandoffs()) };
+  } catch (err) {
+    log("error", "cron.report_handoffs_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    reportHandoffs = { error: "report handoff pass failed; dispatch was unaffected" };
+  }
+
+  // Scheduled prospect sends (spec 091): transmit approved drafts whose
+  // human-named send time has arrived, through the same gated entry point a
+  // human click uses. Claim-marked and windowed — safe at any frequency,
+  // from any number of ticks. Isolated: a drain failure never fails dispatch.
+  let scheduledSends: Record<string, unknown> = { skipped: true };
+  try {
+    const { drainScheduledSends } = await import("@/lib/prospects/scheduled-sends");
+    scheduledSends = { ...(await drainScheduledSends()) };
+  } catch (err) {
+    log("error", "cron.scheduled_sends_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    scheduledSends = { error: "scheduled-send drain failed; dispatch was unaffected" };
+  }
+
+  // City prospecting pipelines (spec 097): advance each active pipeline's
+  // state machine — research → discovery → seeding → benchmark → scoring.
+  // Isolated: a pipeline failure never fails dispatch.
+  let cityPipelines: Record<string, unknown> = { skipped: true };
+  try {
+    const { advanceCityPipelines } = await import("@/lib/prospects/city-pipeline");
+    cityPipelines = { ...(await advanceCityPipelines()) };
+  } catch (err) {
+    log("error", "cron.city_pipelines_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    cityPipelines = { error: "city pipelines failed; dispatch was unaffected" };
+  }
+
+  // Delegated assistant tasks (spec 115): resume decided tasks, advance
+  // running ones through the chat loop's own dispatch — read/direct only,
+  // confirm-tier stages and parks. Isolated: a task failure never fails
+  // dispatch.
+  let deliveryQa: Record<string, unknown> = { skipped: true };
+  try {
+    const { runDailyDeliveryQa } = await import("@/lib/engagements/portfolio");
+    deliveryQa = await runDailyDeliveryQa();
+  } catch (err) {
+    log("error", "cron.delivery_qa_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    deliveryQa = { error: "delivery QA failed; dispatch was unaffected" };
+  }
+  let assistantTasks: Record<string, unknown> = { skipped: true };
+  try {
+    const { advanceAssistantTasks } = await import("@/lib/assistant/tasks");
+    assistantTasks = { ...(await advanceAssistantTasks()) };
+  } catch (err) {
+    log("error", "cron.assistant_tasks_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    assistantTasks = { error: "assistant tasks failed; dispatch was unaffected" };
+  }
+
   // Notification sync (docs/17 B2): derives the operator inbox from platform
   // state. It had no production scheduler at all once launchd retired — the
   // worker tick is what actually runs it now. Idempotent; isolated.
@@ -157,6 +263,50 @@ export async function runAutomationTick(
       error: err instanceof Error ? err.message : "unknown",
     });
     notifications = { error: "notification sync failed; dispatch was unaffected" };
+  }
+
+  // Campaign digests (2026-09-06): the morning pre-flight, evening ledger and
+  // Monday weekly report the outbound week is run against. Read only, once
+  // per operator-local window (ops_alerts arbitration), emitted as structured
+  // log events and to DIGEST_WEBHOOK_URL when configured. Cannot render,
+  // schedule or send anything. Isolated: a digest failure never fails dispatch.
+  let campaignDigest: Record<string, unknown> = { skipped: true };
+  try {
+    const { campaignDigestDue, campaignLedger, campaignPreflight, claimCampaignDigest } = await import("@/lib/prospects/campaign-ledger");
+    const { followupMetrics } = await import("@/lib/prospects/followups");
+    const now = new Date();
+    const due = campaignDigestDue(now);
+    const emitted: string[] = [];
+    const post = async (kind: string, payload: Record<string, unknown>): Promise<void> => {
+      log("info", `campaign.${kind}`, payload);
+      const webhook = process.env.DIGEST_WEBHOOK_URL;
+      if (webhook) {
+        try {
+          await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: `[avos] ${kind} ${JSON.stringify(payload)}` }) });
+        } catch (err) {
+          log("error", "campaign.digest_webhook_failed", { kind, error: err instanceof Error ? err.message : "unknown" });
+        }
+      }
+    };
+    if (due.preflight && (await claimCampaignDigest("campaign_preflight", due.day))) {
+      await post("preflight", { ...(await campaignPreflight(now)) });
+      emitted.push("preflight");
+    }
+    if (due.ledger && (await claimCampaignDigest("campaign_ledger", due.day))) {
+      await post("ledger", { ...(await campaignLedger([due.day])) });
+      emitted.push("ledger");
+    }
+    if (due.weekly && (await claimCampaignDigest("campaign_weekly", due.day))) {
+      const m = await followupMetrics();
+      await post("weekly", { ...m, attribution: "reply occurred after Touch N; no touch is claimed as the cause" });
+      emitted.push("weekly");
+    }
+    campaignDigest = { day: due.day, due: { preflight: due.preflight, ledger: due.ledger, weekly: due.weekly }, emitted };
+  } catch (err) {
+    log("error", "cron.campaign_digest_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    campaignDigest = { error: "campaign digest failed; dispatch was unaffected" };
   }
 
   if ((events.deadLettered as number) > 0 || triggers.failed > 0 || (health.failing as number) > 0) {
@@ -188,6 +338,13 @@ export async function runAutomationTick(
     alerts,
     outcomes,
     notifications,
+    scheduledSends,
+    followups,
+    reportHandoffs,
+    cityPipelines,
+    assistantTasks,
+    campaignDigest,
+    deliveryQa,
   };
 }
 

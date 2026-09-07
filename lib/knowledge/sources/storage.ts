@@ -16,7 +16,6 @@
  */
 import { join } from "node:path";
 import {
-  readStored,
   resolveStoragePath,
   sha256Of,
   writeImmutable,
@@ -41,10 +40,6 @@ export async function storeSourceBytes(args: {
   const storageKey = sourceStorageKey(args.projectId, sha256);
   const written = await writeImmutable(KNOWLEDGE_ROOT, storageKey, args.bytes);
   return { storageKey, sha256, alreadyExisted: written.alreadyExisted };
-}
-
-export async function readSourceBytes(storageKey: string): Promise<Buffer> {
-  return readStored(KNOWLEDGE_ROOT, storageKey);
 }
 
 export { KNOWLEDGE_ROOT };
