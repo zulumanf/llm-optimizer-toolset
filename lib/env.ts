@@ -45,6 +45,14 @@ const envSchema = z
     // Test/demo fences (spec 050) — never set in production.
     ALLOW_MOCK_PROVIDER: z.string().optional(),
     ALLOW_MOCK_SCORING: z.string().optional(),
+    // Production-behavior toggles previously read outside this schema
+    // (cleanup 2026-08-18). ALLOW_DEV_AUTH_IN_PROD=1 disables the
+    // production dev-auth refusal (devAuthRefusalReason below) — e2e only,
+    // never on a real deployment. QA_SOURCE_LINK_CHECKS=off skips the
+    // publish-time dead-link check (lib/qa/preflight.ts) — a test-only
+    // escape hatch, not an operator control (DECISIONS 2026-08-15).
+    ALLOW_DEV_AUTH_IN_PROD: z.string().optional(),
+    QA_SOURCE_LINK_CHECKS: z.string().optional(),
     // Backups (spec 059). Production MUST set the encryption key.
     BACKUP_ENCRYPTION_KEY: z.string().optional(),
     BACKUP_UPLOAD_CMD: z.string().optional(),

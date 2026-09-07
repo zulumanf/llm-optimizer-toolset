@@ -4,6 +4,110 @@ Append-only. Every non-obvious technical decision gets a dated entry: the decisi
 
 ---
 
+## Index
+
+<!-- Generated 2026-08-18 (cleanup batch 5). Regenerate when appending:
+     grep '^## ' DECISIONS.md — entries below stay append-only and
+     unedited; only this index block may be rewritten. -->
+
+- 2026-07-27 — Re-scope to a multi-client agentic operations platform
+- 2026-07-27 — Initial decisions
+- 2026-07-29 — Graph execution: keep the Postgres queue, add a graph layer (spec 018)
+- 2026-07-29 — Autonomy gates the nodes that act, not every node (spec 018)
+- 2026-07-29 — Edge semantics: settled is not the same as succeeded (spec 018)
+- 2026-07-29 — Correlation is capped in code, not in prose (spec 019)
+- 2026-07-29 — Capacity and automation are measured or withheld (spec 019)
+- 2026-07-29 — `timeout` added to the ErrorKind taxonomy
+- 2026-07-29 — The automation layer is first-party, on the spec-018 engine
+- 2026-07-29 — `transform: postgres.camel` rewrites JSON keys, not just columns
+- 2026-07-29 — Edges govern execution; paths govern reading
+- 2026-07-29 — Per-node action types, so a level-2 workflow is usable
+- 2026-07-29 — Adapter status is labelled, never inflated
+- 2026-07-29 — Labour savings are not reported
+- 2026-07-29 — Tenant is the project; no tenant_id column
+- 2026-07-29 — Compiled wiki pages are rows, not files
+- 2026-07-29 — Provenance lives in tables, not in YAML front matter
+- 2026-07-29 — Hot files are wiki pages, not a parallel system
+- 2026-07-29 — Retrieval is lexical and structural; no vector index
+- 2026-07-29 — `unpdf` and `read-excel-file`; `exceljs` rejected
+- 2026-07-29 — Token savings are measured; quality is not
+- 2026-07-29 — Staleness must never roll back the change that caused it
+- 2026-07-29 — One claim-selection implementation
+- 2026-07-30 — The database moved to Supabase; only `public` went with it
+- 2026-07-30 — A search result is a lead, never evidence (spec 027)
+- 2026-07-30 — Three fixes the first live discovery run earned
+- 2026-07-30 — Discovery honours robots.txt; the site crawler still does not
+- 2026-07-30 — The sidebar renders nothing without a session
+- 2026-07-31 — `agentVersion` is a validated reference, not a label
+- 2026-07-31 — Project access is a layout concern; denial is a 404
+- 2026-07-31 — Client intelligence is not shared telemetry (migration 029)
+- 2026-07-31 — Exclusivity conflicts are structural, and checks are decisions
+- 2026-07-31 — Orphan market model resolved: keep spec 028, keep their data
+- 2026-07-31 — Source classification is deterministic lists, not a model
+- 2026-07-31 — Pilot-first finish plan; attribution stays deferred
+- 2026-08-01 — Prospect acquisition (spec 032): link, don't fork, the measurement core
+- 2026-08-01 — MCP is one thin server over existing services, not a new system (spec 033)
+- 2026-08-01 — Audit phase 1: five named defects, one outbound-fetch policy
+- 2026-08-02 — Prospect benchmark projects (spec 032 Phase 2.1): kind, not status
+- 2026-08-02 — Learning loop closed (spec 034): measured, not assumed
+- 2026-08-02 — Prompt intelligence is rules first, and refuses to guess (spec 035)
+- 2026-08-02 — Win rates are analyses, not scores (spec 036)
+- 2026-08-02 — Discovery's entry point is a job an identified human requests
+- 2026-08-02 — Nav consolidation: tabs over route moves (spec 037)
+- 2026-08-02 — Contacts get their own do-not-contact, and drafts meet the suppression list (spec 032, 2.2/2.3)
+- 2026-08-02 — Authority and valuable visibility are derived on read, not scored rows (spec 038)
+- 2026-08-02 — Fixability and the final score: one weights mechanism, stored with its explanation (spec 039)
+- 2026-08-02 — Market packs are data, installed into the one markets tree (spec 040)
+- 2026-08-02 — Discovery lands as candidates; a brokerage is not the team (spec 041)
+- 2026-08-02 — Diagnoses are typed and honest; intent evidence expires (spec 042)
+- 2026-08-02 — Spec-011 reconciliation: the red level is "human-decided, machine-enforced", not "no code path" (roadmap 3.1)
+- 2026-08-02 — The send bridge: every dispatch and every refusal is ledgered (spec 043)
+- 2026-08-03 — The assistant's only hands are the observer tools (spec 044)
+- 2026-08-03 — Report periods are UTC-anchored, not session-timezone (bug fix)
+- 2026-08-03 — Dev auth fails closed in a production process (phase 0.1, production-readiness plan)
+- 2026-08-03 — Phase 2/3 of the production-readiness plan: provenance closes, the last mile opens
+- 2026-08-03 — Phase 4/5: the portal stops leaking by default, the portfolio gets a work layer
+- 2026-08-03 — Spec 049: the UI gets its own test layer (Playwright)
+- 2026-08-04 — Stable audit links: supersede moves the token, revoke burns it (057)
+- 2026-08-04 — Four-lens cleanup audit: what was fixed, what is backlogged
+- 2026-08-09 — Spec 050: truth hardening (branch feat/050-truth-hardening)
+- 2026-08-09 — Spec 051: value loop closure (branch feat/051-value-loop)
+- 2026-08-09 — Spec 052: manual outbound safety (branch feat/052-outbound-safety)
+- 2026-08-09 — Spec 053: fleet drift & sentinel (branch feat/053-fleet-drift)
+- 2026-08-10 — Spec 054: shared market captures (branch feat/054-shared-captures)
+- 2026-08-10 — Spec 055: model routing tiers (branch feat/055-model-routing)
+- 2026-08-10 — Spec 056: entity architecture (branch feat/056-entity-architecture)
+- 2026-08-10 — Spec 057: prospect→client promotion (branch feat/057-prospect-promotion)
+- 2026-08-10 — Spec 058: learning-loop closure (branch feat/058-learning-loop)
+- 2026-08-10 — Spec 059: productionization groundwork (branch feat/059-productionization)
+- 2026-08-12 — Spec 060: citation acquisition engine
+- 2026-08-12 — Spec 060 QA fixes (post-merge review)
+- 2026-08-13 — Spec 062: intervention lifecycle + graded comparability (branch feat/062-intervention-lifecycle)
+- 2026-08-13 — Spec 063: prompt attribute freeze + coverage (branch feat/063-prompt-attribute-freeze)
+- 2026-08-13 — Spec 064: gap-finding epistemics (branch feat/064-gap-finding-evidence)
+- 2026-08-13 — Spec 065: QA preflight + dead gates deleted (branch feat/065-qa-preflight)
+- 2026-08-14 — Spec 066: model agreement read model (branch feat/066-model-agreement)
+- 2026-08-14 — Pre-outreach launch fixes (branch chore/prospects-service-simplify)
+- 2026-08-15 — RealTrends verified-production evidence (branch feat/074-realtrends-authority)
+- 2026-08-16 — Self-referential URLs come from APP_URL, never the request
+- 2026-08-16 — The refresh queue prepares; only the click publishes (spec 075)
+- 2026-08-17 — The worker owns the clock; GitHub only watches the door
+- 2026-08-17 — Branded audit links: the name is cosmetic, the key is the lock (spec 076)
+- 2026-08-17 — The sense-check describes; it never rewrites (spec 077)
+- 2026-08-17 — The tick runs weekly baselines for ANY project kind
+- 2026-08-17 — Authority evidence scales with its magnitude (spec 078)
+- 2026-08-17 — Perplexity finds; the operator verifies (spec 079)
+- 2026-08-17 — Discovery finds names; enrichment digs facts (spec 080)
+- 2026-08-17 — Timing research rides the same call (spec 081)
+- 2026-08-17 — Drafted packs share the hand-built packs' spine (spec 082)
+- 2026-08-17 — The workspace goes responsive; the sidebar becomes a drawer (spec 083)
+- 2026-08-18 — Actions diet: pay for signal, not habit
+- 2026-08-18 — Observation provenance is derived, not stored (spec 086)
+- 2026-08-18 — Displacement is derived, never stored; suggestions stage before they measure (spec 087)
+- 2026-08-18 — Technical discoverability: persist the facts, reuse the queue (spec 088)
+
+---
+
 ## 2026-07-27 — Re-scope to a multi-client agentic operations platform
 
 The operator adopted an agentic-workflow blueprint (drafted for a real-estate

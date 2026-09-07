@@ -7,7 +7,6 @@ import { getEnv } from "@/lib/env";
  * Cached on globalThis so Next.js dev hot-reload doesn't leak connections.
  */
 declare global {
-  // eslint-disable-next-line no-var
   var __sqlClient: ReturnType<typeof postgres> | undefined;
 }
 
