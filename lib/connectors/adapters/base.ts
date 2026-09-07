@@ -116,6 +116,9 @@ export function unverifiableHealth(reason: string): ConnectionHealthResult {
   };
 }
 
+/** Capabilities whose output is mail content the caller must see verbatim. */
+const MESSAGE_CONTENT_CAPABILITIES: ReadonlySet<string> = new Set(["email.read_thread", "email.search_messages"]);
+
 export function buildAdapter<TConfig>(spec: AdapterSpec<TConfig>): Connector<TConfig> {
   const capabilities = Object.keys(spec.handlers) as ConnectorCapability[];
 
@@ -210,7 +213,11 @@ export function buildAdapter<TConfig>(spec: AdapterSpec<TConfig>): Connector<TCo
       try {
         const result = await handler((input ?? {}) as Record<string, unknown>, ctx);
         return executionSuccess<TOutput>({
-          data: redactSecrets(result.data) as TOutput,
+          // Message payloads are content, not credentials: the redactor
+          // would turn an RFC Message-ID or a base64 body into "[redacted]"
+          // (found live 2026-09-03, spec 127/128). Everything else stays
+          // defense-in-depth redacted.
+          data: (MESSAGE_CONTENT_CAPABILITIES.has(capability) ? result.data : redactSecrets(result.data)) as TOutput,
           latencyMs: Date.now() - started,
           rowsRead: result.rowsRead ?? 0,
           rowsWritten: result.rowsWritten ?? 0,

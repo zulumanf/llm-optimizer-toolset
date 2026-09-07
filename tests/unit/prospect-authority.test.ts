@@ -43,6 +43,18 @@ describe("authorityProfile", () => {
     expect(profile.confidence).toBeCloseTo(0.6, 10);
   });
 
+  it("discounts sponsored coverage below independent (authority-v3)", () => {
+    const independent = authorityProfile([
+      signal({ kind: "press_mention", sourceType: "independent" }),
+    ]);
+    const sponsored = authorityProfile([
+      signal({ kind: "press_mention", sourceType: "sponsored" }),
+    ]);
+    // press 8 × 1.0 (verified) — sponsored takes the 0.5 factor on top.
+    expect(independent.score).toBe(8);
+    expect(sponsored.score).toBe(4);
+  });
+
   it("applies provenance factors and per-signal confidence", () => {
     const profile = authorityProfile([
       signal({ kind: "press_mention", provenance: "estimated", confidence: 0.5 }),

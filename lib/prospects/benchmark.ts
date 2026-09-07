@@ -7,7 +7,7 @@
  */
 import { sql } from "@/db/client";
 import { SCORING_VERSION } from "@/lib/constants";
-import { PROMPT_NAMES_COMPANY } from "@/lib/scoring/prompt-echo";
+import { PROMPT_ECHO_EXCLUDED, PROMPT_NAMES_COMPANY } from "@/lib/scoring/prompt-echo";
 import type { BenchmarkEntityMetrics, AbsenceEvidence } from "@/lib/prospects/findings";
 import {
   valuableVisibilityFromCells,
@@ -163,6 +163,83 @@ export async function valuableVisibility(
           : Number(r.listPosition),
     }))
   );
+}
+
+export interface ProviderRecommendationCounts {
+  provider: string;
+  /** Valid, non-holdout answers captured from this provider — the ONLY
+   * denominator a per-provider "recommended in X of N answers" claim may
+   * cite. Never prompts, never runs, never a mixed-provider total. */
+  answerCount: number;
+  /** Distinct models of this provider the run queried. */
+  modelCount: number;
+  /** Newest capture timestamp among those answers. */
+  capturedAt: Date | null;
+  /** Echo-excluded, current-revision recommendation count per company id —
+   * at most one per (answer, company) by the mentions unique key. A company
+   * absent from the map was recommended in 0 of answerCount answers. */
+  recommendedByCompany: Record<string, number>;
+}
+
+/**
+ * The one canonical per-provider recommendation count (spec 124). Same
+ * eligibility rules as scoring (valid cells, non-holdout prompts), the
+ * organic echo rule of stakes/displacement, current revisions only. Email
+ * rendering, draft QA, the operator panel, and the backfill script all read
+ * this — none recompute.
+ */
+export async function providerRecommendationCounts(
+  runId: string,
+  provider: string,
+  companyIds: string[]
+): Promise<ProviderRecommendationCounts> {
+  const fp = sql`
+    select p."promptId" as prompt_id, coalesce(p."isHoldout", false) as is_holdout
+    from runs r2
+    join prompt_set_versions v on v.id = r2.prompt_set_version_id,
+    jsonb_to_recordset(v.frozen_prompts)
+      as p("promptId" uuid, "isHoldout" boolean)
+    where r2.id = ${runId}
+  `;
+  const [summary] = await sql`
+    with fp as (${fp})
+    select count(*)::int as answer_count,
+      count(distinct r.model)::int as model_count,
+      max(r.requested_at) as captured_at
+    from responses r
+    join fp on fp.prompt_id = r.prompt_id
+    where r.run_id = ${runId} and r.provider = ${provider}
+      and r.error is null and not fp.is_holdout
+  `;
+  const recommendedByCompany: Record<string, number> = {};
+  if (companyIds.length > 0 && Number(summary?.answerCount ?? 0) > 0) {
+    const rows = await sql`
+      with fp as (${fp}),
+      r as (
+        select x.id, x.prompt_text
+        from responses x
+        join fp on fp.prompt_id = x.prompt_id
+        where x.run_id = ${runId} and x.provider = ${provider}
+          and x.error is null and not fp.is_holdout
+      )
+      select c.id as company_id, count(distinct m.response_id)::int as recommended
+      from companies c
+      join mentions m on m.company_id = c.id and m.recommended and ${CURRENT}
+      join r on r.id = m.response_id
+      where c.id = any(${companyIds}::uuid[]) and ${PROMPT_ECHO_EXCLUDED}
+      group by c.id
+    `;
+    for (const row of rows) {
+      recommendedByCompany[row.companyId as string] = Number(row.recommended);
+    }
+  }
+  return {
+    provider,
+    answerCount: Number(summary?.answerCount ?? 0),
+    modelCount: Number(summary?.modelCount ?? 0),
+    capturedAt: summary?.capturedAt ? new Date(summary.capturedAt as Date) : null,
+    recommendedByCompany,
+  };
 }
 
 /** Responses where a given rival was recommended and the prospect never mentioned. */

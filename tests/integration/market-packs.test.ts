@@ -24,7 +24,6 @@ describe.skipIf(!TEST_URL)("market packs (integration)", () => {
   let sql: (typeof import("@/db/client"))["sql"];
   let install: typeof import("@/lib/markets/install");
   let generate: typeof import("@/lib/markets/generate");
-  let packs: typeof import("@/lib/markets/packs");
   let detect: typeof import("@/lib/exclusivity/detect");
   let projectSvc: typeof import("@/lib/projects/service");
   let setSvc: typeof import("@/lib/prompts/set-service");
@@ -33,7 +32,6 @@ describe.skipIf(!TEST_URL)("market packs (integration)", () => {
     ({ sql } = await import("@/db/client"));
     install = await import("@/lib/markets/install");
     generate = await import("@/lib/markets/generate");
-    packs = await import("@/lib/markets/packs");
     detect = await import("@/lib/exclusivity/detect");
     projectSvc = await import("@/lib/projects/service");
     setSvc = await import("@/lib/prompts/set-service");

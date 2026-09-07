@@ -4,6 +4,110 @@ Append-only. Every non-obvious technical decision gets a dated entry: the decisi
 
 ---
 
+## Index
+
+<!-- Generated 2026-08-18 (cleanup batch 5). Regenerate when appending:
+     grep '^## ' DECISIONS.md — entries below stay append-only and
+     unedited; only this index block may be rewritten. -->
+
+- 2026-07-27 — Re-scope to a multi-client agentic operations platform
+- 2026-07-27 — Initial decisions
+- 2026-07-29 — Graph execution: keep the Postgres queue, add a graph layer (spec 018)
+- 2026-07-29 — Autonomy gates the nodes that act, not every node (spec 018)
+- 2026-07-29 — Edge semantics: settled is not the same as succeeded (spec 018)
+- 2026-07-29 — Correlation is capped in code, not in prose (spec 019)
+- 2026-07-29 — Capacity and automation are measured or withheld (spec 019)
+- 2026-07-29 — `timeout` added to the ErrorKind taxonomy
+- 2026-07-29 — The automation layer is first-party, on the spec-018 engine
+- 2026-07-29 — `transform: postgres.camel` rewrites JSON keys, not just columns
+- 2026-07-29 — Edges govern execution; paths govern reading
+- 2026-07-29 — Per-node action types, so a level-2 workflow is usable
+- 2026-07-29 — Adapter status is labelled, never inflated
+- 2026-07-29 — Labour savings are not reported
+- 2026-07-29 — Tenant is the project; no tenant_id column
+- 2026-07-29 — Compiled wiki pages are rows, not files
+- 2026-07-29 — Provenance lives in tables, not in YAML front matter
+- 2026-07-29 — Hot files are wiki pages, not a parallel system
+- 2026-07-29 — Retrieval is lexical and structural; no vector index
+- 2026-07-29 — `unpdf` and `read-excel-file`; `exceljs` rejected
+- 2026-07-29 — Token savings are measured; quality is not
+- 2026-07-29 — Staleness must never roll back the change that caused it
+- 2026-07-29 — One claim-selection implementation
+- 2026-07-30 — The database moved to Supabase; only `public` went with it
+- 2026-07-30 — A search result is a lead, never evidence (spec 027)
+- 2026-07-30 — Three fixes the first live discovery run earned
+- 2026-07-30 — Discovery honours robots.txt; the site crawler still does not
+- 2026-07-30 — The sidebar renders nothing without a session
+- 2026-07-31 — `agentVersion` is a validated reference, not a label
+- 2026-07-31 — Project access is a layout concern; denial is a 404
+- 2026-07-31 — Client intelligence is not shared telemetry (migration 029)
+- 2026-07-31 — Exclusivity conflicts are structural, and checks are decisions
+- 2026-07-31 — Orphan market model resolved: keep spec 028, keep their data
+- 2026-07-31 — Source classification is deterministic lists, not a model
+- 2026-07-31 — Pilot-first finish plan; attribution stays deferred
+- 2026-08-01 — Prospect acquisition (spec 032): link, don't fork, the measurement core
+- 2026-08-01 — MCP is one thin server over existing services, not a new system (spec 033)
+- 2026-08-01 — Audit phase 1: five named defects, one outbound-fetch policy
+- 2026-08-02 — Prospect benchmark projects (spec 032 Phase 2.1): kind, not status
+- 2026-08-02 — Learning loop closed (spec 034): measured, not assumed
+- 2026-08-02 — Prompt intelligence is rules first, and refuses to guess (spec 035)
+- 2026-08-02 — Win rates are analyses, not scores (spec 036)
+- 2026-08-02 — Discovery's entry point is a job an identified human requests
+- 2026-08-02 — Nav consolidation: tabs over route moves (spec 037)
+- 2026-08-02 — Contacts get their own do-not-contact, and drafts meet the suppression list (spec 032, 2.2/2.3)
+- 2026-08-02 — Authority and valuable visibility are derived on read, not scored rows (spec 038)
+- 2026-08-02 — Fixability and the final score: one weights mechanism, stored with its explanation (spec 039)
+- 2026-08-02 — Market packs are data, installed into the one markets tree (spec 040)
+- 2026-08-02 — Discovery lands as candidates; a brokerage is not the team (spec 041)
+- 2026-08-02 — Diagnoses are typed and honest; intent evidence expires (spec 042)
+- 2026-08-02 — Spec-011 reconciliation: the red level is "human-decided, machine-enforced", not "no code path" (roadmap 3.1)
+- 2026-08-02 — The send bridge: every dispatch and every refusal is ledgered (spec 043)
+- 2026-08-03 — The assistant's only hands are the observer tools (spec 044)
+- 2026-08-03 — Report periods are UTC-anchored, not session-timezone (bug fix)
+- 2026-08-03 — Dev auth fails closed in a production process (phase 0.1, production-readiness plan)
+- 2026-08-03 — Phase 2/3 of the production-readiness plan: provenance closes, the last mile opens
+- 2026-08-03 — Phase 4/5: the portal stops leaking by default, the portfolio gets a work layer
+- 2026-08-03 — Spec 049: the UI gets its own test layer (Playwright)
+- 2026-08-04 — Stable audit links: supersede moves the token, revoke burns it (057)
+- 2026-08-04 — Four-lens cleanup audit: what was fixed, what is backlogged
+- 2026-08-09 — Spec 050: truth hardening (branch feat/050-truth-hardening)
+- 2026-08-09 — Spec 051: value loop closure (branch feat/051-value-loop)
+- 2026-08-09 — Spec 052: manual outbound safety (branch feat/052-outbound-safety)
+- 2026-08-09 — Spec 053: fleet drift & sentinel (branch feat/053-fleet-drift)
+- 2026-08-10 — Spec 054: shared market captures (branch feat/054-shared-captures)
+- 2026-08-10 — Spec 055: model routing tiers (branch feat/055-model-routing)
+- 2026-08-10 — Spec 056: entity architecture (branch feat/056-entity-architecture)
+- 2026-08-10 — Spec 057: prospect→client promotion (branch feat/057-prospect-promotion)
+- 2026-08-10 — Spec 058: learning-loop closure (branch feat/058-learning-loop)
+- 2026-08-10 — Spec 059: productionization groundwork (branch feat/059-productionization)
+- 2026-08-12 — Spec 060: citation acquisition engine
+- 2026-08-12 — Spec 060 QA fixes (post-merge review)
+- 2026-08-13 — Spec 062: intervention lifecycle + graded comparability (branch feat/062-intervention-lifecycle)
+- 2026-08-13 — Spec 063: prompt attribute freeze + coverage (branch feat/063-prompt-attribute-freeze)
+- 2026-08-13 — Spec 064: gap-finding epistemics (branch feat/064-gap-finding-evidence)
+- 2026-08-13 — Spec 065: QA preflight + dead gates deleted (branch feat/065-qa-preflight)
+- 2026-08-14 — Spec 066: model agreement read model (branch feat/066-model-agreement)
+- 2026-08-14 — Pre-outreach launch fixes (branch chore/prospects-service-simplify)
+- 2026-08-15 — RealTrends verified-production evidence (branch feat/074-realtrends-authority)
+- 2026-08-16 — Self-referential URLs come from APP_URL, never the request
+- 2026-08-16 — The refresh queue prepares; only the click publishes (spec 075)
+- 2026-08-17 — The worker owns the clock; GitHub only watches the door
+- 2026-08-17 — Branded audit links: the name is cosmetic, the key is the lock (spec 076)
+- 2026-08-17 — The sense-check describes; it never rewrites (spec 077)
+- 2026-08-17 — The tick runs weekly baselines for ANY project kind
+- 2026-08-17 — Authority evidence scales with its magnitude (spec 078)
+- 2026-08-17 — Perplexity finds; the operator verifies (spec 079)
+- 2026-08-17 — Discovery finds names; enrichment digs facts (spec 080)
+- 2026-08-17 — Timing research rides the same call (spec 081)
+- 2026-08-17 — Drafted packs share the hand-built packs' spine (spec 082)
+- 2026-08-17 — The workspace goes responsive; the sidebar becomes a drawer (spec 083)
+- 2026-08-18 — Actions diet: pay for signal, not habit
+- 2026-08-18 — Observation provenance is derived, not stored (spec 086)
+- 2026-08-18 — Displacement is derived, never stored; suggestions stage before they measure (spec 087)
+- 2026-08-18 — Technical discoverability: persist the facts, reuse the queue (spec 088)
+
+---
+
 ## 2026-07-27 — Re-scope to a multi-client agentic operations platform
 
 The operator adopted an agentic-workflow blueprint (drafted for a real-estate
@@ -2370,3 +2474,718 @@ entity-footprint checks (no licensed acquisition path), multi-hop redirect
 chains (final URL is recorded; hop lists are not), duplicate-content
 detection, and any audit-page technical section (calibrate prospect-facing
 copy against real scans first).
+
+## 2026-08-18 — Dogfood is a third project kind, and the baseline is derived
+
+RecommendedFirst now measures itself (internal dogfood case study) through
+the exact client pipeline: a `projects` row, the standard prompt-set →
+run → scores → citations → gaps → interventions chain, and the existing
+project detail surfaces. Two decisions worth recording:
+
+**`kind='internal'` instead of a flag or a parallel system** (migration
+084). Client surfaces already filter `kind='client'` and prospect surfaces
+read the prospects table, so a third kind is excluded from client
+portfolios, client counts, and cross-talk scoping *by construction* — no
+per-query exclusion audit. `createProject` deliberately has no kind input;
+the seed script (`scripts/onboard-recommendedfirst.ts`) promotes it the
+same way prospect promotion does. Down-migration re-kinds internal rows as
+'prospect' rather than deleting anything.
+
+**The baseline is the earliest scored run, derived at read time** — no
+`is_baseline` column, no snapshot mutation. Runs are already immutable and
+ordered; marking one would create a mutable fact about immutable data. The
+/dogfood page (staff-gated) labels runs[0] as baseline and reports deltas
+as observed change, never as intervention-caused. Branded control prompts
+need no KPI filtering either: they name the brand, so prompt-echo
+exclusion already removes them from every visibility rate; a unit test
+(tests/unit/dogfood-prompts.test.ts) pins that invariant on the catalog
+(`lib/dogfood/prompts.ts`, 33 prompts frozen as v1 at onboarding).
+
+## 2026-08-19 — Audit evidence precision (Team Moza review)
+
+The live Team Moza audit surfaced four credibility defects: API-collected
+benchmarks rendered as "we asked ChatGPT"; observed citation patterns
+stated as causes ("sources AI reads", "how the answer changes"); a
+counted-mentions total (189) captioned so it could read as 189 answers;
+and a claimed lost introduction ("today that introduction goes to X").
+Decisions:
+
+**Terminology derives from run metadata, never a hardcoded brand.**
+`lib/prospects/terminology.ts` is the one prospect-facing vocabulary layer:
+the tested-system phrase is built from `benchmark.providers` +
+`snapshot.collection` (spec 086 facts), so future providers/models render
+correctly with zero copy edits. Consumer names (ChatGPT/Gemini/Claude)
+survive only in the reader's verify-it-yourself invitation and in real
+share-link exhibits. `tests/unit/audit-copy-discipline.test.ts` scans the
+audit surfaces for the banned phrasings (layout-consistency precedent).
+
+**The page fixes apply to already-published audits without republish** —
+the audit page is presentation-only over the frozen snapshot, so every
+copy repair (units, causal language, commission framing) reaches the live
+Team Moza link immediately. Snapshot-side additions (topSources
+`category`, signal `sourceType` badges, retitled diagnoses) are additive
+optional fields that appear on the next publish; old snapshots render
+unchanged.
+
+**Evidence-link health is an append-only sidecar, not columns on evidence
+rows** (`evidence_link_checks`, migration 085) — signals and snapshots are
+immutable, so health is a separate measured fact keyed by URL, latest row
+wins. The sweep rides the worker tick's existing daily `includeHealth`
+lane (no new scheduler); the page degrades a KNOWN-broken receipt to
+"source on file / page has since moved" and follows redirects to the
+canonical URL. Unknown is rendered as-is: unchecked is not broken.
+
+**'sponsored' joins the signal source_type domain** (074's vocabulary) and
+takes a 0.5 factor in the authority score (authority-v3) — sponsored
+coverage stays visible and badged ("Sponsored coverage") but cannot score
+like independent reporting. Cited-surface actionability reuses the spec
+086 classifier at publish time: competitor-owned domains render as
+diagnostic context, never as "get listed here" targets
+(prospect-diagnosis-v3 action copy says so explicitly).
+
+## 2026-08-19 — Gmail is the ESP; scheduling defers a confirmed action (spec 091)
+
+**The open ESP decision (spec 052 out-of-scope note) resolves as Gmail API**,
+sending as `francisco@recommendedfirst.com` (Google Workspace on the business
+domain — chosen over personal @gmail.com for deliverability and CAN-SPAM
+sender-identity alignment). Daily cap starts at `GMAIL_DAILY_SEND_CAP = 25`
+while the address warms; Gmail's hard limits are far higher, the cap is ours.
+
+**PRINCIPLES #8 reconciliation for scheduled sends:** "no automated action
+executes without human confirmation" — the confirmation is the human's
+approval of the exact message body (frozen `body_hash`) together with the
+human-named `scheduled_send_at`. The worker only *transmits* that confirmed
+action; it never originates, edits, or reschedules one. The full send gate
+re-runs at transmission time (spec 052 §E), so an approval that has since
+become unsafe (new suppression, territory conflict, erasure) refuses and
+blocks rather than sends. Editing an approved draft clears its schedule and
+returns it to review — a schedule can never outrun the human's approval of
+the current body.
+
+**Credential mint is a one-time CLI, not an in-app OAuth surface** — one
+operator, and the connector page already shows connection health once the
+row exists. Client id/secret live in the connection config because the
+adapter's shared `googleRefresh` reads them from there by design; the
+tokens themselves go through the `lib/connectors/credentials.ts` boundary
+(the only module that encrypts/decrypts).
+
+**The sequences engine's `dueSequences()` stays unconsumed for now** —
+descoped from 091 after reading the wiring: sequence messages transmit
+through the automation layer's own gate (`assertSendAllowed`: autonomy
+levels, approval-to-body-hash binding via `workflow_approvals`), so a
+drain there must compose that machinery, not bypass it with the prospect
+gate. Its own spec. The prospect-draft stack — what /prospects drives —
+is the pipeline the operator asked to connect.
+
+## 2026-08-19 — Open tracking ships, honestly labeled (spec 092)
+
+Spec 091's out-of-scope note said tracking pixels would "deliberately
+never" ship. The operator overrode that the same day: they want open
+counts. The reversal is principled, not a compromise — nothing in
+PRINCIPLES.md forbids telemetry; what the platform's ethos forbids is
+**presenting noisy numbers as precise ones**. So the metric ships with its
+noise stated in the UI ("upper bound — inflated by mail-client
+prefetching; audit views are the real intent signal"), raw open events are
+insert-only evidence interpreted at read time, and `body_hash` stays on
+the plain-text body: the HTML part is a mechanical rendering of the
+approved artifact plus the pixel, never content of its own.
+
+**The pixel endpoint is a public route handler** (`/api/open/[token]`),
+the same exception `/audit/[token]` already holds to the "route handlers
+only for webhooks/cron" rule — an unauthenticated surface a mail client
+fetches cannot be a server action. It serves the same GIF for known and
+unknown tokens (no validity oracle) and never fails the request: a
+tracking outage undercounts, which the metric already admits.
+
+**Tracking never gates.** No APP_URL → the send transmits untracked
+(token null); old ledger rows with null tokens render as "not tracked",
+never as zero opens (absence of data is not a zero).
+
+## 2026-08-20 — Prospecting cockpit: derive, don't persist (spec 098)
+
+**Intent, labels, follow-up state, funnel, and diagnostics are pure
+functions over ledgers, recomputed on every read.** No `intent_score`
+column, no materialized funnel. Changing a weight re-derives every batch
+identically (Batch 1 stays comparable to Batch 2); nothing historical is
+rewritten because nothing derived is stored.
+
+**Engagement events are raw, insert-only, and tied to the view row that
+rendered the page.** `prospect_audit_views` is immutable, so the beacon
+cannot enrich it; it appends to `prospect_audit_engagement_events`
+instead and the read side aggregates per view. Thresholds (30s/60s/75%)
+are read-time rules in `INTENT_WEIGHTS`/`ENGAGEMENT_RULES`.
+
+**Attribution is link-level, not send-level.** The branded link (076) is
+the one we email, so a view carrying its key is "arrived via the emailed
+link"; bare-token views are "unattributed external". We do not put
+per-send tokens in audit URLs — the link must survive resends and
+forwards, and identity claims ("their director opened it") are off the
+table by design. Session/visitor ids are random browser-stored values.
+
+**Uncontacted prospects with human-like views are ranked, not counted.**
+Team Moza's audit received 4 external views with no ledgered send (it went
+out by hand). That activity belongs in "Act today" as "no recorded send —
+unattributed", and must stay out of the contacted→viewed funnel, whose
+denominator is the ledger.
+
+**Gmail reconnect stays CLI-only for now** (`scripts/connect-gmail.ts`);
+the dashboard states it plainly in a P0 banner rather than pretending an
+in-app flow exists.
+
+## 2026-08-20 — Intent guardrails before automation (spec 099)
+
+An operator review caught the cockpit promoting Team Moza's four
+unattributed sessions to "High intent" and ranking two shallow sessions
+above one deep read. Decisions:
+
+- **Unattributed activity is `Unresolved`, never intent.** A prospect
+  with no transmitted send cannot carry an intent label, whatever it
+  scores; it ranks for a human to fix the ledger. The fix for a manual
+  send is recording it through the manual channel — until Gmail sent-mail
+  reconciliation exists (deferred, named in 099).
+- **Strong labels need a verified strong signal.** `High intent` /
+  `Engaged` require meaningful engagement or a CTA. Session weights fell
+  to +1/+1 so pageviews alone top out at `Interested`.
+- **Cadence in operator business days, cap 5 touches.** Behavior raises
+  priority and personalization, not frequency: 3 silent / 2 after
+  activity. Still recommendation only.
+- **Unattended sends are stage-gated; human sends are not.** The worker
+  passes `unattended: true` and the gate refuses past a recorded reply or
+  exit. Human sends stay free because the ladder sends the audit after a
+  reply. This is the minimum reply safety; Gmail inbound ingestion is a
+  prerequisite for autonomous follow-ups and is not built.
+- **Times render in `OPERATOR_TIMEZONE` with the zone spelled out.** The
+  server is UTC; an unzoned `toLocaleString` showed 3:05 PM for an
+  11:05 AM ET send. Storage remains UTC.
+- **"Contacted = allowed" was correctly computed but mislabeled.** Allowed
+  rows are written after dispatch succeeds in the same transaction, so the
+  label now says "transmitted".
+
+## 2026-08-21 — Cockpit QA: count less, not more
+
+A read-only QA pass against production found every "Act today" entry was
+our own traffic (operator IPs, `Claude-User`, a same-IP two-UA scanner
+pair 252 s after a send). Rules tightened rather than data patched:
+
+- **Beacon-less views are one visit per 30 minutes, never "repeat".** Only
+  beacon sessions are individually trusted. A scanner burst collapses to
+  one unverified session; a genuine no-JS return next day still counts.
+- **Scanner window 120 s → 600 s.** Found live: mail-provider scanners
+  fetch links up to five minutes after delivery. A human clicking inside
+  ten minutes is still seen through the beacon sessions that follow.
+- **AI agents are scripts.** `claude|chatgpt|openai|anthropic|perplexity|
+  gptbot` join the excluded user agents — an assistant reading the audit
+  is not the prospect reading it.
+- **An allowed send advances the recorded stage to `contacted`** inside
+  the send transaction, with a history row. The ledger already was the
+  truth; the stage column now follows it instead of a hand edit.
+- **The answers page keeps the branded key.** Otherwise one reader =
+  two "sessions", the second unattributed.
+- Early-sample flag also fires under two days of cohort age; machine-health
+  queries run sequentially (five concurrent ones tripped the pooler cap).
+
+## 2026-08-21 — Cockpit hierarchy: operations first, analytics last (spec 100)
+
+The dashboard order is now what-requires-me → what-the-OS-does-next →
+needs-review → cohort performance → pipeline → machine health → backlog
+→ data confidence. Critical transport failures jump to the top. The
+default cohort is DERIVED (launch with the most recent allowed send), the
+zoom-out is explicit (`launch=all`), and every filter link merges the
+current query (`dashboardHref`, unit-tested). Unresolved attribution is
+review work and never sits beside replies or CTA clicks. Under 25
+contacted the funnel is an arrow strip; definitions live in tooltips.
+"Next 24 hours" reads only from existing drafts and the follow-up cadence
+— no automation engine was added.
+
+## 2026-08-21 — Operate + Analyze share one metric module (spec 101)
+
+`lib/prospects/analytics.ts` is the only place outreach rates are defined;
+Operate's cohort snapshot and Analyze's scorecard/tables call the same
+functions over the same `ProspectIntent[]`, so denominators cannot drift.
+Rules worth remembering: delivered = sent minus bounce-suppressed
+recipients; all conversion rates are per delivered prospect, engaged and
+multiple-session rates per audit viewer; open signal is reported but
+starred "directional" and never feeds intent; **positive reply rate is
+null** until a reply classification is recorded anywhere (we do not infer
+sentiment from stage changes); a send earns the outcomes that occur after
+it and before the next send to the same prospect (touch/subject/timing
+tables); "strategy" is the draft channel until a finer enum exists; every
+comparison carries n and a central sample label (10 / 30) and insights
+emit only when both sides clear the floor — directional, never "winner".
+Manual-ready drafts are operator work (Needs your attention); only
+scheduled/eligible automation appears under Next 24 hours.
+
+## 2026-08-24 — The assistant manages what it starts (spec 102)
+
+Tier calls: `cancel_city_pipeline`, `retry_city_pipeline`, and
+`cancel_scheduled_send` are confirm-gated even though cancels stop spend
+rather than create it — they reverse a decision a human confirmed, and
+retry re-enters budget-spending lanes. `run_sense_check` is direct: it
+spends internal LLM tokens but only creates a reviewable artifact (the
+`research_market` precedent). Cancelling a pipeline also cancels its
+in-flight benchmark run — letting it keep spending after a cancel would
+surprise the operator; captured cells are kept (raw data is never
+deleted). Retry resumes at the new `failed_from_status` column (stamped by
+the tick at failure time); rows failed before 102 derive the resume status
+from earned refs (run → running, version → benchmarking, launch →
+discovering, else installing) — one step early is safe because steps reuse
+existing artifacts. Retry after the linked run itself failed deliberately
+re-fails with a clear log line instead of auto-skipping to benchmarking:
+each retry stays one bounded human decision. Tool `run` signatures now
+accept the loop's injectable `AgentCaller` so LLM-backed belt tools stay
+testable without network; the confirm path intentionally omits it.
+
+## 2026-08-24 — The assistant decides its staged work (spec 103)
+
+`review_discovery_candidate` is confirm-tier for BOTH decisions — approval
+creates a prospect and dismissal discards staged research — and stays one
+tool because it mirrors one service function; `reject_enrichment_proposal`
+is confirm as the `approve_enrichment` twin. The candidate list strips the
+raw payload (compact rows only): the adapter's verbatim `RawProspect` can
+blow the 6,000-char transcript budget, and the review decision needs the
+envelope (confidence, provider, source, resolution), not the payload.
+
+## 2026-08-24 — The outreach spine from chat (spec 105)
+
+Suppressing is confirm-tier even though it blocks (rather than causes)
+sends: for operators it is near-irreversible, since lifting is admin-only
+and permanently recorded. The belt wrappers for `suppress`,
+`liftSuppression`, and `stopSequence` mirror the existing server actions
+in `app/automation/actions.ts` byte-for-byte in semantics (`sql.begin` +
+the lift's admin assertion) because those primitives take a `Tx` — the
+wrapper shape is the sanctioned one, not new business logic. Chat stops
+always use reason `manual`: `opted_out`/`bounced` carry global-suppression
+side effects and remain inbound-signal verbs, never operator chat verbs.
+
+## 2026-08-24 — Compact catalog + describe_tools (spec 107)
+
+At 64 tools the full catalog cost ~16.7k chars (~4k tokens) every turn.
+Chosen design: keep every tool NAME always visible (selection stays
+global and cheap — no retrieval, no hidden capabilities) but render only
+the derived first sentence per tool, grouped under seven headers; full
+guidance and input shapes moved behind a free `describe_tools` meta-tool.
+Summaries are derived (`summaryOf`), never a second hand-written string —
+the compact catalog cannot drift from the descriptions. Groups live in
+one `TOOL_GROUPS` map (unit-enforced coverage) instead of 46 field
+annotations. The 11k-char catalog ratchet is deliberate: raising it
+requires a commit that says why. Alternatives rejected: embedding-based
+tool retrieval (nondeterministic, hides capabilities) and hand-written
+short summaries (drift).
+
+## 2026-08-24 — SSE route for assistant streaming (spec 110)
+
+Exception to "route handlers only for webhooks/cron": server actions
+cannot stream, and the value here is observation (live step progress),
+not new mutation surface — `app/api/assistant/stream/route.ts` makes the
+exact `askAssistant` call the server action makes, with an event callback
+the service treats as fire-and-forget (a callback throw is swallowed and
+logged; the turn always completes and persists). The dock falls back to
+the server action only when the stream fails before ANY event arrived:
+after the first event the turn may already have completed server-side,
+and an automatic retry could execute it twice.
+
+## 2026-08-24 — Operator preferences + catalog ratchet raise (specs 113-114)
+
+Preferences are rendered prompt context, never configuration: the ONLY
+reader is the prompt renderer, so standing instructions cannot override
+tiers, gates, budgets, or validation by construction — and the block
+itself says gates always win. Learning "injection" is deliberately a
+prompt rule pointing at the existing search_learnings tool, not an
+automatic retrieval layer (deterministic, zero new moving parts).
+The spec-107 catalog ratchet was raised 11k → 12k at 81 tools: three
+rounds of first-sentence trims established ~135 chars/line as the honest
+floor, so the old limit had stopped guarding compaction and started
+taxing every new tool. Also: analytics tools reuse the metric module
+verbatim, and `send_outcomes` was named `outreach_sends` because the
+`send_` prefix is reserved by the confirm-tier catalog invariant.
+
+## 2026-08-24 — Delegated tasks lift the spec-096 deferral (spec 115)
+
+Spec 096's "no multi-step autonomous plans" is lifted with the trust
+model extended, not weakened: the create_task confirm click authorizes
+READ/DIRECT tools only, within hard step + LLM-cost budgets stated on
+the card; confirm-tier tools inside a task mint task-linked pending
+actions and PARK the task — the operator's decisions (or dismissals)
+enter the transcript verbatim before it resumes. The chat loop's
+dispatch was extracted (dispatchToolCall) so both paths share one gate
+implementation by construction. Task-state notifications deliberately
+skip the notifications feed (it is project-keyed; tasks are
+operator-keyed) — the surfaces are the task's own conversation and the
+dock header line. Budget exhaustion is status 'failed' with the budget
+named, never a trimmed "success".
+
+## 2026-08-24 — Absence finding title made count-exact without a generator version bump
+The sense-check agent flagged "absent from most monitored AI responses" as
+imprecise: it understates 0-of-N (absence from ALL) and overstates a nonzero
+mention count. The title now renders the exact count ("absent from all 354…"
+/ "appears in only 15 of 354…"). FINDING_GENERATOR_VERSION was deliberately
+NOT bumped: metrics, thresholds, and methodology are unchanged (title is
+presentation over the same counted numbers), and a bump 12 hours before the
+2026-08-25 send batch would have marked every shipped v2 primary stale and
+triggered cross-batch regeneration churn. Wilmington findings were
+regenerated under the same version before first publish.
+
+## 2026-08-25 — Wilmington audits ship on the 354-sample scoring basis (resume-after-scoring gap)
+Run 66af5cdb was scored while partial (354 captures), then completed to 512.
+The scores table is immutable (052) and deduped per (run, company, metric,
+provider, scoring_version), so the completed run can never be re-scored at
+the same version — findings remain on the 354 basis while the transcript
+appendix shows all 512 captures. Before shipping, every finding claim was
+verified directly against current mentions across the FULL 512: all twelve
+"absent from all 354" prospects have zero mentions in all 512; nonzero
+prospects only gained mentions (finding undersells, never overclaims).
+Platform gap to fix properly: score only after run completion (or step the
+scoring version on material sample change). Also: the 03:02 UTC compute_scores
+job executed on the OUTDATED deployed worker and wrote a 42-company-scoped
+pass — worker redeploy required before relying on job-queue scoring again.
+
+## 2026-08-25 — Momentum scoreboard is all-cohort; quota is a policy constant (spec 119)
+
+The Momentum section's volume metrics (sends today, streak, daily chart,
+throughput) deliberately ignore the cohort filter: effort is a global input
+the operator controls, and slicing it per cohort would let a quiet cohort
+hide a quiet week. Touch depth and replies-by-touch stay cohort-scoped like
+every other Operate section, and each half is labeled. DAILY_SEND_QUOTA (15)
+is a named policy constant next to GMAIL_DAILY_SEND_CAP, not config —
+changing the commitment is a diff. Reply/bounce ingestion stay out of scope
+(spec 118); the replies line reads recorded stage changes only.
+
+## 2026-08-26 — Executive brief is deterministic synthesis, not an LLM call (spec 121)
+
+The cockpit's "Executive brief" is a pure function (lib/prospects/brief.ts,
+prospecting-brief-v1) over numbers the page already derives — headline
+priority, a hard cap of three ranked actions, observations with verbatim
+evidence counts. No LLM: the brief must be instant, free, reproducible, and
+incapable of fabricating a number, and its sample-size judgment is delegated
+to the cohort's existing diagnosis so it can never disagree with the funnel
+section rendered below it. Actions carry semantic targets (filter patches),
+not URLs, so the module stays URL-agnostic and unit-testable; the page maps
+targets through dashboardHref. Mobile: the PageHeader/Section actions slot
+now wraps (min-w-0 flex-wrap, was shrink-0 no-wrap) — the /prospects header
+stacks seven controls in that slot and overflowed at 390px; fixing the
+primitive fixed every page, and /prospects/dashboard (both views) joined the
+390px no-horizontal-scroll e2e fence.
+
+## 2026-08-26 — Arm A/B is derived from the sent body, not stored (spec 122)
+
+The Analyze tab's "Arm A vs Arm B" readout classifies every send at read
+time: a link in the sent draft's body (OUTREACH_LINK_PATTERN) is Arm A,
+link-free is Arm B, no draft body is "Unclassified", never guessed. No arm
+column: the 55 historical sends classify themselves retroactively, the
+2026-08-26 all-B conversion needs no backfill, and a future style change
+can't strand stale labels — same derive-on-read discipline as every other
+cockpit number. Context: the operator retired the planned concurrent A/B
+split (all upcoming sends converted to Arm B), so the readout compares
+against the historical all-A baseline; send-level attribution (groupSends)
+handles mixed-arm prospects.
+
+## 2026-08-30 — Audit pages exempt from the workspace type scale
+
+The layout-consistency type-scale gate (`text-xs/sm/lg/2xl` only) now skips
+`app/audit/**`. The audit page is a prospect-facing document governed by
+`.claude/skills/audit-page-design`, which takes the design lead on those
+routes; spec 123 round 2 requires a genuinely large hero numeral
+(`text-6xl`) as the page's focal finding. The workspace rule is unchanged
+everywhere else, and audit pages otherwise keep the documented scale.
+
+## 2026-08-30 — Template identity is stored on drafts; mismatch claims are frozen
+
+Spec 124. Unlike the Arm A/B readout (derived at read time, 2026-08-26),
+the competitive-mismatch template stores identity and evidence at write
+time: `prompt_version` carries the versioned template id, and a new
+`evidence_snapshot` jsonb on `outreach_drafts` freezes exactly what the
+body asserts (production evidence ids, the OpenAI-only counts and
+denominator, thresholds), locked at approval by the same trigger that
+freezes the body. The difference in kind: an arm is a style label a regex
+can re-derive forever, while this email makes falsifiable factual claims —
+the sent claim must stay auditable even after re-parses, new revisions, or
+fresher benchmarks change what a live recompute would say. Draft QA
+re-proves every frozen claim against live data at approval AND dispatch and
+fails the draft on any drift — never a warning.
+
+Related choices, same date:
+- **Competitor production reuses peer prospects.** No new production table:
+  a mismatch candidate is another prospect of the same market launch with a
+  structured RealTrends record in `prospect_authority_signals` metadata —
+  the entity level, market scoping, and provenance rules come for free, and
+  a competitor worth naming in an email is worth tracking as a prospect
+  anyway. `ingestRealTrendsRecord` (dormant since spec 074) gained its
+  first caller (`scripts/ingest-realtrends.ts`).
+- **"ChatGPT" is never claimed as the tested system.** The requested copy
+  said "I ran … through ChatGPT"; the terminology rule (spec 090) forbids
+  describing an API benchmark as testing the consumer app. The template
+  renders `consumerAnchoredModelPhrase` — "the OpenAI model(s) behind
+  ChatGPT" — keeping the recipient-legible brand without the false claim,
+  and the denominator counts OpenAI answers only (echo-excluded,
+  non-holdout, current revisions) via one canonical service.
+- **Reply classification is deterministic and insert-only.** No Gmail
+  polling yet: the operator records the reply text, a versioned pattern
+  classifier assigns the category (override allowed, both stored), and
+  corrections are new rows. The positive-reply rate renders null until any
+  classified reply exists — sparse early data never reads as a zero rate.
+
+## 2026-08-30 — Licensed RealTrends dataset: own table, market-wide competitor pool
+
+Spec 124 data pass. The purchased workbook lands in `realtrends_records`
+(not `prospect_authority_signals`): rows are facts about ~75k entities,
+almost none of which are prospects, and the same-fact/company-keyed
+resolution (`company_id` + match_status) is what lets a comparison team
+exist without an outreach row. The mismatch candidate pool widened from
+"peer prospects of the launch" to "any canonical company in the launch's
+city+state with verified dataset production" — outreach cadence decides
+who we CONTACT, never who may serve as a COMPARISON. Guards kept: matching
+is deterministic (unique exact name in a geo-scoped candidate set;
+brokerage/entity-level conflicts demote to review; nothing auto-links on a
+probable match), markets carry an explicit `state_code` so same-named
+cities in different states can never cross-match (the Wilmington DE/NC
+lesson), and licensed rows stay internal — evidence panels show
+"RealTrends verified dataset", never workbook contents, and the raw file
+plus derived JSON live only in gitignored `.local-data/`. Dataset evidence
+is canonical over hand-captured signals for the same fact; signals remain
+as history and as the fallback.
+
+## 2026-09-01 — Remote MCP endpoint as an app route; unsalted-sha256 tokens; ledger-window rate limit
+
+Spec 126. `/mcp` (plus `/healthz` and `/.well-known/oauth-protected-resource`)
+is the third documented exception to "route handlers only for webhooks/cron":
+like a webhook, it is a machine protocol endpoint — JSON-RPC over POST with
+bearer auth, no session, no page. It lives inside the existing Next.js app
+(SDK `WebStandardStreamableHTTPServerTransport`, stateless per-request
+server) rather than a second service, because the repo's one-app rule beats
+a new deployable, and Grok's Streamable HTTP needs no long-lived state.
+Personal access tokens are stored as plain sha256 hashes — no pepper, no
+bcrypt: the secret embeds 32 random bytes (~256 bits), so brute force is
+bounded by the entropy, not the hash cost, and lookup stays a unique-index
+equality. The 60-calls/min rate limit counts rows in the insert-only
+`mcp_tool_calls` audit ledger over a trailing 60s window: correct across
+multiple web instances without introducing Redis, at the cost of one
+indexed count per tools/call — fine at connector volumes.
+## 2026-08-25 — Brokerage send cap scoped per market (spec 120)
+
+The spec-052 cap (3/brokerage/30d) matched brokerage names globally; by
+08-25 Compass, Coldwell Banker Realty, and eXp were 3/3 nationwide and 14 of
+15 approved initial drafts were gate-blocked in markets those brands had
+never been contacted in. Operator decision: the intrusion risk is
+office-local, so the cap now counts sends within the prospect's launch
+(market) only. Same diff normalizes brokerage names (comma cut + trailing
+inc/llc) so suffix variants share one cap bucket — "Long & Foster Real
+Estate Inc." no longer dodges the plain form's count. Cap value and window
+unchanged; still a policy constant.
+
+
+## 2026-09-03 — Follow-up touches are drafts; enrollment is the human approval (spec 127)
+
+Touch 2/3 of the competitive-mismatch sequence are ordinary `outreach_drafts`
+rows so they inherit approval immutability, deterministic QA, the send gate,
+the insert-only ledger and the scheduled-send worker — no parallel outreach
+system. The branch (engaged / no engagement) cannot be known days ahead, so
+the worker renders the touch ≤ 30 min before its recipient-local slot from the
+FROZEN Touch 1 snapshot and inserts it already `approved`, with the enrolling
+operator as `approved_by`/`scheduled_by`. PRINCIPLES #8 is satisfied by the
+enrollment (a human confirms the sequence, both branch templates are fixed
+text over frozen numbers, nothing is generated); the dispatch preflight
+(`followup_preflight` gate check) re-verifies replies live in Gmail, bounces,
+DNC, suppression, sync freshness, evidence integrity and that the engagement
+state is unchanged, and fails closed. The brokerage 30-day cap now counts
+distinct prospects, so follow-ups to one team never consume another team's
+slot; every transmit still counts toward `GMAIL_DAILY_SEND_CAP`, and due
+follow-ups drain before new cold sends. Greeting/subject use the em-dash-free
+`{first},` / `{first} - …` forms the 2026-08-31 operator decision set, not the
+spec's `—`, so Touch 2/3 match what the prospect already received.
+
+## 2026-09-04 — Positive-reply learning log is a derived view, not a table
+
+First positive cold-outreach reply (Steve Wall, Raleigh, 2026-09-03) needed a
+per-prospect record joining frozen mismatch evidence, opens, reply, report and
+stage events. Chose migration 102's read-only view `outreach_reply_learning_log`
+over a parallel table: every column is a projection of canonical rows (sends,
+draft parent chain, `prospect_replies`, `outreach_open_signal`, audits, views,
+walkthroughs, stage history), so it can never drift from the ledger and nothing
+is written twice. Mismatch strength is deliberately absent from the view —
+`mismatchStrength` in `lib/prospects/mismatch.ts` stays the single
+implementation and `scripts/positive-reply-forensic.ts` applies it. The same
+migration restates spec 125's `outreach_open_signal` view idempotently because
+it had been applied to prod (097) without ever reaching `main`; its `down`
+drops that view only where 097 is not recorded. With N_POSITIVE_REPLIES = 1 the
+comparison the script prints is descriptive only — no copy, threshold, market,
+timing or cadence change is made on this observation.
+
+## 2026-09-04 — Follow-up copy v2 sells the reply, not the report or the call
+
+Touch 2/3 templates were rewritten (`*_v2`) before any Touch 2 left. Three
+decisions: (1) the offer line is gated on actual report state — a published
+`prospect_audits` row whose frozen `mismatch` block states the sequence's exact
+competitor, counts and denominator — because a report is generated only after a
+positive reply, so "I have the private report ready" would have been false for
+every cohort prospect; (2) agent-vs-team wording is read from the RealTrends
+`entity_type` behind the frozen `productionSignalId` (dataset row first, authority
+signal second) rather than stored on the sequence — no migration, no second copy
+of a fact, and an unknown level fails the render closed; (3) report generation
+after a positive reply is NOT automated yet: `publishAudit` needs a human
+acknowledgment for stale benchmarks and the classifier misfired once (Steve
+Wall's "Yes" first recorded as unsubscribe), so a mis-classified reply must not
+mint a prospect-facing page. The sequence records a `founder_action_required`
+activity and the operator view shows READY_TO_SEND / REPORT_NOT_GENERATED
+instead. Also: a 21-calendar-day sequence expiry from the actual Touch 1 send,
+and reply bodies that strip to nothing (all-quoted, redacted) are "unclear" —
+they stop the sequence for review and never suppress.
+
+## 2026-09-04 — Positive-reply report delivery is automated behind three QA gates (spec 129)
+
+Reverses the same-day decision above at the founder's request ("when they reply
+yes it works, is QA'd and goes out asap after multiple QA's"). The "yes" itself is
+still the only trigger (`positive_interest`; questions, proof requests and
+referrals stay with the founder). Between the reply and the send sit: the existing
+`publishAudit` gates (the automation may acknowledge exactly one warning, the
+incomplete-run one, because the frozen mismatch counts already use captured
+answers only); a deterministic evidence QA of the published block against the
+frozen Touch 1 snapshot; an LLM read of the whole report from the recipient's
+point of view (new `report_prospect_review` prompt, frontier tier — clarity,
+relevance, jargon, digestibility for someone who knows nothing about AI); and the
+existing sense-check agent over the same content hash. Any blocking concern, low
+confidence or failed call parks the handoff as `needs_review` with the reason — a
+report is still generated and kept, only the send waits. The reply reuses the
+spec 128 `reply_to_id` path (threaded under their message, refused without a
+thread), goes 4–12 minutes after the "yes" inside 07:00–20:00 recipient-local and
+next morning otherwise, and is deterministic copy (`mismatch_report_delivery_v1`).
+`REPORT_HANDOFF_AUTOSEND=false` is the kill switch: everything runs, the send waits.
+
+## 2026-09-05 — Lead-agent aliases come from the RealTrends relationship; corrections sit beside frozen evidence (spec 130)
+
+Ryan Ogle (Blu House Properties) replied to a Touch 1 that said "recommended in 11 of
+256". The same 256 answers named "Ryan Ogle" in 45 of them; the company had no aliases,
+so those answers never became parser candidates, and the classifier's identity gate had
+no fact tying the person to the team. Corrected on the same run: 29 of 256 (Josh May 38,
+unchanged). Decisions: (1) a person name becomes a team alias ONLY from
+`realtrends_records.team_lead` on a high-confidence/confirmed match, written through the
+registry's collision check, with the "First Last" form derived deterministically and
+single-token leads sent to review — never fuzzy matching, never LLM inference at parse
+time; individuals and brokerages get no person alias (agent ≠ team ≠ brokerage). (2) The
+relationship reaches `mention-classifier-v2` as an identity fact in the existing
+`identityContext` (data, not a prompt-template change, so the classifier version stays).
+(3) A delivered Touch 1's snapshot and sent body are never edited; `outreach_evidence_corrections`
+(insert-only) records ORIGINAL and CORRECTED snapshots with reason, run and actor, and
+`deliveredTouch1` / `getFollowupSequence` overlay the latest row so the report,
+follow-ups and handoff QA state corrected counts while the ledger keeps the sent claim.
+The learning-log view exposes `sent_claim_*` next to `corrected_*`. (4) The private report
+carries a quiet correction line and a three-column "What I'd change first" (observed /
+change / test) — no causal claims, remeasurement by the same questions. (5) Unsent
+drafts that restate corrected counts are superseded and the sequence paused for the
+operator; already-sent emails are flagged, not auto-corrected by email. (6) A bracketed
+ALL-CAPS placeholder (`[FOUNDER_PRICING]`) fails deterministic draft QA, so a founder
+reply cannot be approved with the price missing. Cohort audit (74 mismatch prospects):
+several sent claims were materially wrong once the lead agent is credited (Brace Homes
+5→51, Hamilton and Co. 0→31, Caul Team 0→26, all no longer eligible); see
+scripts/entity-alias-audit.ts output for the full table.
+
+## 2026-09-05 — Client engagement record over existing systems (spec 131)
+The first-client readiness audit (Ryan Ogle / Blu House, Grand Rapids, $7,500/mo × 3) found
+promotion, exclusivity, tasks, interventions, comparability, billing_events, encrypted
+credentials and the portal already built, but no commercial record, no baseline package for
+a prospect whose evidence lives on a SHARED market run, no dispatch-time exclusivity check,
+and no client-approval/provenance state on work. Decisions: (1) `client_engagements` is the
+commercial row; the client stays a `projects` row and the prospect keeps pre-sale history —
+no parallel CRM. (2) The baseline is an immutable JSON package over an immutable run
+(`engagement_measurements`, trigger-protected), because reports/verdicts key on
+`runs.project_id` and the shared-capture instrument is the true baseline; remeasurement is
+the same shared instrument re-run, compared under explicit comparability rules with
+`non_comparable` as a first-class outcome. (3) Exclusivity is enforced where it can fail —
+the existing spec 052 send-time re-check inside `sendProspectDraft`, now with the client's own
+promoted prospect exempt (no second gate); signing refuses a second
+live engagement in the same/contained market without an admin reason. (4) Client approvals
+are captured by staff from the channel the client used (portal stays read-only); the trail is
+append-only. (5) Contract and payment remain manual and are recorded truthfully; the
+commercial gate is signed contract + payment_received or an admin override with a reason,
+never an override of the contract. (6) A former client is flagged do-not-contact with a
+cooldown at close so cold prospecting cannot resume by accident.
+
+## 2026-09-06 — Deterministic QA lanes over one batched portfolio read (spec 132)
+Multi-client delivery is enforced by canonical data + deterministic evaluators, not by agents.
+(1) `lib/engagements/qa.ts` is pure; every lane is a function of canonical state so the same
+rule answers on Today, the Clients index, the Engagement page and in tests. (2) The portfolio
+is read once (`loadPortfolioData`: a fixed set of `any(ids)` queries) and assembled per client;
+`engagementOverview` delegates to it so one client and twenty-five take the same query count —
+the N×12 per-client overview the first Today integration used was the obvious pathology and
+is gone. (3) Material QA outcomes persist as `engagement_qa_events` with one open row per
+(engagement, lane, code); PASS is never logged; overrides keep actor, time, reason and the
+previous result. (4) Two LLM roles only — communication reviewer and evidence reviewer — fed
+a fact pack the portfolio service assembles; findings are P2 advisory events; the founder
+sends. (5) Execution QA gates apply only to projects with a live engagement so measurement-only
+projects keep the lighter task flow. (6) Billing UNKNOWN is a first-class state; it never
+reads as current.
+
+## 2026-09-06 — The Analyze tab is an acquisition control panel over one facts bundle (spec 133)
+
+The tab used to pool every cohort into audit-view and open-signal rates that
+belonged to the audit-link era. It now derives everything from one read-only
+facts bundle (`lib/prospects/acquisition-facts.ts`) through one pure function
+(`lib/prospects/acquisition.ts`), so the hero rate, the funnel, supply,
+evidence QA and the bottleneck call cannot disagree on a denominator.
+Decisions baked in: Touch 1 identity follows the draft chain to the frozen
+mismatch snapshot (rewrites carry no template version) and EXCLUDES founder
+replies, report deliveries and corrections even when their chain reaches a
+snapshot — the learning-log view counts Ryan Ogle's report reply as a second
+Touch 1, so the panel filters at read time rather than rewriting the view;
+reply classification is the latest insert-only row per message (Steve Wall's
+mis-recorded unsubscribe loses to the later positive row); Era 1 and Era 2
+are never pooled; QA131 fixtures are excluded by name prefix rather than
+deleted; the status label, runway and bottleneck are fixed rules over named
+constants, never a score; "dominant AI competitor" for the ICP hypothesis
+means top 3 by recommended count in the market run (Josh May is #2 behind
+Brace Homes after the correction); opens stay under Diagnostics. Gmail health
+trusts a successful transmit inside 72 h because the connector status can read
+expired while refresh still works. No acquisition rule, template, cadence,
+threshold or price changed.
+
+## 2026-09-07 — Spec 134: private report access is invitation → session → clean URL
+
+The credential a prospect receives (the spec-076 branded key, unchanged, or a
+legacy audit token) is exchanged once at `/report/<slug>/<key>` for an
+HttpOnly, path-scoped session cookie whose token is stored only as a SHA-256
+hash; the browser then shows `/report/<slug>` and nothing else. Why: the key in
+the address bar read as a tracking link and was the only gate, and a copied
+clean URL must never be a credential. Keys stay stored raw because the
+delivery email is composed from the table after minting; sessions are the
+hashed layer. Forwarding is a feature: one invitation activates up to
+`prospect_audit_links.session_allowance` (default 5) independently authorized
+browsers — a "device" is a session, never a fingerprint or an IP. Sessions
+that never reach the report expire in 15 minutes so mail scanners cannot spend
+the allowance, and HEAD has no side effects. Operator sessions are internal at
+exchange time and count nowhere. Report slugs live on `prospects.report_slug`
+(presentation only; audit identity is untouched), disambiguated by market and
+then a number. Legacy `/audit/...` URLs are not redirected away from — they
+validate exactly as before and then ride the exchange, so nothing already sent
+needs resending. Cold T1/T2/T3 templates are untouched; only the spec-129
+report delivery now links to the invitation, and its HTML part labels it
+"Private report for <business>" while the text part keeps the full URL.
+
+## 2026-09-07 — Spec 135: one versioned pricing policy; quotes are events; history is immutable
+
+The default offer for the first three paying clients is `first_client_90d_v1`:
+$7,500 total for a 90-day engagement, billed $2,500 × 3 (at signing, day 30,
+day 60), one entity, one founder-confirmed market, exclusivity for the term.
+Why: we are pre-proof (no paying client, no before/after, no attributable
+lead), so we price for proof, delivery learning, case studies and
+willingness-to-pay learning — not as if ROI were established. Ryan Ogle's
+2026-09-05 quote ($7,500/month × 3 = $22,500) is preserved verbatim as
+`founder_monthly_7500_v0` (retired) with his decline recorded as
+PRICE_TOO_HIGH + PREFERS_DIY; it is the evidence, not an error. Policies live
+in code (like the model registry) so a price change is a reviewed diff;
+quotes (`pricing_quotes`) and engagements carry the version they were made
+under, so raising prices later never rewrites what anyone was told. The
+report's offer section freezes the active policy at publish. Engagement terms
+that differ from the policy require a founder override reason stored next to
+the default — no silent discounting, no price inferred from wealth, market
+size or eagerness. Not built: tiers, a DIY/sprint offer (N=1), market price
+tables, Stripe, calculators. Customer-facing copy calls it the current offer,
+never a discount, pilot, beta or founding price.
+
+## 2026-09-07 — Entity verification is a hard send gate; positive replies are owned; hand-off needs no sequence
+
+- **Every count-stating email requires `entity_resolution_verified`** (Touch 1, follow-ups, corrections, report deliveries, and rewrites whose ancestor carries the frozen evidence), for BOTH the prospect and the competitor, regardless of numerator or gap. Verified means: a team's RealTrends lead aliases are applied (or covered by the name), an individual's canonical person record exists, or an operator recorded the entity level from an authoritative page. Anything else fails closed as `ENTITY_RESOLUTION_UNVERIFIED`. Why: 17 of 183 campaign emails carried a count that changed on re-resolution; 7 inverted the claim. The old draft QA compared the email to its snapshot, never the snapshot to the entity.
+- **Report hand-off (spec 129) enqueues any canonical positive reply** — Gmail-synced or hand-recorded, sequence or not — and `REPORT_HANDOFF_AUTOSEND` is now opt-in (`"true"`). Why: both real "yes" replies had failed the old preconditions and no hand-off ever ran; automation prepares, the founder sends.
+- **A positive reply is owned the moment it is recorded** (owner = the user who set the legal sender identity, next action, due next business day) and stays on Today until a human records the outcome (`positive_reply_resolved` activity). Why: Steve Wall sat three days after his report with no owner or next action.
+- **Refused follow-ups re-plan only for operational refusals** (mailbox cap, brokerage frequency, transport); reply/DNC/correction/entity/evidence/exclusivity refusals pause the sequence for a human. Why: the scheduler previously re-rendered every parked touch each morning.
+- **`decline` is a reply class** with objection flags (`PRICE_TOO_HIGH`, `PREFERS_DIY`, …); the classifier strips quoted history on every path. Never suppresses.
+- **Credible engagement only**: audit views inside 5 minutes of publish are the operator's publish-QA loads; opens come from the classified open-signal view (scanners excluded); reply rows are canonical per prospect+received_at (corrections don't double count); QA131 fixtures are archived and excluded.
+- **Dead automation**: the daily control-tower trigger is disabled (14/14 failures, no notification connector). Sense-check at publish stays advisory; the delivery-time sense-check inside the hand-off is the QA promise that matters. Weekly briefs and refresh outputs are left running (no cost, no noise) until a client exists.

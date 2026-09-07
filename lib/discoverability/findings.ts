@@ -11,7 +11,9 @@ import type { PageLink } from "@/lib/discoverability/page-facts";
 import { checkStructuredData } from "@/lib/discoverability/schema-check";
 import {
   AUTHORITY_KINDS,
+  FRESHNESS_VERSION,
   IMPORTANT_PAGE_SCORE,
+  SCHEMA_CHECK_VERSION,
   SITE_PRIORITY_VERSION,
   type PageKind,
 } from "@/lib/discoverability/constants";
@@ -317,7 +319,7 @@ export function deriveFindings(input: DeriveInput): SiteFindingDraft[] {
         {
           latestYearReferenced: page.latestYearReferenced,
           sitemapLastmod: page.sitemapLastmod,
-          freshnessVersion: "freshness-v1",
+          freshnessVersion: FRESHNESS_VERSION,
         }
       );
     }
@@ -399,7 +401,7 @@ export function deriveFindings(input: DeriveInput): SiteFindingDraft[] {
               ? "Add Person/Organization/RealEstateAgent structured data describing the team with its real, verifiable details."
               : "Correct the structured data using only values that are true and verifiable.",
         },
-        { schemaCheckVersion: "schema-check-v1", observations: list.map((o) => o.observed) }
+        { schemaCheckVersion: SCHEMA_CHECK_VERSION, observations: list.map((o) => o.observed) }
       );
     }
   }

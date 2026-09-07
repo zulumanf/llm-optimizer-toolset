@@ -167,3 +167,95 @@ One section per feature: purpose, user flow, edge cases, acceptance criteria. Th
 **Edge cases:** one run → no delta claimed; no runs → setup message; measurement unconfigured → "measurement paused", never a fake date; every number keeps its sample size.
 
 **Acceptance criteria:** deny-by-default reads unchanged; type-scale and phone fences pass on /portal.
+
+## Assistant Pipeline Operator
+
+**Purpose:** the workspace assistant manages what it starts (`specs/102-assistant-pipeline-operator.md`): list every city pipeline, cancel one, retry a failed one from the status it failed at, view the scheduled-send outbox (scheduled / parked / in-flight), cancel a scheduled send, and run the audit sense-check that `publish_audit` warns about — six thin-wrapper tools on the spec-096 belt.
+
+**User flow:** "what pipelines are running?" → `list_city_pipelines`; a stuck or mistaken one → confirm-gated cancel (an in-flight benchmark run is cancelled too, captured cells kept) or retry (resumes at `failed_from_status`, worker advances next tick). "What's in the outbox?" → `list_scheduled_sends`; a scheduled send is cancelled behind the confirm gate. A stale-sense-check warning on publish → `run_sense_check` (direct tier), then publish.
+
+**Edge cases:** cancelled pipelines are excluded from the tick's query and index and never block a fresh kickoff for the same city; pre-102 failures retry at a status derived from earned refs (run → running, version → benchmarking, launch → discovering, else installing); a worker-claimed send refuses cancellation with a conflict; parked rows keep their reason and in-flight claims are flagged, never auto-retried.
+
+**Acceptance criteria:** cancel/retry/cancel-send are confirm-tier (catalog assertion extended to `cancel_`/`retry_` prefixes); migration 091 is reversible with cancelled rows mapped to failed on the way down.
+
+## Assistant Review Loop
+
+**Purpose:** the assistant decides the staged work it creates (`specs/103-assistant-review-loop.md`): list discovery candidates and a prospect's enrichment proposals, approve/dismiss a candidate, reject a proposal — four thin wrappers completing the loop `run_discovery` and `enrich_prospect` open.
+
+**User flow:** "what's waiting on me?" → `list_discovery_candidates` (pending by default, per launch or overall, compact rows without raw payloads) → confirm-gated `review_discovery_candidate` (approval creates the prospect through the provenance-stamped path; same-name conflicts record duplicate). "What did enrichment find for X?" → `list_enrichment_proposals` (pending/failed only) → `approve_enrichment` or the new confirm-gated `reject_enrichment_proposal` with an optional audited reason.
+
+**Edge cases:** already-decided candidates conflict; ambiguous company resolutions stay suggestions; decided proposals leave the review list by the service's contract.
+
+**Acceptance criteria:** catalog assertion extended to `review_`/`reject_` prefixes; approve and reject round-trip through the confirm gate in integration tests.
+
+## Assistant Run Management
+
+**Purpose:** the assistant manages the benchmark runs it starts (`specs/104-assistant-run-management.md`): confirm-gated `cancel_run` (ends partial/cancelled, captured cells kept, spend stops) and `retry_failed_cells` (partial/completed/failed runs re-enter the worker queue; live spend on retried cells).
+
+**Edge cases:** the services' guards surface verbatim — cancel conflicts unless pending/running; retry conflicts while still executing; a confirmed action that the service refuses is recorded in-thread as failed, never silently dropped.
+
+**Acceptance criteria:** both confirm-tier; mint executes nothing; integration round trips assert run status, the enqueued execute_run job, and the run.cancel / run.retry_failed audit rows.
+
+## Assistant Outreach Spine
+
+**Purpose:** the compliance layer under sending, visible and manageable from chat (`specs/105-assistant-outreach-spine.md`): suppression list (list/suppress/lift), CAN-SPAM sender identity (get/set), outreach sequences (list/stop) — thin wrappers mirroring the existing server actions' `sql.begin` + role-gate shapes.
+
+**Edge cases:** already-suppressed and already-stopped report honestly instead of erroring; lifting is admin-only (a non-admin's confirmed lift records the role failure in-thread and lifts nothing); chat stops are always reason `manual` — `opted_out`/`bounced` stay inbound-signal semantics; sequence rows never include message bodies.
+
+**Acceptance criteria:** all four mutations confirm-tier (catalog regex extended to `suppress_`/`lift_`/`stop_`/`set_`); suppression and sequence round trips through the confirm gate in integration tests.
+
+## Assistant Refresh Queue
+
+**Purpose:** the weekly audit-refresh loop from chat (`specs/106-assistant-refresh-queue.md`): `list_audit_refresh_candidates` (compact rows with delta, preflight counts, and the prior-human-finding pre-fill), `prepare_audit_refresh` (direct — idempotent staging, force for manual-run backfill), and confirm-gated `approve_audit_refresh` (republishes under the same link; requires the human-finding attestation, acknowledge_stale / acknowledge_warnings pass through) and `dismiss_audit_refresh`.
+
+**Edge cases:** needs_attention candidates refuse approval and point at the prospect page; a manual run without force reports notApplicable; a fixture published without a human finding lists a null pre-fill honestly.
+
+**Acceptance criteria:** catalog regex extended to `dismiss_`; approve and dismiss round-trip through the confirm gate against the audit-refresh harness, republish landing on the new run.
+
+## Assistant Catalog Compaction
+
+**Purpose:** the tool catalog stopped growing the per-turn prompt (`specs/107-assistant-catalog-compaction.md`): the system prompt now carries a grouped compact catalog (name, confirm marker, derived first sentence — ~10.0k chars vs ~16.7k before at 64 tools), and full guidance + input shapes moved behind the free `describe_tools` meta-tool (batch up to 8 names).
+
+**Edge cases:** summaries derive from descriptions (`summaryOf`) so they cannot drift; unknown names return `unknown` rows, never a dead step; the self-healing validation shape on a wrong-input attempt remains the alternative to describing first; an 11,000-char ratchet test fails the suite when growth erodes the compaction.
+
+**Acceptance criteria:** every tool mapped to exactly one group (unit-enforced); describe-then-call round trip through the loop; prompt bumped to workspace-assistant-v3 and registered in docs/13.
+
+## Assistant Operator MCP Tools
+
+**Purpose:** the three operator-group MCP tools reach chat (`specs/108-assistant-operator-mcp-tools.md`): `import_prompts` (direct — dry-run-first bulk import of pre-freeze artifacts), `create_experiment` and `record_learning` (confirm — a measurement commitment with future spend, and a durable never-auto-generated learning where the confirm click is the explicit operator act). Schemas imported verbatim from `lib/mcp/schemas.ts`; execution rides `invokeTool`'s existing mutation gates.
+
+## Assistant Prospect Insight Reads
+
+**Purpose:** four cockpit computations reach chat as pure reads (`specs/109-assistant-prospect-insight-reads.md`): `diagnose_prospect` (versioned deterministic rule set), `prospect_timeline` (merged evidence, newest-first with omitted count), `prospect_intent` (null → "not derivable", never a guess), `upcoming_automation` (what the machine does next, per launch or overall).
+
+## Assistant Streaming Progress
+
+**Purpose:** long research chains show what the assistant is doing right now (`specs/110-assistant-streaming-progress.md`): the loop emits tool_start/tool_end/done events, an SSE route streams them, and the dock renders live step lines (spinner → ✓/✗) before the reply. The blocking server action stays as the transparent fallback.
+
+**Edge cases:** an event-callback throw is logged and never fails the turn; the client falls back to the action only when the stream fails before any event arrived (afterwards a retry could run the turn twice — it shows a reconnect hint instead); a client disconnect never cancels the turn server-side.
+
+**Acceptance criteria:** ordered event sequence asserted in integration; no change to loop semantics, tiers, or the confirm gate; the route is a thin adapter over the same service call the action makes.
+
+## Assistant Close the Loop
+
+**Purpose:** both ends of the prospect lifecycle from chat (`specs/111-assistant-close-the-loop.md`): `import_prospects_csv` (direct — ≤200 rows, per-row errors reported, provenance stamped, rows stay behind every downstream gate) and `promote_prospect_to_client` (confirm — the close creates a client project and by default an ACTIVE exclusivity agreement; the summary states whether one is created). Catalog regex extended to `promote_`.
+
+## Assistant Conversation List
+
+**Purpose:** previous chats stop being orphans (`specs/112-assistant-conversation-list.md`): a History control in the dock header lists the operator's own conversations (newest activity first, title + message count + date) and reopens any of them with its messages and pending actions; "New chat" is unchanged, the old thread just stays reachable.
+
+**Edge cases:** own conversations only (ownership as `loadConversation` enforces); switching is blocked while a turn is in flight; loading and empty states present.
+
+## Assistant Analytics Reads
+
+**Purpose:** "analyze X" answers from the sanctioned metric module (`specs/113-assistant-analytics-reads.md`): `outreach_scorecard` (rates/funnel/diagnostic/insights), `outreach_breakdown` (bySegment with n + sample labels), `acquisition_funnel`, `outreach_sends` (compact per-send outcome rows, newest first). Assembly is the dashboard's own `prospectFacts → deriveIntent` glue; null rates pass through as null, never zero.
+
+## Assistant Operator Preferences
+
+**Purpose:** the assistant remembers how you work (`specs/114-assistant-operator-preferences.md`): a per-operator standing-preferences block (≤2000 chars, migration 092) rendered into every turn's prompt with "platform rules and confirmation gates always win"; set/cleared through confirm-gated `set_my_preferences`, read via `get_my_preferences`. Prompt v4 also tells the model to consult `search_learnings` before advising on approach. Preferences are prompt context only — nothing else reads them, so they can never override tiers or gates by construction.
+
+## Assistant Tasks
+
+**Purpose:** delegated multi-step jobs (`specs/115-assistant-tasks.md`): a confirm-gated `create_task` authorizes autonomous read/direct execution toward a goal within hard step and cost budgets; the worker's tick advances tasks through the chat loop's own extracted dispatch (`dispatchToolCall` — one implementation, gates cannot diverge); confirm-tier tools stage task-linked pending actions and park the task until the operator decides; every state change posts into the task's conversation and the dock header shows "Tasks: N running · M need you". `list_tasks`/`get_task` read; `cancel_task` (confirm) also cancels undecided stagings.
+
+**Edge cases:** budgets fail loudly (never a silent partial success); dismissed stagings are instructions, not errors; recursion refused; transcript persists after every step so a crashed tick resumes at the last durable step; cancelled/failed tasks keep their transcripts.

@@ -155,3 +155,21 @@ describe("expandMarketPack", () => {
     ]);
   });
 });
+
+describe("placeLabel — ambiguous city names carry their state", () => {
+  it("qualifies {city} with the hierarchy root region (Wilmington → Wilmington, Delaware)", async () => {
+    const { placeLabel, expandMarketPack } = await import("@/lib/markets/generate");
+    const pack = {
+      key: "draft:wilmington", version: 1, cityName: "Wilmington",
+      hierarchy: { name: "Delaware", kind: "region" as const, children: [{ name: "Wilmington", kind: "city" as const, children: [] }] },
+      zipCodes: [], propertyTypes: ["condo"], primaryPropertyTypes: ["condo"], priceTiers: [],
+      buyerSegments: [], sellerSegments: [], terminology: {}, brokerages: [], publications: [], excludedPlaceNames: [],
+      templates: [{ key: "best", text: "Who are the best real estate agents in {city}?", category: "recommendation" as const, tier: "core" as const, audience: "buyer" as const, scope: "city" as const }],
+    };
+    expect(placeLabel(pack)).toBe("Wilmington, Delaware");
+    const out = expandMarketPack(pack as never);
+    expect(out.prompts[0]?.text).toBe("Who are the best real estate agents in Wilmington, Delaware?");
+    // A root that IS the city (city-state packs) stays bare.
+    expect(placeLabel({ cityName: "Singapore", hierarchy: { name: "Singapore", kind: "region", children: [] } })).toBe("Singapore");
+  });
+});

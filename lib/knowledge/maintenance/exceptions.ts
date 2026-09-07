@@ -185,22 +185,6 @@ export async function autoResolveKnowledgeExceptions(
   return rows.length;
 }
 
-export async function resolveKnowledgeException(
-  tx: Tx,
-  args: { id: string; resolution: string; resolvedBy?: string | null; dismiss?: boolean }
-): Promise<boolean> {
-  const rows = await tx`
-    update knowledge_exceptions set
-      status = ${args.dismiss ? "dismissed" : "resolved"},
-      resolution = ${args.resolution},
-      resolved_by = ${args.resolvedBy ?? null},
-      resolved_at = now()
-    where id = ${args.id} and status in ('open', 'acknowledged')
-    returning id
-  `;
-  return rows.length > 0;
-}
-
 export interface KnowledgeExceptionRow {
   id: string;
   projectId: string | null;

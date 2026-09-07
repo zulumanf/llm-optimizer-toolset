@@ -22,7 +22,10 @@ import type {
 
 export const DISCOVERY_VERSION = "prospect-discovery-v1";
 const DISCOVERY_MODEL = "sonar";
-const DISCOVERY_MAX_TOKENS = 1500;
+// 1500 truncated real 20-prospect responses mid-string (Savannah, 3× on
+// 2026-08-24 — "Unterminated string in JSON at position ~6000"). 4000 gives
+// a 20-item payload with sources comfortable headroom at negligible cost.
+const DISCOVERY_MAX_TOKENS = 4000;
 const DEFAULT_LIMIT = 10;
 
 const SYSTEM = `You are a research assistant identifying notable residential

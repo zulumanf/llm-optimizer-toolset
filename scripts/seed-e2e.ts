@@ -128,7 +128,7 @@ async function main(): Promise<void> {
   const evidence = [
     { kind: "response", refId: response?.id as string, note: "e2e seed evidence" },
   ];
-  const suggested = unwrap(
+  unwrap(
     await tasksSvc.suggestTask(operator, {
       projectId: project.id,
       title: "E2E: publish neighborhood guide",
@@ -431,6 +431,7 @@ async function main(): Promise<void> {
     refreshProspectName: "Harbor Group",
     auditSlug: branded.slug,
     auditKey: branded.key,
+    reportSlug: (await sql`select report_slug from prospects where id = ${prospect.prospectId}`)[0]!.reportSlug as string,
     suggestedTaskTitle: "E2E: publish neighborhood guide",
     overdueTaskTitle: "E2E: fix entity record",
   };
