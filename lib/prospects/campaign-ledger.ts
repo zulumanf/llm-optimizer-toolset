@@ -113,10 +113,10 @@ export async function campaignLedger(days: string[]): Promise<CampaignLedger> {
       and to_char(c.updated_at at time zone ${OPERATOR_TIMEZONE}, 'YYYY-MM-DD') = any(${days}::text[])`;
   const replies = await sql`
     select * from (
-      select distinct on (coalesce(r.gmail_message_id, r.id::text)) r.classification, p.business_name, r.received_at
+      select distinct on (r.prospect_id, r.received_at) r.classification, p.business_name, r.received_at
       from prospect_replies r join prospects p on p.id = r.prospect_id
       where to_char(r.received_at at time zone ${OPERATOR_TIMEZONE}, 'YYYY-MM-DD') = any(${days}::text[])
-      order by coalesce(r.gmail_message_id, r.id::text), r.created_at desc
+      order by r.prospect_id, r.received_at, r.created_at desc
     ) x order by x.received_at`;
   const human = replies.filter((r) => r.classification !== "out_of_office");
   const positive = human.filter((r) => ["positive_interest", "proof_request", "question", "referral"].includes(r.classification as string));

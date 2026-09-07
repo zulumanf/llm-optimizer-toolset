@@ -15,7 +15,9 @@
  *   diagnostics, never an intent input.
  */
 import { sql } from "@/db/client";
-import { GMAIL_DAILY_SEND_CAP, OUTREACH_LINK_PATTERN, type ProspectStage } from "@/lib/prospects/constants";
+import { GMAIL_DAILY_SEND_CAP, OUTREACH_LINK_PATTERN, type ProspectStage,
+  AUDIT_VIEW_PUBLISH_QA_WINDOW_MINUTES,
+} from "@/lib/prospects/constants";
 import {
   compareByPriority,
   deriveIntent,
@@ -53,6 +55,7 @@ export const humanViews = () => sql`
   from prospect_audit_views v
   join prospect_audits va on va.id = v.audit_id
   where not v.is_internal
+    and (va.published_at is null or v.viewed_at >= va.published_at + ${AUDIT_VIEW_PUBLISH_QA_WINDOW_MINUTES} * interval '1 minute')
     and v.user_agent is not null
     and v.user_agent !~* ${SCRIPT_UA}
     and (v.ip is null or v.ip != all(coalesce(string_to_array(nullif(${operatorIps().join(",")}, ''), ','), '{}'::text[])))
@@ -129,16 +132,16 @@ export async function prospectFacts(filter: CockpitFilter = {}): Promise<Prospec
           'sentAt', s.sent_at, 'subject', d.subject, 'draftChannel', d.channel,
           'hasLink', (d.body ~* ${OUTREACH_LINK_PATTERN}),
           'templateVersion', d.prompt_version,
-          'opens', (select count(*)::int from outreach_email_opens o where o.send_id = s.id),
+          'opens', (select count(*)::int from outreach_open_signal o where o.send_id = s.id and o.signal_class <> 'scanner'),
           'bounced', exists (select 1 from suppression_entries se
             where se.lifted_at is null and se.reason ilike '%bounce%'
               and se.normalized_value = lower(s.recipient_email))) order by s.sent_at)
         from prospect_outreach_sends s left join outreach_drafts d on d.id = s.draft_id
         where s.prospect_id = p.id and s.allowed
           and (${since}::timestamptz is null or s.sent_at >= ${since})), '[]') as sends,
-      (select count(*)::int from outreach_email_opens o
+      (select count(*)::int from outreach_open_signal o
         join prospect_outreach_sends s on s.id = o.send_id
-        where s.prospect_id = p.id
+        where s.prospect_id = p.id and o.signal_class <> 'scanner'
           and (${since}::timestamptz is null or o.opened_at >= ${since})) as opens,
       coalesce((select json_agg(json_build_object(
           'receivedAt', pr.received_at, 'classification', pr.classification)

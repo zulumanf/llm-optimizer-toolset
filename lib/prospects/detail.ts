@@ -1,3 +1,4 @@
+import { AUDIT_VIEW_PUBLISH_QA_WINDOW_MINUTES } from "@/lib/prospects/constants";
 /**
  * Read model for the prospect detail page (spec 032). Server-only queries —
  * staff access is enforced by the /prospects segment layout; nothing here is
@@ -197,9 +198,11 @@ export async function listAudits(prospectId: string): Promise<AuditRow[]> {
     select a.id, a.headline, a.status, a.access_token, a.expires_at,
       a.published_at, a.snapshot,
       (select count(*)::int from prospect_audit_views v
-        where v.audit_id = a.id and not v.is_internal) as view_count,
+        where v.audit_id = a.id and not v.is_internal
+          and (a.published_at is null or v.viewed_at >= a.published_at + ${AUDIT_VIEW_PUBLISH_QA_WINDOW_MINUTES} * interval '1 minute')) as view_count,
       (select min(v.viewed_at) from prospect_audit_views v
-        where v.audit_id = a.id and not v.is_internal) as first_viewed_at,
+        where v.audit_id = a.id and not v.is_internal
+          and (a.published_at is null or v.viewed_at >= a.published_at + ${AUDIT_VIEW_PUBLISH_QA_WINDOW_MINUTES} * interval '1 minute')) as first_viewed_at,
       (select max(v.viewed_at) from prospect_audit_views v
         where v.audit_id = a.id and not v.is_internal) as last_viewed_at,
       (select count(*)::int from prospect_report_sessions s
@@ -252,7 +255,7 @@ export async function listDrafts(prospectId: string): Promise<DraftRow[]> {
         count(op.id)::int as open_count,
         max(op.opened_at) as last_opened_at
       from prospect_outreach_sends s
-      left join outreach_email_opens op on op.send_id = s.id
+      left join outreach_open_signal op on op.send_id = s.id and op.signal_class <> 'scanner'
       where s.draft_id = d.id and s.allowed
     ) o on true
     where d.prospect_id = ${prospectId}

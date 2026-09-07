@@ -70,7 +70,9 @@ describe("stripQuotedReply — our own footer never classifies the reply (spec 1
   it("drops quoted history so 'Yes' over a quoted unsubscribe line is positive", () => {
     const raw =
       "Yes\r\n\r\n*Steve Wall*\r\n\r\nOn Thu, Sep 3, 2026 at 9:03 AM Francisco <f@x.com> wrote:\r\n\r\n> Steve,\r\n> If you'd rather not hear from us, reply \"unsubscribe\" and we will not contact you again.\r\n";
-    expect(classifyReplyText(raw)).toBe("unsubscribe");
+    // The classifier strips quoted history itself (2026-09-07): the raw
+    // paste and the stripped text classify the same way.
+    expect(classifyReplyText(raw)).toBe("positive_interest");
     const stripped = stripQuotedReply(raw);
     expect(stripped).not.toContain("unsubscribe");
     expect(classifyReplyText(stripped)).not.toBe("unsubscribe");

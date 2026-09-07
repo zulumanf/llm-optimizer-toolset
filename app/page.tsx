@@ -5,6 +5,8 @@ import { clientCostRollup } from "@/db/operations";
 import { combinedAttentionFeed } from "@/lib/notifications/feed";
 import { actionRequiredQueue } from "@/lib/control-tower/queue";
 import { portfolioScan } from "@/lib/engagements/portfolio";
+import { positiveRepliesWaiting } from "@/lib/prospects/positive-replies";
+import { PositiveReplyResolve } from "@/components/prospects/positive-reply-resolve";
 import { requireStaffPage } from "@/lib/security/page-gates";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -45,11 +47,12 @@ function Tile({ label, value, sub }: { label: string; value: string; sub?: strin
 
 export default async function OperationsPage() {
   await requireStaffPage(); // Today is the whole-portfolio view (spec 031)
-  const [{ items, metrics }, costs, queue, portfolio] = await Promise.all([
+  const [{ items, metrics }, costs, queue, portfolio, waitingReplies] = await Promise.all([
     combinedAttentionFeed(),
     clientCostRollup(),
     actionRequiredQueue({ limit: 5 }),
     portfolioScan(new Date(), { cache: true }),
+    positiveRepliesWaiting(),
   ]);
   const WAITING_LABEL: Record<string, string> = { us: "waiting on us", client: "waiting on client", third_party: "waiting on third party" };
 
@@ -123,6 +126,31 @@ export default async function OperationsPage() {
                   <span className="line-clamp-1 text-muted-foreground">{alert ? alert.message : client.overview.nextAction}</span>
                   <span className="ml-auto line-clamp-1 text-xs">{alert ? `Next: ${alert.nextAction}` : `Day ${client.engagementDay}`}</span>
                 </Link>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+      {/* Someone said yes. Nothing outranks this until a human records how
+          it was handled (operating review 2026-09-07). */}
+      {waitingReplies.length > 0 && (
+        <section className="mb-6">
+          <div className="mb-2 flex items-baseline justify-between">
+            <h2 className="text-lg font-medium">Someone said yes — waiting on us</h2>
+            <span className="text-xs text-muted-foreground">{waitingReplies.length} open</span>
+          </div>
+          <ol className="space-y-1">
+            {waitingReplies.map((w) => (
+              <li key={w.replyId} className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                <Badge variant={w.overdue ? "destructive" : "default"}>{w.overdue ? "overdue" : `due ${w.nextActionOn}`}</Badge>
+                <Link href={`/prospects/${w.prospectId}`} className="font-medium underline-offset-2 hover:underline">{w.businessName}</Link>
+                <span className="text-xs text-muted-foreground">
+                  {w.ownerName ?? "no owner"} · replied {w.receivedAt.toLocaleDateString()} · {w.daysWaiting}d ·{" "}
+                  {w.handoff ? `report ${w.handoff.status.replaceAll("_", " ")}` : w.reportPublished ? "report published" : "no report yet"}
+                  {w.answeredAt ? ` · answered ${w.answeredAt.toLocaleDateString()}` : " · not answered"}
+                </span>
+                <span className="line-clamp-1 basis-full text-muted-foreground">{w.nextAction ?? "No next action recorded."}</span>
+                <span className="ml-auto"><PositiveReplyResolve prospectId={w.prospectId} replyId={w.replyId} businessName={w.businessName} /></span>
               </li>
             ))}
           </ol>

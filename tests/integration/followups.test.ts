@@ -138,9 +138,18 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     snapshot = buildSnapshot();
     await sql`update markets set state_code = 'NV', name = 'Reno, NV' where id = ${fixture.marketId}`;
     await sql`
-      insert into realtrends_records (id, fingerprint, dataset_name, entity_type, entity_name, city, state, volume_usd, production_year, source_sheet, source_row)
-      values (${PROSPECT_RECORD_ID}, 'fp-kane', 'test', 'team', 'Kane and Partners', 'Reno', 'NV', 47200000, 2025, 'Teams', 1)
+      insert into realtrends_records (id, fingerprint, dataset_name, entity_type, entity_name, city, state, volume_usd, production_year, source_sheet, source_row,
+        team_lead, company_id, match_status, matched_at)
+      values (${PROSPECT_RECORD_ID}, 'fp-kane', 'test', 'team', 'Kane and Partners', 'Reno', 'NV', 47200000, 2025, 'Teams', 1,
+        'Ryan Kane', ${PROSPECT_CO}, 'confirmed', now())
     `;
+    // Entity gate (2026-09-07): both sides of a count claim must be verified
+    // before any count-stating email transmits.
+    {
+      const ea = await import("@/lib/prospects/entity-aliases");
+      await ea.applyVerifiedAliases(operator, PROSPECT_CO);
+      await ea.recordEntityVerification(operator, { companyId: COMPETITOR_CO, level: "team", sourceUrl: "https://harborview.example/team" });
+    }
     const contact = unwrap(await svc.addContact(operator, { prospectId, name: "Ryan Kane", email: RECIPIENT, isPrimary: true }));
     contactId = contact.contactId;
     const findingId = fixture.findingId;

@@ -391,6 +391,9 @@ export const REPLY_CLASSIFICATIONS = [
   "proof_request",
   "referral",
   "not_interested",
+  /** A post-offer rejection (price, DIY, timing). Objection flags ride
+   * alongside; the classification alone never suppresses. */
+  "decline",
   "unsubscribe",
   "out_of_office",
   "unclear",
@@ -551,3 +554,7 @@ export const SEND_CAP_HEADROOM = 1;
 export const MATURE_AFTER_BUSINESS_DAYS = 9;
 /** Reports viewed by fewer than this share of recipients flag report consumption. */
 export const REPORT_VIEW_ALERT_RATE = 0.4;
+
+/** Audit views inside this window after publish are the operator's own
+ * publish-QA loads (publish → open → check), not prospect engagement. */
+export const AUDIT_VIEW_PUBLISH_QA_WINDOW_MINUTES = 5;
