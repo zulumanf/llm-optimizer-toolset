@@ -253,11 +253,19 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     await sql`update companies set aliases = '{}' where id = ${PROSPECT_CO}`;
     await sayYes();
     await rh.processReportHandoffs(NOON, { caller: passingCaller });
-    const drained = await (await import("@/lib/prospects/scheduled-sends")).drainScheduledSends(new Date("2026-09-05T13:30:00Z"));
-    expect(drained.sent).toBe(0);
-    const [ledger] = await sql`select allowed, gate_verdict from prospect_outreach_sends where prospect_id = ${prospectId} order by sent_at desc limit 1`;
+    const h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("scheduled");
+    await sql`update outreach_drafts set scheduled_send_at = now() - interval '1 minute' where id = ${h.draftId}`;
+    const res = await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "mock", businessPurpose: "Deliver the report he asked for", unattended: true });
+    expect(res.ok).toBe(false);
+    const [ledger] = await sql`select allowed, gate_verdict from prospect_outreach_sends where draft_id = ${h.draftId} order by sent_at desc limit 1`;
     expect(ledger!.allowed).toBe(false);
     expect(JSON.stringify(ledger!.gateVerdict)).toContain("ENTITY_RESOLUTION_UNVERIFIED");
+    // The same draft transmits once the entity is verified again.
+    const ea = await import("@/lib/prospects/entity-aliases");
+    await ea.applyVerifiedAliases(operator, PROSPECT_CO);
+    const again = unwrap(await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "mock", businessPurpose: "Deliver the report he asked for", unattended: true }));
+    expect(again.providerMessageId).toContain("mock-");
   });
 
   it("autosend off parks at qa_passed; a later unsubscribe stops before any send", async () => {
