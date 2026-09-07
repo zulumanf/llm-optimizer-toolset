@@ -48,7 +48,7 @@ const operatorIps = (): string[] =>
     .filter(Boolean);
 
 /** External, human-like audit views — the subquery every view count uses. */
-const humanViews = () => sql`
+export const humanViews = () => sql`
   select v.id, v.audit_id, v.viewed_at, v.link_key, va.prospect_id
   from prospect_audit_views v
   join prospect_audits va on va.id = v.audit_id

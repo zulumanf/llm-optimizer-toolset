@@ -50,6 +50,9 @@ import { DAILY_SEND_QUOTA } from "@/lib/prospects/constants";
 import { dashboardHref, type DashboardFilters } from "@/lib/prospects/dashboard-url";
 import { outreachMetrics, type Rate } from "@/lib/prospects/analytics";
 import { AnalyzeView, OPEN_SIGNAL_CAVEAT, POSITIVE_REPLY_CAVEAT } from "@/components/prospects/analyze-view";
+import { AcquisitionPanelView } from "@/components/prospects/acquisition-panel";
+import { acquisitionFacts } from "@/lib/prospects/acquisition-facts";
+import { deriveAcquisition, type AcquisitionPanel } from "@/lib/prospects/acquisition";
 import { formatOperatorTime } from "@/lib/format";
 import {
   DIAGNOSTIC_MIN_CONTACTED,
@@ -248,7 +251,9 @@ export default async function ProspectingDashboardPage({
     ]);
     // After the batch, not inside it — the pooler's session cap is close.
     const mo: Momentum | null = view === "operate" ? await momentum(now) : null;
-    data = { c, health, upcoming, launchId, all, mo };
+    // Analyze = the acquisition control panel: one facts bundle, derived once.
+    const panel: AcquisitionPanel | null = view === "analyze" ? deriveAcquisition(await acquisitionFacts(), now) : null;
+    data = { c, health, upcoming, launchId, all, mo, panel };
   } catch {
     return (
       <PageShell>
@@ -257,7 +262,7 @@ export default async function ProspectingDashboardPage({
       </PageShell>
     );
   }
-  const { c, health, upcoming, launchId, all, mo } = data;
+  const { c, health, upcoming, launchId, all, mo, panel } = data;
   const { cohort } = c;
   const launch = c.launches.find((l) => l.id === launchId);
   const cohortName = launch ? `${launch.name} · Batch 1` : "All active cohorts";
@@ -417,14 +422,19 @@ export default async function ProspectingDashboardPage({
         ))}
       </div>
 
-      {view === "analyze" && (
-        <AnalyzeView
-          prospects={c.prospects}
-          allProspects={(all ?? c).prospects}
-          cohortName={cohortName}
-          metricKey={filters.metric ?? "view"}
-          segmentKey={filters.segment ?? "quality"}
-          href={(patch) => href(patch)}
+      {view === "analyze" && panel && (
+        <AcquisitionPanelView
+          panel={panel}
+          diagnostics={
+            <AnalyzeView
+              prospects={c.prospects}
+              allProspects={(all ?? c).prospects}
+              cohortName={cohortName}
+              metricKey={filters.metric ?? "view"}
+              segmentKey={filters.segment ?? "quality"}
+              href={(patch) => href(patch)}
+            />
+          }
         />
       )}
 

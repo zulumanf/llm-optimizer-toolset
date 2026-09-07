@@ -528,3 +528,36 @@ export const SCHEDULED_SEND_MAX_ATTEMPTS = 3;
  * mid-dispatch. Such a draft is never auto-retried — the mail may have
  * left — it parks for a human to verify in the Gmail Sent folder. */
 export const SCHEDULED_SEND_STALE_CLAIM_MINUTES = 15;
+
+/**
+ * Acquisition control panel (Analyze tab). Deterministic thresholds — the
+ * status label, the bottleneck call and the sample gates derive from these
+ * and nothing else. Loosening any of them is a reviewed diff.
+ */
+/** Names of QA fixture markets/launches/projects (scripts/spec131-prod-smoke.ts). */
+export const QA_FIXTURE_NAME_PREFIX = "QA131";
+/** Strategic decision sample: mature, clean, qualified Touch 1 recipients. */
+export const DECISION_SAMPLE_TARGET = 100;
+export const ACQUISITION_SAMPLE = {
+  /** Delivered Touch 1 recipients before a status other than INSUFFICIENT DATA. */
+  statusMin: 30,
+  /** Downstream funnel stages (report, conversation) below this read INSUFFICIENT SAMPLE. */
+  funnelMin: 5,
+  /** ICP cuts and market rows below this read SMALL SAMPLE. */
+  cutMin: 10,
+  /** Positive replies before an ICP hypothesis may move past POSSIBLE. */
+  positiveForSupport: 5,
+} as const;
+/** Positive-reply rate bands over delivered Touch 1 recipients. */
+export const POSITIVE_RATE_BANDS = { promising: 0.02, watch: 0.01 } as const;
+/** Bounce share of unique Touch 1 recipients that flags deliverability. */
+export const BOUNCE_ALERT_RATE = 0.05;
+/** Runway planning horizon and the floor under which supply is the bottleneck. */
+export const RUNWAY_PLANNING_BUSINESS_DAYS = 5;
+export const LOW_RUNWAY_DAYS = 3;
+/** Sends kept back from the trailing cap when estimating daily Touch 1 capacity. */
+export const SEND_CAP_HEADROOM = 1;
+/** A delivered Touch 1 is "mature" once its T2/T3 window plus a reply window has passed. */
+export const MATURE_AFTER_BUSINESS_DAYS = 9;
+/** Reports viewed by fewer than this share of recipients flag report consumption. */
+export const REPORT_VIEW_ALERT_RATE = 0.4;
