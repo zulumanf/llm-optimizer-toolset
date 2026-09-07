@@ -788,8 +788,19 @@ export async function scheduleDueFollowups(now: Date = new Date()): Promise<Sche
       continue;
     }
     if (live) {
-      // Parked by the dispatcher (gate refusal, transport trouble): retire it
-      // and render afresh for the next slot — the branch may have changed.
+      // Parked by the dispatcher. An OPERATIONAL refusal (mailbox cap,
+      // brokerage frequency, transport trouble) re-enters planning for the
+      // next eligible slot: retire the parked render and render afresh. A
+      // refusal that means a human must look (reply, DNC, suppression,
+      // entity uncertainty, evidence failure, exclusivity) pauses the
+      // sequence with the reason instead of retrying it every morning.
+      const disposition = parkedRefusalDisposition((live.lastSendError as string | null) ?? "");
+      if (disposition === "hold") {
+        await setSequence(seq.id, { status: "paused", pauseReason: `HOLD_FOR_HUMAN: parked touch ${seq.nextTouch} — ${((live.lastSendError as string | null) ?? "").slice(0, 300)}` });
+        log("warn", "followup.parked_touch_held", { sequenceId: seq.id, draftId: live.id, reason: live.lastSendError });
+        report.stopped += 1;
+        continue;
+      }
       await sql`
         update outreach_drafts set status = 'superseded' where id = ${live.id}
       `;
@@ -812,6 +823,31 @@ export async function scheduleDueFollowups(now: Date = new Date()): Promise<Sche
     report.rendered += 1;
   }
   return report;
+}
+
+/** Why a due touch was parked, read from the gate/dispatch detail text.
+ * "replan" = operational, the next eligible business slot may retry;
+ * "hold" = a human decision is needed first. Unknown reasons hold. */
+export type ParkedRefusalDisposition = "replan" | "hold";
+const REPLAN_REFUSALS: RegExp[] = [
+  /daily Gmail cap/i,
+  /already received \d+ sends in this market/i,
+  /gmail (is )?unavailable|transport|timed? ?out|rate.?limit|temporar/i,
+  /reply sync is stale/i,
+  /Superseded .*(em-dash|sent form)/i,
+];
+const HOLD_REFUSALS: RegExp[] = [
+  /ENTITY_RESOLUTION_UNVERIFIED/,
+  /do.not.contact|suppress|unsubscribe|opt.?out/i,
+  /recorded reply|conversation/i,
+  /evidence|stale|no longer states|correction/i,
+  /territor|exclusiv|reserved/i,
+  /draft_qa|\[[a-z_]+\]/i,
+];
+export function parkedRefusalDisposition(reason: string): ParkedRefusalDisposition {
+  if (HOLD_REFUSALS.some((r) => r.test(reason))) return "hold";
+  if (REPLAN_REFUSALS.some((r) => r.test(reason))) return "replan";
+  return "hold";
 }
 
 /** The trailing-24h Gmail cap counts every transmit. A follow-up slot whose
@@ -1296,7 +1332,7 @@ export interface FollowupMetrics {
 }
 
 const POSITIVE: ReplyClassification[] = ["positive_interest", "proof_request", "question", "referral"];
-const NEGATIVE: ReplyClassification[] = ["not_interested", "unsubscribe", "objection"];
+const NEGATIVE: ReplyClassification[] = ["not_interested", "decline", "unsubscribe", "objection"];
 
 export async function followupMetrics(experimentId = FOLLOWUP_EXPERIMENT_ID, now: Date = new Date()): Promise<FollowupMetrics> {
   const views = await listFollowupSequences({ experimentId }, now);

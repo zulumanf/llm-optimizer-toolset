@@ -1783,6 +1783,8 @@ export async function recordProspectReply(
       }
       const classification: ReplyClassification =
         input.classification ?? classifyReplyText(input.bodyText);
+      const { replyObjections } = await import("@/lib/prospects/reply-classify");
+      const objections = replyObjections(input.bodyText);
       const [row] = await tx`
         insert into prospect_replies
           (prospect_id, contact_id, send_id, body_text, received_at,
@@ -1817,9 +1819,18 @@ export async function recordProspectReply(
         tx,
         input.prospectId,
         "reply_recorded",
-        { classification },
+        { classification, objections },
         user.id
       );
+      // A genuine positive reply is owned the moment it exists — whichever
+      // path recorded it, sequence or not (operating review 2026-09-07).
+      if (classification === "positive_interest") {
+        const { assignPositiveReplyOwner } = await import("@/lib/prospects/positive-replies");
+        await assignPositiveReplyOwner(tx, {
+          prospectId: input.prospectId, replyId: row?.id as string,
+          receivedAt: input.receivedAt ?? new Date(), actorId: user.id, objections,
+        });
+      }
       return { replyId: row?.id as string, classification, stage: prospect.stage };
     });
     // A real conversation advances the stage through the one existing
@@ -2487,6 +2498,33 @@ export async function sendProspectDraft(
         banned ? `Contains prohibited wording ("${banned}").` : "clean"
       );
 
+      // Entity resolution gate (operating review 2026-09-07): any email that
+      // states competitive recommendation counts — Touch 1, follow-ups,
+      // corrections, report deliveries, or a rewrite whose ancestor carries
+      // the frozen evidence — transmits only when BOTH entities are verified.
+      // Fails closed with ENTITY_RESOLUTION_UNVERIFIED; nothing is inferred.
+      {
+        const [ev] = await tx`
+          with recursive chain as (
+            select id, parent_id, evidence_snapshot, 0 as depth from outreach_drafts where id = ${draft.id}
+            union all
+            select p.id, p.parent_id, p.evidence_snapshot, c.depth + 1 from chain c join outreach_drafts p on p.id = c.parent_id
+            where c.evidence_snapshot is null and c.depth < 10
+          )
+          select evidence_snapshot from chain where evidence_snapshot is not null order by depth asc limit 1
+        `;
+        const snap = (ev?.evidenceSnapshot as { prospect?: { companyId?: string; prospectId?: string | null; name?: string }; competitor?: { companyId?: string; prospectId?: string | null; name?: string } } | null) ?? null;
+        if (snap?.prospect?.companyId && snap.competitor?.companyId) {
+          const { countClaimEntityGate } = await import("@/lib/prospects/entity-aliases");
+          const g = await countClaimEntityGate({
+            prospect: { companyId: snap.prospect.companyId, prospectId: snap.prospect.prospectId ?? null, name: snap.prospect.name ?? "" },
+            competitor: { companyId: snap.competitor.companyId, prospectId: snap.competitor.prospectId ?? null, name: snap.competitor.name ?? "" },
+          });
+          check("entity_resolution_verified", g.passed, g.detail);
+        } else {
+          check("entity_resolution_verified", true, "no competitive count claim in this draft");
+        }
+      }
       // Deterministic QA re-check at dispatch (spec 116): a draft approved
       // against one audit state must not transmit stale or inconsistent
       // numbers after a republish. Aggregated as one ledgered verdict.

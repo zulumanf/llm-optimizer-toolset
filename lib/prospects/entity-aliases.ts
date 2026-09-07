@@ -209,3 +209,167 @@ export async function applyVerifiedAliases(user: CurrentUser, companyId: string)
   });
   return { ...base, added: derivation.aliases };
 }
+
+// ------------------------------------------------------------ entity resolution gate
+
+/** Refusal code stamped on the send ledger when a count-stating email's
+ * entities are not fully resolved. Fail closed; never inferred. */
+export const ENTITY_RESOLUTION_UNVERIFIED = "ENTITY_RESOLUTION_UNVERIFIED" as const;
+export const ENTITY_VERIFIED_ACTIONS = ["company.entity_verified", "company.alias_verified"] as const;
+
+export type EntityLevel = "team" | "individual" | "brokerage";
+
+export interface OperatorEntityVerification {
+  level: EntityLevel | null;
+  sourceUrl: string | null;
+  at: Date;
+}
+
+export interface EntityResolutionInput {
+  companyId: string;
+  companyName: string;
+  /** The prospect row's own level, when the entity is a prospect. */
+  prospectType: "team" | "individual_agent" | "brokerage" | null;
+  rel: LeadAgentRelationship | null;
+  operatorVerified: OperatorEntityVerification | null;
+}
+
+export interface EntityResolutionStatus {
+  companyId: string;
+  companyName: string;
+  verified: boolean;
+  level: EntityLevel | null;
+  /** Human sentence: why verified, or exactly what is missing. */
+  reason: string;
+}
+
+const norm = (s: string): string => s.trim().toLowerCase();
+
+/** Pure rule. TEAM: the RealTrends relationship must exist and every derived
+ * lead alias must already be on the company (or be covered by its name).
+ * INDIVIDUAL: a high-confidence RealTrends person record whose entity name
+ * is a two-token person name. BROKERAGE/OFFICE: only an operator's recorded
+ * verification of the entity level counts. A level mismatch between the
+ * prospect row and the licensed record is unverified, not reconciled. */
+export function classifyEntityResolution(i: EntityResolutionInput): EntityResolutionStatus {
+  const base = { companyId: i.companyId, companyName: i.companyName };
+  if (i.operatorVerified) {
+    return {
+      ...base,
+      verified: true,
+      level: i.operatorVerified.level,
+      reason: `operator-verified entity${i.operatorVerified.level ? ` (${i.operatorVerified.level})` : ""}${i.operatorVerified.sourceUrl ? ` at ${i.operatorVerified.sourceUrl}` : ""}`,
+    };
+  }
+  if (i.prospectType === "brokerage") {
+    return { ...base, verified: false, level: "brokerage", reason: "brokerage/office level needs an operator verification record; the licensed dataset covers agents and teams only" };
+  }
+  const rel = i.rel;
+  if (!rel || !rel.realtrendsRecordId || !rel.entityType) {
+    return { ...base, verified: false, level: null, reason: "no authoritative identity record (no high-confidence RealTrends match, no operator verification)" };
+  }
+  if (i.prospectType === "team" && rel.entityType !== "team") {
+    return { ...base, verified: false, level: rel.entityType, reason: `prospect is recorded as a team but the licensed record is an ${rel.entityType}; entity level must be reconciled by a human` };
+  }
+  if (i.prospectType === "individual_agent" && rel.entityType !== "individual") {
+    return { ...base, verified: false, level: rel.entityType, reason: `prospect is recorded as an individual agent but the licensed record is a ${rel.entityType}; entity level must be reconciled by a human` };
+  }
+  if (rel.entityType === "individual") {
+    const person = firstLastName(rel.companyName) !== null;
+    return person
+      ? { ...base, verified: true, level: "individual", reason: `canonical person identity from the licensed record (${rel.companyName}${rel.existingAliases.length ? `; aliases ${rel.existingAliases.join(", ")}` : ""})` }
+      : { ...base, verified: false, level: "individual", reason: `individual record name "${rel.companyName}" is not a two-token person name; verify by hand` };
+  }
+  const d = deriveLeadAgentAliases(rel);
+  if (d.status === ENTITY_REVIEW_REQUIRED) return { ...base, verified: false, level: "team", reason: d.reason };
+  if (d.status === "none") {
+    const covered = /already covered/.test(d.reason);
+    return covered
+      ? { ...base, verified: true, level: "team", reason: `team lead ${rel.teamLead} is covered by the company name or existing aliases` }
+      : { ...base, verified: false, level: "team", reason: d.reason };
+  }
+  const have = new Set([norm(rel.companyName), ...rel.existingAliases.map(norm)]);
+  const missing = d.aliases.filter((a) => !have.has(norm(a)));
+  return missing.length === 0
+    ? { ...base, verified: true, level: "team", reason: `team lead ${rel.teamLead} aliases applied (${d.aliases.join(", ")})` }
+    : { ...base, verified: false, level: "team", reason: `lead aliases derived but not applied to the company: ${missing.join(", ")}` };
+}
+
+/** Load and classify a set of entities. Operator verification = an audit
+ * row for the company with a source URL (the authoritative-page scripts) or
+ * the explicit `company.entity_verified` action; spec 130's derived-alias
+ * audit rows do not count by themselves — the alias state does. */
+export async function entityResolutionStatuses(
+  entries: { companyId: string; prospectId?: string | null }[]
+): Promise<EntityResolutionStatus[]> {
+  if (entries.length === 0) return [];
+  const ids = [...new Set(entries.map((e) => e.companyId))];
+  const rels = new Map((await leadAgentRelationships(ids)).map((r) => [r.companyId, r]));
+  const companies = await sql`select id, name from companies where id = any(${ids}::uuid[])`;
+  const names = new Map(companies.map((c) => [c.id as string, c.name as string]));
+  const pids = entries.map((e) => e.prospectId).filter((x): x is string => Boolean(x));
+  const types = new Map<string, string>();
+  if (pids.length) {
+    for (const p of await sql`select id, prospect_type from prospects where id = any(${pids}::uuid[])`) types.set(p.id as string, p.prospectType as string);
+  }
+  const verif = new Map<string, OperatorEntityVerification>();
+  for (const a of await sql`
+    select entity_id, action, detail, at from audit_log
+    where entity = 'company' and entity_id::text = any(${ids}::text[]) and action = any(${[...ENTITY_VERIFIED_ACTIONS]}::text[])
+    order by at asc`) {
+    const d = (a.detail as Record<string, unknown> | null) ?? {};
+    const prov = (d.provenance as Record<string, unknown> | undefined) ?? {};
+    const url = typeof d.sourceUrl === "string" ? d.sourceUrl : typeof d.source_url === "string" ? d.source_url : typeof prov.url === "string" ? prov.url : null;
+    if (a.action === "company.alias_verified" && !url) continue;
+    const lvl = d.level === "team" || d.level === "individual" || d.level === "brokerage" ? d.level : null;
+    verif.set(a.entityId as string, { level: lvl, sourceUrl: url, at: new Date(a.at as Date) });
+  }
+  return entries.map((e) => {
+    const t = e.prospectId ? types.get(e.prospectId) : null;
+    return classifyEntityResolution({
+      companyId: e.companyId,
+      companyName: names.get(e.companyId) ?? rels.get(e.companyId)?.companyName ?? e.companyId,
+      prospectType: t === "team" || t === "individual_agent" || t === "brokerage" ? t : null,
+      rel: rels.get(e.companyId) ?? null,
+      operatorVerified: verif.get(e.companyId) ?? null,
+    });
+  });
+}
+
+/** Both sides of a competitive count claim must be verified. Returns the
+ * gate verdict text used on the send ledger. */
+export async function countClaimEntityGate(snapshot: {
+  prospect: { companyId: string; prospectId: string | null; name: string };
+  competitor: { companyId: string; prospectId: string | null; name: string };
+}): Promise<{ passed: boolean; detail: string; statuses: EntityResolutionStatus[] }> {
+  const statuses = await entityResolutionStatuses([
+    { companyId: snapshot.prospect.companyId, prospectId: snapshot.prospect.prospectId },
+    { companyId: snapshot.competitor.companyId, prospectId: snapshot.competitor.prospectId },
+  ]);
+  const failed = statuses.filter((s) => !s.verified);
+  if (failed.length === 0) {
+    return { passed: true, detail: statuses.map((s) => `${s.companyName}: ${s.reason}`).join(" | "), statuses };
+  }
+  return {
+    passed: false,
+    detail: `${ENTITY_RESOLUTION_UNVERIFIED}: ${failed.map((s) => `${s.companyName} — ${s.reason}`).join(" | ")}. No count-stating email transmits until every entity is verified.`,
+    statuses,
+  };
+}
+
+/** Operator attestation of an entity's level and identity from an
+ * authoritative page. Recorded as an audit row; never inferred. */
+export async function recordEntityVerification(
+  user: CurrentUser,
+  input: { companyId: string; level: EntityLevel; sourceUrl: string; note?: string }
+): Promise<void> {
+  await sql.begin(async (tx) => {
+    await writeAudit(tx, {
+      userId: user.id,
+      action: "company.entity_verified",
+      entity: "company",
+      entityId: input.companyId,
+      detail: { level: input.level, sourceUrl: input.sourceUrl, note: input.note ?? null },
+    });
+  });
+}

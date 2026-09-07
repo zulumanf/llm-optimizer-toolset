@@ -9,6 +9,7 @@ import * as exhibits from "@/lib/prospects/exhibits";
 import * as refresh from "@/lib/prospects/refresh";
 import * as senseCheckSvc from "@/lib/prospects/sense-check";
 import * as enrichmentSvc from "@/lib/prospects/enrichment";
+import * as positiveReplies from "@/lib/prospects/positive-replies";
 import * as marketResearch from "@/lib/markets/research";
 import * as followups from "@/lib/prospects/followups";
 const run = makeActionRunner(["/prospects", "layout"]);
@@ -179,4 +180,9 @@ export async function installMarketPackDraft(input: unknown) {
 }
 export async function rejectMarketPackDraft(input: unknown) {
   return run((u) => marketResearch.rejectMarketPackDraft(u, input));
+}
+
+/** A human records how a positive reply was handled (Today item). */
+export async function resolvePositiveReply(input: { prospectId: string; replyId: string; outcome: string; note?: string }) {
+  return run((u) => positiveReplies.resolvePositiveReply(u, input));
 }

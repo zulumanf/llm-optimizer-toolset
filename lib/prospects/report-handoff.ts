@@ -56,10 +56,12 @@ export type HandoffStatus = (typeof HANDOFF_STATUSES)[number];
 /** Replies that mean "send me the report" — the only trigger. */
 export const HANDOFF_TRIGGER: ReplyClassification = "positive_interest";
 /** A later reply of these kinds stops a handoff that has not sent. */
-const HANDOFF_STOPPERS: ReplyClassification[] = ["unsubscribe", "not_interested"];
+const HANDOFF_STOPPERS: ReplyClassification[] = ["unsubscribe", "not_interested", "decline"];
 
 export function autosendEnabled(): boolean {
-  return process.env.REPORT_HANDOFF_AUTOSEND !== "false";
+  // Opt-in only (operating review 2026-09-07): automation prepares the
+  // report, the fact pack and the staged reply; the founder sends.
+  return process.env.REPORT_HANDOFF_AUTOSEND === "true";
 }
 
 export interface ReportHandoff {
@@ -388,16 +390,25 @@ export async function handoffForProspect(prospectId: string): Promise<ReportHand
  * on such a prospect is a conversation for the founder, not a handoff. */
 const DELIVERED_STAGES = PROSPECT_STAGES.slice(PROSPECT_STAGES.indexOf("audit_sent")) as unknown as string[];
 
-/** One handoff per positive reply on a sequence prospect. Idempotent. */
+/** One handoff per canonical positive reply. Idempotent. Any positive reply
+ * qualifies — Gmail-synced or hand-recorded, with or without a follow-up
+ * sequence (operating review 2026-09-07: both real "yes" replies had failed
+ * the old preconditions). A reply the founder already answered by hand (an
+ * allowed send after it) is not re-handled. */
 export async function enqueueReportHandoffs(): Promise<number> {
   const rows = await sql`
     insert into prospect_report_handoffs (prospect_id, reply_id, sequence_id, actor_id)
-    select r.prospect_id, r.id, q.id, q.enrolled_by
-    from prospect_replies r
-    join outreach_followup_sequences q on q.prospect_id = r.prospect_id
+    select r.prospect_id, r.id, q.id, coalesce(q.enrolled_by, r.recorded_by)
+    from (
+      select distinct on (x.prospect_id, x.received_at) x.*
+      from prospect_replies x order by x.prospect_id, x.received_at, x.created_at desc
+    ) r
+    left join outreach_followup_sequences q on q.prospect_id = r.prospect_id
     join prospects p on p.id = r.prospect_id
-    where r.classification = ${HANDOFF_TRIGGER} and r.gmail_message_id is not null
+    where r.classification = ${HANDOFF_TRIGGER}
+      and p.archived_at is null
       and p.stage <> all(${DELIVERED_STAGES}::text[])
+      and not exists (select 1 from prospect_outreach_sends s where s.prospect_id = r.prospect_id and s.allowed and s.sent_at > r.received_at)
       and not exists (select 1 from prospect_report_handoffs h where h.reply_id = r.id)
       and not exists (select 1 from prospect_report_handoffs h where h.prospect_id = r.prospect_id and h.status in ('scheduled', 'sent'))
     on conflict (reply_id) do nothing
@@ -508,8 +519,25 @@ interface HandoffContext {
 async function loadContext(h: ReportHandoff): Promise<{ ok: true; ctx: HandoffContext } | { ok: false; reason: string; stop: boolean }> {
   const [reply] = await sql`select classification, received_at, contact_id from prospect_replies where id = ${h.replyId}`;
   if (!reply) return { ok: false, reason: "reply not found", stop: true };
-  const seq = h.sequenceId ? await (await import("@/lib/prospects/followups")).getFollowupSequence(h.sequenceId) : await sequenceForProspect(h.prospectId);
-  if (!seq) return { ok: false, reason: "no follow-up sequence (not a mismatch prospect)", stop: true };
+  const fu = await import("@/lib/prospects/followups");
+  let seq: FollowupSequence | null = h.sequenceId ? await fu.getFollowupSequence(h.sequenceId) : await sequenceForProspect(h.prospectId);
+  if (!seq) {
+    // No enrolled sequence (a Touch 1 sent outside the cadence, or a hand
+    // handled cohort): the delivered Touch 1 still carries the frozen
+    // evidence. Build the same context from it; the sequence id stays null.
+    const t1 = await fu.deliveredTouch1(h.prospectId).catch(() => null);
+    if (!t1) return { ok: false, reason: "no frozen mismatch evidence on file (no enrolled sequence, no delivered mismatch Touch 1) — founder answers this one by hand", stop: false };
+    const { tz } = await fu.marketTimezone(h.prospectId);
+    seq = {
+      id: "", prospectId: h.prospectId, experimentId: "", contactId: t1.contactId,
+      touch1DraftId: t1.draftId, touch1SendId: t1.sendId, touch1SentAt: t1.sentAt,
+      competitorCompanyId: t1.evidenceSnapshot.competitor.companyId,
+      evidenceSnapshot: t1.evidenceSnapshot, evidenceCorrection: t1.correction,
+      distinctCompetitorQuestions: 0, timezone: tz, status: "replied", stopReason: null,
+      pausedUntil: null, pauseReason: null, nextTouch: null, nextDueAt: null, lastTouchSendId: null,
+      enrolledBy: h.actorId ?? "",
+    };
+  }
   const actor = await userById(h.actorId ?? seq.enrolledBy);
   if (!actor) return { ok: false, reason: "actor unavailable", stop: false };
   const [later] = await sql`
@@ -586,7 +614,7 @@ export async function advanceReportHandoff(h: ReportHandoff, now: Date, opts: { 
   const { ctx } = loaded;
   const actor = ctx.actor;
   // The "yes" ends the cold sequence first — no Touch 2/3 may follow it.
-  await applySequenceSignals(ctx.seq.id, now);
+  if (ctx.seq.id) await applySequenceSignals(ctx.seq.id, now);
   if (h.attempts >= REPORT_HANDOFF.maxAttempts) return note(h, "needs_review", `${h.attempts} attempts without completing`, actor.id);
   await setHandoff(h.id, {}); // attempt tick
 

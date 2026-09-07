@@ -123,9 +123,11 @@ async function touch1(): Promise<T1Fact[]> {
 
 async function replies(): Promise<ReplyFact[]> {
   const rows = await sql`
-    select r.prospect_id, r.received_at, r.created_at, r.classification, r.body_text
-    from prospect_replies r join prospects p on p.id = r.prospect_id
-    where p.archived_at is null order by r.received_at, r.created_at
+    select * from (
+      select distinct on (r.prospect_id, r.received_at) r.prospect_id, r.received_at, r.created_at, r.classification, r.body_text
+      from prospect_replies r join prospects p on p.id = r.prospect_id
+      where p.archived_at is null order by r.prospect_id, r.received_at, r.created_at desc
+    ) x order by x.received_at, x.created_at
   `;
   return rows.map((r) => ({
     prospectId: r.prospectId as string,

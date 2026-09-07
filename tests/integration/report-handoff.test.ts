@@ -125,8 +125,14 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
       metricType: "closed_volume", thresholds: MISMATCH_THRESHOLDS,
     };
     await sql`update markets set state_code = 'NV', name = 'Reno, NV' where id = ${fixture.marketId}`;
-    await sql`insert into realtrends_records (id, fingerprint, dataset_name, entity_type, entity_name, city, state, volume_usd, production_year, source_sheet, source_row)
-      values (${PROSPECT_RECORD_ID}, 'fp-kane', 'test', 'team', 'Rivera Team', 'Reno', 'NV', 47200000, 2025, 'Teams', 1)`;
+    await sql`insert into realtrends_records (id, fingerprint, dataset_name, entity_type, entity_name, city, state, volume_usd, production_year, source_sheet, source_row,
+        team_lead, company_id, match_status, matched_at)
+      values (${PROSPECT_RECORD_ID}, 'fp-kane', 'test', 'team', 'Rivera Team', 'Reno', 'NV', 47200000, 2025, 'Teams', 1, 'Ryan Kane', ${PROSPECT_CO}, 'confirmed', now())`;
+    {
+      const ea = await import("@/lib/prospects/entity-aliases");
+      await ea.applyVerifiedAliases(operator, PROSPECT_CO);
+      await ea.recordEntityVerification(operator, { companyId: COMPETITOR_CO, level: "team", sourceUrl: "https://lumina.example/team" });
+    }
     const contact = unwrap(await svc.addContact(operator, { prospectId, name: "Ryan Kane", email: RECIPIENT, isPrimary: true }));
     contactId = contact.contactId;
     await sql`update prospects set stage = 'contacted' where id = ${prospectId}`;
@@ -154,6 +160,7 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
   const NOON = new Date("2026-09-04T16:00:00Z");
 
   it("yes → report published over the frozen evidence → 3 QA passes → threaded reply scheduled → drained → sent + audit_sent", async () => {
+    process.env.REPORT_HANDOFF_AUTOSEND = "true"; // opt-in since 2026-09-07; the default parks at qa_passed
     await sayYes();
     const r1 = await rh.processReportHandoffs(NOON, { caller: passingCaller });
     expect(r1.enqueued).toBe(1);
@@ -215,6 +222,50 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect(h2.reason).toContain("did not complete");
     const runs = await sql`select kind, passed, error from prospect_report_qa_runs where handoff_id = ${h2.id} and kind <> 'deterministic'`;
     expect(runs.every((r) => r.passed === false && String(r.error).includes("provider down"))).toBe(true);
+  });
+
+  it("a hand-recorded yes with NO sequence still gets a handoff, an owner and a due date; autosend default parks at qa_passed", async () => {
+    // Operating review 2026-09-07: both real positive replies had failed the
+    // old preconditions (Gmail-ingested + enrolled sequence).
+    await sql`delete from outreach_followup_sequences where prospect_id = ${prospectId}`;
+    const rec = unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Yes, send it over", receivedAt: new Date("2026-09-03T20:00:00Z") }));
+    const [p] = await sql`select owner_id, next_action, next_action_on::text from prospects where id = ${prospectId}`;
+    expect(p!.ownerId).not.toBeNull();
+    expect(p!.nextAction).toMatch(/positive reply/);
+    expect(p!.nextActionOn).toBe("2026-09-04");
+    const pr = await import("@/lib/prospects/positive-replies");
+    expect((await pr.positiveRepliesWaiting(NOON)).map((w) => w.replyId)).toContain(rec.replyId);
+    const r1 = await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    expect(r1.enqueued).toBe(1);
+    const h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.sequenceId).toBeNull();
+    expect(h.status).toBe("qa_passed");
+    expect(h.reason).toContain("send by hand");
+    expect(h.draftId).toBeNull();
+    // A second pass creates nothing new; resolving the reply clears Today.
+    expect((await rh.processReportHandoffs(NOON, { caller: passingCaller })).enqueued).toBe(0);
+    unwrap(await pr.resolvePositiveReply(operator, { prospectId, replyId: rec.replyId, outcome: "Report sent by hand; offer stated." }));
+    expect((await pr.positiveRepliesWaiting(NOON)).map((w) => w.replyId)).not.toContain(rec.replyId);
+  });
+
+  it("an unverified entity refuses the report delivery with ENTITY_RESOLUTION_UNVERIFIED (fail closed)", async () => {
+    process.env.REPORT_HANDOFF_AUTOSEND = "true";
+    await sql`update companies set aliases = '{}' where id = ${PROSPECT_CO}`;
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    const h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("scheduled");
+    await sql`update outreach_drafts set scheduled_send_at = now() - interval '1 minute' where id = ${h.draftId}`;
+    const res = await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "mock", businessPurpose: "Deliver the report he asked for", unattended: true });
+    expect(res.ok).toBe(false);
+    const [ledger] = await sql`select allowed, gate_verdict from prospect_outreach_sends where draft_id = ${h.draftId} order by sent_at desc limit 1`;
+    expect(ledger!.allowed).toBe(false);
+    expect(JSON.stringify(ledger!.gateVerdict)).toContain("ENTITY_RESOLUTION_UNVERIFIED");
+    // The same draft transmits once the entity is verified again.
+    const ea = await import("@/lib/prospects/entity-aliases");
+    await ea.applyVerifiedAliases(operator, PROSPECT_CO);
+    const again = unwrap(await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "mock", businessPurpose: "Deliver the report he asked for", unattended: true }));
+    expect(again.providerMessageId).toContain("mock-");
   });
 
   it("autosend off parks at qa_passed; a later unsubscribe stops before any send", async () => {
