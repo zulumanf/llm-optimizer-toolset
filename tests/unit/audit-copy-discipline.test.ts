@@ -19,8 +19,8 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = join(__dirname, "..", "..");
 const SURFACES = [
-  "app/audit/[handle]/page.tsx",
-  "app/audit/[handle]/answers/page.tsx",
+  "components/audit/report-document.tsx",
+  "components/audit/report-answers.tsx",
   "components/audit/narrative.ts",
   "lib/prospects/audits.ts",
   "lib/prospects/diagnose.ts",
@@ -58,7 +58,7 @@ describe("prospect-facing copy discipline", () => {
 
   it("the audit page states mention units next to the mentions total", () => {
     const source = readFileSync(
-      join(ROOT, "app/audit/[handle]/page.tsx"),
+      join(ROOT, "components/audit/report-document.tsx"),
       "utf8"
     );
     // Round 2: the headline count names what it counts — explicit
@@ -69,7 +69,7 @@ describe("prospect-facing copy discipline", () => {
 
   it("the page scopes its numbers and tells the reader how to read them", () => {
     const source = readFileSync(
-      join(ROOT, "app/audit/[handle]/page.tsx"),
+      join(ROOT, "components/audit/report-document.tsx"),
       "utf8"
     );
     // Spec 093: caveats live in exactly two places — the compact scope line
@@ -85,7 +85,7 @@ describe("prospect-facing copy discipline", () => {
 
   it("the commission block stays labeled illustrative", () => {
     const source = readFileSync(
-      join(ROOT, "app/audit/[handle]/page.tsx"),
+      join(ROOT, "components/audit/report-document.tsx"),
       "utf8"
     );
     expect(source).toContain("illustrative estimate");
@@ -94,7 +94,7 @@ describe("prospect-facing copy discipline", () => {
 
   it("the tested-system phrase derives from run metadata, not hardcoded branding", () => {
     const source = readFileSync(
-      join(ROOT, "app/audit/[handle]/page.tsx"),
+      join(ROOT, "components/audit/report-document.tsx"),
       "utf8"
     );
     expect(source).toContain("testedSystemPhrase(");

@@ -172,7 +172,8 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect(d!.promptVersion).toBe("mismatch_report_delivery_v1");
     expect(d!.subject).toBe("Re: Ryan - Reno");
     expect(d!.replyToId).toBe(h.replyId);
-    expect(d!.body).toContain("Here it is: https://app.test.local/audit/rivera-team/");
+    // Spec 134: the delivered link is the private-report invitation.
+    expect(d!.body).toContain("Here it is: https://app.test.local/report/rivera-team/");
     expect(d!.body).toContain("RealTrends has your team at $47.2M closed versus $29.4M closed for Lumina.");
     expect(d!.body).not.toMatch(/[—–]/);
     const slotMin = (new Date(d!.scheduledSendAt as Date).getTime() - NOON.getTime()) / 60_000;

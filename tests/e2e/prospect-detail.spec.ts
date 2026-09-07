@@ -19,7 +19,8 @@ test("published audit shows copy, expire, and revoke controls", async ({ page })
   await page.goto(path);
   await expect(page.getByRole("button", { name: /copy link/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /expire link/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /revoke/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /revoke access/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^revoke$/i })).toBeVisible();
 });
 
 test("sense-check panel renders the stored concern (spec 077)", async ({ page }) => {
@@ -37,8 +38,9 @@ test("copy link prefers the branded audit URL (spec 076)", async ({
   await page.goto(path);
   await page.getByRole("button", { name: /copy link/i }).click();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
+  // Spec 134: the copied link is the private-report invitation.
   expect(copied).toBe(
-    `http://localhost:3100/audit/${state.auditSlug}/${state.auditKey}`
+    `http://localhost:3100/report/${state.reportSlug}/${state.auditKey}`
   );
 });
 

@@ -63,12 +63,9 @@ const PAGES = pageFiles(APP_DIR).map((path) => ({
  * these pages' hand-rolled shells ARE the design and must never migrate.
  */
 const INTENTIONAL_SHELLS = new Map<string, string>([
-  ["app/audit/[handle]/page.tsx", "prospect-facing document — zero workspace chrome by spec 048"],
-  ["app/audit/[handle]/answers/page.tsx", "prospect-facing appendix — same document shell"],
-  ["app/audit/[handle]/[key]/page.tsx", "branded delegation wrapper — renders the document page"],
-  ["app/audit/[handle]/[key]/answers/page.tsx", "branded delegation wrapper — renders the appendix"],
-  ["app/audit/[handle]/walkthrough/page.tsx", "prospect-facing scheduling page — same document shell (spec 128)"],
-  ["app/audit/[handle]/[key]/walkthrough/page.tsx", "branded delegation wrapper — renders the scheduling page"],
+  ["app/report/[slug]/page.tsx", "private report behind the clean URL (spec 134) — renders the document page"],
+  ["app/report/[slug]/answers/page.tsx", "private report appendix (spec 134) — renders the appendix"],
+  ["app/report/[slug]/walkthrough/page.tsx", "private report scheduling page (spec 134) — renders the scheduling page"],
   ["app/portal/page.tsx", "client portal landing — the portal carries its own shell (spec 031)"],
   ["app/portal/[projectId]/page.tsx", "client portal overview — portal shell (specs 031/085)"],
   ["app/portal/[projectId]/work/page.tsx", "client portal — portal shell"],
@@ -123,10 +120,11 @@ describe("page layout consistency", () => {
     // Scoped exemption (spec 123 round 2): prospect-facing audit documents
     // under app/audit/ follow audit-page-design, not the workspace scale —
     // the hero metric is a display numeral and may render genuinely large.
+    // app/report/ (spec 134) is the same document behind the clean URL.
     // The workspace rule stays intact everywhere else.
     const offenders: string[] = [];
     for (const page of PAGES) {
-      if (page.rel.startsWith("app/audit/")) continue;
+      if (page.rel.startsWith("app/audit/") || page.rel.startsWith("app/report/")) continue;
       const sizes = [...page.source.matchAll(/text-(xs|sm|base|lg|xl|2xl|3xl|4xl)\b/g)].map(
         (m) => m[1]
       );
