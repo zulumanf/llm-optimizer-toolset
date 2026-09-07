@@ -26,11 +26,11 @@ import {
   type ProspectBehaviorFacts,
   type ProspectIntent,
 } from "@/lib/prospects/intent";
+import { SCANNER_UA_PATTERN } from "@/lib/prospects/report-access";
 
 /** Script/bot user agents recorded on audit views by our own QA sweeps and
  * crawlers. A NULL user agent is also treated as non-human. */
-const SCRIPT_UA =
-  "(curl|wget|python|node|undici|go-http|okhttp|bot|crawler|spider|headless|monitor|preview|slack|facebookexternalhit|whatsapp|telegram|claude|chatgpt|openai|anthropic|perplexity|gptbot|linkcheck|httpclient|java/|axios)";
+const SCRIPT_UA = SCANNER_UA_PATTERN;
 
 /** Mail-provider link scanners fetch every URL in a delivered email within
  * seconds, wearing real-browser user agents (found live: audit "views" 7-40

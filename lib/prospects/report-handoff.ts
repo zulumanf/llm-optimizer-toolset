@@ -45,7 +45,7 @@ import { lintFollowupCopy, prospectReference, type ProspectEntityType } from "@/
 import type { AuditMismatchBlock } from "@/lib/prospects/audit-mismatch";
 import type { DraftQaIssue } from "@/lib/prospects/draft-qa";
 import type { MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
-import { brandedAuditUrl } from "@/lib/prospects/urls";
+import { reportInvitationUrl } from "@/lib/prospects/urls";
 import { logActivity } from "@/lib/prospects/shared";
 
 export const HANDOFF_STATUSES = [
@@ -619,9 +619,13 @@ export async function advanceReportHandoff(h: ReportHandoff, now: Date, opts: { 
   // 3. The threaded reply that keeps the promise.
   if (h.status === "qa_passed") {
     if (!autosendEnabled()) return setHandoff(h.id, { reason: "QA passed; REPORT_HANDOFF_AUTOSEND=false — send by hand" });
-    const [link] = await sql`select slug, key from prospect_audit_links where prospect_id = ${h.prospectId} and revoked_at is null limit 1`;
-    const url = link ? brandedAuditUrl(link.slug as string, link.key as string) : null;
-    if (!url) return note(h, "needs_review", "no branded report link (APP_URL or prospect_audit_links missing)", actor.id);
+    // Spec 134: the emailed link is the invitation (/report/<slug>/<key>);
+    // the credential leaves the address bar after one click.
+    const [link] = await sql`
+      select p.report_slug, l.key from prospect_audit_links l join prospects p on p.id = l.prospect_id
+      where l.prospect_id = ${h.prospectId} and l.revoked_at is null and p.report_slug is not null limit 1`;
+    const url = link ? reportInvitationUrl(link.reportSlug as string, link.key as string) : null;
+    if (!url) return note(h, "needs_review", "no private-report invitation (APP_URL, report_slug or prospect_audit_links missing)", actor.id);
     const entityType = await prospectEntityType(ctx.seq.evidenceSnapshot);
     if (!entityType) return note(h, "needs_review", "prospect entity type unknown", actor.id);
     const rendered = renderReportDelivery({ firstName: ctx.firstName, brandedUrl: url, block: audit.block, snapshot: ctx.seq.evidenceSnapshot, entityType, footerTail: ctx.footerTail });

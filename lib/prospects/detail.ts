@@ -8,6 +8,8 @@ import { sql } from "@/db/client";
 import type { AuditSnapshot } from "@/lib/prospects/service";
 
 export interface ProspectDetail {
+  /** Spec 134: clean private-report slug, null until the first audit. */
+  reportSlug: string | null;
   id: string;
   launchId: string;
   launchName: string;
@@ -54,7 +56,7 @@ export async function getProspectDetail(id: string): Promise<ProspectDetail | nu
       p.qualification_override_reason,
       p.relationship_strength, p.stage, p.next_action, p.next_action_on::text,
       p.do_not_contact, p.do_not_contact_reason, p.conflict_status, p.notes,
-      p.benchmark_project_id, p.promoted_project_id
+      p.benchmark_project_id, p.promoted_project_id, p.report_slug
     from prospects p
     join market_launches l on l.id = p.launch_id
     join markets m on m.id = l.market_id
@@ -184,6 +186,9 @@ export interface AuditRow {
   viewCount: number;
   firstViewedAt: Date | null;
   lastViewedAt: Date | null;
+  /** Spec 134: authorized external sessions that reached this audit. */
+  externalSessionCount: number;
+  firstExternalAccessAt: Date | null;
   snapshot: AuditSnapshot;
 }
 
@@ -196,7 +201,11 @@ export async function listAudits(prospectId: string): Promise<AuditRow[]> {
       (select min(v.viewed_at) from prospect_audit_views v
         where v.audit_id = a.id and not v.is_internal) as first_viewed_at,
       (select max(v.viewed_at) from prospect_audit_views v
-        where v.audit_id = a.id and not v.is_internal) as last_viewed_at
+        where v.audit_id = a.id and not v.is_internal) as last_viewed_at,
+      (select count(*)::int from prospect_report_sessions s
+        where s.audit_id = a.id and not s.is_internal and s.first_used_at is not null) as external_session_count,
+      (select min(s.first_used_at) from prospect_report_sessions s
+        where s.audit_id = a.id and not s.is_internal) as first_external_access_at
     from prospect_audits a
     where a.prospect_id = ${prospectId}
     order by a.created_at desc

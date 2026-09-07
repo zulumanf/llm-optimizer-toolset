@@ -267,7 +267,9 @@ async function era1(era2Ids: string[]): Promise<Era1Fact> {
       count(distinct s.prospect_id) filter (where exists (select 1 from suppression_entries se where se.lifted_at is null and se.reason ilike '%bounce%' and se.normalized_value = lower(s.recipient_email))
         or exists (select 1 from prospect_contacts c where c.prospect_id = s.prospect_id and c.do_not_contact and c.do_not_contact_reason ilike 'hard_bounce%'))::int as bounced,
       count(distinct s.prospect_id) filter (where exists (select 1 from prospect_audit_views v join prospect_audits a on a.id = v.audit_id
-        where a.prospect_id = s.prospect_id and not v.is_internal and v.viewed_at > s.sent_at + interval '10 minutes'))::int as audit_viewed,
+        where a.prospect_id = s.prospect_id and not v.is_internal
+          and (v.viewed_at > s.sent_at + interval '10 minutes'
+            or exists (select 1 from prospect_report_sessions rs where rs.id = v.session_id and not rs.is_internal))))::int as audit_viewed,
       min(s.sent_at) as first_sent_at, max(s.sent_at) as last_sent_at
     from prospect_outreach_sends s join prospects p on p.id = s.prospect_id join market_launches l on l.id = p.launch_id
     where s.allowed and p.archived_at is null and l.name not like ${fixture}

@@ -114,6 +114,7 @@ import { checkNoMockResponses } from "@/lib/qa/preflight";
 import {} from "@/lib/prospects/audit-evidence";
 import { auditUrl, brandedAuditUrl, openPixelUrl } from "@/lib/prospects/urls";
 import { plainTextToTrackedHtml } from "@/lib/text/html";
+import { invitationLinkLabels } from "@/lib/prospects/report-access";
 import {
   auditLinkForProspect,
 } from "@/lib/prospects/links";
@@ -2550,7 +2551,15 @@ export async function sendProspectDraft(
         const pixel = openPixelUrl(token);
         if (pixel) {
           openToken = token;
-          htmlBody = plainTextToTrackedHtml(body, pixel);
+          // Spec 134: a private-report invitation in the body reads as
+          // "Private report for <business>" in the HTML part; the text part
+          // keeps the full URL. Cold T1/T2/T3 bodies carry no invitation
+          // and render exactly as before.
+          htmlBody = plainTextToTrackedHtml(
+            body,
+            pixel,
+            invitationLinkLabels(body, prospect.businessName as string)
+          );
         }
       }
 
