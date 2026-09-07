@@ -68,7 +68,9 @@ describe.skipIf(!TEST_URL)("prospecting dashboard (integration)", () => {
         'absence', 't', 'e', '{}', '{}', array['dddddddd-0000-4000-8000-000000000007']::uuid[], '{}', 'high', 'v', 'approved', true)`;
     await sql`insert into prospect_audits (id, prospect_id, finding_id, headline, access_token, status, snapshot, published_at)
       values ('eeeeeeee-0000-4000-8000-000000000001', ${P1}, 'dddddddd-0000-4000-8000-000000000008',
-        'h', 'tok-dashboard-test-000000000000000000000000', 'published', '{}', now())`;
+        'h', 'tok-dashboard-test-000000000000000000000000', 'published', '{}', now() - interval '4 hours')`;
+    // Published four hours ago: the views below all fall after the
+    // publish-QA window (views inside it are the operator's own checks).
     // An allowed gmail send with an open, plus views: one human, one curl,
     // one internal.
     await sql`insert into outreach_drafts (id, prospect_id, finding_id, channel, body, generated_by, status)
