@@ -17,6 +17,7 @@ import {
   CheckSquare,
   ChevronRight,
   Crosshair,
+  FlaskConical,
   ListTodo,
   Gauge,
   LayoutDashboard,
@@ -46,6 +47,7 @@ const SYSTEM_LINKS = [
   { href: "/companies", label: "Companies", icon: Building2 },
   { href: "/learnings", label: "Learnings", icon: GraduationCap },
   { href: "/exclusivity", label: "Exclusivity", icon: Shield },
+  { href: "/dogfood", label: "Dogfood", icon: FlaskConical },
 ] as const;
 
 const SYSTEM_OPEN_KEY = "nav:system-open";

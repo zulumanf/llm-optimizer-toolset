@@ -329,6 +329,81 @@ describe.skipIf(!TEST_URL)("audit refresh queue (integration)", () => {
     expect(result.needsAttention).toBe(0);
   });
 
+  it("spec 106: the assistant stages, lists, and decides refreshes through the confirm gate", async () => {
+    const fixture = await seedPublishedAudit();
+    const run2 = await startScheduledRun(fixture, "weekly for assistant");
+
+    // Stage via the belt's direct tool (system-principal staging).
+    const { runAssistantTool } = await import("@/lib/assistant/tools");
+    const prepared = (await runAssistantTool(operator, "prepare_audit_refresh", {
+      run_id: run2,
+    })) as { prepared: number };
+    expect(prepared.prepared).toBe(1);
+    const [candidate] = await sql`
+      select id from audit_refresh_candidates where run_id = ${run2}
+    `;
+
+    // The belt list: compact rows carrying the approval pre-fill.
+    const list = (await runAssistantTool(operator, "list_audit_refresh_candidates", {})) as Array<
+      Record<string, unknown>
+    >;
+    const row = list.find((r) => r.candidateId === candidate?.id);
+    expect(row).toBeDefined();
+    expect(row!.findingTitle).toBeTruthy();
+    // This fixture published without a human finding — the pre-fill is
+    // honestly null (the dedicated list test covers the filled case).
+    expect(row!.priorHumanFinding).toBeNull();
+
+    // Approve through the human gate: republish happens only on the click.
+    const confirm = await import("@/lib/assistant/confirm");
+    const [conv] = await sql`
+      insert into assistant_conversations (user_id, title)
+      values (${operator.id}, 'refresh queue') returning id
+    `;
+    const pending = await confirm.mintPendingAction(
+      operator,
+      conv!.id as string,
+      "approve_audit_refresh",
+      {
+        candidate_id: candidate!.id as string,
+        human_finding: {
+          text: HUMAN_FINDING.text,
+          source_label: HUMAN_FINDING.sourceLabel,
+          source_url: HUMAN_FINDING.sourceUrl,
+          source_date: HUMAN_FINDING.sourceDate,
+        },
+      }
+    );
+    let [c] = await sql`select status from audit_refresh_candidates where id = ${candidate!.id}`;
+    expect(c?.status).toBe("pending"); // minting executed nothing
+    unwrap(await confirm.confirmAssistantAction(operator, { token: pending.token }));
+    [c] = await sql`select status from audit_refresh_candidates where id = ${candidate!.id}`;
+    expect(c?.status).toBe("approved");
+    const [published] = await sql`
+      select f.benchmark_id from prospect_audits a
+      join prospect_findings f on f.id = a.finding_id
+      where a.prospect_id = ${fixture.prospectId} and a.status = 'published'
+    `;
+    const [bench] = await sql`
+      select run_id from prospect_benchmarks where id = ${published?.benchmarkId}
+    `;
+    expect(bench?.runId).toBe(run2); // republished from the new run
+
+    // The next weekly stages again; dismissal closes it, audit untouched.
+    const run3 = await startScheduledRun(fixture, "weekly again");
+    await runAssistantTool(operator, "prepare_audit_refresh", { run_id: run3 });
+    const [c3] = await sql`select id from audit_refresh_candidates where run_id = ${run3}`;
+    const dismiss = await confirm.mintPendingAction(
+      operator,
+      conv!.id as string,
+      "dismiss_audit_refresh",
+      { candidate_id: c3!.id as string, reason: "Holding this week." }
+    );
+    unwrap(await confirm.confirmAssistantAction(operator, { token: dismiss.token }));
+    const [d] = await sql`select status from audit_refresh_candidates where id = ${c3!.id}`;
+    expect(d?.status).toBe("dismissed");
+  });
+
   it("lists open candidates with the prior humanFinding pre-fill", async () => {
     const fixture = await seedPublishedAudit();
     // Republish with a humanFinding so the pre-fill has a source.

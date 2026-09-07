@@ -1,5 +1,5 @@
 /**
- * Prompt coverage by segment (spec 063, coverage-v1). Turns "how visible are
+ * Prompt coverage by segment (spec 063; v2 since spec 087). Turns "how visible are
  * we?" into "in WHICH questions are we present?" — per category, intent band,
  * audience, and price tier, using the attributes frozen into the version.
  *
@@ -15,13 +15,18 @@ import type { FrozenPrompt } from "@/lib/prompts/types";
 import { commercialIntentWeight } from "@/lib/scoring/intent";
 import { HIGH_INTENT_THRESHOLD } from "@/lib/scoring/valuable";
 
-export const COVERAGE_VERSION = "coverage-v1";
+// v2 (spec 087): adds the structured real-estate dimensions frozen since
+// migration 082. Same math; only the segment key space widened.
+export const COVERAGE_VERSION = "coverage-v2";
 
 export const COVERAGE_DIMENSIONS = [
   "category",
   "intent",
   "audience",
   "price_tier",
+  "neighborhood",
+  "property_type",
+  "building",
 ] as const;
 export type CoverageDimension = (typeof COVERAGE_DIMENSIONS)[number];
 
@@ -64,6 +69,12 @@ function segmentOf(prompt: FrozenPrompt, dimension: CoverageDimension): string |
       return prompt.audience ?? null;
     case "price_tier":
       return prompt.priceTier ?? null;
+    case "neighborhood":
+      return prompt.neighborhood ?? null;
+    case "property_type":
+      return prompt.propertyType ?? null;
+    case "building":
+      return prompt.building ?? null;
   }
 }
 

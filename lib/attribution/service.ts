@@ -35,6 +35,9 @@ export const POST_OFFSETS = ["+2w", "+6w", "+12w"] as const;
 export type PostOffset = (typeof POST_OFFSETS)[number];
 const OFFSET_DAYS: Record<PostOffset, number> = { "+2w": 14, "+6w": 42, "+12w": 84 };
 
+import { INTERVENTION_TYPES } from "@/lib/attribution/constants";
+export { INTERVENTION_TYPES, type InterventionType } from "@/lib/attribution/constants";
+
 const createSchema = z.object({
   projectId: z.string().uuid(),
   title: z
@@ -51,6 +54,7 @@ const createSchema = z.object({
   // interventions predating the record stay null.
   ownerId: z.string().uuid().optional(),
   costUsd: z.number().nonnegative().optional(),
+  interventionType: z.enum(INTERVENTION_TYPES).optional(),
   postOffsets: z.array(z.enum(POST_OFFSETS)).default([...POST_OFFSETS]),
 });
 
@@ -117,13 +121,14 @@ export async function createIntervention(
         insert into interventions
           (project_id, title, description, hypothesis, shipped_at, urls,
            prompt_set_version_id, task_id, baseline_weak, created_by,
-           owner_id, cost_usd, status)
+           owner_id, cost_usd, intervention_type, status)
         values
           (${input.projectId}, ${input.title}, ${input.description ?? null},
            ${input.hypothesis || null},
            ${input.shippedAt}, ${input.urls}, ${input.promptSetVersionId},
            ${input.taskId ?? null}, ${baselineWeak}, ${user.id},
-           ${input.ownerId ?? null}, ${input.costUsd ?? null}, ${initialStatus})
+           ${input.ownerId ?? null}, ${input.costUsd ?? null},
+           ${input.interventionType ?? null}, ${initialStatus})
         returning id
       `;
       const interventionId = row?.id as string;

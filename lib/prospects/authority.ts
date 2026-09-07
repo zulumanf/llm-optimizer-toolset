@@ -13,7 +13,7 @@
  */
 import type { AuthoritySignalKind, ProvenanceLabel } from "@/lib/prospects/constants";
 
-export const AUTHORITY_PROFILE_VERSION = "authority-v2";
+export const AUTHORITY_PROFILE_VERSION = "authority-v3";
 
 export interface AuthoritySignalInput {
   id: string;
@@ -25,7 +25,7 @@ export interface AuthoritySignalInput {
   /** Evidence classification (migration 074). 'derived' rows are excluded
    * from scoring: arithmetic over already-counted signals (volume ÷ sides)
    * must not earn a second helping of points. Null = legacy/unclassified. */
-  sourceType?: "independent" | "self_reported" | "derived" | null;
+  sourceType?: "independent" | "self_reported" | "derived" | "sponsored" | null;
   /** The magnitude the signal records — dollars for volume, sides for
    * count, the rank for rankings (spec 078). Null/absent = unquantified. */
   valueNumber?: number | null;
@@ -100,6 +100,14 @@ export interface AuthorityProfile {
   components: AuthorityComponent[];
   excluded: { signalId: string; reason: string }[];
 }
+
+/** Evidence-classification discount on top of provenance (authority-v3):
+ * sponsored coverage is kept and shown, but paid placement must not score
+ * like independent reporting. Other classifications are neutral — derived
+ * rows are excluded outright, not discounted. */
+export const SOURCE_TYPE_FACTORS: Record<string, number> = {
+  sponsored: 0.5,
+};
 
 export const PROVENANCE_FACTORS: Record<ProvenanceLabel, number> = {
   verified: 1.0,
@@ -192,6 +200,7 @@ export function authorityProfile(signals: AuthoritySignalInput[]): AuthorityProf
         kindPoints *
         magnitudeFactor(signal.kind, signal.valueNumber) *
         PROVENANCE_FACTORS[signal.provenance] *
+        (SOURCE_TYPE_FACTORS[signal.sourceType ?? ""] ?? 1) *
         (signal.confidence ?? 1);
       const best = bestByKind.get(signal.kind);
       if (!best) {

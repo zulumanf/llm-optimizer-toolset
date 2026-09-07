@@ -16,7 +16,7 @@ import { normalizeEntityName, normalizeDomain } from "@/lib/knowledge/normalize"
 import type { AssessmentItem, AssessmentValue } from "@/lib/prospects/constants";
 import type { AuthoritySignalKind } from "@/lib/prospects/constants";
 
-export const DIAGNOSIS_VERSION = "prospect-diagnosis-v1";
+export const DIAGNOSIS_VERSION = "prospect-diagnosis-v3";
 
 const EVIDENCE_PROMPT_LIMIT = 5;
 const CITED_DOMAIN_LIMIT = 5;
@@ -28,8 +28,13 @@ const ABSENCE_OF_RESEARCH_CONFIDENCE = 0.4;
 export interface Diagnosis {
   key: string;
   title: string;
+  /** Measured facts only (OBSERVATION) — counts and records, no reading of
+   * why. v2: the epistemics live in the data model, not prompt wording. */
+  observations: string[];
+  /** What the observations may mean (INFERENCE) — always hedged. */
   explanation: string;
   confidence: number;
+  /** RECOMMENDATION. */
   suggestedAction: string;
   affectedPrompts: string[];
   competitors: string[];
@@ -64,13 +69,13 @@ export interface DiagnoseInputs {
 
 const SUGGESTED_ACTIONS: Record<string, string> = {
   no_organic_visibility:
-    "Build presence on the surfaces the answers cite (see source targets) and publish neighborhood-specific proof of work.",
+    "Build presence on the third-party surfaces the answers cite (see source targets) and publish neighborhood-specific proof of work.",
   mentioned_never_recommended:
     "Add differentiation and proof (rankings, verified sales, reviews) to the pages models retrieve — being known is not being endorsed.",
   missing_from_cited_sources:
-    "Get profiles or coverage on the cited domains — the answers pull from them, not from your own site.",
+    "The cited domains are clues to the public sources visible in this sample. Improving accurate, consistent representation across relevant third-party profiles (portals, directories, local press) and building authoritative on-site content may improve how AI systems describe you over time.",
   competitors_dominate_sources:
-    "Target the competitor-controlled surfaces with neutral third-party alternatives (directories, local press) the models also cite.",
+    "Strengthen the neutral third-party surfaces (directories, local press) the answers also cite — competitor-owned pages are not available surfaces.",
   missing_from_high_intent_prompts:
     "Create content matching the questions buyers and sellers actually ask (best listing agent, who should sell my X) — you only appear on general ones.",
   entity_ambiguity:
@@ -96,6 +101,7 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
   const add = (
     key: string,
     title: string,
+    observations: string[],
     explanation: string,
     confidence: number,
     extras: Partial<Pick<Diagnosis, "affectedPrompts" | "competitors" | "citedDomains">> = {}
@@ -103,6 +109,7 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
     out.push({
       key,
       title,
+      observations,
       explanation,
       confidence,
       suggestedAction: SUGGESTED_ACTIONS[key] ?? "",
@@ -121,7 +128,8 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "no_organic_visibility",
         "Absent from every organic answer",
-        `You appeared in 0 of ${totalResponses} answers to questions that didn't name you.`,
+        [`You appeared in 0 of ${totalResponses} answers to questions that didn't name you.`],
+        "Nothing the models retrieve appears to surface you — the sources behind these answers may not carry your name at all.",
         sampleConfidence(totalResponses),
         {
           affectedPrompts: inputs.prompts
@@ -133,7 +141,11 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "mentioned_never_recommended",
         "Mentioned but never recommended",
-        `You were mentioned in ${totalMentioned} of ${totalResponses} answers, recommended in none — the answers describe you without endorsing you.`,
+        [
+          `You were mentioned in ${totalMentioned} of ${totalResponses} answers.`,
+          "You were recommended in none.",
+        ],
+        "The answers describe you without endorsing you — the retrieved sources may lack the proof (rankings, verified sales, reviews) endorsements lean on.",
         sampleConfidence(totalResponses),
         {
           affectedPrompts: inputs.prompts
@@ -157,7 +169,10 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "missing_from_high_intent_prompts",
         "Missing exactly where it counts",
-        `You show up on general questions but are absent from all ${highIntent.length} questions buyers and sellers ask when choosing.`,
+        [
+          `You appeared on general questions but in 0 of the ${highIntent.length} high-intent questions buyers and sellers ask when choosing.`,
+        ],
+        "Your visibility may not extend to decision-stage content — the questions that convert are answered from sources that don't include you.",
         sampleConfidence(highIntent.reduce((a, p) => a + p.responses, 0)),
         {
           affectedPrompts: absentHighIntent
@@ -171,7 +186,8 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "unstable_sample",
         "Sample too small to trust",
-        `Only ${totalResponses} organic responses — below the ${MIN_STABLE_SAMPLE}-response stability floor.`,
+        [`${totalResponses} organic responses captured — the stability floor is ${MIN_STABLE_SAMPLE}.`],
+        "No conclusion above this line should be trusted until the sample grows.",
         1.0
       );
     }
@@ -191,7 +207,16 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "missing_from_cited_sources",
         "Not in the retrieval path",
-        `The answers cited their sources ${totalCitations} times — never your own site.`,
+        // Precise, auditable units (spec 093 rounds 1+2): the count names
+        // its denominator and how repeats are treated — a bare "cited N
+        // times" reads implausibly high and invites the exact skeptical
+        // question it should be answering.
+        [
+          `Across the ${totalResponses} captured answers we recorded ${totalCitations} displayed source citations (repeated citations counted each time they appeared) — your own site appeared 0 times.`,
+        ],
+        // One sentence of reading, no stacked hedges (round 2) — the longer
+        // "how to act on it" text lives in the suggested action.
+        "The cited domains show the public information environment surfaced in this sample; your site did not appear among them.",
         sampleConfidence(totalCitations),
         { citedDomains: top }
       );
@@ -216,7 +241,8 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "competitors_dominate_sources",
         "Competitors control the cited sources",
-        `${competitorCitations} of ${totalCitations} citations resolve to tracked competitors' own domains.`,
+        [`${competitorCitations} of ${totalCitations} citations resolve to tracked competitors' own domains.`],
+        "The retrieval path may be running through competitor-controlled pages — their framing is the raw material for these answers.",
         sampleConfidence(totalCitations),
         {
           competitors: competitorDomains.map((c) => c.name),
@@ -235,7 +261,10 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "entity_ambiguity",
         "Name collides with another tracked brand",
-        `"${inputs.prospectCompanyName}" normalizes identically to ${colliding.map((c) => `"${c.name}"`).join(", ")} — mentions may be misattributed either way.`,
+        [
+          `"${inputs.prospectCompanyName}" normalizes identically to ${colliding.map((c) => `"${c.name}"`).join(", ")}.`,
+        ],
+        "Mentions may be misattributed in either direction — measurement cannot be trusted until the entities are disambiguated.",
         0.9,
         { competitors: colliding.map((c) => c.name) }
       );
@@ -246,7 +275,8 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
     add(
       "website_not_indexable",
       "Website is not indexable",
-      "The operator assessment records the site as not indexable — retrieval cannot surface what crawlers cannot read.",
+      ["The operator assessment records the site as not indexable."],
+      "Retrieval cannot surface what crawlers cannot read — nothing downstream matters until this is fixed.",
       1.0
     );
   }
@@ -254,7 +284,8 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
     add(
       "weak_structured_data",
       "Structured data inconsistent or missing",
-      "The operator assessment records inconsistent structured data — entity extraction is left guessing.",
+      ["The operator assessment records inconsistent structured data."],
+      "Entity extraction is left guessing — models may fail to connect your pages to your name.",
       1.0
     );
   }
@@ -263,7 +294,8 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
     add(
       "no_review_evidence",
       "No review footprint recorded",
-      "No review-footprint signal has been recorded for this prospect — this is a gap in our research, not a measured absence of reviews.",
+      ["No review-footprint signal has been recorded for this prospect."],
+      "This is a gap in our research, not a measured absence of reviews.",
       ABSENCE_OF_RESEARCH_CONFIDENCE
     );
   }
@@ -271,7 +303,8 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
     add(
       "no_media_evidence",
       "No media coverage recorded",
-      "No press-mention signal has been recorded for this prospect — this is a gap in our research, not a measured absence of coverage.",
+      ["No press-mention signal has been recorded for this prospect."],
+      "This is a gap in our research, not a measured absence of coverage.",
       ABSENCE_OF_RESEARCH_CONFIDENCE
     );
   }

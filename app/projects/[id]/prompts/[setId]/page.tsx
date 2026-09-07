@@ -18,6 +18,8 @@ import { FreezeButton } from "@/components/prompts/freeze-button";
 import { DuplicateSetDialog } from "@/components/prompts/duplicate-set-dialog";
 import { ImportPromptsDialog } from "@/components/prompts/import-prompts-dialog";
 import { GenerateMarketDialog } from "@/components/prompts/generate-market-dialog";
+import { SuggestionsPanel } from "@/components/prompts/suggestions-panel";
+import { listPromptSuggestions } from "@/lib/prompts/suggest";
 import { clusterPrompts, PROMPT_CLUSTER_VERSION } from "@/lib/prompts/cluster";
 import { formatDate } from "@/lib/format";
 
@@ -33,9 +35,10 @@ export default async function PromptSetDetailPage({
   ]);
   if (!project || !set || set.projectId !== projectId) notFound();
 
-  const [prompts, versions] = await Promise.all([
+  const [prompts, versions, suggestions] = await Promise.all([
     listActivePrompts(setId),
     listVersionSummaries(setId),
+    listPromptSuggestions(setId),
   ]);
   const latest = versions[0] ?? null;
   const latestVersion = latest ? await getVersion(setId, latest.version) : null;
@@ -139,6 +142,25 @@ export default async function PromptSetDetailPage({
             </div>
           )}
         </div>
+      )}
+
+      {isEditable && (
+        <SuggestionsPanel
+          setId={set.id}
+          suggestions={suggestions.map((s) => ({
+            id: s.id,
+            text: s.text,
+            category: s.category,
+            tier: s.tier,
+            audience: s.audience,
+            priceTier: s.priceTier,
+            neighborhood: s.neighborhood,
+            building: s.building,
+            propertyType: s.propertyType,
+            origin: s.origin,
+            rationale: s.rationale,
+          }))}
+        />
       )}
 
       {prompts.length > 1 && (

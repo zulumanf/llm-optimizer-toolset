@@ -89,6 +89,71 @@ export async function selfTiles(projectId: string): Promise<SelfTile[]> {
   }));
 }
 
+export interface SubjectScoreRow {
+  runId: string;
+  runLabel: string;
+  startedAt: Date;
+  metric: string;
+  value: number;
+  sampleSize: number;
+}
+
+/** Every 'all'-provider subject score across scored runs (current scoring
+ * version), oldest first — one query powers baseline, current, and deltas.
+ * The earliest scored run IS the baseline: derived, never marked or mutated. */
+export async function subjectScoreHistory(
+  projectId: string
+): Promise<SubjectScoreRow[]> {
+  const subject = await getSubjectCompany(projectId);
+  if (!subject) return [];
+  return sql<SubjectScoreRow[]>`
+    select r.id as run_id, r.label as run_label, r.started_at,
+      s.metric, s.value, s.sample_size
+    from scores s
+    join runs r on r.id = s.run_id
+    where r.project_id = ${projectId} and s.company_id = ${subject.id}
+      and s.provider = 'all' and s.scoring_version = ${SCORING_VERSION}
+    order by r.started_at asc
+  `;
+}
+
+export interface CitationSupport {
+  validResponses: number;
+  mentionedResponses: number;
+  /** Mentioned answers that also cite a source NOT owned by the subject —
+   * third-party or competitor-owned, never our own site posing as evidence. */
+  independentlySupported: number;
+}
+
+export async function citationSupport(
+  runId: string,
+  companyId: string
+): Promise<CitationSupport> {
+  const [row] = await sql`
+    select count(*)::int as valid_responses,
+      count(*) filter (where m.mentioned)::int as mentioned_responses,
+      count(*) filter (where m.mentioned and exists (
+        select 1 from response_citations rc
+        where rc.response_id = r.id
+          and (rc.company_id is null or rc.company_id <> ${companyId})
+      ))::int as independently_supported
+    from responses r
+    left join mentions m on m.response_id = r.id and m.company_id = ${companyId}
+      -- current revision only (the lib/prospects/benchmark.ts CURRENT idiom)
+      and not exists (
+        select 1 from mentions newer
+        where newer.response_id = m.response_id
+          and newer.company_id = m.company_id and newer.revision > m.revision
+      )
+    where r.run_id = ${runId} and r.error is null
+  `;
+  return {
+    validResponses: (row?.validResponses as number) ?? 0,
+    mentionedResponses: (row?.mentionedResponses as number) ?? 0,
+    independentlySupported: (row?.independentlySupported as number) ?? 0,
+  };
+}
+
 export interface HealthTile {
   lastRunLabel: string | null;
   lastRunStatus: string | null;

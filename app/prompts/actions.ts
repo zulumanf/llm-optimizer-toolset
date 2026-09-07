@@ -6,6 +6,7 @@ import * as promptService from "@/lib/prompts/prompt-service";
 import * as importService from "@/lib/prompts/import";
 import * as marketGenerate from "@/lib/markets/generate";
 import * as marketInstall from "@/lib/markets/install";
+import * as suggestService from "@/lib/prompts/suggest";
 
 /**
  * Thin wrappers: identity + revalidation around lib/prompts services
@@ -49,4 +50,13 @@ export async function generateMarketPrompts(input: unknown) {
 }
 export async function installMarketPack(input: unknown) {
   return run((u) => marketInstall.installMarketPack(u, input));
+}
+export async function generatePromptSuggestions(input: unknown) {
+  return run((u) => suggestService.generatePromptSuggestions(u, input));
+}
+export async function approvePromptSuggestion(input: unknown) {
+  return run((u) => suggestService.approvePromptSuggestion(u, input));
+}
+export async function rejectPromptSuggestion(input: unknown) {
+  return run((u) => suggestService.rejectPromptSuggestion(u, input));
 }

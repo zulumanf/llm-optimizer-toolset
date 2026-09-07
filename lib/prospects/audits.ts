@@ -26,6 +26,7 @@ import {
 } from "@/lib/prospects/constants";
 import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
 import { latestVerifiedProduction } from "@/lib/prospects/realtrends";
+import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
 import {
   CURRENT,
   promptEvidenceForResponses,
@@ -41,6 +42,7 @@ import {
   ensureAuditLink,
   revokeAuditLinks,
 } from "@/lib/prospects/links";
+import { revokeReportSessions } from "@/lib/prospects/report-access";
 import { log } from "@/lib/logger";
 import {
   getPrimaryFinding,
@@ -51,16 +53,23 @@ import {
 } from "@/lib/prospects/shared";
 import { authorityGapForRun } from "@/lib/prospects/gap";
 import { diagnoseProspect } from "@/lib/prospects/diagnose";
+import { apiSurface, measurementPurpose } from "@/lib/runs/provenance";
+import { classifySource } from "@/lib/sources/classify";
+import { surfaceCategory } from "@/lib/prospects/terminology";
+import { normalizeDomain } from "@/lib/knowledge/normalize";
 import { computeProspectScoreView } from "@/lib/prospects/final-score";
 import { validateAuditEvidence } from "@/lib/prospects/audit-evidence";
 import { todayIso } from "@/lib/prospects/constants";
+import { mismatchBlockForProspect, type AuditMismatchBlock } from "@/lib/prospects/audit-mismatch";
 
 const PROSPECT_FACING_DIAGNOSES: Record<string, string> = {
   no_organic_visibility: "AI doesn't surface you yet",
   missing_from_high_intent_prompts: "Missing exactly where buyers decide",
   mentioned_never_recommended: "Known, but not recommended",
-  missing_from_cited_sources: "You're not in the sources AI reads",
-  competitors_dominate_sources: "Competitors control the sources AI reads",
+  // Observed, not causal (Team Moza review 2026-08-19): the benchmark
+  // counts citations; it does not prove what the models "read" or why.
+  missing_from_cited_sources: "Your site wasn't among the cited sources",
+  competitors_dominate_sources: "Competitor-owned pages dominate the cited sources",
 };
 
 /** Rivals on the prospect-facing audit comparison — the visible market. */
@@ -132,6 +141,26 @@ export interface AuditSnapshot {
    * re-verified against exactly the methodology that produced it. Optional:
    * pre-065 snapshots render without it (presentation-only rule). */
   instrumentVersions?: { scoring: string[]; parser: string[] };
+  /** How the observations were collected (spec 086), derived from stored
+   * instrument facts at publish. Optional: pre-086 snapshots render without
+   * it. searchEnabled + modelOnly = responseCount. */
+  collection?: {
+    method: "api";
+    searchEnabled: number;
+    modelOnly: number;
+    purpose: string;
+  };
+  /** Staff-recorded clean-session consumer observations (spec 011) on the
+   * same benchmark project, summarized per platform with their OWN
+   * denominator — never merged into the API counts above. Present only when
+   * observations exist. */
+  consumerValidation?: {
+    observations: number;
+    mentioned: number;
+    byProvider: { provider: string; observations: number; mentioned: number }[];
+    performedFrom: string;
+    performedTo: string;
+  };
   keyFinding: {
     title: string;
     explanation: string;
@@ -171,6 +200,11 @@ export interface AuditSnapshot {
   promptEvidence: PromptEvidence[];
   methodology: string;
   cta: string;
+  /** Spec 128: the mismatch "private report" — frozen side-by-side plus
+   * the exact questions and answers. Present only for prospects who
+   * received a competitive-mismatch Touch 1; the page renders the compact
+   * variant when set. */
+  mismatch?: AuditMismatchBlock;
   /** THE PROOF (spec 045): every captured answer, complete and verbatim, so
    * the reader can search for their own name and find nothing — an absence
    * can only be proven by publishing everything. Rendered on the appendix
@@ -277,9 +311,23 @@ export interface AuditSnapshot {
   };
   /** Prospect-facing "why this is happening" (spec 042 diagnoses, whitelist
    * only — internal research-gap diagnoses never ship to a prospect). */
-  whyItHappens?: { title: string; explanation: string; suggestedAction: string }[];
-  /** The domains the AI answers actually cited — where visibility is won. */
-  topSources?: { domain: string; citations: number }[];
+  whyItHappens?: {
+    title: string;
+    /** Measured facts (spec 086) — absent on snapshots published before v2. */
+    observations?: string[];
+    explanation: string;
+    suggestedAction: string;
+  }[];
+  /** The domains the AI answers actually cited. `category` says what a
+   * surface is TO THE PROSPECT (spec 086 classifier at publish time):
+   * owned / platform / earned are realistic surfaces; competitor-owned is
+   * diagnostic context, never an optimization target. Additive — older
+   * snapshots render uncategorized. */
+  topSources?: {
+    domain: string;
+    citations: number;
+    category?: "owned" | "platform" | "earned" | "competitor" | null;
+  }[];
   /** Spec 038 — present only when both sides were measurable at publish
    * time. Additive: audits published before the field render unchanged. */
   authorityGap?: {
@@ -292,13 +340,22 @@ export interface AuditSnapshot {
     components: { label: string; points: number; maxPoints: number }[];
     organicResponses: number;
     /** Counted evidence statements only — provenance-labeled, source-linked. */
-    signals: { label: string; provenance: string; sourceUrl: string | null }[];
+    signals: {
+      label: string;
+      provenance: string;
+      sourceUrl: string | null;
+      /** Evidence classification badge (migration 074/085): independent /
+       * self_reported / sponsored / derived. Additive — older snapshots
+       * render the plain provenance text as before. */
+      sourceType?: string | null;
+    }[];
   };
 }
 
 const METHODOLOGY_TEXT =
   "Prompts were selected to represent realistic buyer and seller questions for this market and " +
-  "run repeatedly against the listed AI engines. Responses were captured verbatim and parsed for " +
+  "run repeatedly against the listed AI models through their providers' official developer " +
+  "interfaces. Responses were captured verbatim and parsed for " +
   "which businesses each engine mentioned or recommended. Rates are the share of captured " +
   "responses in which a business appeared. AI responses are probabilistic: individual answers " +
   "vary, which is why sample sizes are shown and why no single response is treated as a result.";
@@ -531,6 +588,7 @@ export async function publishAudit(
                 label: s.label,
                 provenance: s.provenance,
                 sourceUrl: s.sourceUrl,
+                sourceType: s.sourceType,
               })),
           }
         : undefined;
@@ -543,6 +601,7 @@ export async function publishAudit(
       .slice(0, 3)
       .map((d) => ({
         title: PROSPECT_FACING_DIAGNOSES[d.key]!,
+        observations: d.observations,
         explanation: d.explanation,
         suggestedAction: d.suggestedAction,
       }));
@@ -717,9 +776,13 @@ export async function publishAudit(
     // authority statement the page can make, with its exact ranking scope.
     const verifiedProduction = await latestVerifiedProduction(input.prospectId);
 
+    // The page's reply CTA mails preparedBy.email — that must be the legal
+    // sender identity's reply-to (the mailbox outreach transmits from), not
+    // the publishing operator's login account (spec 052 sender identity).
+    const senderIdentity = await getActiveSenderIdentity();
     const preparedBy = {
-      name: user.name,
-      email: user.email,
+      name: senderIdentity?.senderName ?? user.name,
+      email: senderIdentity?.replyToEmail ?? user.email,
       date: todayIso(),
       reportId: randomBytes(4).toString("hex"),
       // Sender credibility (PR B, P5e) — env-configured template fields,
@@ -762,10 +825,43 @@ export async function publishAudit(
       order by citations desc
       limit 5
     `;
-    const topSources = sourceRows.map((s) => ({
-      domain: s.domain as string,
-      citations: Number(s.citations),
-    }));
+    // Actionability classification (Team Moza review 2026-08-19): the same
+    // spec-086 classifier the source graph uses, so a competitor-owned
+    // domain renders as diagnostic context and is never prescribed as a
+    // surface to get listed on. Unclassifiable domains stay uncategorized.
+    const [subjectSite] = await sql`
+      select p.website, c.domain as company_domain
+      from prospects p
+      left join companies c on c.id = p.company_id
+      where p.id = ${input.prospectId}
+    `;
+    const rivalDomainRows = await sql`
+      select domain from companies
+      where archived_at is null and domain is not null
+        and id != ${benchmark.companyId}
+    `;
+    const rawSubjectSite =
+      (subjectSite?.website as string | null) ??
+      (subjectSite?.companyDomain as string | null);
+    const subjectDomain = rawSubjectSite
+      ? normalizeDomain(rawSubjectSite) || null
+      : null;
+    const competitorDomains = rivalDomainRows
+      .map((r) => normalizeDomain(r.domain as string))
+      .filter((d) => Boolean(d));
+    const topSources = sourceRows.map((s) => {
+      const category = surfaceCategory(
+        classifySource(normalizeDomain(s.domain as string), {
+          subjectDomain,
+          competitorDomains,
+        })
+      );
+      return {
+        domain: s.domain as string,
+        citations: Number(s.citations),
+        ...(category ? { category } : {}),
+      };
+    });
 
     // Fallback reads correctly inside "questions about {marketName}" —
     // "the monitored market" produced a broken sentence on the page.
@@ -777,6 +873,12 @@ export async function publishAudit(
 
     // The snapshot IS the page. Internal fields (notes, scores, owners,
     // rationales) are structurally absent, not filtered at render time.
+    const mismatch = await mismatchBlockForProspect(input.prospectId, {
+      topSources,
+      ownSiteCited: whyItHappens.some((w) => /your (own )?site (did not|didn't|wasn't|was not)/i.test(`${w.title} ${w.explanation}`))
+        ? false
+        : null,
+    });
     const snapshot: AuditSnapshot = {
       headline,
       prospectName: prospect.businessName,
@@ -823,6 +925,7 @@ export async function publishAudit(
       ...(input.humanFinding ? { humanFinding: input.humanFinding } : {}),
       ...(input.adoptionStat ? { adoptionStat: input.adoptionStat } : {}),
       ...(exampleChats.length > 0 ? { exampleChats } : {}),
+      ...(mismatch ? { mismatch } : {}),
       preparedBy,
     };
 
@@ -842,6 +945,81 @@ export async function publishAudit(
         scoring: (versions?.scoring as string[]) ?? [],
         parser: (versions?.parser as string[]) ?? [],
       };
+    }
+
+    // Collection provenance (spec 086): how the observations were collected,
+    // derived from instrument facts stored at capture time. All benchmark
+    // responses are API-collected by construction (the executor is the only
+    // writer of `responses`); the split states how many ran with live web
+    // search versus model-only.
+    {
+      const facts = await sql`
+        select provider, model, request_params from responses
+        where run_id = ${benchmark.runId} and error is null
+      `;
+      const searchEnabled = facts.filter(
+        (f) =>
+          apiSurface({
+            provider: f.provider as string,
+            model: f.model as string,
+            requestParams: f.requestParams as { tools?: string[] } | null,
+          }) === "web_search"
+      ).length;
+      const [runFacts] = await sql`
+        select r.trigger, p.kind,
+          (select ir.role from intervention_runs ir
+            where ir.run_id = r.id limit 1) as intervention_role
+        from runs r join projects p on p.id = r.project_id
+        where r.id = ${benchmark.runId}
+      `;
+      snapshot.collection = {
+        method: "api",
+        searchEnabled,
+        modelOnly: facts.length - searchEnabled,
+        purpose: measurementPurpose({
+          projectKind: (runFacts?.kind as "client" | "prospect") ?? "prospect",
+          trigger: (runFacts?.trigger as "manual" | "scheduled") ?? "manual",
+          interventionRole:
+            (runFacts?.interventionRole as "baseline" | "post" | null) ?? null,
+        }),
+      };
+
+      // Consumer validation (spec 011 workflow): staff-recorded clean-session
+      // observations on the same benchmark project. Separate table, separate
+      // denominator — never merged into the API counts, per the 011 rule that
+      // client-performed observations never enter benchmark metrics.
+      const [cv] = await sql`
+        select count(o.id)::int as observations,
+          count(o.id) filter (where o.claimed_mentioned)::int as mentioned,
+          min(o.performed_on)::text as performed_from,
+          max(o.performed_on)::text as performed_to
+        from client_validation_observations o
+        join client_validation_runs vr on vr.id = o.validation_run_id
+        where vr.project_id = (select project_id from runs where id = ${benchmark.runId})
+      `;
+      if (cv && (cv.observations as number) > 0) {
+        const byProvider = await sql`
+          select o.provider,
+            count(o.id)::int as observations,
+            count(o.id) filter (where o.claimed_mentioned)::int as mentioned
+          from client_validation_observations o
+          join client_validation_runs vr on vr.id = o.validation_run_id
+          where vr.project_id = (select project_id from runs where id = ${benchmark.runId})
+          group by o.provider
+          order by o.provider
+        `;
+        snapshot.consumerValidation = {
+          observations: cv.observations as number,
+          mentioned: cv.mentioned as number,
+          byProvider: byProvider.map((p) => ({
+            provider: p.provider as string,
+            observations: p.observations as number,
+            mentioned: p.mentioned as number,
+          })),
+          performedFrom: cv.performedFrom as string,
+          performedTo: cv.performedTo as string,
+        };
+      }
     }
 
     // Publish-time quality flags for the OPERATOR (PR B amendment 4) —
@@ -1167,6 +1345,7 @@ export async function revokeAudit(
       // Burn-the-link burns EVERY door (spec 076): the branded key must die
       // with the token, and a later republish must not resurrect it.
       await revokeAuditLinks(tx, row.prospectId as string);
+      await revokeReportSessions(tx, row.prospectId as string);
       await writeAudit(tx, {
         userId: user.id,
         action: "prospect.audit_revoke",
@@ -1194,29 +1373,79 @@ export async function revokeAudit(
  * tokens, revoked tokens, and nonexistent tokens are indistinguishable.
  * Every hit is recorded (insert-only) and surfaces on the timeline.
  */
+export interface AuditViewMeta {
+  ip?: string | null;
+  userAgent?: string | null;
+  internal?: boolean;
+  /** Branded-link key the visit arrived through (spec 076) — attribution
+   * evidence stamped on the view row at insert. */
+  linkKey?: string | null;
+  referrer?: string | null;
+  /** Authorized report session that rendered the page (spec 134) — the
+   * unit external-view metrics count by. */
+  sessionId?: string | null;
+}
+
 export async function getAuditByToken(
   token: string,
-  meta: { ip?: string | null; userAgent?: string | null; internal?: boolean } = {}
+  meta: AuditViewMeta = {}
 ): Promise<AuditSnapshot | null> {
+  const page = await getAuditPageByToken(token, meta);
+  return page?.snapshot ?? null;
+}
+
+/** Same as getAuditByToken, plus the id of the view row just recorded — the
+ * handle the page's engagement beacon reports against. */
+export async function getAuditPageByToken(
+  token: string,
+  meta: AuditViewMeta = {}
+): Promise<{ snapshot: AuditSnapshot; viewId: string } | null> {
   if (!token || token.length < 20 || token.length > 100) return null;
+  return recordAndServe(sql`access_token = ${token}`, meta);
+}
+
+/** The clean route's path (spec 134): the report session names the audit
+ * id, so the access token is never loaded, rendered or serialized. Same
+ * published/unexpired rule, same view row. */
+export async function getAuditPageById(
+  auditId: string,
+  meta: AuditViewMeta = {}
+): Promise<{ snapshot: AuditSnapshot; viewId: string } | null> {
+  return recordAndServe(sql`id = ${auditId}`, meta);
+}
+
+async function recordAndServe(
+  where: ReturnType<typeof sql>,
+  meta: AuditViewMeta
+): Promise<{ snapshot: AuditSnapshot; viewId: string } | null> {
   const rows = await sql`
     select id, prospect_id, snapshot from prospect_audits
-    where access_token = ${token} and status = 'published'
+    where ${where} and status = 'published'
       and (expires_at is null or expires_at > now())
   `;
   const row = rows[0];
   if (!row) return null;
-  // internal = a signed-in staff session opened it (plan 3.6): the
-  // operator's own QA pass must not read as prospect interest.
-  await sql.begin(async (tx) => {
-    await tx`
-      insert into prospect_audit_views (audit_id, ip, user_agent, is_internal)
+  // internal = a signed-in staff session opened it (plan 3.6) OR the view
+  // came from a declared operator IP (INTERNAL_VIEW_IPS, comma-separated) —
+  // logged-out and incognito opens from the operator's own machines must
+  // not read as prospect interest either.
+  const operatorIps = (process.env.INTERNAL_VIEW_IPS ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const internal =
+    (meta.internal ?? false) || (meta.ip != null && operatorIps.includes(meta.ip));
+  const viewId = await sql.begin(async (tx) => {
+    const [view] = await tx`
+      insert into prospect_audit_views (audit_id, ip, user_agent, is_internal, link_key, referrer, session_id)
       values (${row.id}, ${meta.ip ?? null}, ${meta.userAgent ?? null},
-        ${meta.internal ?? false})
+        ${internal}, ${meta.linkKey ?? null}, ${meta.referrer?.slice(0, 500) ?? null}, ${meta.sessionId ?? null})
+      returning id
     `;
-    if (!meta.internal) {
+    if (!internal) {
       await logActivity(tx, row.prospectId as string, "audit_viewed", { auditId: row.id }, null);
     }
+    return view?.id as string;
   });
-  return row.snapshot as AuditSnapshot;
+  return { snapshot: row.snapshot as AuditSnapshot, viewId };
 }

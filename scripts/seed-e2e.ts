@@ -431,6 +431,7 @@ async function main(): Promise<void> {
     refreshProspectName: "Harbor Group",
     auditSlug: branded.slug,
     auditKey: branded.key,
+    reportSlug: (await sql`select report_slug from prospects where id = ${prospect.prospectId}`)[0]!.reportSlug as string,
     suggestedTaskTitle: "E2E: publish neighborhood guide",
     overdueTaskTitle: "E2E: fix entity record",
   };
