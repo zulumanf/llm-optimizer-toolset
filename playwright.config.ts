@@ -43,6 +43,11 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: "retain-on-failure",
+    // Headless Chromium announces itself as HeadlessChrome, which the
+    // private-report exchange (spec 134) rightly treats as a scanner. The
+    // suite is a human at a browser; say so.
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 e2e",
   },
   webServer: {
     // Three shapes (backlog #18 diagnosis):

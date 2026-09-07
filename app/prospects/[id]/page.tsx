@@ -30,6 +30,7 @@ import {
   ExpireAuditButton,
   PublishAuditButton,
   RevokeAuditButton,
+  RevokeReportAccessButton,
 } from "@/components/prospects/audit-actions";
 import {
   ApproveDraftButton,
@@ -46,7 +47,7 @@ import {
 import { MismatchPanel } from "@/components/prospects/mismatch-panel";
 import { FollowupSequenceCard } from "@/components/prospects/followup-sequence";
 import { competitiveMismatchReview } from "@/lib/prospects/mismatch";
-import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
+import { auditUrl, reportInvitationUrl } from "@/lib/prospects/urls";
 import { auditLinkForProspect } from "@/lib/prospects/links";
 import { latestSenseCheckForProspect } from "@/lib/prospects/sense-check";
 import { SenseCheckPanel } from "@/components/prospects/sense-check-panel";
@@ -153,9 +154,12 @@ export default async function ProspectDetailPage({
   const brandedLink = await auditLinkForProspect(id);
   // Behavioral summary + evidence timeline (spec 098) — derived on read.
   const [intent, timeline] = await Promise.all([prospectIntent(id), prospectTimeline(id)]);
-  const brandedUrl = brandedLink
-    ? brandedAuditUrl(brandedLink.slug, brandedLink.key)
-    : null;
+  // Spec 134: the copied link is the invitation — one click lands on the
+  // clean /report/<slug> URL with the credential gone from the address bar.
+  const brandedUrl =
+    brandedLink && prospect.reportSlug
+      ? reportInvitationUrl(prospect.reportSlug, brandedLink.key)
+      : null;
   const signalLabel = new Map(gapView.signals.map((s) => [s.id, s.label]));
   const suggestion = prospect.companyId ? null : await suggestCompanyForProspect(id);
   const [diagnosis, buyingSignals, exhibits] = await Promise.all([
@@ -895,6 +899,7 @@ export default async function ProspectDetailPage({
                       <>
                         <CopyAuditLink url={brandedUrl ?? auditUrl(a.accessToken)} />
                         <ExpireAuditButton auditId={a.id} />
+                        <RevokeReportAccessButton prospectId={id} />
                         <RevokeAuditButton auditId={a.id} />
                       </>
                     )}
@@ -902,6 +907,8 @@ export default async function ProspectDetailPage({
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">
                   {a.viewCount} external view{a.viewCount === 1 ? "" : "s"}
+                  {` · ${a.externalSessionCount} authorized external session${a.externalSessionCount === 1 ? "" : "s"}`}
+                  {a.firstExternalAccessAt ? ` · first external access ${new Date(a.firstExternalAccessAt).toLocaleString()}` : ""}
                   {a.firstViewedAt
                     ? ` · first ${new Date(a.firstViewedAt).toLocaleString()} · last ${new Date(
                         a.lastViewedAt as unknown as string

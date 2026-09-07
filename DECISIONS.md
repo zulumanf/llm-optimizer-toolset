@@ -3032,3 +3032,25 @@ Brace Homes after the correction); opens stay under Diagnostics. Gmail health
 trusts a successful transmit inside 72 h because the connector status can read
 expired while refresh still works. No acquisition rule, template, cadence,
 threshold or price changed.
+
+## 2026-09-07 — Spec 134: private report access is invitation → session → clean URL
+
+The credential a prospect receives (the spec-076 branded key, unchanged, or a
+legacy audit token) is exchanged once at `/report/<slug>/<key>` for an
+HttpOnly, path-scoped session cookie whose token is stored only as a SHA-256
+hash; the browser then shows `/report/<slug>` and nothing else. Why: the key in
+the address bar read as a tracking link and was the only gate, and a copied
+clean URL must never be a credential. Keys stay stored raw because the
+delivery email is composed from the table after minting; sessions are the
+hashed layer. Forwarding is a feature: one invitation activates up to
+`prospect_audit_links.session_allowance` (default 5) independently authorized
+browsers — a "device" is a session, never a fingerprint or an IP. Sessions
+that never reach the report expire in 15 minutes so mail scanners cannot spend
+the allowance, and HEAD has no side effects. Operator sessions are internal at
+exchange time and count nowhere. Report slugs live on `prospects.report_slug`
+(presentation only; audit identity is untouched), disambiguated by market and
+then a number. Legacy `/audit/...` URLs are not redirected away from — they
+validate exactly as before and then ride the exchange, so nothing already sent
+needs resending. Cold T1/T2/T3 templates are untouched; only the spec-129
+report delivery now links to the invitation, and its HTML part labels it
+"Private report for <business>" while the text part keeps the full URL.

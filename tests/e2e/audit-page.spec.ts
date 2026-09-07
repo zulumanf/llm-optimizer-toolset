@@ -13,7 +13,7 @@ const auditPath = `/audit/${state.auditToken}`;
 
 test("renders the punch: hero number, counted moments, reputation contrast", async ({ page }) => {
   await page.goto(auditPath);
-  await expect(page.getByText("Private AI visibility report")).toBeVisible();
+  await expect(page.getByText("Private AI recommendation report")).toBeVisible();
   // Narrative-state headlines (zero/low/strong/leader) all speak in counted
   // recommendations; the legacy fallback names the prospect.
   await expect(page.locator("h1")).toContainText(/recommend|Rivera Team/i);
@@ -112,7 +112,8 @@ test("the verify section serves the captured answers with honest metadata", asyn
   const appendix = page.getByRole("link", { name: "View the answers", exact: true });
   await expect(appendix).toBeVisible();
   await appendix.click();
-  await page.waitForURL(`**${auditPath}/answers`);
+  // Spec 134: the legacy token rides the exchange to the clean URL.
+  await page.waitForURL(`**/report/${state.reportSlug}/answers`);
   await expect(page.getByText(/every captured answer, verbatim/i)).toBeVisible();
 });
 
@@ -122,7 +123,8 @@ test("wrong and truncated tokens show not-found and leak nothing", async ({ page
   // prospect data in the body.
   for (const bad of ["x".repeat(43), "short"]) {
     await page.goto(`/audit/${bad}`);
-    await expect(page.getByText(/could not be found|404/i).first()).toBeVisible();
+    // Spec 134: an unknown credential lands on the private-report state.
+    await expect(page.getByText(/opens from its invitation|could not be found|404/i).first()).toBeVisible();
     await expect(page.locator("body")).not.toContainText("Rivera Team");
     await expect(page.locator("body")).not.toContainText("Real-world proof");
   }

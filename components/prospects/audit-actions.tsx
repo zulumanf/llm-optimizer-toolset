@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { expireAudit, publishAudit, revokeAudit } from "@/app/prospects/actions";
+import { expireAudit, publishAudit, revokeAudit, revokeReportAccess } from "@/app/prospects/actions";
 
 /** Server-side reason minimum (publishAudit's acknowledgeWarnings schema) —
  * mirrored here so the button disables instead of round-tripping a 400. */
@@ -203,5 +203,23 @@ export function RevokeAuditButton({ auditId }: { auditId: string }) {
         <ShieldOff className="size-4" /> Revoke
       </Button>
     </div>
+  );
+}
+
+/** Spec 134: burn the invitation and every report session while the audit
+ * stays published — mint a fresh link afterwards to re-deliver. */
+export function RevokeReportAccessButton({ prospectId }: { prospectId: string }) {
+  const [pending, startTransition] = useTransition();
+  const revoke = () => {
+    startTransition(async () => {
+      const result = await revokeReportAccess({ prospectId, reason: "Operator revoked report access" });
+      if (result.ok) toast.success(`Report access revoked — ${result.data.sessionsRevoked} session(s) ended; mint a new link to re-deliver.`);
+      else toast.error(result.error.message);
+    });
+  };
+  return (
+    <Button size="sm" variant="outline" onClick={revoke} disabled={pending}>
+      <ShieldOff className="size-4" /> Revoke access
+    </Button>
   );
 }

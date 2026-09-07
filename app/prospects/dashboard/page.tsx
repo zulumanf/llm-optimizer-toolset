@@ -46,7 +46,8 @@ import { MomentumSection } from "@/components/prospects/momentum-section";
 import { FollowupSequencesSection } from "@/components/prospects/followup-sequence";
 import { executiveBrief } from "@/lib/prospects/brief";
 import { ExecutiveBriefSection } from "@/components/prospects/executive-brief";
-import { DAILY_SEND_QUOTA } from "@/lib/prospects/constants";
+import { DAILY_SEND_QUOTA, QA_FIXTURE_NAME_PREFIX } from "@/lib/prospects/constants";
+import { reportAccessSummary } from "@/lib/prospects/report-access";
 import { dashboardHref, type DashboardFilters } from "@/lib/prospects/dashboard-url";
 import { outreachMetrics, type Rate } from "@/lib/prospects/analytics";
 import { AnalyzeView, OPEN_SIGNAL_CAVEAT, POSITIVE_REPLY_CAVEAT } from "@/components/prospects/analyze-view";
@@ -243,17 +244,19 @@ export default async function ProspectingDashboardPage({
       launchId = c.activeLaunchId;
       c = await cockpit({ launchId, window }, now);
     }
-    const [health, upcoming, all] = await Promise.all([
+    const [health, upcoming, all, reportAccess] = await Promise.all([
       machineHealth(),
       upcomingAutomation(launchId),
       // Analyze compares batches: it needs every cohort in the same window.
       view === "analyze" && launchId ? cockpit({ window }, now) : Promise.resolve(null),
+      // Spec 134: private-report access, counted by authorized external sessions.
+      reportAccessSummary(QA_FIXTURE_NAME_PREFIX),
     ]);
     // After the batch, not inside it — the pooler's session cap is close.
     const mo: Momentum | null = view === "operate" ? await momentum(now) : null;
     // Analyze = the acquisition control panel: one facts bundle, derived once.
     const panel: AcquisitionPanel | null = view === "analyze" ? deriveAcquisition(await acquisitionFacts(), now) : null;
-    data = { c, health, upcoming, launchId, all, mo, panel };
+    data = { c, health, upcoming, launchId, all, mo, panel, reportAccess };
   } catch {
     return (
       <PageShell>
@@ -262,7 +265,7 @@ export default async function ProspectingDashboardPage({
       </PageShell>
     );
   }
-  const { c, health, upcoming, launchId, all, mo, panel } = data;
+  const { c, health, upcoming, launchId, all, mo, panel, reportAccess } = data;
   const { cohort } = c;
   const launch = c.launches.find((l) => l.id === launchId);
   const cohortName = launch ? `${launch.name} · Batch 1` : "All active cohorts";
@@ -816,6 +819,10 @@ export default async function ProspectingDashboardPage({
           <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground tabular-nums">
             <li>
               {cohort.auditViews} human-like external views · {cohort.auditSessions} sessions · {cohort.auditVisitorIdentities} known browser identit{cohort.auditVisitorIdentities === 1 ? "y" : "ies"} (our QA, operator IPs, scripts, link scanners excluded)
+            </li>
+            <li data-testid="private-report-access">
+              Private reports: {reportAccess.reportsDelivered} delivered · {reportAccess.reportsViewed} viewed · {reportAccess.authorizedExternalSessions} authorized external session{reportAccess.authorizedExternalSessions === 1 ? "" : "s"}
+              {reportAccess.firstExternalViewAt ? ` · first external view ${new Date(reportAccess.firstExternalViewAt).toLocaleString()}` : " · no external view yet"}
             </li>
             <li>
               {cohort.attributedLinkProspects} viewer{cohort.attributedLinkProspects === 1 ? "" : "s"} arrived via the emailed link · {cohort.unattributedProspects} unattributed external · {cohort.preOutreachViews} view{cohort.preOutreachViews === 1 ? "" : "s"} before outreach (not counted)

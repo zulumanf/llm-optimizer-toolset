@@ -30,7 +30,9 @@ import { devAuthRefusalReason, publicOrigin } from "@/lib/env";
 // `/mcp`, `/healthz`, `/.well-known` are the remote MCP surface (spec 126):
 // bearer-token machine clients, never a browser session — without these the
 // auth redirect would 307 Grok's JSON-RPC to /login (the /api/open trap).
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/api/open", "/api/audit-signal", "/audit", "/mcp", "/healthz", "/.well-known"];
+// `/report` is the private-report surface (spec 134): invitation exchange
+// and session-gated clean URLs — its own security is the report session.
+const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/api/open", "/api/audit-signal", "/audit", "/report/", "/mcp", "/healthz", "/.well-known"];
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   if (process.env.AUTH_MODE !== "supabase") {

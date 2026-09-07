@@ -5,37 +5,28 @@
  * snapshot, same revocation as the parent report; nothing is selected or
  * summarized by us.
  */
-import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { getAuditPageByToken } from "@/lib/prospects/service";
+import { getAuditPageById } from "@/lib/prospects/audits";
+import type { ReportDocumentProps } from "@/components/audit/report-document";
 import { EngagementBeacon } from "@/components/audit/engagement-beacon";
 import { getCurrentUserOrNull, isStaff } from "@/lib/auth";
 import { TranscriptAnswer } from "@/components/audit/transcript-answer";
 
-export const metadata: Metadata = {
-  title: "AI Visibility Benchmark — Captured Answers",
-  robots: { index: false, follow: false },
-};
 
-export default async function AuditAnswersPage({
-  params,
-}: {
-  // The segment is [handle] so the branded sibling [handle]/[key] can
-  // coexist (Next.js requires one param name per level). For this legacy
-  // route the handle IS the 43-char access token; URLs are unchanged.
-  params: Promise<{ handle: string; linkKey?: string }>;
-}) {
-  const { handle: token, linkKey } = await params;
+export default async function AuditAnswersPage({ auditId, reportSlug, sessionId, sessionInternal, linkKey }: ReportDocumentProps) {
+  // Spec 134: rendered only under /report/<slug>/answers after the session check.
+  const reportHref = `/report/${reportSlug}`;
   const hdrs = await headers();
   const viewer = await getCurrentUserOrNull();
-  const page = await getAuditPageByToken(token, {
+  const page = await getAuditPageById(auditId, {
     ip: hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: hdrs.get("user-agent"),
-    internal: viewer !== null && isStaff(viewer),
+    internal: (viewer !== null && isStaff(viewer)) || sessionInternal,
     linkKey: linkKey ?? null,
     referrer: hdrs.get("referer"),
+    sessionId,
   });
   const snapshot = page?.snapshot;
   if (!page || !snapshot?.transcripts || snapshot.transcripts.length === 0) notFound();
@@ -80,7 +71,7 @@ export default async function AuditAnswersPage({
         browser&apos;s search (⌘F) to look for any name, including your own.
       </p>
       <p className="mt-2 text-sm">
-        <Link href={`/audit/${token}`} className="underline underline-offset-2">
+        <Link href={reportHref} className="underline underline-offset-2">
           ← Back to the report
         </Link>
       </p>
@@ -138,7 +129,7 @@ export default async function AuditAnswersPage({
       </div>
 
       <p className="mt-12 text-center text-sm">
-        <Link href={`/audit/${token}`} className="underline underline-offset-2">
+        <Link href={reportHref} className="underline underline-offset-2">
           ← Back to the report
         </Link>
       </p>

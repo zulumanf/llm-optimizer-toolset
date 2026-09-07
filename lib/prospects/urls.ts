@@ -27,3 +27,19 @@ export function openPixelUrl(token: string): string | null {
   if (!base) return null;
   return `${base.replace(/\/$/, "")}/api/open/${token}`;
 }
+
+/** Private-report invitation (spec 134): /report/<slug>/<key>. The key is the
+ * credential; after the exchange the browser shows only /report/<slug>. */
+export function reportInvitationUrl(slug: string, key: string): string | null {
+  const base = process.env.APP_URL;
+  if (!base) return null;
+  return `${base.replace(/\/$/, "")}/report/${slug}/${key}`;
+}
+
+/** Clean report URL (spec 134) — not a credential; rendered only for an
+ * authorized session. */
+export function reportUrl(slug: string): string | null {
+  const base = process.env.APP_URL;
+  if (!base) return null;
+  return `${base.replace(/\/$/, "")}/report/${slug}`;
+}

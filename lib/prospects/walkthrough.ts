@@ -80,13 +80,23 @@ export interface WalkthroughContext {
 /** Resolve a published audit token to the scheduling context (no view row). */
 export async function walkthroughContext(token: string): Promise<WalkthroughContext | null> {
   if (!token || token.length < 20 || token.length > 100) return null;
+  return contextWhere(sql`a.access_token = ${token}`);
+}
+
+/** Same context by audit id — the clean route's session names the audit,
+ * never the token (spec 134). */
+export async function walkthroughContextForAudit(auditId: string): Promise<WalkthroughContext | null> {
+  return contextWhere(sql`a.id = ${auditId}`);
+}
+
+async function contextWhere(where: ReturnType<typeof sql>): Promise<WalkthroughContext | null> {
   const [row] = await sql`
     select a.id, a.prospect_id, p.business_name, m.name as market_name, m.state_code
     from prospect_audits a
     join prospects p on p.id = a.prospect_id
     left join market_launches l on l.id = p.launch_id
     left join markets m on m.id = l.market_id
-    where a.access_token = ${token} and a.status = 'published'
+    where ${where} and a.status = 'published'
       and (a.expires_at is null or a.expires_at > now())
   `;
   if (!row) return null;

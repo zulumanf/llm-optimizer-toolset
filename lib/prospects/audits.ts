@@ -42,6 +42,7 @@ import {
   ensureAuditLink,
   revokeAuditLinks,
 } from "@/lib/prospects/links";
+import { revokeReportSessions } from "@/lib/prospects/report-access";
 import { log } from "@/lib/logger";
 import {
   getPrimaryFinding,
@@ -1344,6 +1345,7 @@ export async function revokeAudit(
       // Burn-the-link burns EVERY door (spec 076): the branded key must die
       // with the token, and a later republish must not resurrect it.
       await revokeAuditLinks(tx, row.prospectId as string);
+      await revokeReportSessions(tx, row.prospectId as string);
       await writeAudit(tx, {
         userId: user.id,
         action: "prospect.audit_revoke",
@@ -1379,6 +1381,9 @@ export interface AuditViewMeta {
    * evidence stamped on the view row at insert. */
   linkKey?: string | null;
   referrer?: string | null;
+  /** Authorized report session that rendered the page (spec 134) — the
+   * unit external-view metrics count by. */
+  sessionId?: string | null;
 }
 
 export async function getAuditByToken(
@@ -1396,9 +1401,26 @@ export async function getAuditPageByToken(
   meta: AuditViewMeta = {}
 ): Promise<{ snapshot: AuditSnapshot; viewId: string } | null> {
   if (!token || token.length < 20 || token.length > 100) return null;
+  return recordAndServe(sql`access_token = ${token}`, meta);
+}
+
+/** The clean route's path (spec 134): the report session names the audit
+ * id, so the access token is never loaded, rendered or serialized. Same
+ * published/unexpired rule, same view row. */
+export async function getAuditPageById(
+  auditId: string,
+  meta: AuditViewMeta = {}
+): Promise<{ snapshot: AuditSnapshot; viewId: string } | null> {
+  return recordAndServe(sql`id = ${auditId}`, meta);
+}
+
+async function recordAndServe(
+  where: ReturnType<typeof sql>,
+  meta: AuditViewMeta
+): Promise<{ snapshot: AuditSnapshot; viewId: string } | null> {
   const rows = await sql`
     select id, prospect_id, snapshot from prospect_audits
-    where access_token = ${token} and status = 'published'
+    where ${where} and status = 'published'
       and (expires_at is null or expires_at > now())
   `;
   const row = rows[0];
@@ -1415,9 +1437,9 @@ export async function getAuditPageByToken(
     (meta.internal ?? false) || (meta.ip != null && operatorIps.includes(meta.ip));
   const viewId = await sql.begin(async (tx) => {
     const [view] = await tx`
-      insert into prospect_audit_views (audit_id, ip, user_agent, is_internal, link_key, referrer)
+      insert into prospect_audit_views (audit_id, ip, user_agent, is_internal, link_key, referrer, session_id)
       values (${row.id}, ${meta.ip ?? null}, ${meta.userAgent ?? null},
-        ${internal}, ${meta.linkKey ?? null}, ${meta.referrer?.slice(0, 500) ?? null})
+        ${internal}, ${meta.linkKey ?? null}, ${meta.referrer?.slice(0, 500) ?? null}, ${meta.sessionId ?? null})
       returning id
     `;
     if (!internal) {
