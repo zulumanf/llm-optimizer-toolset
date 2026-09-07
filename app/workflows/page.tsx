@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { listWorkflowRuns } from "@/db/control-tower";
 import { WORKFLOW_TEMPLATES } from "@/lib/workflow/templates";
@@ -25,21 +26,19 @@ export default async function WorkflowsPage() {
   const runs = await listWorkflowRuns({ limit: 50 });
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="mb-1 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Workflows</h1>
-        <Link
-          href="/control-tower"
-          className="text-sm text-muted-foreground underline hover:text-foreground"
-        >
-          Control tower
-        </Link>
-      </div>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Every process is a versioned directed graph. A run points at the version
-        it executed, so a finished run stays reproducible even after the
-        template changes.
-      </p>
+    <PageShell>
+      <PageHeader
+        title="Workflows"
+        description="Every process is a versioned directed graph. A run points at the version it executed, so a finished run stays reproducible even after the template changes."
+        actions={
+          <Link
+            href="/control-tower"
+            className="text-sm text-muted-foreground underline hover:text-foreground"
+          >
+            Control tower
+          </Link>
+        }
+      />
 
       <section className="mb-8">
         <h2 className="mb-2 text-lg font-medium">Definitions</h2>
@@ -141,6 +140,6 @@ export default async function WorkflowsPage() {
           </div>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }

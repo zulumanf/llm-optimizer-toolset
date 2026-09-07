@@ -20,8 +20,42 @@ import type {
 } from "@/lib/prospects/constants";
 import { buyingSignalScore } from "@/lib/prospects/buying-signals";
 
-export const PROSPECT_SCORE_VERSION = "prospect-score-v1";
+export const PROSPECT_SCORE_VERSION = "prospect-score-v3";
 export const FINAL_WEIGHT_SET_NAME = "prospect-final";
+
+/**
+ * Priority archetype (RealTrends upgrade, 2026-08-15): VERIFIED AUTHORITY /
+ * AI UNDERREPRESENTATION — independently verified production, a market the
+ * assistants demonstrably answer (a rival is visible), and a prospect they
+ * barely recommend. Internal-only classification; never prospect-facing.
+ * The boost is a named, inspectable multiplier — not a hidden weight tweak.
+ */
+export const ARCHETYPE_VERIFIED_UNDERREPRESENTED = "verified_authority_underrepresented";
+export const ARCHETYPE_BOOST = 1.15;
+/** Recommendation share at or below which a prospect counts as underrepresented. */
+export const ARCHETYPE_MAX_REC_SHARE = 0.05;
+/** A rival must be at least this visible — proof the market has AI answers to win. */
+export const ARCHETYPE_MIN_RIVAL_RATE = 0.15;
+export const ARCHETYPE_MIN_FIXABILITY = 30;
+
+export function detectArchetype(input: {
+  hasIndependentProduction: boolean;
+  prospectRecShare: number | null;
+  topRivalRate: number | null;
+  adjustedFixability: number | null;
+}): string | null {
+  if (!input.hasIndependentProduction) return null;
+  if (input.prospectRecShare === null || input.prospectRecShare > ARCHETYPE_MAX_REC_SHARE)
+    return null;
+  if (input.topRivalRate === null || input.topRivalRate < ARCHETYPE_MIN_RIVAL_RATE)
+    return null;
+  if (
+    input.adjustedFixability === null ||
+    input.adjustedFixability < ARCHETYPE_MIN_FIXABILITY
+  )
+    return null;
+  return ARCHETYPE_VERIFIED_UNDERREPRESENTED;
+}
 
 export interface ProspectScoreView {
   version: typeof PROSPECT_SCORE_VERSION;
@@ -36,6 +70,10 @@ export interface ProspectScoreView {
   preConfidence: number | null;
   /** Fixability data confidence applied as the multiplier (1 when unknown). */
   dataConfidence: number;
+  /** Internal priority archetype (never prospect-facing) and its applied
+   * multiplier — 1 when no archetype matched. */
+  archetype: string | null;
+  archetypeBoost: number;
   /** The final 0–100 score; null when nothing was measurable. */
   score: number | null;
 }
@@ -84,6 +122,7 @@ export async function computeProspectScoreView(prospectId: string): Promise<Pros
   // Benchmark-derived inputs, when a linked scored run exists.
   let citedDomains: { domain: string; citations: number }[] | null = null;
   let rivalRates: number[] | null = null;
+  let prospectRecShare: number | null = null;
   const [prospect] = await sql`
     select company_id, email, do_not_contact from prospects
     where id = ${prospectId} and archived_at is null
@@ -105,6 +144,9 @@ export async function computeProspectScoreView(prospectId: string): Promise<Pros
       .filter((e) => e.companyId !== (prospect?.companyId as string | null))
       .map((e) => e.recommendationRate)
       .filter((r): r is number => r !== null);
+    prospectRecShare =
+      entities.find((e) => e.companyId === (prospect?.companyId as string | null))
+        ?.recommendationRate ?? null;
   }
 
   const assessmentRows = await sql`
@@ -122,7 +164,7 @@ export async function computeProspectScoreView(prospectId: string): Promise<Pros
   const hasPrimaryContactWithEmail = Boolean(primary?.email);
 
   const signalRows = await sql`
-    select id, kind, provenance, scope, label, source_url
+    select id, kind, provenance, scope, label, source_url, source_type
     from prospect_authority_signals where prospect_id = ${prospectId}
   `;
   const signals: FixabilitySignal[] = signalRows.map((r) => ({
@@ -134,6 +176,28 @@ export async function computeProspectScoreView(prospectId: string): Promise<Pros
     sourceUrl: (r.sourceUrl as string | null) ?? null,
   }));
 
+  // Spec 060 QA fix: the citation-pipeline evidence line was unreachable —
+  // this is its one production feed. Counts come from the benchmark run's
+  // project; no linked run (or an empty pipeline) stays null, never zero.
+  let citationOpportunities: { identified: number; obtainable: number } | null = null;
+  if (gapView.benchmarkRunId) {
+    const { OBTAINABLE_STATUSES } = await import("@/lib/citations/constants");
+    const [oppCounts] = await sql`
+      select count(*)::int as identified,
+        count(*) filter (where o.status = any(${[...OBTAINABLE_STATUSES]}))::int
+          as obtainable
+      from citation_opportunities o
+      join runs r on r.project_id = o.project_id
+      where r.id = ${gapView.benchmarkRunId}
+    `;
+    if (oppCounts && (oppCounts.identified as number) > 0) {
+      citationOpportunities = {
+        identified: oppCounts.identified as number,
+        obtainable: oppCounts.obtainable as number,
+      };
+    }
+  }
+
   const fixability = fixabilityProfile({
     authorityScore: gapView.authority.score,
     visibilityScore: gapView.visibility?.score ?? null,
@@ -143,6 +207,7 @@ export async function computeProspectScoreView(prospectId: string): Promise<Pros
     rivalRecommendationRates: rivalRates,
     assessments,
     hasPrimaryContactWithEmail,
+    citationOpportunities,
   });
 
   const contact = contactability({
@@ -189,6 +254,24 @@ export async function computeProspectScoreView(prospectId: string): Promise<Pros
 
   const composite = weightedComposite(components, weightSet.weights);
   const dataConfidence = fixability.confidence ?? 1;
+
+  // Priority archetype: independently verified production (source_type from
+  // migration 074) + a market the assistants answer + a barely-recommended
+  // prospect. Boost applied AFTER the composite, as a named multiplier.
+  const hasIndependentProduction = signalRows.some(
+    (r) =>
+      r.sourceType === "independent" &&
+      ["transaction_volume", "transaction_count", "ranking"].includes(r.kind as string)
+  );
+  const archetype = detectArchetype({
+    hasIndependentProduction,
+    prospectRecShare,
+    topRivalRate,
+    adjustedFixability: fixability.adjusted,
+  });
+  const archetypeBoost = archetype ? ARCHETYPE_BOOST : 1;
+
+  const base = composite.score !== null ? composite.score * dataConfidence : null;
   return {
     version: PROSPECT_SCORE_VERSION,
     weightSet: { name: weightSet.name, version: weightSet.version, weights: weightSet.weights },
@@ -198,6 +281,8 @@ export async function computeProspectScoreView(prospectId: string): Promise<Pros
     contactabilityFlags: contact.flags,
     preConfidence: composite.score,
     dataConfidence,
-    score: composite.score !== null ? composite.score * dataConfidence : null,
+    archetype,
+    archetypeBoost,
+    score: base !== null ? Math.min(100, base * archetypeBoost) : null,
   };
 }

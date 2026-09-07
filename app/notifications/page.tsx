@@ -1,4 +1,5 @@
 import { BellOff } from "lucide-react";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { listNotifications } from "@/lib/notifications/service";
 import { NotificationsControls } from "@/components/notifications/controls";
 import { NotificationRow } from "@/components/notifications/row";
@@ -19,19 +20,12 @@ export default async function NotificationsPage({
   const notifications = await listNotifications({ status: filter });
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <div className="mb-1 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Inbox</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Derived from the live state of every client, not a log of events:
-            an issue that gets fixed closes its own notification, and a
-            persistent one never stacks duplicates. Hygiene items stay on
-            Today — only real work notifies.
-          </p>
-        </div>
-        <NotificationsControls />
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Inbox"
+        description="Derived from the live state of every client, not a log of events: an issue that gets fixed closes its own notification, and a persistent one never stacks duplicates. Hygiene items stay on Today — only real work notifies."
+        actions={<NotificationsControls />}
+      />
 
       <div className="mb-4 mt-4 flex flex-wrap gap-2 text-sm">
         {FILTERS.map((f) => (
@@ -68,6 +62,6 @@ export default async function NotificationsPage({
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

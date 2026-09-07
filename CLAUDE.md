@@ -66,7 +66,7 @@ Never optimize for "ranking." Always optimize for:
 ## UI Rules
 
 - Tailwind only. shadcn/ui components. No inline styles, no CSS files per component.
-- Dark mode supported from day one. Desktop-first (internal tool).
+- Dark mode supported from day one. Responsive: desktop-optimized, phone-usable (spec 083).
 - Accessible: keyboard navigation, labels, focus states, sufficient contrast.
 - Every async view has loading, empty, and error states. No spinners without context.
 - Full details: `docs/04-ui-design-system.md`.
@@ -122,6 +122,7 @@ Never optimize for "ranking." Always optimize for:
 | AI feature rules? | `docs/12-ai-guidelines.md` |
 | Prompt templates? | `docs/13-prompts.md` — never hardcode prompts elsewhere |
 | Postponed ideas? | `docs/14-future-ideas.md` |
+| What do we charge, and what was quoted before? | `docs/15-pricing-policy.md` + `lib/pricing/policy.ts` — never state a price from anywhere else |
 | How does work get executed? | `docs/architecture/graph-native-platform-architecture.md` + `specs/018` |
 | What may run without a human? | `docs/architecture/automation-quality-operating-model.md` |
 | How is the portfolio managed? | `specs/019` |

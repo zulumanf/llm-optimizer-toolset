@@ -25,6 +25,7 @@ import { addAuthoritySignal } from "@/app/prospects/actions";
 import {
   AUTHORITY_SIGNAL_KINDS,
   PROVENANCE_LABELS,
+  SIGNAL_SOURCE_TYPES,
 } from "@/lib/prospects/constants";
 
 export function SignalDialog({ prospectId }: { prospectId: string }) {
@@ -34,6 +35,7 @@ export function SignalDialog({ prospectId }: { prospectId: string }) {
   const [label, setLabel] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [provenance, setProvenance] = useState<string>("publicly_sourced");
+  const [sourceType, setSourceType] = useState<string>("unclassified");
   const [scope, setScope] = useState<string>("local");
 
   const submit = () => {
@@ -44,6 +46,7 @@ export function SignalDialog({ prospectId }: { prospectId: string }) {
         label,
         sourceUrl: sourceUrl || undefined,
         provenance,
+        sourceType: sourceType === "unclassified" ? undefined : sourceType,
         scope,
       });
       if (result.ok) {
@@ -133,6 +136,26 @@ export function SignalDialog({ prospectId }: { prospectId: string }) {
             </Select>
             <p className="text-xs text-muted-foreground">
               Verified needs a source URL. Estimated and AI-inferred are labeled as such everywhere.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Evidence classification</Label>
+            <Select value={sourceType} onValueChange={setSourceType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unclassified">unclassified</SelectItem>
+                {SIGNAL_SOURCE_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t.replaceAll("_", " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Sponsored coverage and self-reported claims are kept but badged
+              and weighted below independent sources on the audit page.
             </p>
           </div>
         </div>

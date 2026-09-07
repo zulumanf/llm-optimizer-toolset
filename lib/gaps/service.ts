@@ -13,12 +13,18 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { suggestTask } from "@/lib/tasks/service";
 import {
   detectGaps,
+  priorityBand,
   DETECTOR_VERSION,
   type PromptOutcome,
   type CompanyOutcome,
   type DomainCitation,
 } from "@/lib/gaps/detect";
+import {
+  playbookFor,
+  SOURCE_PLAYBOOK_VERSION,
+} from "@/lib/sources/playbooks";
 import { extractUrls, urlDomain } from "@/lib/parsing/prepass";
+import { PROMPT_NAMES_COMPANY } from "@/lib/scoring/prompt-echo";
 import { extractCitations } from "@/lib/ai/citations";
 import { log } from "@/lib/logger";
 
@@ -49,7 +55,9 @@ export async function analyzeRun(
       return fail(new ClassifiedError("conflict", "Project has no subject company."));
     }
 
-    // Per-prompt outcomes for the subject (current-revision mentions)
+    // Per-prompt outcomes for the subject (current-revision mentions).
+    // sample_response_ids: a few immutable rows per prompt, so findings can
+    // carry response-level evidence refs (spec 064).
     const promptRows = await sql`
       select r.prompt_id,
         coalesce(
@@ -61,7 +69,9 @@ export async function analyzeRun(
         count(*) filter (where r.error is null)::int as responses,
         count(*) filter (where m.mentioned)::int as subject_mentioned,
         count(*) filter (where m.recommended)::int as subject_recommended,
-        count(*) filter (where m.cited_urls != '{}')::int as subject_cited
+        count(*) filter (where m.cited_urls != '{}')::int as subject_cited,
+        (array_agg(r.id order by r.requested_at, r.id)
+           filter (where r.error is null))[1:3] as sample_response_ids
       from responses r
       join runs on runs.id = r.run_id
       left join mentions m on m.response_id = r.id
@@ -79,10 +89,11 @@ export async function analyzeRun(
       subjectMentioned: r.subjectMentioned as number,
       subjectRecommended: r.subjectRecommended as number,
       subjectCited: r.subjectCited as number,
+      sampleResponseIds: (r.sampleResponseIds as string[] | null) ?? [],
     }));
 
     const companyRows = await sql`
-      select s.company_id, c.name, s.metric, s.value
+      select s.id as score_id, s.company_id, c.name, s.metric, s.value
       from scores s join companies c on c.id = s.company_id
       where s.run_id = ${runId} and s.provider = 'all'
         and s.metric in ('mention_rate', 'recommendation_rate')
@@ -100,11 +111,17 @@ export async function analyzeRun(
           organicMentionRate: null,
           organicRecommendationRate: null,
           organicResponses: 0,
+          scoreIds: {},
         });
       }
       const entry = byCompany.get(id)!;
-      if (row.metric === "mention_rate") entry.mentionRate = Number(row.value);
-      else entry.recommendationRate = Number(row.value);
+      if (row.metric === "mention_rate") {
+        entry.mentionRate = Number(row.value);
+        entry.scoreIds!.mentionRate = row.scoreId as string;
+      } else {
+        entry.recommendationRate = Number(row.value);
+        entry.scoreIds!.recommendationRate = row.scoreId as string;
+      }
     }
 
     /**
@@ -118,17 +135,14 @@ export async function analyzeRun(
      * SERHANT-anchored prompt still counts as organic evidence for Compass.
      *
      * Matching uses name plus aliases, the same vocabulary the classifier uses
-     * to detect a mention in the first place. Tokens of 3 characters or fewer
-     * are skipped: a two-letter alias matches half the English language.
+     * to detect a mention in the first place — whole words only, via the
+     * shared prompt-echo predicate (launch fix 2026-08-14; the old
+     * "skip tokens ≤ 3 chars" mitigation existed for substring matching).
      */
     const organicRows = await sql`
       with named as (
         select c.id as company_id, r.id as response_id,
-          exists (
-            select 1 from unnest(array[c.name] || coalesce(c.aliases, '{}')) as token
-            where length(trim(token)) > 3
-              and r.prompt_text ilike '%' || trim(token) || '%'
-          ) as prompt_named_company
+          ${PROMPT_NAMES_COMPANY} as prompt_named_company
         from responses r
         cross join companies c
         where r.run_id = ${runId} and r.error is null
@@ -166,28 +180,79 @@ export async function analyzeRun(
     // Domain citations: in-text URLs plus the search citations each provider
     // actually retrieved (payload re-scan — works retroactively, immutable)
     const textRows = await sql`
-      select provider, response_text, raw_payload from responses
+      select id, provider, response_text, raw_payload from responses
       where run_id = ${runId} and error is null
     `;
-    const domainCounts = new Map<string, number>();
-    const bump = (domain: string | null) => {
-      if (domain) domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
+    const domainCounts = new Map<string, { citations: number; sampleResponseIds: string[] }>();
+    const bump = (domain: string | null, responseId: string) => {
+      if (!domain) return;
+      const entry =
+        domainCounts.get(domain) ?? { citations: 0, sampleResponseIds: [] };
+      entry.citations += 1;
+      // A few contributing rows per domain are enough for an evidence trail;
+      // the full count is always re-derivable from the immutable payloads.
+      if (
+        entry.sampleResponseIds.length < 3 &&
+        !entry.sampleResponseIds.includes(responseId)
+      ) {
+        entry.sampleResponseIds.push(responseId);
+      }
+      domainCounts.set(domain, entry);
     };
     for (const row of textRows) {
+      const responseId = row.id as string;
       for (const url of extractUrls((row.responseText as string) ?? "")) {
-        bump(urlDomain(url));
+        bump(urlDomain(url), responseId);
       }
       for (const citation of extractCitations(row.provider as string, row.rawPayload)) {
-        bump(citation.domain);
+        bump(citation.domain, responseId);
       }
     }
     const domains: DomainCitation[] = [...domainCounts.entries()].map(
-      ([domain, citations]) => ({
+      ([domain, entry]) => ({
         domain,
-        citations,
+        citations: entry.citations,
         ownedBySubject: Boolean(subject.domain && domain.endsWith(subject.domain)),
+        sampleResponseIds: entry.sampleResponseIds,
       })
     );
+
+    // Displacement (spec 087): who collected the recommendation when the
+    // subject was absent. Derived on read; only forwarded when the absent
+    // sample clears the engine's evidence threshold.
+    const { runDisplacement } = await import("@/lib/competitors/displacement");
+    const displacementResult = await runDisplacement(runId, {
+      subjectCompanyId: subject.id,
+    });
+    const displacement =
+      displacementResult && displacementResult.status === "ok"
+        ? {
+            validResponses: displacementResult.validResponses,
+            absentResponses: displacementResult.absentResponses,
+            rivals: displacementResult.rivals
+              .filter((r) => r.meaningful)
+              .map((r) => ({
+                name: r.name,
+                displacedResponses: r.displacedResponses,
+                topClusters: r.byCluster.slice(0, 3).map((c) => c.segment),
+                topDomains: (
+                  displacementResult.sourceAssociations.find(
+                    (s) => s.companyId === r.companyId
+                  )?.domains ?? []
+                )
+                  .filter((d) => d.meaningful)
+                  .slice(0, 5)
+                  .map((d) => ({
+                    domain: d.domain,
+                    count: d.count,
+                    sourceType: d.sourceType,
+                  })),
+              })),
+            sampleResponseIds:
+              displacementResult.rivals.find((r) => r.meaningful)?.responseIds.slice(0, 3) ??
+              [],
+          }
+        : undefined;
 
     const findings = detectGaps({
       subjectName: subject.name,
@@ -195,22 +260,43 @@ export async function analyzeRun(
       prompts,
       companies: [...byCompany.values()],
       domains,
+      displacement,
     });
 
     await sql.begin(async (tx) => {
       for (const finding of findings) {
-        await tx`
+        const [inserted] = await tx`
           insert into gap_findings
             (project_id, run_id, prompt_category, gap_type, finding, detail,
-             severity, opportunity_score, detector_version)
+             severity, opportunity_score, detector_version,
+             classification, confidence)
           values
             (${projectId}, ${runId}, ${finding.promptCategory},
              ${finding.gapType}, ${finding.finding},
              ${tx.json(finding.detail as never)},
              ${Number(finding.severity.toFixed(3))},
              ${Number(finding.opportunityScore.toFixed(1))},
-             ${DETECTOR_VERSION})
+             ${DETECTOR_VERSION},
+             ${finding.classification},
+             ${Number(finding.confidence.toFixed(2))})
           on conflict (run_id, gap_type, coalesce(prompt_category, '')) do nothing
+          returning id
+        `;
+        // Deduped (re-analysis) finding: no row, and therefore no orphan
+        // evidence — the original run's evidence already stands.
+        if (!inserted || finding.evidence.length === 0) continue;
+        const evidenceIds: string[] = [];
+        for (const ref of finding.evidence) {
+          const [row] = await tx`
+            insert into evidence (project_id, kind, ref_id, note, created_by)
+            values (${projectId}, ${ref.kind}, ${ref.refId}, ${ref.note}, ${user.id})
+            returning id
+          `;
+          evidenceIds.push(row?.id as string);
+        }
+        await tx`
+          update gap_findings set evidence_ids = ${evidenceIds}
+          where id = ${inserted.id}
         `;
       }
       await writeAudit(tx, {
@@ -226,6 +312,36 @@ export async function analyzeRun(
   } catch (err) {
     return fail(err);
   }
+}
+
+/**
+ * Source-type playbook lines for a displacement finding's task (spec 087):
+ * the rivals' associated source types decide what the legitimate next moves
+ * are, instead of a generic "get more citations".
+ */
+function displacementPlaybookNote(
+  gapType: string,
+  detail: Record<string, unknown>
+): string {
+  if (gapType !== "displacement") return "";
+  const rivals = (detail.rivals ?? []) as {
+    topDomains?: { sourceType: string | null }[];
+  }[];
+  const sourceTypes = [
+    ...new Set(
+      rivals
+        .flatMap((r) => r.topDomains ?? [])
+        .map((d) => d.sourceType)
+        .filter((t): t is string => t != null)
+    ),
+  ];
+  if (sourceTypes.length === 0) return "";
+  const lines = sourceTypes.flatMap((t) => {
+    const playbook = playbookFor(t);
+    return playbook ? [`- ${playbook.label}: ${playbook.actions[0]}`] : [];
+  });
+  if (lines.length === 0) return "";
+  return `\n\nPlaybook (${SOURCE_PLAYBOOK_VERSION}) — rival-associated source types:\n${lines.join("\n")}`;
 }
 
 /** Turn a finding into an evidence-backed suggested task (yellow level). */
@@ -253,23 +369,40 @@ export async function createTaskFromFinding(
       return fail(new ClassifiedError("conflict", `Finding is ${finding.status}.`));
     }
 
+    // The task inherits the finding's OWN evidence rows (spec 064) — the
+    // exact refs the detector cited, not a placeholder. The first-score
+    // fallback survives only for pre-064 findings with empty evidence.
+    const findingEvidenceIds = (finding.evidenceIds as string[] | null) ?? [];
+    const band = priorityBand(Number(finding.opportunityScore));
+    const playbookNote = displacementPlaybookNote(
+      finding.gapType as string,
+      finding.detail as Record<string, unknown>
+    );
     const result = await suggestTask(user, {
       projectId: finding.projectId as string,
       title: `[${finding.gapType}] ${String(finding.finding).slice(0, 100)}`,
-      description: `${finding.finding}\n\nOpportunity score ${finding.opportunityScore} (detector ${finding.detectorVersion}).`,
-      priority: Number(finding.opportunityScore) >= 70 ? "p1" : "p2",
-      evidence: [
-        {
-          kind: "score",
-          refId: finding.scoreId as string,
-          note: `Gap finding from run ${String(finding.runId).slice(0, 8)}: ${finding.gapType} (severity ${finding.severity}).`,
-        },
-      ],
+      description:
+        `${finding.finding}\n\nOpportunity score ${finding.opportunityScore} ` +
+        `(detector ${finding.detectorVersion}, band ${band}).${playbookNote}`,
+      priority: band === "do_now" ? "p1" : band === "do_next" ? "p2" : "p3",
+      ...(findingEvidenceIds.length > 0
+        ? { evidenceIds: findingEvidenceIds }
+        : {
+            evidence: [
+              {
+                kind: "score",
+                refId: finding.scoreId as string,
+                note: `Gap finding from run ${String(finding.runId).slice(0, 8)}: ${finding.gapType} (severity ${finding.severity}).`,
+              },
+            ],
+          }),
     });
     if (!result.ok) return result;
 
     await sql`
-      update gap_findings set status = 'task_created' where id = ${finding.id}
+      update gap_findings
+      set status = 'task_created', task_id = ${result.data.taskId}
+      where id = ${finding.id}
     `;
     return result;
   } catch (err) {

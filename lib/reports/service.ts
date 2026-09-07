@@ -180,6 +180,9 @@ export async function regenerateReportDraft(
 const publishSchema = z.object({
   reportId: z.string().uuid(),
   acknowledgePendingReviews: z.boolean().optional(),
+  /** QA preflight warnings (spec 065) publish only with this — blockers
+   * never publish at all. */
+  acknowledgeWarnings: z.boolean().optional(),
 });
 
 export async function publishReport(
@@ -190,9 +193,44 @@ export async function publishReport(
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", "Invalid input."));
   }
-  const { reportId, acknowledgePendingReviews } = parsed.data;
+  const { reportId, acknowledgePendingReviews, acknowledgeWarnings } = parsed.data;
   try {
     assertCanWrite(user);
+    // Preflight (spec 065) runs on pooled reads before the commit
+    // transaction — its queries must not extend the lock window below.
+    const [draft] = await sql`
+      select project_id, status, body from reports where id = ${reportId}
+    `;
+    if (!draft) return fail(new ClassifiedError("not_found", "Report not found."));
+    if (draft.status !== "draft") {
+      return fail(new ClassifiedError("conflict", "Report is already published."));
+    }
+    const { reportPreflight, QA_PREFLIGHT_VERSION } = await import("@/lib/qa/preflight");
+    const preflight = await reportPreflight(
+      draft.projectId as string,
+      draft.body as ReportBody
+    );
+    if (preflight.blockers.length > 0) {
+      return fail(
+        new ClassifiedError(
+          "validation",
+          `QA preflight blocked publish: ${preflight.blockers
+            .map((c) => c.detail)
+            .join(" · ")}`
+        )
+      );
+    }
+    if (preflight.warnings.length > 0 && !acknowledgeWarnings) {
+      return fail(
+        new ClassifiedError(
+          "conflict",
+          `QA preflight found ${preflight.warnings.length} warning(s): ${preflight.warnings
+            .map((c) => c.detail)
+            .join(" · ")} — resolve them or acknowledge explicitly.`
+        )
+      );
+    }
+
     await sql.begin(async (tx) => {
       const [report] = await tx`
         select status, body from reports where id = ${reportId} for update
@@ -242,6 +280,13 @@ export async function publishReport(
             body.coverage.pendingReview > 0 && acknowledgePendingReviews
           ),
           pendingReview: body.coverage.pendingReview,
+          preflightVersion: QA_PREFLIGHT_VERSION,
+          ...(preflight.warnings.length > 0
+            ? {
+                warningsAcknowledged: preflight.warnings.map((c) => c.id),
+                warningDetails: preflight.warnings.map((c) => c.detail),
+              }
+            : {}),
         },
       });
     });

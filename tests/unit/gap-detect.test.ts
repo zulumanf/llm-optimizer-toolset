@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   detectGaps,
+  sampleConfidence,
   type PromptOutcome,
   type CompanyOutcome,
   type DomainCitation,
@@ -201,6 +202,109 @@ describe("brand-anchored prompts must not read as visibility", () => {
     // Compass genuinely out-competes them; SERHANT's 50% was our own question.
     expect(entity?.finding).toContain("Compass");
     expect(entity?.finding).not.toContain("SERHANT");
+  });
+
+  it("epistemics (spec 064): classification, confidence, and evidence refs", () => {
+    const withIds = detectGaps({
+      subjectName: "Lumina",
+      subjectDomain: "lumina.io",
+      prompts: [
+        prompt({
+          promptId: "p1",
+          category: "recommendation",
+          sampleResponseIds: ["r1", "r2"],
+        }),
+        prompt({
+          promptId: "p2",
+          category: "branded",
+          responses: 2,
+          subjectMentioned: 0,
+          sampleResponseIds: ["r3"],
+        }),
+      ],
+      companies: [
+        {
+          ...subject,
+          scoreIds: { mentionRate: "score-m", recommendationRate: "score-r" },
+        },
+        { ...leader, scoreIds: { mentionRate: "score-lm" } },
+      ],
+      domains: [
+        {
+          domain: "linktr.ee",
+          citations: 3,
+          ownedBySubject: false,
+          sampleResponseIds: ["r1"],
+        },
+      ],
+    });
+
+    for (const finding of withIds) {
+      expect(finding.confidence).toBeGreaterThanOrEqual(0.5);
+      expect(finding.confidence).toBeLessThanOrEqual(0.9);
+      expect(finding.evidence.length).toBeGreaterThan(0);
+    }
+
+    // Counted facts are observations; comparisons are supported findings.
+    expect(withIds.find((f) => f.gapType === "citation")?.classification).toBe(
+      "observation"
+    );
+    expect(withIds.find((f) => f.gapType === "source_target")?.classification).toBe(
+      "observation"
+    );
+    expect(withIds.find((f) => f.gapType === "entity")?.classification).toBe(
+      "supported_finding"
+    );
+    expect(
+      withIds.find((f) => f.gapType === "branded_recognition")?.classification
+    ).toBe("supported_finding");
+
+    // Evidence points at exactly the rows the detector was handed.
+    const entity = withIds.find((f) => f.gapType === "entity")!;
+    expect(entity.evidence.map((e) => e.refId)).toEqual(
+      expect.arrayContaining(["score-m", "score-lm", "r1", "r2"])
+    );
+    const branded = withIds.find((f) => f.gapType === "branded_recognition")!;
+    expect(branded.evidence).toEqual([
+      expect.objectContaining({ kind: "response", refId: "r3" }),
+    ]);
+    const recommendation = withIds.find((f) => f.gapType === "recommendation")!;
+    expect(recommendation.evidence.map((e) => e.refId)).toEqual([
+      "score-m",
+      "score-r",
+    ]);
+    const citation = withIds.find((f) => f.gapType === "citation")!;
+    expect(citation.evidence).toEqual([
+      expect.objectContaining({ kind: "response", refId: "r1" }),
+    ]);
+  });
+
+  it("epistemics degrade gracefully without ids (v1-shaped inputs)", () => {
+    const findings = detectGaps({
+      subjectName: "Lumina",
+      subjectDomain: "lumina.io",
+      prompts: [
+        prompt({ promptId: "p1", category: "recommendation" }),
+        prompt({ promptId: "p2", category: "branded", responses: 2, subjectMentioned: 0 }),
+      ],
+      companies: [subject, leader],
+      domains: [{ domain: "linktr.ee", citations: 3, ownedBySubject: false }],
+    });
+    for (const finding of findings) {
+      expect(finding.classification).toBeTruthy();
+      expect(finding.confidence).toBeGreaterThan(0);
+      // No ids supplied ⇒ empty evidence, never fabricated refs.
+      expect(finding.evidence.every((e) => e.refId.length > 0)).toBe(true);
+    }
+  });
+
+  it("sampleConfidence bands are exactly the documented ones", () => {
+    expect(sampleConfidence(30)).toBe(0.9);
+    expect(sampleConfidence(100)).toBe(0.9);
+    expect(sampleConfidence(29)).toBe(0.7);
+    expect(sampleConfidence(10)).toBe(0.7);
+    expect(sampleConfidence(9)).toBe(0.5);
+    expect(sampleConfidence(0)).toBe(0.5);
   });
 
   it("ignores a competitor with no organic sample rather than scoring it zero", () => {

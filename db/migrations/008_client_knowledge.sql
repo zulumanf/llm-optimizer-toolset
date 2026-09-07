@@ -40,6 +40,10 @@ create unique index claims_one_approved_per_key
 
 -- +migrate down
 drop table claims;
+-- URL evidence rows exist only because this migration allowed them; they
+-- cannot survive the narrowed CHECK (cleanup audit 2026-08-18 — a narrowing
+-- down must clean the rows its up enabled, or rollback fails on real data).
+delete from evidence where kind = 'url';
 alter table evidence drop column url;
 alter table evidence drop constraint evidence_kind_check;
 alter table evidence add constraint evidence_kind_check

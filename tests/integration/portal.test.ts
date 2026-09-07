@@ -121,6 +121,31 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
     expect(mention?.sampleSize).toBe(2);
     expect(mention?.scoringVersion).toBeTruthy();
 
+    // Spec 085: one run → no baseline delta yet (honest absence), cadence
+    // reflects the unconfigured weekly baseline, competitive names only
+    // the client + tracked rivals with sample sizes.
+    expect(overview.baseline).toBeNull();
+    expect(overview.measurementScheduled).toBe(false);
+    const rivalsAfterOne = await portal.portalCompetitive(user, projectId);
+    expect(rivalsAfterOne.some((r) => r.isClient && r.name === "Lumina")).toBe(true);
+    expect(rivalsAfterOne.every((r) => r.sampleSize > 0)).toBe(true);
+
+    // A second scored run anchors the baseline to the FIRST run.
+    const second = await runSvc.startRun(user, {
+      projectId,
+      promptSetVersionId: version?.id as string,
+      providers: [{ provider: "mock", model: "mock-model", repetitions: 2 }],
+      budgetUsd: 5,
+      label: "portal run 2",
+    });
+    if (!second.ok) throw new Error(second.error.message);
+    await drainJobs();
+    const overview2 = await portal.portalOverview(user, projectId);
+    expect(overview2.baseline).not.toBeNull();
+    expect(overview2.lastMeasuredAt!.getTime()).toBeGreaterThan(
+      overview2.baseline!.at.getTime()
+    );
+
     // Two done tasks: one shared with the client, one internal.
     const [response] = await sql`select id from responses limit 1`;
     async function doneTask(title: string, clientVisible: boolean) {

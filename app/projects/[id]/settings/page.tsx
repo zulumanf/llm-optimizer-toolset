@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { sql } from "@/db/client";
@@ -44,20 +44,17 @@ export default async function ProjectSettingsPage({
   const cronConfigured = Boolean(env.CRON_SECRET);
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Settings
-      </nav>
-      <h1 className="mb-1 text-2xl font-semibold">Settings</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Settings" }]}
+        title="Settings"
+        description={
+          <>
         Weekly baseline: every Monday the cron runs the chosen set&rsquo;s
         latest frozen version with this configuration (docs/07 cadence).
-      </p>
+          </>
+        }
+      />
 
       <div className="mb-6 rounded-md border p-4">
         <p className="mb-3 text-sm font-medium">Portfolio (spec 030)</p>
@@ -136,6 +133,6 @@ export default async function ProjectSettingsPage({
   -H "Authorization: Bearer $CRON_SECRET"`}
         </pre>
       </div>
-    </div>
+    </PageShell>
   );
 }

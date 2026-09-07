@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ListPlus } from "lucide-react";
@@ -25,25 +26,18 @@ export default async function PromptSetsPage({
   const sets = await listPromptSets(id);
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">
-          Projects
-        </Link>{" "}
-        /{" "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>{" "}
-        / Prompts
-      </nav>
-
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Prompt sets</h1>
-        {project.status === "active" && (
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Prompts" }]}
+        title="Prompt sets"
+        actions={
+          <>
+            {project.status === "active" && (
           <SetFormDialog mode="create" projectId={id} />
         )}
-      </div>
-
+          </>
+        }
+      />
       {sets.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <ListPlus className="size-8 text-muted-foreground" />
@@ -98,6 +92,6 @@ export default async function PromptSetsPage({
           </Table>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -18,7 +18,7 @@ const USA: Omit<GeoNode, "children"> = {
 
 /** The eleven target prompt categories as standard templates; every pack
  * gets these, plus its own extras. All are recommendation-intent. */
-function standardTemplates(): MarketPromptTemplate[] {
+export function standardTemplates(): MarketPromptTemplate[] {
   return [
     {
       key: "best-agents-city",
@@ -130,9 +130,11 @@ function standardTemplates(): MarketPromptTemplate[] {
   ];
 }
 
-const COMMON_PRICE_TIERS = ["entry-level", "mid-market", "luxury", "ultra-luxury"];
-const COMMON_BUYER_SEGMENTS = ["first-time", "relocation", "investor", "international"];
-const COMMON_SELLER_SEGMENTS = ["move-up", "downsizing", "estate", "investor-exit"];
+// Exported: lib/markets/research.ts seeds pack drafts with the same
+// vocabulary (one list, not two that drift — cleanup 2026-08-18).
+export const COMMON_PRICE_TIERS = ["entry-level", "mid-market", "luxury", "ultra-luxury"];
+export const COMMON_BUYER_SEGMENTS = ["first-time", "relocation", "investor", "international"];
+export const COMMON_SELLER_SEGMENTS = ["move-up", "downsizing", "estate", "investor-exit"];
 
 export const MARKET_PACKS: MarketPackDefinition[] = [
   {

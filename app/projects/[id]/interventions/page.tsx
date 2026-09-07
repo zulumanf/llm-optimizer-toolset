@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FlaskConical } from "lucide-react";
@@ -14,6 +15,8 @@ import {
 } from "@/components/ui/table";
 import { CreateInterventionDialog } from "@/components/attribution/create-intervention-dialog";
 import { InterventionVisibilityToggle } from "@/components/attribution/intervention-visibility";
+import { InterventionStatusBadge } from "@/components/attribution/intervention-status";
+import type { InterventionStatus } from "@/lib/attribution/lifecycle";
 import { ProjectTabs } from "@/components/layout/project-tabs";
 
 export default async function InterventionsPage({
@@ -28,14 +31,20 @@ export default async function InterventionsPage({
   const [interventions, versions] = await Promise.all([
     sql`
       select i.id, i.title, to_char(i.shipped_at, 'YYYY-MM-DD') as shipped,
-        i.baseline_weak, i.client_visible, s.name as set_name, v.version,
+        i.baseline_weak, i.client_visible, i.status, i.blocked_reason,
+        nullif(u.name, '') as owner_name, u.email as owner_email,
+        s.name as set_name, v.version,
         (select count(*)::int from intervention_runs ir
           where ir.intervention_id = i.id and ir.role = 'baseline') as baselines,
         (select count(*)::int from intervention_runs ir
-          where ir.intervention_id = i.id and ir.role = 'post') as posts
+          where ir.intervention_id = i.id and ir.role = 'post') as posts,
+        (select to_char(min(j.run_after), 'YYYY-MM-DD') from jobs j
+          where j.type = 'start_scheduled_run' and j.status = 'queued'
+            and j.payload->>'interventionId' = i.id::text) as next_retest
       from interventions i
       join prompt_set_versions v on v.id = i.prompt_set_version_id
       join prompt_sets s on s.id = v.prompt_set_id
+      left join users u on u.id = i.owner_id
       where i.project_id = ${id} and i.archived_at is null
       order by i.shipped_at desc
     `,
@@ -49,27 +58,21 @@ export default async function InterventionsPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
+    <PageShell>
       <ProjectTabs projectId={id} setKey="work" />
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Interventions
-      </nav>
-
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Interventions</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Interventions" }]}
+        title="Interventions"
+        description={
+          <>
             What the client shipped, tied to before/after measurement on a frozen
             prompt set (docs/07). Post runs re-use the baseline instrument at
             +2/+6/+12 weeks.
-          </p>
-        </div>
-        {project.status === "active" && (
+          </>
+        }
+        actions={
+          <>
+            {project.status === "active" && (
           <CreateInterventionDialog
             projectId={id}
             versions={versions.map((v) => ({
@@ -78,8 +81,9 @@ export default async function InterventionsPage({
             }))}
           />
         )}
-      </div>
-
+          </>
+        }
+      />
       {interventions.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <FlaskConical className="size-8 text-muted-foreground" />
@@ -94,7 +98,10 @@ export default async function InterventionsPage({
             <TableHeader>
               <TableRow>
                 <TableHead>Title</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Owner</TableHead>
                 <TableHead>Shipped</TableHead>
+                <TableHead>Next retest</TableHead>
                 <TableHead>Target</TableHead>
                 <TableHead className="text-right">Baselines</TableHead>
                 <TableHead className="text-right">Post runs</TableHead>
@@ -117,8 +124,21 @@ export default async function InterventionsPage({
                       </Badge>
                     )}
                   </TableCell>
+                  <TableCell>
+                    <InterventionStatusBadge
+                      status={i.status as InterventionStatus}
+                      blockedReason={i.blockedReason as string | null}
+                    />
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {(i.ownerName as string | null) ??
+                      (i.ownerEmail as string | null) ?? "—"}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {i.shipped as string}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground tabular-nums">
+                    {(i.nextRetest as string | null) ?? "—"}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {i.setName as string} v{i.version as number}
@@ -141,6 +161,6 @@ export default async function InterventionsPage({
           </Table>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { Building2 } from "lucide-react";
 import { listCompanies } from "@/db/companies";
 import { getCurrentUser } from "@/lib/auth";
@@ -18,17 +19,12 @@ export default async function CompaniesPage() {
   const hasSelf = companies.some((c) => c.isSelf);
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Companies</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Brands the parser tracks. Exactly one is the platform&rsquo;s own brand (is_self); aliases
-            drive mention detection — collisions are blocked.
-          </p>
-        </div>
-        <CompanyFormDialog mode="create" isAdmin={user.role === "admin"} />
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Companies"
+        description="Brands the parser tracks. Exactly one is the platform's own brand (is_self); aliases drive mention detection — collisions are blocked."
+        actions={<CompanyFormDialog mode="create" isAdmin={user.role === "admin"} />}
+      />
 
       {!hasSelf && (
         <div className="mb-4 rounded-md border border-warning/50 bg-warning/10 px-4 py-2 text-sm">
@@ -80,6 +76,6 @@ export default async function CompaniesPage() {
           </Table>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

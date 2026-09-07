@@ -1,5 +1,6 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { signOut } from "@/app/login/actions";
+import { PortalTabs } from "@/components/portal/portal-tabs";
 import {
   assertProjectAccess,
   getCurrentUser,
@@ -36,23 +37,25 @@ export default async function PortalProjectLayout({
   ];
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <div className="mx-auto max-w-5xl p-4 sm:p-6">
       <header className="mb-6 border-b pb-4">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-          AI Visibility Program
-        </p>
-        <h1 className="text-2xl font-semibold">{project.name}</h1>
-        <nav className="mt-3 flex gap-4 text-sm">
-          {tabs.map((tab) => (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className="text-muted-foreground hover:text-foreground"
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              AI Visibility Program
+            </p>
+            <h1 className="text-2xl font-semibold">{project.name}</h1>
+          </div>
+          <form action={signOut}>
+            <button
+              type="submit"
+              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
             >
-              {tab.label}
-            </Link>
-          ))}
-        </nav>
+              Sign out
+            </button>
+          </form>
+        </div>
+        <PortalTabs tabs={tabs} />
       </header>
       {children}
     </div>

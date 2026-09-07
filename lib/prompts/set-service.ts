@@ -154,7 +154,9 @@ export async function freezePromptSet(
       }
 
       const prompts = await tx`
-        select id, text, category, language, position, is_holdout, tier
+        select id, text, category, language, position, is_holdout, tier,
+          audience, price_tier, neighborhood, building, property_type,
+          source, template_ref
         from prompts
         where prompt_set_id = ${setId} and archived_at is null
         order by position asc, created_at asc
@@ -170,8 +172,17 @@ export async function freezePromptSet(
         position: i + 1,
         isHoldout: Boolean(p.isHoldout),
         // Metadata, not identity (lib/prompts/freeze.ts) — carried so
-        // historical runs can be segmented by tier.
+        // historical runs can be segmented by tier and segment (spec 063).
         tier: (p.tier as number | null) ?? null,
+        audience: (p.audience as string | null) ?? null,
+        priceTier: (p.priceTier as string | null) ?? null,
+        // Spec 087: dimensions + provenance survive the freeze so historical
+        // runs stay segmentable and lineage stays recoverable.
+        neighborhood: (p.neighborhood as string | null) ?? null,
+        building: (p.building as string | null) ?? null,
+        propertyType: (p.propertyType as string | null) ?? null,
+        source: (p.source as string | null) ?? null,
+        templateRef: (p.templateRef as string | null) ?? null,
       }));
 
       const [latest] = await tx`
@@ -226,11 +237,22 @@ export async function duplicatePromptSet(
     assertCanWrite(user);
     const set = await sql.begin(async (tx) => {
       let sourceSetId: string;
+      // Full metadata travels with the copy (spec 087): dropping holdout
+      // membership or segment dimensions on duplicate silently changed what
+      // the copy measured.
       let entries: {
         text: string;
         category: string;
         language: string;
         tier?: number | null;
+        isHoldout?: boolean | null;
+        audience?: string | null;
+        priceTier?: string | null;
+        templateRef?: string | null;
+        neighborhood?: string | null;
+        building?: string | null;
+        propertyType?: string | null;
+        source?: string | null;
       }[];
 
       if (versionId) {
@@ -242,16 +264,27 @@ export async function duplicatePromptSet(
         sourceSetId = version.promptSetId as string;
         entries = (version.frozenPrompts as FrozenPrompt[])
           .sort((a, b) => a.position - b.position)
-          .map(({ text, category, language, tier }) => ({
-            text,
-            category,
-            language,
-            tier,
+          .map((p) => ({
+            text: p.text,
+            category: p.category,
+            language: p.language,
+            tier: p.tier,
+            isHoldout: p.isHoldout ?? false,
+            audience: p.audience,
+            priceTier: p.priceTier,
+            templateRef: p.templateRef,
+            neighborhood: p.neighborhood,
+            building: p.building,
+            propertyType: p.propertyType,
+            source: p.source,
           }));
       } else {
         sourceSetId = setId as string;
         entries = await tx`
-          select text, category, language, tier from prompts
+          select text, category, language, tier, is_holdout, audience,
+            price_tier, template_ref, neighborhood, building, property_type,
+            source
+          from prompts
           where prompt_set_id = ${sourceSetId} and archived_at is null
           order by position asc, created_at asc
         `;
@@ -272,9 +305,14 @@ export async function duplicatePromptSet(
       for (const [i, e] of entries.entries()) {
         await tx`
           insert into prompts
-            (prompt_set_id, text, category, language, position, tier)
+            (prompt_set_id, text, category, language, position, tier,
+             is_holdout, audience, price_tier, template_ref,
+             neighborhood, building, property_type, source)
           values (${row.id}, ${e.text}, ${e.category}, ${e.language}, ${i + 1},
-            ${e.tier ?? null})
+            ${e.tier ?? null}, ${e.isHoldout ?? false}, ${e.audience ?? null},
+            ${e.priceTier ?? null}, ${e.templateRef ?? null},
+            ${e.neighborhood ?? null}, ${e.building ?? null},
+            ${e.propertyType ?? null}, ${e.source ?? "manual"})
         `;
       }
       await writeAudit(tx, {

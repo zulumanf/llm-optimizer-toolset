@@ -10,8 +10,13 @@ FROM node:22-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Build-time env: none of the runtime secrets are needed to compile.
+# Build-time env: no runtime secret is needed to compile, but env
+# validation (lib/env.ts) runs during Next's page-data collection, so the
+# schema needs a syntactically valid DATABASE_URL. This dummy is never
+# connected to — every page is force-dynamic — and the runtime stage gets
+# the real value from the platform's environment.
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV DATABASE_URL=postgres://build:build@localhost:5432/build
 RUN npm run build
 
 FROM node:22-alpine AS runtime

@@ -30,7 +30,7 @@ export interface DetectorResult {
   considered: number;
 }
 
-const scope = (projectId: string | null) =>
+export const scope = (projectId: string | null) =>
   projectId ? sql`and project_id = ${projectId}` : sql``;
 
 // -------------------------------------------------------- 1. ingestion

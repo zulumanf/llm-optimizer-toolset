@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
@@ -112,42 +113,43 @@ export default async function ProjectDashboardPage({
     );
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}{project.name}
-      </nav>
-
+    <PageShell>
       {project.status === "archived" && (
         <div className="mb-4 rounded-md border border-warning/50 bg-warning/10 px-4 py-2 text-sm">
           This project is archived — editing is disabled until it is unarchived.
         </div>
       )}
 
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">{project.name}</h1>
-            <Badge variant={project.status === "active" ? "default" : "outline"}>
-              {project.status}
-            </Badge>
+      <PageHeader
+        crumbs={[
+          { label: "Projects", href: "/projects" },
+          { label: project.name },
+        ]}
+        title={project.name}
+        badge={
+          <Badge variant={project.status === "active" ? "default" : "outline"}>
+            {project.status}
+          </Badge>
+        }
+        description={
+          <>
+            {project.description && (
+              <span className="block">{project.description}</span>
+            )}
+            <span className="block text-xs">
+              Created {formatDate(project.createdAt)}
+            </span>
+          </>
+        }
+        actions={
+          <div className="flex shrink-0 gap-2">
+            {project.status === "active" && (
+              <ProjectFormDialog mode="edit" project={project} />
+            )}
+            <ArchiveControls project={project} isAdmin={user.role === "admin"} />
           </div>
-          {project.description && (
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              {project.description}
-            </p>
-          )}
-          <p className="mt-1 text-xs text-muted-foreground">
-            Created {formatDate(project.createdAt)}
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          {project.status === "active" && (
-            <ProjectFormDialog mode="edit" project={project} />
-          )}
-          <ArchiveControls project={project} isAdmin={user.role === "admin"} />
-        </div>
-      </div>
+        }
+      />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
@@ -220,6 +222,6 @@ export default async function ProjectDashboardPage({
         </Card>
       </div>
 
-    </div>
+    </PageShell>
   );
 }

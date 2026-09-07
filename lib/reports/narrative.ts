@@ -8,7 +8,7 @@
  * resolve inside the snapshot.
  */
 import type { ReportBody, NarrativeSection, SnapshotScore } from "@/lib/reports/types";
-import { CAUSAL_PHRASES } from "@/lib/workflow/gates";
+import { findCausalPhrase } from "@/lib/workflow/gates";
 
 const CITATION_RE = /\[(score|response|finding|accuracy):([0-9a-f-]{36})\]/g;
 // Non-global twin for .test() — the global one is stateful and unsafe there
@@ -68,8 +68,7 @@ export function validateNarrative(
       if (/\d/.test(withoutCitations) && !CITATION_TEST.test(sentence)) {
         uncitedSentences.push(sentence);
       }
-      const lower = sentence.toLowerCase();
-      if (CAUSAL_PHRASES.some((phrase) => lower.includes(phrase))) {
+      if (findCausalPhrase(sentence) !== null) {
         causalSentences.push(sentence);
       }
     }

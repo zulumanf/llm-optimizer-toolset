@@ -1,15 +1,20 @@
-# Off-laptop scheduler (spec 059). GitHub's cron is ~5-minute-granular and
-# best-effort — acceptable for a heartbeat whose work is windowed and
-# deduped (trigger dispatch, event delivery, maintenance, drift detection,
-# weekly cycles all tolerate late ticks). Move to the host's own scheduler
-# once one exists; until then this replaces four launchd plists on a laptop.
+# Uptime check only (2026-08-17; throttled 2026-08-18). The platform's clock
+# lives in the always-on Railway worker (workers/index.ts ticks
+# lib/ops/tick.ts every 10 minutes) — nothing here drives the product.
 #
-# Requires repo secrets APP_URL and CRON_SECRET; exits quietly without them
-# so the workflow can merge before the first deploy.
+# This exists solely as an external vantage point that notices the site is
+# down and emails on failure. Every 6 hours is a compromise while it exists
+# at all: the REAL fix is a free external uptime monitor (e.g. UptimeRobot,
+# 5-minute checks at zero Actions cost) pointed at $APP_URL/api/health —
+# once that is live, DELETE this workflow entirely.
+#
+# Requires repo secret APP_URL; exits quietly without it. The marketing root
+# is report-only until its host is connected — flip it to strict by removing
+# "|| true" once recommendedfirst.com serves.
 name: heartbeat
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "17 */6 * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -17,18 +22,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Automation heartbeat
+      - name: Uptime checks
         env:
           APP_URL: ${{ secrets.APP_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
-            echo "APP_URL/CRON_SECRET secrets unset — no deploy yet, exiting."
+          if [ -z "$APP_URL" ]; then
+            echo "APP_URL secret unset — no deploy yet, exiting."
             exit 0
           fi
-          set -e
-          curl -sf -X POST -H "Authorization: Bearer $CRON_SECRET" \
-            "$APP_URL/api/cron/automation" | head -c 2000
-          echo
-          curl -sf -X POST -H "Authorization: Bearer $CRON_SECRET" \
-            "$APP_URL/api/cron/weekly-cycle" | head -c 2000
+          echo "app health:"
+          curl -sf --max-time 20 "$APP_URL/api/health" > /dev/null \
+            && echo "  OK" || { echo "  DOWN"; exit 1; }
+          echo "marketing root (report-only):"
+          curl -s -o /dev/null --max-time 20 -w "  https://recommendedfirst.com -> %{http_code}\n" \
+            https://recommendedfirst.com || true

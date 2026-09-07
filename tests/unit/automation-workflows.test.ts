@@ -164,8 +164,9 @@ describe("agent contracts", () => {
 });
 
 describe("the shipped workflows", () => {
-  it("ships eighteen definitions with unique keys", () => {
-    expect(AUTOMATION_WORKFLOWS.length).toBe(18);
+  it("ships nineteen definitions with unique keys", () => {
+    // 18 from the automation layer + audit_refresh_v1 (spec 075).
+    expect(AUTOMATION_WORKFLOWS.length).toBe(19);
     const keys = AUTOMATION_WORKFLOWS.map((w) => w.key);
     expect(new Set(keys).size).toBe(keys.length);
   });

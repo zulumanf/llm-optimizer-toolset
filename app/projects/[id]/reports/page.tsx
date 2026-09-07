@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FileText } from "lucide-react";
@@ -36,28 +37,23 @@ export default async function ReportsPage({
   `;
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
+    <PageShell>
       <ProjectTabs projectId={id} setKey="reports" />
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Reports
-      </nav>
-
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Reports</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Reports" }]}
+        title="Reports"
+        description={
+          <>
             Drafts are editable (narrative only — never numbers). Published
             reports are immutable forever (docs/07 step 8).
-          </p>
-        </div>
-        {project.status === "active" && <GenerateReportDialog projectId={id} />}
-      </div>
-
+          </>
+        }
+        actions={
+          <>
+            {project.status === "active" && <GenerateReportDialog projectId={id} />}
+          </>
+        }
+      />
       {reports.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <FileText className="size-8 text-muted-foreground" />
@@ -104,6 +100,6 @@ export default async function ReportsPage({
           </Table>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -1,6 +1,6 @@
 # 04 — UI Design System
 
-Internal operator tool: dense, fast, legible. Desktop-first, dark mode required, Tailwind + shadcn/ui only. No inline styles, no bespoke CSS files. If a component isn't listed here, add it here before building it.
+Internal operator tool: dense, fast, legible. Responsive — optimized for desktop density, fully usable on a phone (spec 083). Dark mode required, Tailwind + shadcn/ui only. No inline styles, no bespoke CSS files. If a component isn't listed here, add it here before building it.
 
 ## Foundations
 

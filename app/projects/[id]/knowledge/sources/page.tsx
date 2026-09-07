@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { listSources, knowledgeSummary } from "@/db/knowledge";
@@ -42,19 +42,18 @@ export default async function SourcesPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">{project.name}</Link>
-        {" / "}Sources
-      </nav>
-      <h1 className="mb-1 text-2xl font-semibold">Source library</h1>
-      <p className="mb-4 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Sources" }]}
+        title="Source library"
+        description={
+          <>
         Every raw artifact this client has supplied, stored content-addressed and
         never overwritten. A changed source becomes a new version; the
         predecessor stays readable so the claims it supports remain explicable.
-      </p>
+          </>
+        }
+      />
 
       <KnowledgeLayerNav projectId={id} />
 
@@ -207,6 +206,6 @@ export default async function SourcesPage({
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

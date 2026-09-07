@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
@@ -41,20 +42,16 @@ export default async function NewRunPage({
   `;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}
-        <Link href={`/projects/${id}/runs`} className="hover:text-foreground">
-          Runs
-        </Link>
-        {" / "}New
-      </nav>
-      <h1 className="mb-4 text-2xl font-semibold">New run</h1>
+    <PageShell>
+      <PageHeader
+        crumbs={[
+          { label: "Projects", href: "/projects" },
+          { label: project.name, href: `/projects/${id}` },
+          { label: "Runs", href: `/projects/${id}/runs` },
+          { label: "New" },
+        ]}
+        title="New run"
+      />
 
       {configuredProviders().length === 0 ? (
         <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-10 text-center text-sm">
@@ -86,6 +83,6 @@ export default async function NewRunPage({
           defaultEnabled={configuredProviders()}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
