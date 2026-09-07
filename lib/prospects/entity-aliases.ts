@@ -318,7 +318,8 @@ export async function entityResolutionStatuses(
     where entity = 'company' and entity_id::text = any(${ids}::text[]) and action = any(${[...ENTITY_VERIFIED_ACTIONS]}::text[])
     order by at asc`) {
     const d = (a.detail as Record<string, unknown> | null) ?? {};
-    const url = typeof d.sourceUrl === "string" ? d.sourceUrl : typeof d.source_url === "string" ? d.source_url : null;
+    const prov = (d.provenance as Record<string, unknown> | undefined) ?? {};
+    const url = typeof d.sourceUrl === "string" ? d.sourceUrl : typeof d.source_url === "string" ? d.source_url : typeof prov.url === "string" ? prov.url : null;
     if (a.action === "company.alias_verified" && !url) continue;
     const lvl = d.level === "team" || d.level === "individual" || d.level === "brokerage" ? d.level : null;
     verif.set(a.entityId as string, { level: lvl, sourceUrl: url, at: new Date(a.at as Date) });

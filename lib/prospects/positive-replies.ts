@@ -16,6 +16,7 @@ import { logActivity } from "@/lib/prospects/shared";
 import type { FounderSalesBlock } from "@/lib/prospects/sales-block";
 
 export const POSITIVE_REPLY_RESOLVED_ACTIVITY = "positive_reply_resolved";
+export const POSITIVE_REPLY_OWNED_ACTIVITY = "positive_reply_owned";
 export const POSITIVE_REPLY_NEXT_ACTION = (name: string): string =>
   `Answer ${name}'s positive reply: send the private report (or confirm it landed), then propose one tangible first change and the offer.`;
 
@@ -56,7 +57,7 @@ export async function assignPositiveReplyOwner(
       updated_at = now()
     where id = ${input.prospectId}
   `;
-  await logActivity(tx, input.prospectId, "founder_action_required", {
+  await logActivity(tx, input.prospectId, POSITIVE_REPLY_OWNED_ACTIVITY, {
     replyId: input.replyId, action: "answer_positive_reply", ownerId, dueOn: nextActionOn, objections: input.objections ?? [],
   }, input.actorId);
   return { ownerId: (p?.ownerId as string | null) ?? ownerId, nextActionOn };
