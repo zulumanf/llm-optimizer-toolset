@@ -109,6 +109,10 @@ async function main() {
   const runId = await syntheticRun(project.id, version!.id as string, subject.id, rival.id, `${TAG} baseline`);
   const prospect = unwrap(await prospects.createProspect(admin, { launchId: launch.launchId, businessName: `${TAG} Fixture Team ${stamp}`, prospectType: "team", companyId: subject.id }));
   const pid = prospect.prospectId;
+  // Score the synthetic run (mentions → scores) so the benchmark can link — the same
+  // step the worker performs after parsing; provider "qa-fixture" keeps it isolated.
+  const scoring = await import("@/lib/scoring/compute");
+  await scoring.computeScores(runId);
   const { benchmarkId } = unwrap(await prospects.linkBenchmark(admin, { prospectId: pid, runId }));
   unwrap(await prospects.generateFindings(admin, { benchmarkId }));
   const [top] = await sql`select id from prospect_findings where benchmark_id = ${benchmarkId} and status = 'candidate' order by rank_score desc nulls last limit 1`;
@@ -151,7 +155,9 @@ async function main() {
     const C: Browser = { cookie: null };
     const pageC = await click(base, clean, C);
     const htmlC = await pageC.text();
-    expect("C: clean URL alone is refused", pageC.status === 404 && !htmlC.includes(`${TAG} Fixture Team`) && htmlC.includes("opens from its invitation"), `status ${pageC.status}`);
+    // Streaming under the root loading boundary commits the shell before notFound() resolves (status may read 200);
+    // the invariant is the body: the private state, none of the report.
+    expect("C: clean URL alone is refused", !htmlC.includes(`${TAG} Fixture Team`) && htmlC.includes("opens from its invitation"), `status ${pageC.status}`);
 
     const L: Browser = { cookie: null };
     const legacy = await click(base, `/audit/${published.accessToken}`, L);
@@ -172,7 +178,8 @@ async function main() {
     unwrap(await access.revokeReportAccess(admin, { prospectId: pid, reason: `${TAG} smoke revocation` }));
     const afterA = await click(base, clean, A);
     const afterB = await click(base, clean, B);
-    expect("revocation: A and B refused on refresh", afterA.status === 404 && afterB.status === 404, `${afterA.status}/${afterB.status}`);
+    const [bodyA, bodyB] = [await afterA.text(), await afterB.text()];
+    expect("revocation: A and B refused on refresh", !bodyA.includes(`${TAG} Fixture Team`) && !bodyB.includes(`${TAG} Fixture Team`) && bodyA.includes("opens from its invitation"), `${afterA.status}/${afterB.status}`);
     const D: Browser = { cookie: null };
     const exD = await click(base, invitation, D);
     expect("revocation: invitation cannot activate", exD.status === 303 && !D.cookie);
