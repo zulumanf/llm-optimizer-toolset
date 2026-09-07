@@ -11,7 +11,8 @@ import { lintFollowupCopy } from "@/lib/prospects/followup-templates";
 import { gmailBodyText, htmlToText } from "@/lib/connectors/adapters/google";
 import { stripQuotedReply, classifyReplyText } from "@/lib/prospects/reply-classify";
 import { changeFirstRows, correctionNote, offerSection } from "@/lib/prospects/audit-mismatch";
-import { ENGAGEMENT_OFFER, PRICING_REQUEST_RE } from "@/lib/prospects/constants";
+import { PRICING_REQUEST_RE } from "@/lib/prospects/constants";
+import { activePricingPolicy, pricingPolicy } from "@/lib/pricing/policy";
 
 const BLU = "85eba138-983b-4eec-b615-d56cf0c4dfe3";
 const JOSH = "9081edd5-0ff0-4614-9358-bab85ac9caf4";
@@ -155,14 +156,20 @@ describe("report correction note and change-first rows", () => {
 });
 
 describe("the offer section (only when pricing was asked for)", () => {
-  it("states one number, the 90-day term, no long-term commitment and no ranking promise", () => {
+  it("states one number, the 90-day term, one engagement and no ranking promise (spec 135 active policy)", () => {
     const o = offerSection();
     expect(o.title).toBe("Pricing");
-    expect(o.price).toBe("$7,500/month for 3 months");
-    expect(o.total).toBe("$22,500 total initial engagement");
-    expect(o.includes).toEqual([...ENGAGEMENT_OFFER.includes]);
-    expect(o.commitment).toContain("No long-term commitment after the initial 90 days");
+    expect(o.price).toBe("$7,500 for the 90-day engagement");
+    expect(o.total).toBe("Billed as $2,500 per month over the 90 days");
+    expect(o.includes).toEqual([...activePricingPolicy().includes]);
+    expect(o.commitment).toContain("One 90-day engagement");
+    expect(o.pricingPolicyVersion).toBe("first_client_90d_v1");
     expect(o.promise).toContain("can't promise a ranking");
+    // The retired v0 policy still renders exactly what Ryan's snapshot holds.
+    const v0 = offerSection(pricingPolicy("founder_monthly_7500_v0")!);
+    expect(v0.price).toBe("$7,500/month for 3 months");
+    expect(v0.total).toBe("$22,500 total initial engagement");
+    expect(v0.commitment).toBe("No long-term commitment after the initial 90 days.");
     const text = `${o.title} ${o.price} ${o.total} ${o.includes.join(" ")} ${o.commitment} ${o.promise}`;
     expect(text).not.toMatch(/discount|founding|special|pilot|beta|starting at|depending|—|–/i);
   });

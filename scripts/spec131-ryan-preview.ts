@@ -15,6 +15,9 @@ import { deliveredTouch1 } from "@/lib/prospects/followups";
 
 const PROSPECT_NAME = "Blu House Properties";
 const PROVIDER = "openai";
+// HISTORICAL_TRUTH (spec 135): the terms Ryan was actually quoted on
+// 2026-09-05 (founder_monthly_7500_v0). Not the current offer; this preview
+// reproduces that moment and must not follow the active policy.
 const MONTHLY = 7500;
 const TERM_DAYS = 90;
 
