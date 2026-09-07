@@ -463,7 +463,7 @@ async function main(): Promise<void> {
   hookReady.sort((a, b) => rank(b) - rank(a));
   sendReady.sort((a, b) => rank(b) - rank(a));
 
-  const strip = ({ review: _r, selected: _s, ...rest }: Record<string, unknown>) => rest;
+  const strip = (row: Record<string, unknown>) => { const rest = { ...row }; delete rest.review; delete rest.selected; return rest; };
   writeFileSync(
     `${OUT_DIR}/fresh-prospect-cohort.json`,
     JSON.stringify({ sendReady: sendReady.map(strip), hookReadyNeedingContact: hookReady }, null, 2)

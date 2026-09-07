@@ -69,7 +69,7 @@ async function lane(getIds: () => string[]): Promise<void> {
 async function main(): Promise<void> {
   let done = 0;
   for (;;) {
-    let ids = await cohortResponseIds();
+    const ids = await cohortResponseIds();
     const getIds = () => ids;
     const [pending] = await sql`
       select count(*)::int as n from jobs
