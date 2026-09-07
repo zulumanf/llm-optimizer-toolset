@@ -25,9 +25,11 @@ import { decideStagedRow } from "@/lib/research/decisions";
 export const PACK_DRAFT_VERSION = "market-pack-draft-v1";
 const PACK_DRAFT_MODEL = "sonar";
 const PACK_DRAFT_MAX_TOKENS = 1200;
-const COMMON_PRICE_TIERS = ["entry-level", "mid-market", "luxury", "ultra-luxury"];
-const COMMON_BUYER_SEGMENTS = ["first-time", "relocation", "investor", "international"];
-const COMMON_SELLER_SEGMENTS = ["move-up", "downsizing", "estate", "investor-exit"];
+import {
+  COMMON_PRICE_TIERS,
+  COMMON_BUYER_SEGMENTS,
+  COMMON_SELLER_SEGMENTS,
+} from "@/lib/markets/packs";
 
 const SYSTEM = `You are a research assistant mapping a US city's residential
 real-estate market. Reply with ONLY a JSON object:

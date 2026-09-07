@@ -38,7 +38,11 @@ export interface EvidenceRef {
 
 /**
  * Deterministic detectors are certain of their arithmetic; what varies is
- * how much sample stands behind it. One shared banding, stated in spec 064.
+ * how much sample stands behind it. NOTE: this banded curve is the gap
+ * detector's, not the platform's — lib/prospects/diagnose.ts and
+ * lib/prospects/findings.ts use a logarithmic curve. Unifying them is a
+ * deliberate scoring-version decision (cleanup backlog 2026-08-18), not a
+ * drive-by edit: the numbers reach prospect-facing surfaces.
  */
 export function sampleConfidence(n: number): number {
   if (n >= 30) return 0.9;

@@ -1,5 +1,5 @@
 /**
- * Prompt coverage by segment (spec 063, coverage-v1). Turns "how visible are
+ * Prompt coverage by segment (spec 063; v2 since spec 087). Turns "how visible are
  * we?" into "in WHICH questions are we present?" — per category, intent band,
  * audience, and price tier, using the attributes frozen into the version.
  *
