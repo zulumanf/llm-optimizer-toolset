@@ -9,8 +9,8 @@ The platform does not generate or sign contracts. Use counsel-reviewed paper.
 Record only the state (`draft → sent → signed` + reference) on the engagement page.
 Minimum terms the agreement must cover before you mark it `signed`:
 - Client legal entity · Recommended First legal entity
-- Start date · initial term (90 days) · monthly fee ($7,500) · total initial value ($22,500)
-- Payment terms (invoice monthly in advance; first payment before onboarding)
+- Start date · initial term (90 days) · total engagement value ($7,500) · billed $2,500 × 3 — at signing, day 30, day 60 (the active pricing policy, `docs/15-pricing-policy.md`; any other terms need a recorded founder override reason)
+- Payment terms (first installment at signing, before onboarding; one 90-day engagement, not three cancellable months)
 - Scope (AI recommendation diagnosis, evidence improvements, high-confidence implementation, monitoring, remeasurement) and explicit exclusions (SEO, redesign, ads, social, CRM, general marketing)
 - Client responsibilities (access, approvals, timely input)
 - **No ranking / visibility guarantee** — the promise is rigorous baseline, evidence-backed diagnosis, documented execution, remeasurement
