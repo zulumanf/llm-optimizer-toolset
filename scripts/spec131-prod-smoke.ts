@@ -145,7 +145,7 @@ async function main() {
   const cleanup: (() => Promise<void>)[] = [];
   try {
     // ---------------------------------------------------- commercial gates
-    const signed = unwrap(await eng.signClient(admin, { prospectId: prospect.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, scopeSummary: SCOPE, primaryContactName: `${TAG} Contact` }));
+    const signed = unwrap(await eng.signClient(admin, { prospectId: prospect.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, priceOverrideReason: "test fixture terms (spec 135)", scopeSummary: SCOPE, primaryContactName: `${TAG} Contact` }));
     const e0 = (await eng.engagementForProject(signed.projectId))!;
     // No delivered Touch 1 on the fixture, so signing carried no rival in; the
     // operator confirms the competitor set before freezing (checklist STEP 5).
@@ -172,9 +172,9 @@ async function main() {
     unwrap(await eng.confirmMarketDefinition(admin, { engagementId: e0.id, definition: `${TAG} sandbox boundary: the fixture market node and its nested node only; nothing real.` }));
     unwrap(await eng.activateExclusivity(admin, { engagementId: e0.id }));
     expect("exclusivity: first client active in test market", (await eng.getEngagement(e0.id))!.exclusivityStatus === "active", "");
-    expect("exclusivity: second live engagement in same market refused", refused(await eng.signClient(admin, { prospectId: rivalProspect.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, scopeSummary: SCOPE })), "");
-    expect("exclusivity: nested market refused", refused(await eng.signClient(admin, { prospectId: nestedProspect.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, scopeSummary: SCOPE })), "");
-    const unrelatedSigned = await eng.signClient(admin, { prospectId: unrelatedProspect.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, scopeSummary: SCOPE });
+    expect("exclusivity: second live engagement in same market refused", refused(await eng.signClient(admin, { prospectId: rivalProspect.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, priceOverrideReason: "test fixture terms (spec 135)", scopeSummary: SCOPE })), "");
+    expect("exclusivity: nested market refused", refused(await eng.signClient(admin, { prospectId: nestedProspect.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, priceOverrideReason: "test fixture terms (spec 135)", scopeSummary: SCOPE })), "");
+    const unrelatedSigned = await eng.signClient(admin, { prospectId: unrelatedProspect.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, priceOverrideReason: "test fixture terms (spec 135)", scopeSummary: SCOPE });
     expect("exclusivity: unrelated market remains eligible", unrelatedSigned.ok, unrelatedSigned.ok ? "" : unrelatedSigned.error.message);
     const ownGate = await gate.exclusivityGateForProspect(prospect.prospectId);
     const rivalGate = await gate.exclusivityGateForProspect(rivalProspect.prospectId);

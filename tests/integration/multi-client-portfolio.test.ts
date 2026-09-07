@@ -120,7 +120,7 @@ describe.skipIf(!TEST_URL)("multi-client portfolio QA (integration)", () => {
 
   /** Sign → contract → payment → onboarding → market def → exclusivity → competitor → baseline. */
   async function activate(c: Awaited<ReturnType<typeof client>>, startsOn = today(), rationale?: string) {
-    const signed = unwrap(await eng.signClient(admin, { prospectId: c.prospectId, startsOn, monthlyFeeUsd: 7500, totalValueUsd: 22500, scopeSummary: SCOPE, primaryContactName: `${c.label} Owner`, conflictOverrideRationale: rationale }));
+    const signed = unwrap(await eng.signClient(admin, { prospectId: c.prospectId, startsOn, monthlyFeeUsd: 7500, totalValueUsd: 22500, priceOverrideReason: "test fixture terms (spec 135)", scopeSummary: SCOPE, primaryContactName: `${c.label} Owner`, conflictOverrideRationale: rationale }));
     const e = (await eng.engagementForProject(signed.projectId))!;
     unwrap(await eng.recordContractStatus(admin, { engagementId: e.id, status: "signed", contractRef: `${c.label} ref` }));
     unwrap(await eng.recordBillingEvent(admin, { engagementId: e.id, kind: "invoice_created", amountUsd: 7500, dueDate: startsOn, externalInvoiceId: `${c.label}-1` }));
@@ -161,13 +161,13 @@ describe.skipIf(!TEST_URL)("multi-client portfolio QA (integration)", () => {
     // CLIENT B — sibling city in the same metro: a "possible" overlap that the
     // founder confirms as a distinct territory (written rationale, audited).
     const bNoRationale = await client("B", cityB.marketId);
-    const bBlocked = await eng.signClient(admin, { prospectId: bNoRationale.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, scopeSummary: SCOPE });
+    const bBlocked = await eng.signClient(admin, { prospectId: bNoRationale.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, priceOverrideReason: "test fixture terms (spec 135)", scopeSummary: SCOPE });
     expect(bBlocked.ok).toBe(false);
     if (!bBlocked.ok) expect(bBlocked.error.message).toMatch(/conflict/i);
     const B = await activate(bNoRationale, today(), "Founder confirmed: City B is a distinct territory from City A within the same metro.");
     // CLIENT C — nested inside City A: refused at signing.
     const C = await client("C", nestedA.marketId);
-    const cSigned = await eng.signClient(admin, { prospectId: C.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, scopeSummary: SCOPE });
+    const cSigned = await eng.signClient(admin, { prospectId: C.prospectId, startsOn: today(), monthlyFeeUsd: 1, totalValueUsd: 3, priceOverrideReason: "test fixture terms (spec 135)", scopeSummary: SCOPE });
     expect(cSigned.ok).toBe(false);
     // Different, unrelated market (same brokerage affiliation is irrelevant to territory): allowed.
     const D = await activate(await client("D", cityD.marketId));

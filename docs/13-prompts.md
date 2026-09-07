@@ -174,8 +174,19 @@ The wrapper (`discoveryPrompt`) asks the model for *the pages it consulted*,
 not for an answer: what this feature stores is citations, and a model answering
 fluently from memory with no citations has produced nothing we can keep.
 
+### pricing_reply_v1 — the founder's answer to "what does it cost?" (spec 135)
+
+Rendered by `pricingReplyLines()` from the ACTIVE policy in
+`lib/pricing/policy.ts`; sent only after an explicit price request or
+commercial interest, never in a cold touch.
+
+> The 90-day engagement is $7,500.
+> That includes the baseline, implementation of the highest-confidence changes, monitoring, and the comparable rerun at the end.
+> We bill it as $2,500 per month over the 90 days.
+
 | Date | Template | Change |
 |---|---|---|
+| 2026-09-07 | pricing_reply_v1 | Spec 135: one offer, total first, billing second, no discount framing. Report offer section now reads the active policy (`first_client_90d_v1`); Ryan's snapshot keeps `founder_monthly_7500_v0` text. |
 | 2026-07-30 | external-discovery-v1 | Initial. |
 
 ## Workspace assistant (spec 044)
