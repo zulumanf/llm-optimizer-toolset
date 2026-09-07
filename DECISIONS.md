@@ -3009,3 +3009,26 @@ a fact pack the portfolio service assembles; findings are P2 advisory events; th
 sends. (5) Execution QA gates apply only to projects with a live engagement so measurement-only
 projects keep the lighter task flow. (6) Billing UNKNOWN is a first-class state; it never
 reads as current.
+
+## 2026-09-06 — The Analyze tab is an acquisition control panel over one facts bundle (spec 133)
+
+The tab used to pool every cohort into audit-view and open-signal rates that
+belonged to the audit-link era. It now derives everything from one read-only
+facts bundle (`lib/prospects/acquisition-facts.ts`) through one pure function
+(`lib/prospects/acquisition.ts`), so the hero rate, the funnel, supply,
+evidence QA and the bottleneck call cannot disagree on a denominator.
+Decisions baked in: Touch 1 identity follows the draft chain to the frozen
+mismatch snapshot (rewrites carry no template version) and EXCLUDES founder
+replies, report deliveries and corrections even when their chain reaches a
+snapshot — the learning-log view counts Ryan Ogle's report reply as a second
+Touch 1, so the panel filters at read time rather than rewriting the view;
+reply classification is the latest insert-only row per message (Steve Wall's
+mis-recorded unsubscribe loses to the later positive row); Era 1 and Era 2
+are never pooled; QA131 fixtures are excluded by name prefix rather than
+deleted; the status label, runway and bottleneck are fixed rules over named
+constants, never a score; "dominant AI competitor" for the ICP hypothesis
+means top 3 by recommended count in the market run (Josh May is #2 behind
+Brace Homes after the correction); opens stay under Diagnostics. Gmail health
+trusts a successful transmit inside 72 h because the connector status can read
+expired while refresh still works. No acquisition rule, template, cadence,
+threshold or price changed.

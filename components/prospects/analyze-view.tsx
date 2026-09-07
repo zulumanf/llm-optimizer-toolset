@@ -1,9 +1,11 @@
 /**
- * Analyze tab (spec 101): is the outbound machine getting better, and why?
- * Scorecard → funnel → over time → cohorts → touches → strategy → subjects →
- * segments → timing → economics → insights. Every number comes from
- * lib/prospects/analytics.ts — the same functions Operate uses. Server
- * component; tables and one restrained SVG chart, nothing decorative.
+ * Cohort diagnostics (spec 101), now the Diagnostics drawer under the
+ * acquisition control panel (components/prospects/acquisition-panel.tsx):
+ * per-prospect derivations pooled across eras — scorecard → funnel → over
+ * time → cohorts → touches → strategy → subjects → segments → timing →
+ * economics → insights. Every number comes from lib/prospects/analytics.ts,
+ * the same functions Operate uses. Never the hero view: opens and audit
+ * views live here by design.
  */
 import Link from "next/link";
 import { Info } from "lucide-react";
@@ -221,7 +223,7 @@ export function AnalyzeView({
 
   return (
     <>
-      <Section title="Performance" description={<>{cohortName} · {m.sent} sent · {m.delivered} delivered <Help text="Prospect-unique rates. Delivery = sent minus bounce-suppressed recipients. All view/reply/meeting rates use delivered prospects as the denominator; engaged and multiple-session rates use audit viewers." /></>}>
+      <Section title="Cohort diagnostics" description={<>{cohortName} · {m.sent} sent · {m.delivered} delivered <Help text="Prospect-unique rates. Delivery = sent minus bounce-suppressed recipients. All view/reply/meeting rates use delivered prospects as the denominator; engaged and multiple-session rates use audit viewers." /></>}>
         <StatGrid columns={4}>
           {card("Delivery", m.delivery)}
           {card("Open signal", m.openSignal, OPEN_SIGNAL_CAVEAT)}
