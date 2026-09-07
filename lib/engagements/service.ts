@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { sql } from "@/db/client";
 import type { TransactionSql } from "@/db/client";
+import { resolveEngagementPricing } from "@/lib/pricing/policy";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany } from "@/db/companies";
 import { listComparisonCompanies } from "@/db/competitors";
@@ -83,6 +84,10 @@ export interface EngagementRow {
   totalValueUsd: number;
   billingCadence: string;
   paymentTerms: string;
+  /** Spec 135: the pricing policy signed under; null for pre-policy rows. */
+  pricingPolicyVersion: string | null;
+  defaultTotalValueUsd: number | null;
+  priceOverrideReason: string | null;
   contractStatus: ContractStatus;
   contractRef: string | null;
   contractSignedAt: Date | null;
@@ -126,6 +131,9 @@ export function mapEngagementRow(r: Record<string, unknown>): EngagementRow {
     totalValueUsd: Number(r.totalValueUsd),
     billingCadence: r.billingCadence as string,
     paymentTerms: (r.paymentTerms as string) ?? "",
+    pricingPolicyVersion: (r.pricingPolicyVersion as string | null) ?? null,
+    defaultTotalValueUsd: r.defaultTotalValueUsd === null || r.defaultTotalValueUsd === undefined ? null : Number(r.defaultTotalValueUsd),
+    priceOverrideReason: (r.priceOverrideReason as string | null) ?? null,
     contractStatus: r.contractStatus as ContractStatus,
     contractRef: (r.contractRef as string | null) ?? null,
     contractSignedAt: (r.contractSignedAt as Date | null) ?? null,
@@ -260,6 +268,8 @@ const signSchema = z.object({
   totalValueUsd: z.number().nonnegative(),
   billingCadence: z.enum(BILLING_CADENCES).default("monthly"),
   paymentTerms: z.string().trim().max(300).default(""),
+  /** Spec 135: required whenever total or term differ from the active policy. */
+  priceOverrideReason: z.string().trim().max(1000).optional(),
   scopeSummary: z.string().trim().min(20).max(4000),
   scopeExclusions: z.string().trim().max(4000).default(""),
   primaryContactId: idSchema.nullable().optional(),
@@ -335,6 +345,14 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
       });
       if (!moved.ok) return moved;
     }
+    // Spec 135: terms come from the active pricing policy; anything else is
+    // an explicit founder override recorded next to the default.
+    let pricing;
+    try {
+      pricing = resolveEngagementPricing({ totalValueUsd: input.totalValueUsd, termDays: input.termDays, priceOverrideReason: input.priceOverrideReason });
+    } catch (err) {
+      return fail(err);
+    }
     let projectId = prospect.promotedProjectId as string | null;
     let promoted = false;
     if (!projectId) {
@@ -384,12 +402,14 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
         insert into client_engagements (
           project_id, prospect_id, market_id, exclusivity_agreement_id, primary_contact_id,
           primary_contact_name, owner_id, starts_on, ends_on, monthly_fee_usd, total_value_usd,
-          billing_cadence, payment_terms, scope_summary, scope_exclusions, renewal_review_on, created_by
+          billing_cadence, payment_terms, scope_summary, scope_exclusions, renewal_review_on, created_by,
+          pricing_policy_version, default_total_value_usd, price_override_reason
         ) values (
           ${projectId}, ${prospect.id}, ${prospect.marketId}, ${agreement.data.agreementId},
           ${input.primaryContactId ?? null}, ${contactName}, ${user.id}, ${input.startsOn}, ${dates.endsOn},
           ${input.monthlyFeeUsd}, ${input.totalValueUsd}, ${input.billingCadence}, ${input.paymentTerms},
-          ${input.scopeSummary}, ${input.scopeExclusions}, ${dates.renewalReviewOn}, ${user.id}
+          ${input.scopeSummary}, ${input.scopeExclusions}, ${dates.renewalReviewOn}, ${user.id},
+          ${pricing.policyVersion}, ${pricing.defaultTotalValueUsd}, ${pricing.overrideReason}
         ) returning id
       `;
       const id = row!.id as string;

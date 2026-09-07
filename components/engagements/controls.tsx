@@ -1,5 +1,6 @@
 "use client";
 
+import { activePricingPolicy, billingLabel, offerLabel, paymentTermsDefault } from "@/lib/pricing/policy";
 import { useState, useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -144,10 +145,15 @@ export function ActionButton({
 export function SignClientDialog({ projectId, prospectId, defaultStart }: { projectId: string; prospectId: string | null; defaultStart: string }) {
   const [pid, setPid] = useState(prospectId ?? "");
   const [startsOn, setStartsOn] = useState(defaultStart);
-  const [termDays, setTermDays] = useState("90");
-  const [monthly, setMonthly] = useState("7500");
-  const [total, setTotal] = useState("22500");
-  const [paymentTerms, setPaymentTerms] = useState("Invoice monthly in advance; first payment before onboarding.");
+  // Spec 135: defaults are the active pricing policy; changing total or term
+  // needs a founder override reason (no silent discounting).
+  const policy = activePricingPolicy();
+  const [termDays, setTermDays] = useState(String(policy.termDays));
+  const [monthly, setMonthly] = useState(String(policy.billing.installmentUsd));
+  const [total, setTotal] = useState(String(policy.totalFeeUsd));
+  const [paymentTerms, setPaymentTerms] = useState(paymentTermsDefault(policy));
+  const [priceOverride, setPriceOverride] = useState("");
+  const termsDiffer = Number(total) !== policy.totalFeeUsd || Number(termDays) !== policy.termDays;
   const [scope, setScope] = useState(
     "AI recommendation diagnosis over the frozen baseline question set; evidence improvements to owned pages and controlled profiles; implementation of high-confidence changes (with client approval where public); monitoring on a stated cadence; remeasurement on the same instrument at mid-term and end of term."
   );
@@ -163,6 +169,7 @@ export function SignClientDialog({ projectId, prospectId, defaultStart }: { proj
           monthlyFeeUsd: Number(monthly),
           totalValueUsd: Number(total),
           paymentTerms,
+          priceOverrideReason: priceOverride.trim() || undefined,
           scopeSummary: scope,
           scopeExclusions: exclusions,
           conflictOverrideRationale: override.trim() || undefined,
@@ -173,9 +180,13 @@ export function SignClientDialog({ projectId, prospectId, defaultStart }: { proj
       <div className="grid grid-cols-2 gap-3">
         <Field label="Starts on"><Input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} /></Field>
         <Field label="Term (days)"><Input type="number" value={termDays} onChange={(e) => setTermDays(e.target.value)} /></Field>
-        <Field label="Monthly fee (USD)"><Input type="number" value={monthly} onChange={(e) => setMonthly(e.target.value)} /></Field>
-        <Field label="Total initial value (USD)"><Input type="number" value={total} onChange={(e) => setTotal(e.target.value)} /></Field>
+        <Field label="Installment (USD)"><Input type="number" value={monthly} onChange={(e) => setMonthly(e.target.value)} /></Field>
+        <Field label="Total engagement value (USD)"><Input type="number" value={total} onChange={(e) => setTotal(e.target.value)} /></Field>
       </div>
+      <p className="text-xs text-muted-foreground">Active offer: {policy.offerName} · {offerLabel(policy)} · billed {billingLabel(policy)} · {policy.version}</p>
+      {termsDiffer && (
+        <Field label="Founder price override reason (required — terms differ from the active offer)"><Input value={priceOverride} onChange={(e) => setPriceOverride(e.target.value)} /></Field>
+      )}
       <Field label="Payment terms"><Input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} /></Field>
       <Field label="Scope (what the fee buys)"><Textarea rows={4} value={scope} onChange={(e) => setScope(e.target.value)} /></Field>
       <Field label="Explicitly out of scope"><Textarea rows={2} value={exclusions} onChange={(e) => setExclusions(e.target.value)} /></Field>

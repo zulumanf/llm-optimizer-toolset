@@ -7,6 +7,7 @@
  * report views sit under Diagnostics, never as hero metrics. Server
  * component: tables and labels, no charts.
  */
+import type { PricingLearning } from "@/lib/pricing/quotes";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -77,7 +78,7 @@ function CutTable({ rows, first }: { rows: CutRow[]; first: string }) {
   );
 }
 
-export function AcquisitionPanelView({ panel: p, diagnostics }: { panel: AcquisitionPanel; diagnostics?: React.ReactNode }) {
+export function AcquisitionPanelView({ panel: p, diagnostics, pricing }: { panel: AcquisitionPanel; diagnostics?: React.ReactNode; pricing?: PricingLearning }) {
   const h = p.hero;
   const runway = h.runwayDays === null ? "—" : h.runwayDays === 0 ? "0 days · supply exhausted" : `~${h.runwayDays} sending day${h.runwayDays === 1 ? "" : "s"}`;
   const integrityAttention = p.evidence.alert === "ATTENTION REQUIRED";
@@ -431,6 +432,57 @@ export function AcquisitionPanelView({ panel: p, diagnostics }: { panel: Acquisi
           </StatGrid>
         </Section>
       </div>
+
+      {/* ===================== 11b. pricing learning (spec 135) */}
+      {pricing && (
+        <Section title="Pricing learning" description="Stated responses to real quotes only — never opens. Revenue is payments received; CAC and ARPU stay N/A until clients exist. Fixtures excluded.">
+          <p className="text-sm">
+            <span className="font-medium">Active offer</span> · {pricing.activeOffer.offerName} · {pricing.activeOffer.price} · billed {pricing.activeOffer.billing} · <span className="text-muted-foreground">{pricing.activeOffer.version}</span>
+          </p>
+          <StatGrid columns={4}>
+            <Stat label="Real pricing conversations" value={String(pricing.realConversations)} />
+            <Stat label="Offers presented" value={String(pricing.offersPresented)} />
+            <Stat label="Accepted" value={String(pricing.accepted)} />
+            <Stat label="Declined on price" value={String(pricing.declinedOnPrice)} />
+            <Stat label="DIY preference" value={String(pricing.diyPreference)} />
+            <Stat label="Clients won" value={String(pricing.clientsWon)} />
+            <Stat label="Payments received" value={usd(pricing.paymentsReceivedUsd)} />
+            <Stat label="CAC · ARPU" value={`${usd(pricing.cacUsd)} · ${usd(pricing.arpuUsd)}`} hint={pricing.clientsWon === 0 ? "no paying client yet" : undefined} />
+          </StatGrid>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr><th className="pr-3">Prospect</th><th className="pr-3">Market</th><th className="pr-3">Price</th><th className="pr-3">Term</th><th className="pr-3">Version</th><th className="pr-3">Response</th><th className="pr-3">Objection</th><th>Outcome</th></tr>
+              </thead>
+              <tbody>
+                {pricing.conversations.length === 0 && (
+                  <tr><td colSpan={8} className="py-2 text-muted-foreground">No real pricing conversation recorded yet.</td></tr>
+                )}
+                {pricing.conversations.map((c) => (
+                  <tr key={c.quoteId} className="border-t">
+                    <td className="py-1 pr-3">{c.prospect}</td>
+                    <td className="pr-3 text-muted-foreground">{c.market}</td>
+                    <td className="pr-3 tabular-nums">{c.priceQuoted}</td>
+                    <td className="pr-3 tabular-nums">{c.termDays} days</td>
+                    <td className="pr-3 text-muted-foreground">{c.policyVersion}</td>
+                    <td className="pr-3">{c.response}</td>
+                    <td className="pr-3">{c.objections.length ? c.objections.join(", ") : "—"}{c.preferredSolution ? ` · ${c.preferredSolution}` : ""}</td>
+                    <td>{c.outcome}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+            {pricing.milestones.map((m) => (
+              <div key={m.key} className="flex gap-2">
+                <dt className="shrink-0 text-muted-foreground">{m.label}</dt>
+                <dd className="tabular-nums">{m.current} / {m.threshold}{m.reached ? " · REVIEW DUE (founder decides)" : ""}</dd>
+              </div>
+            ))}
+          </dl>
+        </Section>
+      )}
 
       {/* ===================== 12. next decision point */}
       <Section title="Next decision point" description="No strategy change before the decision sample. Frozen items are constants in code; changing one is a reviewed diff.">
