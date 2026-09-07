@@ -21,7 +21,6 @@ import {
   ACQUISITION_SAMPLE,
   BOUNCE_ALERT_RATE,
   DECISION_SAMPLE_TARGET,
-  ENGAGEMENT_OFFER,
   FOLLOWUP_CADENCE_BUSINESS_DAYS,
   FOLLOWUP_TEMPLATE_VERSIONS,
   GMAIL_DAILY_SEND_CAP,
@@ -36,6 +35,7 @@ import {
   type ProspectStage,
   type ReplyClassification,
 } from "@/lib/prospects/constants";
+import { activePricingPolicy, offerLabel, billingLabel } from "@/lib/pricing/policy";
 import { addBusinessDays, isBusinessDay, wallClock } from "@/lib/prospects/business-days";
 import { OPERATOR_TIMEZONE } from "@/lib/prospects/intent";
 import { rate, SAMPLE, type Rate } from "@/lib/prospects/analytics";
@@ -677,7 +677,7 @@ export function deriveAcquisition(f: AcquisitionFacts, now: Date): AcquisitionPa
       const lastReply = (humanByProspect.get(id) ?? []).at(-1)?.receivedAt ?? null;
       const lastContactAt = [o.lastSendAt, lastReply].filter((d): d is Date => d !== null).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
       const offerStatus = offerIds.has(id)
-        ? `Offer presented · ${usd(ENGAGEMENT_OFFER.monthlyUsd)}/mo × ${ENGAGEMENT_OFFER.initialMonths}`
+        ? `Offer presented · ${offerLabel(activePricingPolicy())}`
         : pricingIds.has(id)
           ? "Pricing requested — not yet answered"
           : "No pricing discussed";
@@ -891,7 +891,7 @@ export function deriveAcquisition(f: AcquisitionFacts, now: Date): AcquisitionPa
   // ---------------------------------------------------------- economics
   const spend = f.benchmarkSpendUsd;
   const per = (n: number): number | null => (spend === null || n === 0 ? null : Math.round((spend / n) * 100) / 100);
-  const engagementValue = ENGAGEMENT_OFFER.monthlyUsd * ENGAGEMENT_OFFER.initialMonths;
+  const engagementValue = activePricingPolicy().totalFeeUsd;
   const economics: Economics = {
     spendUsd: spend,
     perT1Ready: per(t1All.length + inventory),
@@ -923,7 +923,7 @@ export function deriveAcquisition(f: AcquisitionFacts, now: Date): AcquisitionPa
       { label: "T2 / T3 copy", value: `${FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement.replace(/_no_engagement.*/, "")} v2 branches` },
       { label: "CTA", value: "reply-only; report on request" },
       { label: "Cadence", value: `T2 +${FOLLOWUP_CADENCE_BUSINESS_DAYS[2]} · T3 +${FOLLOWUP_CADENCE_BUSINESS_DAYS[3]} business days` },
-      { label: "Pricing", value: `${usd(ENGAGEMENT_OFFER.monthlyUsd)}/mo × ${ENGAGEMENT_OFFER.initialMonths}` },
+      { label: "Pricing", value: `${offerLabel(activePricingPolicy())} · ${billingLabel(activePricingPolicy())} · ${activePricingPolicy().version}` },
       { label: "Thresholds", value: `gap ≥ ${MISMATCH_THRESHOLDS.minRecommendationGap} · ratio ≤ ${MISMATCH_THRESHOLDS.maxCompetitorProductionRatio} · benchmark ≤ ${MISMATCH_THRESHOLDS.maxBenchmarkAgeDays}d` },
       { label: "Daily cap", value: `${GMAIL_DAILY_SEND_CAP} / trailing 24h` },
     ],

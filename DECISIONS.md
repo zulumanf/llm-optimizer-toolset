@@ -3054,3 +3054,24 @@ validate exactly as before and then ride the exchange, so nothing already sent
 needs resending. Cold T1/T2/T3 templates are untouched; only the spec-129
 report delivery now links to the invitation, and its HTML part labels it
 "Private report for <business>" while the text part keeps the full URL.
+
+## 2026-09-07 — Spec 135: one versioned pricing policy; quotes are events; history is immutable
+
+The default offer for the first three paying clients is `first_client_90d_v1`:
+$7,500 total for a 90-day engagement, billed $2,500 × 3 (at signing, day 30,
+day 60), one entity, one founder-confirmed market, exclusivity for the term.
+Why: we are pre-proof (no paying client, no before/after, no attributable
+lead), so we price for proof, delivery learning, case studies and
+willingness-to-pay learning — not as if ROI were established. Ryan Ogle's
+2026-09-05 quote ($7,500/month × 3 = $22,500) is preserved verbatim as
+`founder_monthly_7500_v0` (retired) with his decline recorded as
+PRICE_TOO_HIGH + PREFERS_DIY; it is the evidence, not an error. Policies live
+in code (like the model registry) so a price change is a reviewed diff;
+quotes (`pricing_quotes`) and engagements carry the version they were made
+under, so raising prices later never rewrites what anyone was told. The
+report's offer section freezes the active policy at publish. Engagement terms
+that differ from the policy require a founder override reason stored next to
+the default — no silent discounting, no price inferred from wealth, market
+size or eagerness. Not built: tiers, a DIY/sprint offer (N=1), market price
+tables, Stripe, calculators. Customer-facing copy calls it the current offer,
+never a discount, pilot, beta or founding price.

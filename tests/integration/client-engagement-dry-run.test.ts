@@ -115,7 +115,7 @@ describe.skipIf(!TEST_URL)("client engagement dry run (integration)", () => {
         monthlyFeeUsd: 7500,
         totalValueUsd: 22500,
         paymentTerms: "Invoice monthly in advance; first payment before onboarding.",
-        scopeSummary: SCOPE,
+        priceOverrideReason: "test fixture terms (spec 135)", scopeSummary: SCOPE,
         scopeExclusions: "No SEO, redesign, ads, social, CRM.",
         primaryContactName: "Ana Rivera",
       })
@@ -137,7 +137,7 @@ describe.skipIf(!TEST_URL)("client engagement dry run (integration)", () => {
     const rivalProspect = unwrap(
       await m.svc.createProspect(operator, { launchId: f.launchId, businessName: "Acme", prospectType: "team", companyId: f.rivalId })
     );
-    const second = await eng.signClient(operator, { prospectId: rivalProspect.prospectId, startsOn: today, monthlyFeeUsd: 5000, totalValueUsd: 15000, scopeSummary: SCOPE });
+    const second = await eng.signClient(operator, { prospectId: rivalProspect.prospectId, startsOn: today, monthlyFeeUsd: 5000, totalValueUsd: 15000, priceOverrideReason: "test fixture terms (spec 135)", scopeSummary: SCOPE });
     expect(second.ok).toBe(false);
     if (!second.ok) expect(second.error.message).toMatch(/One retained client per market/);
 
@@ -317,7 +317,7 @@ describe.skipIf(!TEST_URL)("client engagement dry run (integration)", () => {
   it("renewal opens a new signed term with baseline lineage and keeps the market protected", async () => {
     const f = await ryanShapedFixture();
     const today = new Date().toISOString().slice(0, 10);
-    const signed = unwrap(await eng.signClient(operator, { prospectId: f.prospectId, startsOn: today, monthlyFeeUsd: 7500, totalValueUsd: 22500, scopeSummary: SCOPE }));
+    const signed = unwrap(await eng.signClient(operator, { prospectId: f.prospectId, startsOn: today, monthlyFeeUsd: 7500, totalValueUsd: 22500, priceOverrideReason: "test fixture terms (spec 135)", scopeSummary: SCOPE }));
     const e0 = (await eng.engagementForProject(signed.projectId))!;
     const renewed = unwrap(await eng.renewEngagement(admin, { engagementId: e0.id, monthlyFeeUsd: 7500, totalValueUsd: 22500 }));
     const next = (await eng.getEngagement(renewed.engagementId))!;
@@ -332,7 +332,7 @@ describe.skipIf(!TEST_URL)("client engagement dry run (integration)", () => {
   it("the send gate refuses a competing prospect's draft once exclusivity is active", async () => {
     const f = await ryanShapedFixture();
     const today = new Date().toISOString().slice(0, 10);
-    const signed = unwrap(await eng.signClient(operator, { prospectId: f.prospectId, startsOn: today, monthlyFeeUsd: 7500, totalValueUsd: 22500, scopeSummary: SCOPE }));
+    const signed = unwrap(await eng.signClient(operator, { prospectId: f.prospectId, startsOn: today, monthlyFeeUsd: 7500, totalValueUsd: 22500, priceOverrideReason: "test fixture terms (spec 135)", scopeSummary: SCOPE }));
     const e0 = (await eng.engagementForProject(signed.projectId))!;
     unwrap(await eng.recordContractStatus(operator, { engagementId: e0.id, status: "signed", contractRef: "ref" }));
     unwrap(await eng.startOnboarding(admin, { engagementId: e0.id, overrideReason: "Founder: invoice net-7, kickoff Monday." }));

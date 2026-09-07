@@ -84,7 +84,7 @@ Canonical sequence is `first-client-go-live-checklist.md`. This table adds Ryan'
 
 | # | Step | Human action | System action | Pass | Fail |
 |---|---|---|---|---|---|
-| 1 | Commercial state | Confirm signed agreement (entity Blu House Properties / eXp Realty as named in the paper), $7,500/mo, 90 days, $22,500, payment terms; record signed + contract reference; record invoice and payment with the same invoice id | Engagement row; `client_engagements.contract_status=signed`; `billing_events` rows | Engagement page shows contract signed with reference and payments received $7,500 | Any of: no reference, no payment row → stay `signed`, do not start onboarding |
+| 1 | Commercial state | Confirm signed agreement (client entity as named in the paper) on the ACTIVE pricing policy — $7,500 total, 90 days, billed $2,500 × 3 (docs/15-pricing-policy.md; any other terms need a recorded founder override) — and payment terms; record signed + contract reference; record invoice and payment with the same invoice id | Engagement row; `client_engagements.contract_status=signed`; `billing_events` rows | Engagement page shows contract signed with reference and payments received $7,500 | Any of: no reference, no payment row → stay `signed`, do not start onboarding |
 | 2 | Market boundary | Decide per PART 3 and write it in words | `confirmMarketDefinition` stamps actor + time | Definition text present on the engagement | Not written → exclusivity refuses to activate |
 | 3 | Conflict check | Read the "Market exclusivity" section | Signing already refused if another live client held the market; activation re-runs `detectConflicts` | No other live agreement overlaps Grand Rapids | Overlap → stop; founder decides (override requires written reason) |
 | 4 | Promote prospect | Press "Record signed engagement" with prospect id `ba4860d6…`, start date, terms, scope from PART 13 | Stage → contracted; project created (spec 057); Josh May carried in as competitor; midpoint/final slots planned | Prospect shows `contracted` and `promoted_project_id`; Competitors tab lists Josh May | Prospect not linked to company → refused (it is linked) |
@@ -300,7 +300,7 @@ APPROVE · REQUEST CHANGE · REJECT (reply with one word and any edits; I record
 
 ---
 
-## PART 13 — Scope boundary ($7,500/month)
+## PART 13 — Scope boundary ($7,500 / 90-day engagement — active pricing policy `first_client_90d_v1`)
 
 IN SCOPE
 - Measurement on the frozen 64-question instrument: baseline, early check, final remeasurement, comparability verdicts

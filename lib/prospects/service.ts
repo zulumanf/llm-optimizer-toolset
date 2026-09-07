@@ -115,6 +115,7 @@ import {} from "@/lib/prospects/audit-evidence";
 import { auditUrl, brandedAuditUrl, openPixelUrl } from "@/lib/prospects/urls";
 import { plainTextToTrackedHtml } from "@/lib/text/html";
 import { invitationLinkLabels } from "@/lib/prospects/report-access";
+import { recordQuoteFromSend } from "@/lib/pricing/quotes";
 import {
   auditLinkForProspect,
 } from "@/lib/prospects/links";
@@ -2625,6 +2626,12 @@ export async function sendProspectDraft(
         { draftId: draft.id, channel: channel.id },
         user.id
       );
+      // Spec 135: a sent body that states a policy's offer IS a quote —
+      // recorded with the policy version, never inferred later from copy.
+      await recordQuoteFromSend(tx, {
+        prospectId: draft.prospectId as string, draftId: draft.id as string, sendId, channel: channel.id,
+        body, sentAt: new Date(), userId: user.id,
+      });
       return { sendId, providerMessageId: dispatched.providerMessageId };
     });
     if ("refused" in result) {

@@ -10,7 +10,8 @@
  * filled.
  */
 import { sql } from "@/db/client";
-import { ENGAGEMENT_OFFER, FREEMAIL_DOMAINS, PRICING_REQUEST_RE } from "@/lib/prospects/constants";
+import { FREEMAIL_DOMAINS, PRICING_REQUEST_RE } from "@/lib/prospects/constants";
+import { activePricingPolicy, type PricingPolicy } from "@/lib/pricing/policy";
 import { CURRENT } from "@/lib/prospects/benchmark";
 import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
 import { deliveredTouch1, prospectEntityType } from "@/lib/prospects/followups";
@@ -113,6 +114,9 @@ export interface ReportOffer {
   includes: string[];
   commitment: string;
   promise: string;
+  /** Spec 135: the policy this section was built from — frozen with the
+   * snapshot. Absent on snapshots published before versioning (Ryan's). */
+  pricingPolicyVersion?: string;
 }
 
 export interface ReportCorrection {
@@ -427,17 +431,18 @@ export function changeFirstRows(i: {
   return rows.slice(0, 3);
 }
 
-/** Spec 130: the commercial section, deterministic over ENGAGEMENT_OFFER. */
-export function offerSection(): ReportOffer {
-  const usd = ENGAGEMENT_OFFER.monthlyUsd.toLocaleString("en-US");
-  const total = (ENGAGEMENT_OFFER.monthlyUsd * ENGAGEMENT_OFFER.initialMonths).toLocaleString("en-US");
+/** Spec 130/135: the commercial section, deterministic over the pricing
+ * policy active at publish. The version rides the snapshot; a later policy
+ * never reaches a delivered report. */
+export function offerSection(policy: PricingPolicy = activePricingPolicy()): ReportOffer {
   return {
     title: "Pricing",
-    price: `$${usd}/month for ${ENGAGEMENT_OFFER.initialMonths} months`,
-    total: `$${total} total initial engagement`,
-    includes: [...ENGAGEMENT_OFFER.includes],
-    commitment: `No long-term commitment after the initial ${ENGAGEMENT_OFFER.initialDays} days.`,
+    price: policy.customerFacing.price,
+    total: policy.customerFacing.billing,
+    includes: [...policy.includes],
+    commitment: policy.customerFacing.commitment,
     promise: "I can't promise a ranking. I can show you the before, what we changed, and whether the same test moved.",
+    pricingPolicyVersion: policy.version,
   };
 }
 
