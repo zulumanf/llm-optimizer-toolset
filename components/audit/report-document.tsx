@@ -1,10 +1,10 @@
 /**
- * Public prospect audit page (specs 032/045/048/093, rebuilt by spec 123).
- * The platform's only anonymous content surface: resolves a high-entropy
- * token to a published snapshot and renders nothing else. No auth call, no
- * live internal queries — internal notes cannot leak because they were
- * never put in the snapshot. Wrong, revoked, and expired tokens are
- * indistinguishable (all 404).
+ * The private report document (specs 032/045/048/093, rebuilt by spec 123;
+ * moved behind the clean URL by spec 134). Rendered only by /report/<slug>
+ * after the session check: it receives the audit id the session authorizes
+ * and renders that published snapshot and nothing else. No live internal
+ * queries — internal notes cannot leak because they were never put in the
+ * snapshot.
  *
  * Design: a simple, evidence-backed sales diagnostic (spec 123 round 2) —
  * NOT a benchmark report. A non-technical reader who scans only headings,
@@ -16,13 +16,12 @@
  * the collapsed proof. Presentation-only — renders any published snapshot,
  * old or new (every newer field is guarded).
  */
-import type { Metadata } from "next";
 import Link from "next/link";
 import { Newsreader } from "next/font/google";
 import { ChevronRight } from "lucide-react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { getAuditPageByToken } from "@/lib/prospects/service";
+import { getAuditPageById } from "@/lib/prospects/audits";
 import { EngagementBeacon } from "@/components/audit/engagement-beacon";
 import { MismatchReport } from "@/components/audit/mismatch-report";
 import {
@@ -50,11 +49,6 @@ import {
 } from "@/lib/evidence/link-health";
 
 const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500"], style: ["normal", "italic"] });
-
-export const metadata: Metadata = {
-  title: "AI Visibility Report",
-  robots: { index: false, follow: false },
-};
 
 /** In-table micro-bar: absolute 0–100 scale, neutral ink, empty track for
  * zero (never a fake minimum width — the empty track IS the finding).
@@ -178,32 +172,31 @@ function Drawer({
   );
 }
 
-export default async function ProspectAuditPage({
-  params,
-}: {
-  // The segment is [handle] so the branded sibling [handle]/[key] can
-  // coexist (Next.js requires one param name per level). For this legacy
-  // route the handle IS the 43-char access token; URLs are unchanged.
-  // linkKey is set by the branded sibling route (spec 076) so the view row
-  // records which emailed link brought the visit (spec 098 attribution).
-  params: Promise<{ handle: string; linkKey?: string; slug?: string }>;
-}) {
-  const { handle: token, linkKey, slug } = await params;
-  // Keep the reader on the branded link so the answers view is attributed
-  // to the same emailed key instead of landing as a bare-token "session".
-  const answersHref =
-    linkKey && slug ? `/audit/${slug}/${linkKey}/answers` : `/audit/${token}/answers`;
+/** What the clean route hands the document (spec 134): the audit the
+ * session authorizes — never a token — plus the session it renders under. */
+export interface ReportDocumentProps {
+  auditId: string;
+  reportSlug: string;
+  sessionId: string;
+  sessionInternal: boolean;
+  /** Branded-link key the session was minted from (spec 098 attribution). */
+  linkKey?: string | null;
+}
+
+export default async function ProspectAuditPage({ auditId, reportSlug, sessionId, sessionInternal, linkKey }: ReportDocumentProps) {
+  const answersHref = `/report/${reportSlug}/answers`;
   const hdrs = await headers();
   // Session read is only to LABEL the view (plan 3.6): an operator's QA
   // open must not count as prospect interest. Content still comes solely
   // from the snapshot; anonymous visitors take the same path as ever.
   const viewer = await getCurrentUserOrNull();
-  const page = await getAuditPageByToken(token, {
+  const page = await getAuditPageById(auditId, {
     ip: hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: hdrs.get("user-agent"),
-    internal: viewer !== null && isStaff(viewer),
+    internal: (viewer !== null && isStaff(viewer)) || sessionInternal,
     linkKey: linkKey ?? null,
     referrer: hdrs.get("referer"),
+    sessionId,
   });
   if (!page) notFound();
   const { snapshot, viewId } = page;
@@ -397,11 +390,13 @@ export default async function ProspectAuditPage({
           one opportunity line → the button. No methodology, no caveats —
           those live behind the anchor below the CTA. */}
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Private AI visibility report
+        Private AI recommendation report
       </p>
       <p className="mt-1 text-xs text-muted-foreground">
-        {snapshot.prospectName} · {snapshot.marketName}
+        Prepared for {snapshot.prospectName} · {snapshot.marketName}
+        {snapshot.preparedBy?.date ? ` · ${snapshot.preparedBy.date}` : ""}
       </p>
+      <p className="mt-1 text-xs text-muted-foreground">Private · Not publicly indexed</p>
       <h1
         className={`${serif.className} mt-4 max-w-[26ch] text-balance text-2xl font-medium tracking-tight`}
       >

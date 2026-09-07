@@ -52,7 +52,10 @@ export function MismatchReport({
           <p className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">Private AI recommendation report</p>
           <p className={`${serifClass} mt-6 text-2xl`}>{b.prospect.name}</p>
           <p className="text-sm text-muted-foreground">{snapshot.marketName}</p>
-          {snapshot.preparedBy && <p className="mt-3 text-xs text-muted-foreground">Prepared {snapshot.preparedBy.date} · Private · Prepared for {b.prospect.name}</p>}
+          <p className="mt-3 text-xs text-muted-foreground">
+            Prepared for {b.prospect.name}
+            {snapshot.preparedBy ? ` · ${snapshot.preparedBy.date}` : ""} · Private · Not publicly indexed
+          </p>
           {b.correction && (
             <p className="mt-4 max-w-[64ch] border-l-2 pl-3 text-sm leading-relaxed text-muted-foreground" data-signal-section="correction">
               {b.correction.note}

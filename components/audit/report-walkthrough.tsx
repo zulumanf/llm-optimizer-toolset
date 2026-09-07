@@ -3,31 +3,20 @@
  * records no audit view of its own. Plain slots in the prospect's zone,
  * one submit, confirmation inline; the pick is forwarded to the operator.
  */
-import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Newsreader } from "next/font/google";
 import { WalkthroughForm } from "@/components/audit/walkthrough-form";
-import { groupSlotsByDay, walkthroughContext, walkthroughSlots, WALKTHROUGH_MINUTES } from "@/lib/prospects/walkthrough";
+import { groupSlotsByDay, walkthroughContextForAudit, walkthroughSlots, WALKTHROUGH_MINUTES } from "@/lib/prospects/walkthrough";
 
 const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500"] });
 
-export const metadata: Metadata = {
-  title: "Pick a time",
-  robots: { index: false, follow: false, nocache: true },
-};
-export const dynamic = "force-dynamic";
-
-export default async function WalkthroughPage({
-  params,
-}: {
-  params: Promise<{ handle: string; linkKey?: string; slug?: string }>;
-}) {
-  const { handle: token, linkKey, slug } = await params;
-  const ctx = await walkthroughContext(token);
+export default async function WalkthroughPage({ auditId, reportSlug }: { auditId: string; reportSlug: string }) {
+  // Spec 134: rendered only under /report/<slug>/walkthrough after the session check.
+  const ctx = await walkthroughContextForAudit(auditId);
   if (!ctx) notFound();
   const days = groupSlotsByDay(walkthroughSlots(new Date(), ctx.timezone));
-  const backHref = linkKey && slug ? `/audit/${slug}/${linkKey}` : `/audit/${token}`;
+  const backHref = `/report/${reportSlug}`;
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
       <p className="text-xs font-medium uppercase tracking-[0.18em]">Recommended First</p>
@@ -37,7 +26,7 @@ export default async function WalkthroughPage({
         {WALKTHROUGH_MINUTES} minutes. Which parts of this I think matter, which I wouldn’t worry about, and the first two or three things I’d investigate for your team.
       </p>
       <div className="mt-8">
-        <WalkthroughForm token={token} days={days} />
+        <WalkthroughForm reportSlug={reportSlug} days={days} />
       </div>
       <p className="mt-10 text-xs text-muted-foreground">
         <Link href={backHref} className="underline underline-offset-2 hover:text-foreground">Back to the report</Link>

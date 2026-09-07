@@ -1,15 +1,16 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { submitWalkthroughRequest } from "@/app/audit/[handle]/walkthrough/actions";
+import { submitReportWalkthroughRequest } from "@/app/report/[slug]/walkthrough/actions";
 import type { WalkthroughSlot } from "@/lib/prospects/walkthrough";
 
 /** Pick a day, pick a time, one button. No account, no calendar. */
 export function WalkthroughForm({
-  token,
+  reportSlug,
   days,
 }: {
-  token: string;
+  /** The report's clean slug; the browser's session cookie is the credential (spec 134). */
+  reportSlug: string;
   days: { dayLabel: string; slots: WalkthroughSlot[] }[];
 }) {
   const [day, setDay] = useState(days[0]?.dayLabel ?? "");
@@ -41,7 +42,7 @@ export function WalkthroughForm({
         }
         setError(null);
         start(async () => {
-          const r = await submitWalkthroughRequest({ token, slotAt: slot, contact: contact || undefined, note: note || undefined });
+          const r = await submitReportWalkthroughRequest({ reportSlug, slotAt: slot, contact: contact || undefined, note: note || undefined });
           if (r.ok) setDone({ dayLabel: r.dayLabel, timeLabel: r.timeLabel });
           else setError(r.error);
         });
