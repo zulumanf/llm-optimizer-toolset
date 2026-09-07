@@ -42,7 +42,7 @@ export default async function TriggersPage() {
         }
       />
 
-      <AutomationNav current="triggers" />
+      <AutomationNav />
 
       <section className="mb-8">
         <h2 className="mb-2 text-lg font-medium">Schedules and thresholds</h2>

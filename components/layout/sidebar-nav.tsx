@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Inbox,
   ArrowLeft,
   Bot,
   Building2,
@@ -178,6 +179,18 @@ export function SidebarNav({
         <li>
           <NavLink href="/" active={pathname === "/"}>
             <LayoutDashboard className="size-4" /> Today
+          </NavLink>
+        </li>
+        <li>
+          {/* The unread badge used to sit on Today while the inbox lived at
+              /notifications, reachable only via the command palette — a nav
+              dead end (cleanup 2026-08-18). The badge now marks the page it
+              counts. */}
+          <NavLink
+            href="/notifications"
+            active={pathname.startsWith("/notifications")}
+          >
+            <Inbox className="size-4" /> Inbox
             <Badge count={unreadCount} />
           </NavLink>
         </li>

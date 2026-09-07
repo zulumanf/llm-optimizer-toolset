@@ -1,11 +1,9 @@
 "use client";
 
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CompanyFormDialog } from "@/components/companies/company-form-dialog";
+import { useAction } from "@/lib/hooks/use-action";
 import { archiveCompany } from "@/app/classification/actions";
 import type { Company } from "@/db/companies";
 
@@ -15,8 +13,7 @@ interface Props {
 }
 
 export function CompanyRowControls({ company, isAdmin }: Props) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { pending, run } = useAction();
 
   return (
     <div className="flex justify-end gap-0.5">
@@ -28,14 +25,9 @@ export function CompanyRowControls({ company, isAdmin }: Props) {
           aria-label="Archive company"
           disabled={pending}
           onClick={() =>
-            startTransition(async () => {
-              const result = await archiveCompany({ id: company.id });
-              if (result.ok) {
-                toast.success("Company archived.");
-                router.refresh();
-              } else {
-                toast.error(result.error.message);
-              }
+            run(() => archiveCompany({ id: company.id }), {
+              success: "Company archived.",
+              refresh: true,
             })
           }
         >

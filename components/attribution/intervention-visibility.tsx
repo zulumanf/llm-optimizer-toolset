@@ -1,9 +1,8 @@
 "use client";
 
-import { useTransition } from "react";
-import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAction } from "@/lib/hooks/use-action";
 import { setInterventionVisibility } from "@/app/attribution/actions";
 
 /**
@@ -18,24 +17,21 @@ export function InterventionVisibilityToggle({
   interventionId: string;
   clientVisible: boolean;
 }) {
-  const [pending, startTransition] = useTransition();
-  const toggle = () => {
-    startTransition(async () => {
-      const result = await setInterventionVisibility({
-        interventionId,
-        clientVisible: !clientVisible,
-      });
-      if (result.ok) {
-        toast.success(
-          result.data.clientVisible
+  const { pending, run } = useAction();
+  const toggle = () =>
+    run(
+      () =>
+        setInterventionVisibility({
+          interventionId,
+          clientVisible: !clientVisible,
+        }),
+      {
+        success: (data) =>
+          data.clientVisible
             ? "Now visible in the client portal."
-            : "Hidden from the client portal."
-        );
-      } else {
-        toast.error(result.error.message);
+            : "Hidden from the client portal.",
       }
-    });
-  };
+    );
   return (
     <Button size="sm" variant="ghost" onClick={toggle} disabled={pending}>
       {clientVisible ? (

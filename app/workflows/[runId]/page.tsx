@@ -5,22 +5,10 @@ import { workflowRunDetail } from "@/db/control-tower";
 import { Badge } from "@/components/ui/badge";
 import { ApprovalDecision } from "@/components/approvals/approval-decision";
 import { RunGraph } from "@/components/workflows/run-graph";
+import { StateBadge } from "@/components/automation/state-badge";
 
 export const dynamic = "force-dynamic";
 
-const NODE_VARIANT: Record<string, "default" | "destructive" | "outline" | "secondary"> = {
-  succeeded: "outline",
-  running: "default",
-  pending: "outline",
-  ready: "outline",
-  failed_retryable: "secondary",
-  failed_terminal: "destructive",
-  timed_out: "destructive",
-  awaiting_approval: "secondary",
-  awaiting_verification: "secondary",
-  skipped: "outline",
-  cancelled: "outline",
-};
 
 export default async function WorkflowRunPage({
   params,
@@ -134,9 +122,7 @@ export default async function WorkflowRunPage({
                       {node.fanKey || "—"}
                     </td>
                     <td className="p-2">
-                      <Badge variant={NODE_VARIANT[node.state] ?? "outline"}>
-                        {node.state.replace(/_/g, " ")}
-                      </Badge>
+                      <StateBadge state={node.state} />
                       {node.humanTouch && (
                         <span className="ml-1 text-xs text-muted-foreground">human</span>
                       )}

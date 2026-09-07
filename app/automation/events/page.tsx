@@ -38,7 +38,7 @@ export default async function EventsPage() {
         }
       />
 
-      <AutomationNav current="events" />
+      <AutomationNav />
 
       {deadLetters.length > 0 ? (
         <section className="mb-8">
