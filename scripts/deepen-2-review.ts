@@ -34,7 +34,7 @@ async function main(): Promise<void> {
     const nApproved = perLaunchApproved.get(c.launchId) ?? 0;
     const ok = !dup && !capped && !isBrokerage && nApproved < 8;
     console.log(`${ok ? "APPROVE" : dup ? "skip-dup" : capped ? "skip-cap" : isBrokerage ? "skip-brokerage" : "skip-limit"} | ${c.launchName} | ${c.businessName} | ${c.payload.brokerageAffiliation ?? "?"} | conf=${c.confidence}`);
-    if (!ok || !APPLY) { if (ok) approved++, perLaunchApproved.set(c.launchId, nApproved + 1); continue; }
+    if (!ok || !APPLY) { if (ok) { approved++; perLaunchApproved.set(c.launchId, nApproved + 1); } continue; }
     const r = await reviewDiscoveryCandidate(user, { candidateId: c.id, decision: "approve" });
     if (r.ok) { approved++; perLaunchApproved.set(c.launchId, nApproved + 1); }
     else console.log(`  FAIL: ${r.error.message}`);

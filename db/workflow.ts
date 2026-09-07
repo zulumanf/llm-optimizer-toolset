@@ -10,7 +10,6 @@
  */
 import { sql, type TransactionSql } from "@/db/client";
 import type {
-  EdgeCondition,
   NodeDefinition,
   NodeRun,
   NodeState,
