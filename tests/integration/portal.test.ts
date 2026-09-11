@@ -2,14 +2,12 @@
  * Spec 031: the portal is a strict subset. Internal-only tasks and draft
  * reports are filtered in SQL — provably absent from what a client reads.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const user: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000701",
@@ -35,6 +33,9 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     portal = await import("@/lib/portal/service");
     projectSvc = await import("@/lib/projects/service");
     companySvc = await import("@/lib/companies/service");
@@ -47,11 +48,6 @@ describe.skipIf(!TEST_URL)("client portal (integration)", () => {
     execute = await import("@/lib/runs/execute");
     parsing = await import("@/lib/parsing/service");
     scoring = await import("@/lib/scoring/compute");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   }, 180_000);
 

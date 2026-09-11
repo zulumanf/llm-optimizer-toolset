@@ -3,14 +3,13 @@
  * (TEST_DATABASE_URL, remapped to DATABASE_URL in tests/setup.ts).
  * Skipped entirely when TEST_DATABASE_URL is not configured.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
+import { migrate as runMigration } from "../../scripts/migrate";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const admin: CurrentUser = {
   id: "00000000-0000-4000-8000-0000000000aa",
@@ -25,11 +24,9 @@ const operator: CurrentUser = {
   role: "operator",
 };
 
-function migrate(direction: "up" | "down"): void {
-  execSync(`npx tsx scripts/migrate.ts ${direction} --db "${TEST_URL}"`, {
-    cwd: ROOT,
-    stdio: "pipe",
-  });
+async function migrate(direction: "up" | "down"): Promise<void> {
+  if (!TEST_URL) throw new Error("TEST_DATABASE_URL is not set");
+  await runMigration(direction, TEST_URL, () => undefined);
 }
 
 describe.skipIf(!TEST_URL)("projects (integration)", () => {
@@ -41,10 +38,11 @@ describe.skipIf(!TEST_URL)("projects (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     service = await import("@/lib/projects/service");
     ({ listProjects, getProject } = await import("@/db/projects"));
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    migrate("up");
     await seedTestActors(sql);
   });
 
@@ -192,24 +190,26 @@ describe.skipIf(!TEST_URL)("projects (integration)", () => {
     await expect(sql`delete from audit_log`).rejects.toThrow(/insert-only/);
   });
 
-  // Six migrations landed 2026-08-17 (075–080); a full down-and-up cycle
-  // now legitimately exceeds the default 60s on CI's runner.
+  // A full down-and-up cycle over 80+ migrations; runs in-process since the
+  // fixture cleanup, but keep a generous timeout for CI's runner.
   it("every migration rolls back and re-applies cleanly", async () => {
     const counted = await sql`
       select count(*)::int as count from schema_migrations
     `;
     const count = counted[0]?.count as number;
-    for (let i = 0; i < count; i += 1) migrate("down");
+    for (let i = 0; i < count; i += 1) await migrate("down");
     const gone = await sql`select to_regclass('public.projects') as t`;
     expect(gone[0]?.t).toBeNull();
-    migrate("up");
+    await migrate("up");
     const back = await sql`select to_regclass('public.projects') as t`;
     expect(back[0]?.t).toBe("projects");
     const recounted = await sql`
       select count(*)::int as count from schema_migrations
     `;
     expect(recounted[0]?.count).toBe(count);
-    // Timeout scales with migration count — each is a separate tsx process;
-    // six migrations landed 2026-08-17 and CI's runner exceeds 60s now.
+    // The cycle wipes seeded fixture actors along with everything else;
+    // restore them so later files' beforeAll assumptions hold regardless of
+    // file order.
+    await seedTestActors(sql);
   }, 240_000);
 });

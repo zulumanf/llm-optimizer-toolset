@@ -12,9 +12,9 @@ import { tmpdir } from "node:os";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const user: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000601",
@@ -44,6 +44,9 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     projectSvc = await import("@/lib/projects/service");
     companySvc = await import("@/lib/companies/service");
     claimsSvc = await import("@/lib/claims/service");
@@ -60,11 +63,6 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     exporter = await import("@/lib/evidence/export");
     constants = await import("@/lib/constants");
     mock = await import("@/lib/ai/mock");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 

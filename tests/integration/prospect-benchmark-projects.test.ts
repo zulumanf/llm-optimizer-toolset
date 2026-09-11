@@ -8,15 +8,13 @@
  * project's subject") would have silently dropped the company from every
  * client run the moment the prospect project existed.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 import { unwrap } from "../helpers/result";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const operator: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000401",
@@ -58,6 +56,9 @@ describe.skipIf(!TEST_URL)("prospect benchmark projects (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     dbProjects = await import("@/db/projects");
     dbCompanies = await import("@/db/companies");
     dbControlTower = await import("@/db/control-tower");
@@ -74,11 +75,6 @@ describe.skipIf(!TEST_URL)("prospect benchmark projects (integration)", () => {
     exclusivity = await import("@/lib/exclusivity/service");
     svc = await import("@/lib/prospects/service");
     mock = await import("@/lib/ai/mock");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
     await sql`update users set role = 'client_viewer' where id = ${clientViewer.id}`;
   });

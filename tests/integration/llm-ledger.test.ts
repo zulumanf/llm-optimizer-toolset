@@ -5,15 +5,13 @@
  * away. The ledger is insert-only: a spend record that can be edited is a
  * receipt, not a ledger.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { runAgent, type AgentCaller } from "@/lib/ai/agent";
 import { CLASSIFIER_MODEL } from "@/lib/constants";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const stubCaller =
   (text: string): AgentCaller =>
@@ -24,11 +22,9 @@ describe.skipIf(!TEST_URL)("llm call ledger (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
   });
 
   afterAll(async () => {

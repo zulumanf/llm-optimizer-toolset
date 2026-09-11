@@ -11,14 +11,12 @@
  *   Demo C — monthly reporting, from ingestion to an approved immutable report
  *   Demo D — failure recovery, from an expired authorisation to a clean resume
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { AgentCaller } from "@/lib/ai/agent";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 const OPERATOR = "00000000-0000-4000-8000-000000009001";
 const TEST_KEY = Buffer.alloc(32, 13).toString("base64");
 
@@ -108,6 +106,9 @@ describe.skipIf(!TEST_URL)("automation end-to-end demos", () => {
   beforeAll(async () => {
     process.env.AUTOMATION_CREDENTIAL_KEY = TEST_KEY;
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     engine = await import("@/lib/workflow/engine");
     runtime = await import("@/lib/automation/runtime");
     workflows = await import("@/lib/automation/workflows");
@@ -121,8 +122,6 @@ describe.skipIf(!TEST_URL)("automation end-to-end demos", () => {
     health = await import("@/lib/connectors/health");
     sequences = await import("@/lib/outreach/sequences");
 
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, { cwd: ROOT, stdio: "pipe" });
     await seedTestActors(sql);
   });
 

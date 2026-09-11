@@ -6,14 +6,12 @@
  * transitions, tenant isolation — are properties of the database, not of the
  * TypeScript. Asserting them with mocks would prove nothing.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { WorkflowDefinition, NodeResult } from "@/lib/workflow/types";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const OPERATOR = "00000000-0000-4000-8000-000000009001";
 
@@ -36,14 +34,15 @@ describe.skipIf(!TEST_URL)("workflow engine (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     engine = await import("@/lib/workflow/engine");
     handlers = await import("@/lib/workflow/handlers");
     store = await import("@/db/workflow");
     jobs = await import("@/db/jobs");
     projectSvc = await import("@/lib/projects/service");
 
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, { cwd: ROOT, stdio: "pipe" });
     await seedTestActors(sql);
   });
 

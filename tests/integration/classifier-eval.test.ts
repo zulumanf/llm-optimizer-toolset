@@ -7,14 +7,12 @@
  * Stub callers keep CI deterministic and keyless; the metric math they
  * exercise is exactly what scripts/eval-classifier.ts runs live.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentCaller } from "@/lib/ai/agent";
 import type { GoldCase } from "@/lib/accuracy/classifier-gold";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const CO_A = "00000000-0000-4000-9000-0000000000a1";
 const CO_B = "00000000-0000-4000-9000-0000000000b2";
@@ -100,12 +98,10 @@ describe.skipIf(!TEST_URL)("classifier gold-set eval (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     evalMod = await import("@/lib/accuracy/classifier-eval");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
   });
 
   afterAll(async () => {

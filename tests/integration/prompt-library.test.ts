@@ -4,15 +4,13 @@
  * guards, concurrent freeze race, sequential numbering, reorder staleness,
  * archived-prompt exclusion, duplicate-from-version.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import type { FrozenPrompt } from "@/lib/prompts/types";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const user: CurrentUser = {
   id: "00000000-0000-4000-8000-0000000000cc",
@@ -30,14 +28,12 @@ describe.skipIf(!TEST_URL)("prompt library (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     sets = await import("@/lib/prompts/set-service");
     promptsSvc = await import("@/lib/prompts/prompt-service");
     dbq = await import("@/db/prompt-sets");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 
