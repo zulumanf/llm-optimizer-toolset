@@ -2,7 +2,6 @@
  * Integration tests for spec 007 — interventions, scheduled post runs,
  * verdicts, confounds, and the evidence-backed task state machine.
  */
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";

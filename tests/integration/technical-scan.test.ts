@@ -3,7 +3,6 @@
  * injected fake site: robots → sitemap → pages → persisted facts → findings
  * → existing task queue with real evidence refs. No network, no sleeps.
  */
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";

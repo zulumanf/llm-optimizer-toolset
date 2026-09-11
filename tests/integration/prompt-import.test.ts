@@ -3,7 +3,6 @@
  * provenance stamping, audit trail, archived-set refusal, zero-valid-rows
  * failure, brand-aware suggestions from the project's own registry.
  */
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";

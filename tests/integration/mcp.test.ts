@@ -4,7 +4,6 @@
  * the services' gates, idempotency keys replay instead of re-executing,
  * and every executed mutation lands in the append-only ledger.
  */
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";

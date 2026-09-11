@@ -6,7 +6,6 @@
  * incremental rebuild → context packet, plus the client-isolation tests that
  * matter most (this is the layer where cross-client leakage would happen).
  */
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";

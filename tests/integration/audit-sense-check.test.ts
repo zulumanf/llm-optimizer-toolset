@@ -4,7 +4,6 @@
  * publish-gate matrix (absent = advisory, concern + matching hash = ack
  * required, stale hash = advisory, polish never gates).
  */
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import type { AgentCaller } from "@/lib/ai/agent";

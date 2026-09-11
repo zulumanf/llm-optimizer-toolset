@@ -4,7 +4,6 @@
  * guards, concurrent freeze race, sequential numbering, reorder staleness,
  * archived-prompt exclusion, duplicate-from-version.
  */
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import type { FrozenPrompt } from "@/lib/prompts/types";
