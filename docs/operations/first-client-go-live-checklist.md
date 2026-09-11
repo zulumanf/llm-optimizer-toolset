@@ -12,20 +12,26 @@ that, the prospect page (prospect id is in the URL).
 
 ## WHEN CLIENT SAYS YES
 
-### STEP 1 — Commercial agreement (human: execute externally)
-Record on "Record signed engagement": prospect id · start date · term (days) ·
-monthly fee · total initial value · payment terms · scope · explicit exclusions.
-Then "Record contract state" → `signed` with the contract reference (signed PDF
-location or e-signature id). The agreement itself is counsel-reviewed paper; the
-minimum terms list is in `first-client-delivery-runbook.md` §0.
-**OS gate: CONTRACT_SIGNED** (a signed state needs a reference).
+### STEP 1 — Quote → engagement → agreement (spec 140; prospect page → "Commercial state")
+"Prepare quote" (active policy) → send the price yourself → "Mark presented"
+(terms freeze) → "Record signed engagement from quote" (terms come from the
+quote; nothing retyped) → "Confirm market definition" (STEP 3, moved earlier
+because the agreement names the boundary) → "Prepare agreement"
+(`engagement_agreement_v1`, legal review NOT_REVIEWED — counsel follow-up, not a
+gate) → send it through your channel → "Mark agreement sent" → signed copy back
+→ "Record signed agreement" with the reference.
+**OS gate: CONTRACT_SIGNED** (a signed state needs a reference). Pre-quote
+engagements can still use "Record signed engagement" + "Record contract state".
 
-### STEP 2 — Payment (human: invoice and collect externally)
-"Record invoice / payment": `invoice_created` (amount, due date, invoice id),
-then `payment_received` with the same invoice id when funds land.
-**OS gate: PAYMENT_RECORDED.** "Start onboarding" passes only with STEP 1 + STEP 2.
-Admin override of the payment condition requires a written reason and is audited
-with actor and time. The contract condition cannot be overridden.
+### STEP 2 — Payment (human: issue and collect externally)
+"Create invoice schedule" (3 × $2,500 as `ENG-<id>-1..3`, due day 0/30/60).
+Issue invoice 1 outside the platform; when funds land, "Record installment
+payment" (installment 1). The panel shows paid / remaining; the contract is
+PARTIALLY_PAID until all three land.
+**OS gate: ACTIVATION_PAYMENT** = installment 1 in full. "Start onboarding"
+passes only with STEP 1 + STEP 2. Admin override of the payment condition
+requires a written reason and is audited. The contract condition cannot be
+overridden.
 
 ### STEP 3 — Market definition (founder decision)
 "Confirm market definition": write the exact boundary in words — city limits vs
@@ -57,7 +63,10 @@ the conflict check against every other live agreement. Then review the
 unschedules queued cold drafts and pauses sequences for competing prospects in
 the protected market. The send gate refuses them regardless from this point.
 
-### STEP 7 — Send onboarding (human: email or call)
+### STEP 7 — Onboarding intake (human: email or call; record in "Onboarding intake")
+The intake dialog is prefilled from the prospect/company/contact records; ask
+only for what is empty or wrong (required: legal name, brand, primary contact,
+email, website, market boundary, one priority, who controls the website).
 Ask only what the record does not already hold (see the "Ryan signed tomorrow"
 preview for the pattern): priority neighborhoods · buyer vs seller priority ·
 the 2–3 real comparison competitors · which pages/profiles their team can edit ·

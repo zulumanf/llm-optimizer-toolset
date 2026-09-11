@@ -32,10 +32,31 @@ Lead with the total. Add the billing line only when useful. No essay, no anchor,
 no urgency. Pricing goes only to a prospect who asked or showed explicit
 commercial interest — never in T1/T2/T3 or a correction.
 
+## When a prospect says "send me the agreement" — spec 140 path
+
+All on the prospect page → **Commercial state** (and the same panel on the
+client's Engagement page). The OS never sends, signs or charges; you do those
+through the approved manual channel and record them here. Every step is
+idempotent — a retry never duplicates a quote, engagement, hold or invoice.
+
+1. **Prepare quote** — draft under the active policy ($7,500 / 90 days / $2,500 × 3).
+2. Send the price yourself (`pricing_reply_v1` lines are in the dialog) → **Mark presented**. From here the quote's terms are frozen by the database.
+3. **Record response** (accepted / declined + objection) — or go straight to step 4 on a yes.
+4. **Record signed engagement from quote** — terms come from the quote; creates the client project, the commercial record and the territory hold. Quote → `accepted`.
+5. **Confirm market definition** (boundary in words) → **Prepare agreement** — `engagement_agreement_v1`, `LEGAL_REVIEW_STATUS = NOT_REVIEWED`, rendered from the frozen terms. Copy the Markdown into your signing channel → **Mark agreement sent**.
+6. Signed copy back → **Record signed agreement** with the reference (sets the contract state).
+7. **Create invoice schedule** — three `ENG-<id>-n` invoices ($2,500 each, due day 0 / 30 / 60). Issue invoice 1 manually → **Record installment payment** when it lands. Payment shows `PARTIALLY_PAID · $2,500 paid · $5,000 remaining`, never PAID_IN_FULL.
+8. **Start onboarding** (gate: signed + installment 1 in full) → **Onboarding intake** (prefilled; required: legal name, brand, contact, email, website, market boundary, one priority, website control) → **Activate exclusivity** → freeze baseline → first work item → **Activate engagement**.
+
+Fixture dry run against production (isolated QA131 market, archives itself):
+`npx tsx scripts/commercial-dry-run.ts`.
+
 ## What happens in the OS
 
 - **Quote recorded automatically** when an allowed send states the offer
-  (`pricing_quotes`, policy version stamped). Record the response with
+  (`pricing_quotes`, policy version stamped) — or prepared by hand (draft →
+  presented, spec 140). A presented quote's commercial fields are immutable;
+  an unpresented draft may be regenerated under a newer policy. Record the response with
   `recordQuoteOutcome` (status, objections, preferred solution) — this is the
   willingness-to-pay dataset. Fixtures never count.
 - **Report pricing section** (private report, only when the prospect asked)

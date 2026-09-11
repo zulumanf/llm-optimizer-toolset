@@ -95,6 +95,8 @@ import { FRESHNESS_WINDOWS_DAYS, staleness } from "@/lib/prospects/constants";
 import { CONFIDENCE_REVIEW_THRESHOLD } from "@/lib/constants";
 import { prospectIntent, prospectTimeline } from "@/lib/prospects/dashboard";
 import { AuditEngagementSection } from "@/components/prospects/audit-engagement";
+import { CommercialPanel } from "@/components/engagements/commercial-panel";
+import { commercialStateForProspect } from "@/lib/engagements/commercial";
 
 const rate = (v: number | null): string =>
   v === null ? "not measured" : `${Math.round(v * 100)}%`;
@@ -153,7 +155,7 @@ export default async function ProspectDetailPage({
   // Branded share link (spec 076) — preferred over the raw token URL.
   const brandedLink = await auditLinkForProspect(id);
   // Behavioral summary + evidence timeline (spec 098) — derived on read.
-  const [intent, timeline] = await Promise.all([prospectIntent(id), prospectTimeline(id)]);
+  const [intent, timeline, commercialState] = await Promise.all([prospectIntent(id), prospectTimeline(id), commercialStateForProspect(id)]);
   // Spec 134: the copied link is the invitation — one click lands on the
   // clean /report/<slug> URL with the credential gone from the address bar.
   const brandedUrl =
@@ -1069,6 +1071,9 @@ export default async function ProspectDetailPage({
           </ul>
         )}
       </Section>
+
+      {/* Spec 140: offer → quote → agreement → payment → engagement, with the founder's next action. */}
+      <CommercialPanel state={commercialState} prefill={null} today={new Date().toISOString().slice(0, 10)} />
 
       {intent && <AuditEngagementSection intent={intent} timeline={timeline} />}
 

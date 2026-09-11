@@ -123,6 +123,12 @@ export type DecisionChannel = (typeof DECISION_CHANNELS)[number];
 
 /** Default initial term. */
 export const DEFAULT_TERM_DAYS = 90;
+/** Spec 140: the standard scope wording recorded on a policy-priced engagement
+ * (the sign dialog prefills it; the agreement renders the policy's includes). */
+export const DEFAULT_SCOPE_SUMMARY =
+  "AI recommendation diagnosis over the frozen baseline question set; evidence improvements to owned pages and controlled profiles; implementation of high-confidence changes (with client approval where public); monitoring on a stated cadence; remeasurement on the same instrument at mid-term and end of term.";
+export const DEFAULT_SCOPE_EXCLUSIONS =
+  "Not included: general SEO, website redesign, social media management, paid ads, CRM implementation, general marketing.";
 /** Diagnostic remeasurement: same instrument, mid-term. */
 export const MIDPOINT_MEASUREMENT_DAY = 45;
 /** Formal remeasurement starts this many days before the term ends so the
