@@ -829,8 +829,9 @@ async function advanceClaimed(h: ReportHandoff, now: Date, opts: { caller?: Agen
   // artifacts (a correction, recount or suppression since preparation parks
   // the handoff); only a transmit verdict creates the send intent schedule.
   if (h.status === "release_ready") {
-    if (!h.draftId) return h;
-    const [handSent] = await sql`select sent_recorded_at from outreach_drafts where id = ${h.draftId}`;
+    const draftId = h.draftId;
+    if (!draftId) return h;
+    const [handSent] = await sql`select sent_recorded_at from outreach_drafts where id = ${draftId}`;
     if (handSent?.sentRecordedAt) h = await transition(h, "scheduled", { reason: "sent outside the lane's schedule (founder / dispatcher); following the ledger" });
   }
   if (h.status === "release_ready") {
