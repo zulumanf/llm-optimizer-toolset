@@ -23,6 +23,7 @@ import {
 } from "@/lib/accuracy/prompts";
 import type { FrozenPrompt } from "@/lib/prompts/types";
 import { log } from "@/lib/logger";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 /** Whitespace-tolerant verbatim check — models normalise spacing, but the
  * words and their order must be exactly present in the evidence. */
@@ -94,9 +95,7 @@ export async function analyzeRunAccuracy(
           select 1 from mentions m
           where m.response_id = r.id and m.company_id = ${subject.id}
             and m.mentioned
-            and not exists (select 1 from mentions n
-              where n.response_id = m.response_id and n.company_id = m.company_id
-                and n.revision > m.revision)
+            and ${CURRENT_REVISION}
         ) as subject_mentioned
       from responses r
       where r.run_id = ${runId} and r.error is null

@@ -13,6 +13,7 @@
  * + 10% expected speed
  */
 import { CATEGORY_INTENT_VALUE } from "@/lib/scoring/intent";
+import { bandedSampleConfidence } from "@/lib/confidence";
 
 // v1.1 (spec 064): identical severity/opportunity math — scores are
 // byte-identical to v1 — plus epistemics: classification, confidence, and
@@ -44,11 +45,7 @@ export interface EvidenceRef {
  * deliberate scoring-version decision (cleanup backlog 2026-08-18), not a
  * drive-by edit: the numbers reach prospect-facing surfaces.
  */
-export function sampleConfidence(n: number): number {
-  if (n >= 30) return 0.9;
-  if (n >= 10) return 0.7;
-  return 0.5;
-}
+export const sampleConfidence = bandedSampleConfidence;
 
 /** Flatten candidate id lists into a deduped, capped evidence sample. */
 function sampleIds(lists: (readonly string[] | undefined)[], cap = 5): string[] {

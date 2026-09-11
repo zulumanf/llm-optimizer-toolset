@@ -1,8 +1,8 @@
 /**
- * Sitemap discovery + parsing for the technical scan (spec 088). Unlike the
- * onboarding crawler's <loc>-only reader, this keeps lastmod and which
- * sitemap each URL came from — the freshness and sitemap-coverage checks
- * need both. Regex parsing, matching the repo's no-DOM-parser convention.
+ * The repo's single sitemap discovery + parser (spec 088; the onboarding
+ * crawler consumes it too). Keeps lastmod and which sitemap each URL came
+ * from — the freshness and sitemap-coverage checks need both. Regex parsing,
+ * matching the repo's no-DOM-parser convention.
  */
 import { safeFetch, type SafeFetchDeps } from "@/lib/security/safe-fetch";
 import {

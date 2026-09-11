@@ -6,6 +6,7 @@
  * `findProhibitedPhrase` is the guard both here (by construction) and at
  * approval (by validation).
  */
+import { logSampleConfidence } from "@/lib/confidence";
 import {
   FINDING_GENERATOR_VERSION,
   MIN_RESPONSES_FOR_FINDINGS,
@@ -82,10 +83,10 @@ const pct = (v: number): string => {
 const countOf = (rate: number, sampleSize: number): number =>
   Math.round(rate * sampleSize);
 
-/** Sample-size confidence: 0 at the minimum, ~0.9 by n=50, capped. */
+/** Sample-size confidence: 0 below the floor, then the shared log curve. */
 function sampleConfidence(n: number): number {
   if (n < MIN_RESPONSES_FOR_FINDINGS) return 0;
-  return Math.min(0.95, 0.4 + Math.log10(n) * 0.32);
+  return logSampleConfidence(n);
 }
 
 function strongSignals(signals: AuthoritySignalInput[]): AuthoritySignalInput[] {

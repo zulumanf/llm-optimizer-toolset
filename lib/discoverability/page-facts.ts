@@ -2,17 +2,23 @@
  * Per-page fact extraction (spec 088). Pure regex over raw HTML — the repo
  * deliberately carries no DOM parser (lib/knowledge/sources/extractors), and
  * these checks need attributes, not a full tree. Facts only: nothing here
- * interprets, that is findings.ts's job.
+ * interprets, that is findings.ts's job. Shared primitives (title, visible
+ * text, link extraction) live in `lib/html` and are re-exported here.
  */
 import {
   MAX_JSONLD_BLOCKS,
   MAX_OUTLINKS_PER_PAGE,
 } from "@/lib/discoverability/constants";
+import {
+  attrValue,
+  extractLinks,
+  extractTitle,
+  visibleText,
+  type PageLink,
+} from "@/lib/html";
 
-export interface PageLink {
-  url: string;
-  anchor: string | null;
-}
+export { extractTitle, visibleText };
+export type { PageLink };
 
 export interface PageFacts {
   title: string | null;
@@ -26,17 +32,6 @@ export interface PageFacts {
   textLength: number;
   /** Distinct plausible years in visible text, ascending. */
   yearsReferenced: number[];
-}
-
-function attrValue(tag: string, name: string): string | null {
-  const match = tag.match(
-    new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, "i")
-  );
-  return match?.[1]?.trim() ?? null;
-}
-
-export function extractTitle(html: string): string | null {
-  return html.match(/<title[^>]*>([^<]{1,300})<\/title>/i)?.[1]?.trim() ?? null;
 }
 
 export function extractCanonical(html: string, baseUrl: string): string | null {
@@ -78,46 +73,10 @@ export function extractLinksWithAnchors(
   html: string,
   baseUrl: string
 ): PageLink[] {
-  const host = (() => {
-    try {
-      return new URL(baseUrl).host;
-    } catch {
-      return null;
-    }
-  })();
-  if (!host) return [];
-  const byUrl = new Map<string, string | null>();
-  for (const match of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
-    if (byUrl.size >= MAX_OUTLINKS_PER_PAGE) break;
-    const href = attrValue(`<a ${match[1]!}>`, "href");
-    if (
-      !href ||
-      href.startsWith("#") ||
-      href.startsWith("mailto:") ||
-      href.startsWith("tel:") ||
-      href.startsWith("javascript:")
-    ) {
-      continue;
-    }
-    try {
-      const resolved = new URL(href, baseUrl);
-      // Same host only — the graph we care about is the client's own site.
-      if (resolved.host !== host) continue;
-      resolved.hash = "";
-      const url = resolved.toString();
-      const anchor =
-        match[2]!
-          .replace(/<[^>]+>/g, " ")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 80) || null;
-      // First anchor wins; a repeated link adds no information.
-      if (!byUrl.has(url)) byUrl.set(url, anchor);
-    } catch {
-      // Malformed href is the page's problem.
-    }
-  }
-  return [...byUrl.entries()].map(([url, anchor]) => ({ url, anchor }));
+  return extractLinks(html, baseUrl, {
+    withAnchors: true,
+    maxLinks: MAX_OUTLINKS_PER_PAGE,
+  });
 }
 
 export function extractJsonLd(html: string): {
@@ -151,15 +110,6 @@ export function extractJsonLd(html: string): {
     }
   }
   return { blocks, error };
-}
-
-export function visibleText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 /** Plausible years mentioned in the visible text — freshness signal, never

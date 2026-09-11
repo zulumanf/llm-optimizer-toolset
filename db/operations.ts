@@ -8,6 +8,7 @@
  */
 import { sql } from "@/db/client";
 import { REVIEW_TIMEOUT_HOURS } from "@/lib/constants";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 export type AttentionKind =
   | "review_queue"
@@ -128,17 +129,13 @@ async function signals(): Promise<SignalRow[]> {
         join responses resp on resp.id = m.response_id
         join runs r on r.id = resp.run_id
         where r.project_id = p.id and m.needs_review
-          and not exists (select 1 from mentions n
-            where n.response_id = m.response_id and n.company_id = m.company_id
-              and n.revision > m.revision)) as pending_reviews,
+          and ${CURRENT_REVISION}) as pending_reviews,
       (select count(*)::int from mentions m
         join responses resp on resp.id = m.response_id
         join runs r on r.id = resp.run_id
         where r.project_id = p.id and m.needs_review
           and m.created_at < now() - make_interval(hours => ${REVIEW_TIMEOUT_HOURS})
-          and not exists (select 1 from mentions n
-            where n.response_id = m.response_id and n.company_id = m.company_id
-              and n.revision > m.revision)) as stale_reviews,
+          and ${CURRENT_REVISION}) as stale_reviews,
       (select count(*)::int from accuracy_findings a
         where a.project_id = p.id and a.status = 'open' and a.severity = 'high')
         as high_accuracy,

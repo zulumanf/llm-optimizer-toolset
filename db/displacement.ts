@@ -5,6 +5,7 @@
  */
 import { sql } from "@/db/client";
 import { PROMPT_NAMES_COMPANY } from "@/lib/scoring/prompt-echo";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 export interface ValidResponseRow {
   id: string;
@@ -47,12 +48,7 @@ export async function currentMentionsWithEcho(
     join companies c on c.id = m.company_id
     where r.run_id = ${runId}
       and r.error is null
-      and not exists (
-        select 1 from mentions newer
-        where newer.response_id = m.response_id
-          and newer.company_id = m.company_id
-          and newer.revision > m.revision
-      )
+      and ${CURRENT_REVISION}
   `;
 }
 

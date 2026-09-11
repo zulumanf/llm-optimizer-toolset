@@ -12,6 +12,7 @@
 import { sql } from "@/db/client";
 import { getSubjectCompany } from "@/db/companies";
 import { changeVerdict, type ProviderDelta } from "@/lib/reports/deltas";
+import { formatPercent } from "@/lib/format";
 
 export const MOVEMENT_METRICS = ["mention_rate", "recommendation_rate"] as const;
 export type MovementMetric = (typeof MOVEMENT_METRICS)[number];
@@ -51,7 +52,7 @@ export interface MovementEvent {
 }
 
 function pct(v: number): string {
-  return `${Math.round(v * 100)}%`;
+  return formatPercent(v);
 }
 
 /** Pure. `subject` and each competitor carry the same two-run window. */

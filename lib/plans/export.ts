@@ -24,6 +24,7 @@
  *     see their own obligations is a plan that does not get executed.
  */
 import type { PlanSummary } from "@/lib/plans/service";
+import { formatPercent } from "@/lib/format";
 import { escapeHtml } from "@/lib/text/html";
 
 export type PlanExportFormat = "markdown" | "html";
@@ -59,7 +60,7 @@ const OWNER_LABELS: Record<string, string> = {
 };
 
 function pct(rate: number | null | undefined): string {
-  return rate === null || rate === undefined ? "not measured" : `${Math.round(rate * 100)}%`;
+  return formatPercent(rate, { nullAs: "not measured" });
 }
 
 /**

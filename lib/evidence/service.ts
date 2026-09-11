@@ -13,6 +13,7 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
 import { selectAuditSample, mulberry32 } from "@/lib/evidence/sampler";
 import type { FrozenPrompt } from "@/lib/prompts/types";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 const auditSchema = z.object({
   runId: z.string().uuid(),
@@ -40,9 +41,7 @@ export async function createAuditSample(
       select r.id, r.provider, coalesce(m.mentioned, false) as positive
       from responses r
       left join mentions m on m.response_id = r.id and m.company_id = ${subject.id}
-        and not exists (select 1 from mentions n
-          where n.response_id = m.response_id and n.company_id = m.company_id
-            and n.revision > m.revision)
+        and ${CURRENT_REVISION}
       where r.run_id = ${runId} and r.error is null
       order by r.requested_at asc
     `;
@@ -258,9 +257,7 @@ export async function validationComparison(validationRunId: string): Promise<{
     from responses r
     join runs on runs.id = r.run_id
     left join mentions m on m.response_id = r.id and m.company_id = ${subject?.id ?? null}
-      and not exists (select 1 from mentions n
-        where n.response_id = m.response_id and n.company_id = m.company_id
-          and n.revision > m.revision)
+      and ${CURRENT_REVISION}
     where runs.prompt_set_version_id = ${validationRun.promptSetVersionId}
       and r.prompt_id = any(${promptIds}) and r.error is null
   `;
