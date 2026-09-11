@@ -13,6 +13,7 @@ import { ClassifiedError } from "@/lib/errors";
 import { addBusinessDays } from "@/lib/prospects/business-days";
 import { OPERATOR_TIMEZONE } from "@/lib/prospects/intent";
 import { logActivity } from "@/lib/prospects/shared";
+import { operatorView, type HandoffStatus, type OperatorView } from "@/lib/prospects/fulfillment-lane";
 import type { FounderSalesBlock } from "@/lib/prospects/sales-block";
 
 export const POSITIVE_REPLY_RESOLVED_ACTIVITY = "positive_reply_resolved";
@@ -75,7 +76,9 @@ export interface PositiveReplyWaiting {
   nextActionOn: string | null;
   /** Latest outbound after the reply (a founder answer or report delivery). */
   answeredAt: Date | null;
-  handoff: { status: string; reason: string | null } | null;
+  handoff: { status: string; reason: string | null; autoVerdict: string | null; autonomyClass: string | null; laneMode: string | null } | null;
+  /** Spec 137: the founder's concise view when the lane stopped or held. */
+  lane: OperatorView | null;
   reportPublished: boolean;
   daysWaiting: number;
   overdue: boolean;
@@ -92,7 +95,8 @@ export async function positiveRepliesWaiting(now: Date = new Date()): Promise<Po
     select c.id as reply_id, c.prospect_id, c.received_at, c.body_text,
       p.business_name, p.stage, p.next_action, p.next_action_on::text, u.name as owner_name,
       (select max(s.sent_at) from prospect_outreach_sends s where s.prospect_id = p.id and s.allowed and s.sent_at > c.received_at) as answered_at,
-      (select json_build_object('status', h.status, 'reason', h.reason) from prospect_report_handoffs h where h.reply_id = c.id order by h.created_at desc limit 1) as handoff,
+      (select json_build_object('status', h.status, 'reason', h.reason, 'autoVerdict', h.auto_verdict, 'autonomyClass', h.autonomy_class, 'laneMode', h.lane_mode, 'releaseVerdict', h.release_verdict)
+         from prospect_report_handoffs h where h.reply_id = c.id order by h.created_at desc limit 1) as handoff,
       exists (select 1 from prospect_audits a where a.prospect_id = p.id and a.status = 'published') as report_published
     from canonical c
     join prospects p on p.id = c.prospect_id
@@ -107,18 +111,26 @@ export async function positiveRepliesWaiting(now: Date = new Date()): Promise<Po
   return rows.map((r) => {
     const receivedAt = new Date(r.receivedAt as Date);
     const nextActionOn = (r.nextActionOn as string | null) ?? null;
+    const hv = (r.handoff as { status: string; reason: string | null; autoVerdict: string | null; autonomyClass: string | null; laneMode: string | null; releaseVerdict: { verified?: boolean; reasons?: string[] } | null } | null) ?? null;
+    const excerpt = ((r.bodyText as string) ?? "").replace(/\[correction of[^\]]*\]\s*/i, "").replace(/\s+/g, " ").slice(0, 160);
     return {
       prospectId: r.prospectId as string,
       businessName: r.businessName as string,
       stage: r.stage as string,
       replyId: r.replyId as string,
       receivedAt,
-      excerpt: ((r.bodyText as string) ?? "").replace(/\[correction of[^\]]*\]\s*/i, "").replace(/\s+/g, " ").slice(0, 160),
+      excerpt,
       ownerName: (r.ownerName as string | null) ?? null,
       nextAction: (r.nextAction as string | null) ?? null,
       nextActionOn,
       answeredAt: r.answeredAt ? new Date(r.answeredAt as Date) : null,
-      handoff: (r.handoff as { status: string; reason: string | null } | null) ?? null,
+      handoff: hv ? { status: hv.status, reason: hv.reason, autoVerdict: hv.autoVerdict, autonomyClass: hv.autonomyClass, laneMode: hv.laneMode } : null,
+      lane: hv
+        ? operatorView(
+            { status: hv.status as HandoffStatus, reason: hv.reason, autonomyClass: hv.autonomyClass as "autonomy_eligible" | "escalate" | null, autonomyReason: null, autoVerdict: hv.autoVerdict, laneMode: hv.laneMode, releaseVerdict: hv.releaseVerdict },
+            { prospectName: r.businessName as string, replyExcerpt: excerpt, reportPublished: Boolean(r.reportPublished) }
+          )
+        : null,
       reportPublished: Boolean(r.reportPublished),
       daysWaiting: Math.max(0, Math.floor((now.getTime() - receivedAt.getTime()) / 86_400_000)),
       overdue: nextActionOn === null || nextActionOn < today,

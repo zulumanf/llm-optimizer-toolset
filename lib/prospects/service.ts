@@ -1955,6 +1955,21 @@ export async function approveOutreachDraft(
           `Draft QA failed: ${qaIssues.map((i) => `[${i.check}] ${i.detail}`).join(" ")}`
         );
       }
+      // Evidence release gate (spec 136) at approval too — a human should
+      // not approve a competitive claim the send gate will refuse. The send
+      // gate re-verifies at transmission regardless.
+      {
+        const { verifyDraftEvidenceRelease, releaseGateDetail } = await import("@/lib/prospects/evidence-release");
+        const [seqRow] = await tx`select sequence_id from outreach_drafts where id = ${draft.id}`;
+        const verdict = await verifyDraftEvidenceRelease(tx, {
+          id: draft.id as string,
+          prospectId: draft.prospectId as string,
+          sequenceId: (seqRow?.sequenceId as string | null) ?? null,
+        });
+        if (verdict && !verdict.verified) {
+          throw new ClassifiedError("validation", releaseGateDetail(verdict));
+        }
+      }
       // Superseding also clears any pending schedule (spec 091): the worker
       // only transmits status = 'approved' rows, but a dead schedule left on
       // a superseded draft would read as a send that is still coming.
@@ -2191,7 +2206,7 @@ export async function cancelScheduledSend(
 
 // Not exported: stamped into ledger rows, no external consumer.
 // v2 (spec 091): adds the daily_send_cap check for transmitting gmail sends.
-const SEND_GATE_VERSION = "prospect-send-gate-v2";
+const SEND_GATE_VERSION = "prospect-send-gate-v3";
 
 /**
  * The bridge between the two outreach stacks (spec 043): every dispatch —
@@ -2249,7 +2264,7 @@ export async function sendProspectDraft(
     const result = await sql.begin(async (tx) => {
       const [draft] = await tx`
         select id, prospect_id, contact_id, subject, body, status, sent_recorded_at,
-          sequence_id, touch_number, reply_to_id
+          sequence_id, touch_number, reply_to_id, send_intent_key, send_message_id
         from outreach_drafts where id = ${input.draftId} for update
       `;
       if (!draft) throw new ClassifiedError("not_found", "Draft not found.");
@@ -2498,32 +2513,45 @@ export async function sendProspectDraft(
         banned ? `Contains prohibited wording ("${banned}").` : "clean"
       );
 
-      // Entity resolution gate (operating review 2026-09-07): any email that
-      // states competitive recommendation counts — Touch 1, follow-ups,
-      // corrections, report deliveries, or a rewrite whose ancestor carries
-      // the frozen evidence — transmits only when BOTH entities are verified.
-      // Fails closed with ENTITY_RESOLUTION_UNVERIFIED; nothing is inferred.
+      // Evidence release gate (spec 136; supersedes the 2026-09-07 entity
+      // gate, which it contains): any email that states competitive
+      // recommendation counts — Touch 1, follow-ups, corrections, report
+      // deliveries, or a rewrite whose ancestor carries the frozen evidence —
+      // transmits only when the frozen claim re-verifies AT SEND TIME against
+      // the canonical entities, the licensed production records, the frozen
+      // run, an independent shadow recount and the correction ledger. Fails
+      // closed with deterministic reason codes; nothing is inferred.
       {
-        const [ev] = await tx`
-          with recursive chain as (
-            select id, parent_id, evidence_snapshot, 0 as depth from outreach_drafts where id = ${draft.id}
-            union all
-            select p.id, p.parent_id, p.evidence_snapshot, c.depth + 1 from chain c join outreach_drafts p on p.id = c.parent_id
-            where c.evidence_snapshot is null and c.depth < 10
-          )
-          select evidence_snapshot from chain where evidence_snapshot is not null order by depth asc limit 1
-        `;
-        const snap = (ev?.evidenceSnapshot as { prospect?: { companyId?: string; prospectId?: string | null; name?: string }; competitor?: { companyId?: string; prospectId?: string | null; name?: string } } | null) ?? null;
-        if (snap?.prospect?.companyId && snap.competitor?.companyId) {
-          const { countClaimEntityGate } = await import("@/lib/prospects/entity-aliases");
-          const g = await countClaimEntityGate({
-            prospect: { companyId: snap.prospect.companyId, prospectId: snap.prospect.prospectId ?? null, name: snap.prospect.name ?? "" },
-            competitor: { companyId: snap.competitor.companyId, prospectId: snap.competitor.prospectId ?? null, name: snap.competitor.name ?? "" },
-          });
-          check("entity_resolution_verified", g.passed, g.detail);
+        const { verifyDraftEvidenceRelease, releaseGateDetail } = await import("@/lib/prospects/evidence-release");
+        const verdict = await verifyDraftEvidenceRelease(tx, {
+          id: draft.id as string,
+          prospectId: draft.prospectId as string,
+          sequenceId: (draft.sequenceId as string | null) ?? null,
+        });
+        if (verdict) {
+          const entity = verdict.checks.filter((c) => c.name === "PROSPECT_ENTITY_VERIFIED" || c.name === "COMPETITOR_ENTITY_VERIFIED");
+          check(
+            "entity_resolution_verified",
+            entity.every((c) => c.passed),
+            entity.every((c) => c.passed)
+              ? entity.map((c) => c.detail).join(" | ")
+              : `ENTITY_RESOLUTION_UNVERIFIED: ${entity.filter((c) => !c.passed).map((c) => c.detail).join(" | ")}. No count-stating email transmits until every entity is verified.`
+          );
+          check("evidence_release_verified", verdict.verified, releaseGateDetail(verdict));
         } else {
           check("entity_resolution_verified", true, "no competitive count claim in this draft");
+          check("evidence_release_verified", true, "no competitive count claim in this draft");
         }
+      }
+      // Spec 137 send-time revalidation: a draft staged by the fulfillment
+      // lane transmits only while its handoff is releasable and the fact
+      // manifest recompiled from a FRESH verdict still hashes to the one its
+      // artifacts were compiled from. A correction, recount, entity or
+      // denominator change in the gap marks the artifacts stale and refuses.
+      if (draft.sendIntentKey) {
+        const { fulfillmentSendRecheck } = await import("@/lib/prospects/report-handoff");
+        const re = await fulfillmentSendRecheck(tx, draft.id as string);
+        check("fulfillment_manifest_current", re.passed, re.detail);
       }
       // Deterministic QA re-check at dispatch (spec 116): a draft approved
       // against one audit state must not transmit stale or inconsistent
@@ -2611,6 +2639,7 @@ export async function sendProspectDraft(
         body,
         htmlBody,
         ...threading,
+        messageId: (draft.sendMessageId as string | null) ?? null,
       });
       const sendId = await writeLedger(
         dispatched.providerMessageId,

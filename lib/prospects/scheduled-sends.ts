@@ -25,6 +25,9 @@ import {
   SCHEDULED_SEND_STALE_CLAIM_MINUTES,
 } from "@/lib/prospects/constants";
 import type { ErrorKind } from "@/lib/errors";
+import { createHash } from "node:crypto";
+import { executeCapability } from "@/lib/connectors/execute";
+import type { ParsedGmailMessage } from "@/lib/connectors/adapters/google";
 
 /** Gate refusals and structural problems don't self-heal; retrying them
  * only burns attempts. Everything else is treated as transport trouble. */
@@ -40,6 +43,8 @@ export interface ScheduledSendReport {
   sent: number;
   retryable: number;
   parked: number;
+  /** Spec 137: stale claims resolved by mailbox fingerprint, not resent. */
+  reconciled: number;
 }
 
 interface ClaimedDraft {
@@ -48,6 +53,49 @@ interface ClaimedDraft {
   scheduledBy: string | null;
   businessPurpose: string | null;
   attempts: number;
+  /** Spec 137 send intent: the Message-ID stamped on the outgoing mail. */
+  sendMessageId: string | null;
+}
+
+export const RECONCILED_GATE_VERSION = "reconciled-by-fingerprint-v1";
+
+/**
+ * Spec 137 reconciliation. A stale claim means the previous worker died
+ * between Gmail possibly accepting the message and the ledger commit. When
+ * the draft carries a send intent we search the mailbox for its exact
+ * RFC 5322 Message-ID: found → the message left; record the ledger row
+ * from the mailbox (effectively-once, no resend); not found or search
+ * failed → park for a human, never a blind resend.
+ */
+export async function reconcileStaleClaim(draft: ClaimedDraft): Promise<"reconciled" | "not_found" | "search_failed" | "no_fingerprint"> {
+  if (!draft.sendMessageId) return "no_fingerprint";
+  const bare = draft.sendMessageId.replace(/^<|>$/g, "");
+  const res = await executeCapability<{ messages: ParsedGmailMessage[] }>({
+    capability: "email.search_messages", projectId: null, provider: "gmail", mode: "live",
+    input: { q: `rfc822msgid:${bare}`, maxResults: 5 },
+  });
+  if (!res.ok) return "search_failed";
+  const found = (res.data?.messages ?? []).find((m) => (m.messageId ?? "").replace(/^<|>$/g, "") === bare) ?? res.data?.messages?.[0];
+  if (!found) return "not_found";
+  await sql.begin(async (tx) => {
+    const [d] = await tx`select d.subject, d.body, d.prospect_id, coalesce(c.email, p.email) as email
+      from outreach_drafts d left join prospect_contacts c on c.id = d.contact_id join prospects p on p.id = d.prospect_id where d.id = ${draft.id}`;
+    const bodyHash = createHash("sha256").update(`${(d?.subject as string) ?? ""}\n${(d?.body as string) ?? ""}`).digest("hex");
+    const [row] = await tx`
+      insert into prospect_outreach_sends
+        (draft_id, prospect_id, channel, recipient_email, body_hash, business_purpose, gate_verdict, allowed,
+         provider_message_id, sent_by, gmail_thread_id, sent_at, reconciled_from)
+      values (${draft.id}, ${draft.prospectId}, 'gmail', ${(d?.email as string | null) ?? null}, ${bodyHash},
+        ${draft.businessPurpose ?? "reconciled after lost acknowledgement"},
+        ${tx.json({ version: RECONCILED_GATE_VERSION, checks: [{ name: "mailbox_fingerprint", passed: true, detail: `rfc822msgid ${bare} found in the mailbox` }] } as never)},
+        true, ${found.id}, ${draft.scheduledBy}, ${found.threadId ?? null}, ${found.date ? new Date(found.date) : new Date()}, 'gmail rfc822msgid search')
+      returning id`;
+    await tx`update outreach_drafts set sent_recorded_at = now(), sent_recorded_by = ${draft.scheduledBy}, send_claimed_at = null, scheduled_send_at = null where id = ${draft.id}`;
+    await writeAudit(tx, { userId: draft.scheduledBy, action: "prospect.send_reconciled", entity: "prospect_outreach_send", entityId: row!.id as string, detail: { draftId: draft.id, messageId: bare, providerMessageId: found.id } });
+    await logActivity(tx, draft.prospectId, "send_reconciled", { draftId: draft.id, providerMessageId: found.id }, draft.scheduledBy);
+  });
+  log("warn", "outreach.scheduled_send_reconciled", { draftId: draft.id, providerMessageId: found.id });
+  return "reconciled";
 }
 
 /** Park a draft: clear its schedule, record why, audit it. The draft stays
@@ -131,7 +179,7 @@ export async function listScheduledOutbox(
 }
 
 export async function drainScheduledSends(limit = 5): Promise<ScheduledSendReport> {
-  const report: ScheduledSendReport = { due: 0, sent: 0, retryable: 0, parked: 0 };
+  const report: ScheduledSendReport = { due: 0, sent: 0, retryable: 0, parked: 0, reconciled: 0 };
 
   // Phase 1 — claim, in its own committed transaction, so the in-flight
   // marker survives a crash during dispatch. Stale claims are parked here
@@ -141,7 +189,7 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
   await sql.begin(async (tx) => {
     const due = await tx`
       select id, prospect_id, scheduled_by, scheduled_business_purpose,
-        send_attempts, send_claimed_at
+        send_attempts, send_claimed_at, send_message_id
       from outreach_drafts
       where status = 'approved' and sent_recorded_at is null
         and scheduled_send_at is not null and scheduled_send_at <= now()
@@ -160,6 +208,7 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
         scheduledBy: (row.scheduledBy as string | null) ?? null,
         businessPurpose: (row.scheduledBusinessPurpose as string | null) ?? null,
         attempts: Number(row.sendAttempts ?? 0),
+        sendMessageId: (row.sendMessageId as string | null) ?? null,
       };
       const claimedAt = row.sendClaimedAt as Date | null;
       if (claimedAt) {
@@ -187,10 +236,14 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
   });
 
   for (const draft of stale) {
+    const outcome = await reconcileStaleClaim(draft);
+    if (outcome === "reconciled") { report.reconciled += 1; continue; }
     await park(
       draft,
-      "A previous send attempt did not record an outcome (worker died mid-dispatch). " +
-        "The message may or may not have left — verify in the Gmail Sent folder before rescheduling."
+      outcome === "not_found"
+        ? "A previous send attempt did not record an outcome; the mailbox holds no message with this send's fingerprint (rfc822msgid). Nothing left — safe to reschedule."
+        : "A previous send attempt did not record an outcome (worker died mid-dispatch). " +
+          "The message may or may not have left — verify in the Gmail Sent folder before rescheduling."
     );
     report.parked += 1;
   }

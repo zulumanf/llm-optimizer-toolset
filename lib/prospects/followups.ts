@@ -1114,6 +1114,14 @@ export async function resumeFollowupSequence(user: CurrentUser, raw: unknown): P
     const seq = await getFollowupSequence(p.data.sequenceId);
     if (!seq) throw new ClassifiedError("not_found", "Sequence not found.");
     if (seq.status !== "paused") throw new ClassifiedError("validation", `Sequence is ${seq.status}.`);
+    // Spec 136: a paused sequence continues only when its effective evidence
+    // (frozen snapshot with the latest correction overlaid) re-verifies. The
+    // send gate re-checks each touch at transmission regardless.
+    {
+      const { verifyEvidenceRelease, releaseGateDetail } = await import("@/lib/prospects/evidence-release");
+      const verdict = await verifyEvidenceRelease(seq.evidenceSnapshot, { prospectId: seq.prospectId, sendId: seq.touch1SendId });
+      if (!verdict.verified) throw new ClassifiedError("validation", `Cannot resume: ${releaseGateDetail(verdict)}`);
+    }
     await setSequence(seq.id, { status: "active", pausedUntil: null, pauseReason: null });
     await sql.begin(async (tx) => {
       await writeAudit(tx, { userId: user.id, action: "prospect.followup_resumed", entity: "outreach_followup_sequence", entityId: seq.id, detail: {} });
@@ -1307,7 +1315,10 @@ function handoffDisplay(
     }
     case "needs_review": return { reportState: "NEEDS_REVIEW", nextAction: "Fix the report or send by hand", reason: row.reason };
     case "stopped": return { reportState: "STOPPED", nextAction: "No report: the prospect opted out or is blocked", reason: row.reason };
-    case "qa_passed": return { reportState: "READY_TO_SEND", nextAction: "QA passed; autosend is off, reply in thread by hand", reason: row.reason };
+    case "qa_passed": return { reportState: "READY_TO_SEND", nextAction: "QA passed; awaiting the release policy", reason: row.reason };
+    // Spec 137: every gate passed; the lane mode held the send (SHADOW /
+    // canary / kill switch). The staged reply is approved and sendable by hand.
+    case "release_ready": return { reportState: "READY_TO_SEND", nextAction: "All gates passed; lane held the send — send the staged reply by hand or wait for the dispatcher", reason: row.reason };
     default: return { reportState: "IN_PROGRESS", nextAction: "Generating and QA-ing the report", reason: row.reason };
   }
 }

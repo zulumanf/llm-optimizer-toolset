@@ -13,8 +13,10 @@ import { sql } from "@/db/client";
 import { getFollowupSequence, prospectEntityType, sequenceForProspect, firstNameFrom, footerTailFrom } from "@/lib/prospects/followups";
 import {
   advanceReportHandoff, enqueueReportHandoffs, handoffForProspect, lintReportDelivery, qaMismatchReport,
-  renderReportDelivery, serializeReportForReview,
+  renderReportDelivery, serializeReportForReview, approvedEvidenceFromBlock,
 } from "@/lib/prospects/report-handoff";
+import { verifyEvidenceRelease } from "@/lib/prospects/evidence-release";
+import { compileFactManifest } from "@/lib/prospects/fact-manifest";
 import { marketShortName } from "@/lib/prospects/mismatch";
 import { brandedAuditUrl } from "@/lib/prospects/urls";
 import type { AuditMismatchBlock } from "@/lib/prospects/audit-mismatch";
@@ -63,7 +65,10 @@ async function main(): Promise<void> {
   const url = a.slug && a.key ? brandedAuditUrl(a.slug as string, a.key as string) : null;
   const entityType = await prospectEntityType(full.evidenceSnapshot);
   if (url && entityType) {
-    const r = renderReportDelivery({ firstName: firstNameFrom(a.t1Body as string), brandedUrl: url, block, snapshot: full.evidenceSnapshot, entityType, footerTail: footerTailFrom(a.t1Body as string) });
+    const verdict = await verifyEvidenceRelease(full.evidenceSnapshot, { prospectId, sendId: full.touch1SendId });
+  const compiled = compileFactManifest({ snapshot: full.evidenceSnapshot, verdict, market: marketShortName(a.market as string), prospectEntityType: entityType, approvedExampleIds: approvedEvidenceFromBlock(block).exampleIds, approvedFirstActionId: approvedEvidenceFromBlock(block).firstActionId });
+  if (!compiled.ok) throw new Error(`manifest not compilable: ${compiled.reason}`);
+    const r = renderReportDelivery({ firstName: firstNameFrom(a.t1Body as string), brandedUrl: url, manifest: compiled.manifest, footerTail: footerTailFrom(a.t1Body as string) });
     const lint = lintReportDelivery(r.body, url);
     console.log(`\n--- DELIVERY EMAIL (${lint.length ? "LINT FAIL: " + lint.map((x) => x.detail).join(" ") : "lint ok"}) ---\n${r.body}`);
   } else {

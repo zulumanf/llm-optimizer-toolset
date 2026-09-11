@@ -291,7 +291,7 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
       version: string;
       checks: { name: string; passed: boolean }[];
     };
-    expect(verdict.version).toBe("prospect-send-gate-v2");
+    expect(verdict.version).toBe("prospect-send-gate-v3");
     const cap = verdict.checks.find((c) => c.name === "daily_send_cap");
     expect(cap?.passed).toBe(true);
 

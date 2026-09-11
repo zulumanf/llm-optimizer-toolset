@@ -26,6 +26,9 @@ export interface OutboundEmail {
   threadId?: string | null;
   inReplyTo?: string | null;
   references?: string | null;
+  /** Spec 137: RFC 5322 Message-ID we stamp so a lost acknowledgement can
+   * be reconciled by fingerprint instead of resent. */
+  messageId?: string | null;
 }
 
 export interface EmailChannel {
@@ -94,6 +97,7 @@ const gmailChannel: EmailChannel = {
         ...(message.threadId ? { threadId: message.threadId } : {}),
         ...(message.inReplyTo ? { inReplyTo: message.inReplyTo } : {}),
         ...(message.references ? { references: message.references } : {}),
+        ...(message.messageId ? { messageId: message.messageId } : {}),
       },
       mode: "live",
       provider: "gmail",

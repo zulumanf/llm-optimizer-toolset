@@ -116,6 +116,11 @@ export const TASK_ROUTES = {
     rationale:
       "Reads the whole private report as the recipient would before it is sent unattended — judgment about clarity and relevance for a non-technical reader (spec 129).",
   },
+  fulfillment_release_review: {
+    tier: "frontier",
+    rationale:
+      "The one adversarial semantic read before an autonomous release; wording judgment (causality, provider overgeneralization, guarantees) after code has verified every figure (spec 137).",
+  },
   extract_claims: {
     tier: "cheap",
     rationale: "Narrow extraction, human-approved downstream (audit A4 downgrade).",
