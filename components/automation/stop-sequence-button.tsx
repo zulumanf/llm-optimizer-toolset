@@ -1,19 +1,16 @@
 "use client";
 
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { CircleStop } from "lucide-react";
 import { stopOutreachSequence } from "@/app/automation/actions";
 import { Button } from "@/components/ui/button";
+import { useAction } from "@/lib/hooks/use-action";
 
 /**
  * Stop a sequence by hand. Permanent: a stopped sequence cannot be resumed, so
  * continuing requires creating a new one — which forces a fresh decision.
  */
 export function StopSequenceButton({ sequenceId }: { sequenceId: string }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { pending, run } = useAction();
 
   return (
     <Button
@@ -21,18 +18,17 @@ export function StopSequenceButton({ sequenceId }: { sequenceId: string }) {
       variant="outline"
       disabled={pending}
       onClick={() =>
-        startTransition(async () => {
-          const result = await stopOutreachSequence({
-            sequenceId,
-            detail: "stopped by an operator from the outreach page",
-          });
-          if (!result.ok) {
-            toast.error(result.error.message);
-            return;
+        run(
+          () =>
+            stopOutreachSequence({
+              sequenceId,
+              detail: "stopped by an operator from the outreach page",
+            }),
+          {
+            success: "Sequence stopped. Queued drafts were cancelled.",
+            refresh: true,
           }
-          toast.success("Sequence stopped. Queued drafts were cancelled.");
-          router.refresh();
-        })
+        )
       }
     >
       <CircleStop className="mr-1.5 size-3.5" />

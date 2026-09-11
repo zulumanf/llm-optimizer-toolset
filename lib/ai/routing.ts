@@ -76,7 +76,12 @@ export const TASK_ROUTES = {
   // ------------------------------------------------ workspace assistant
   workspace_assistant: {
     tier: "frontier",
-    rationale: "Open-ended tool-using dialogue over live operator questions; capped at 7 calls per turn.",
+    rationale: "Open-ended tool-using dialogue over live operator questions; capped at 10 calls per turn.",
+  },
+  assistant_task: {
+    tier: "frontier",
+    rationale:
+      "Delegated multi-step execution (spec 115): same open-ended tool use as the chat loop, unattended — hard step and cost budgets per task.",
   },
   // ---------------------------------- automation registry (one per prompt)
   classify_lead: {
@@ -87,6 +92,16 @@ export const TASK_ROUTES = {
     tier: "frontier",
     rationale: "First outbound touch to a high-value prospect — outward-facing prose.",
   },
+  client_communication_review: {
+    tier: "frontier",
+    rationale:
+      "Reads a client update for overclaims and contradictions against a fact pack; advisory, founder still sends (spec 132).",
+  },
+  client_evidence_review: {
+    tier: "frontier",
+    rationale:
+      "Reads client-facing measurement interpretation for causal overreach against the canonical fact pack; advisory only (spec 132).",
+  },
   audit_sense_check: {
     tier: "frontier",
     rationale:
@@ -95,6 +110,11 @@ export const TASK_ROUTES = {
   classify_reply: {
     tier: "cheap",
     rationale: "Short-text intent classification; low-confidence routes to a human.",
+  },
+  report_prospect_review: {
+    tier: "frontier",
+    rationale:
+      "Reads the whole private report as the recipient would before it is sent unattended — judgment about clarity and relevance for a non-technical reader (spec 129).",
   },
   extract_claims: {
     tier: "cheap",

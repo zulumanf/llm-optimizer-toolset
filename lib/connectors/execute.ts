@@ -398,14 +398,18 @@ async function tryRefresh(
     if (!refresh.refreshed || !refresh.accessToken) return null;
     // Re-encryption goes through the credential boundary, not through here.
     const { storeCredential } = await import("@/lib/connectors/credentials");
+    const { SYSTEM_USER_ID } = await import("@/lib/auth");
     await storeCredential({
       connectionId,
       kind: "oauth2",
       secret: refresh.accessToken,
       refreshToken: refresh.refreshToken ?? ctx.refreshSecret(),
       expiresAt: refresh.expiresAt ?? null,
-      // System-initiated refresh; the audit row records it as such.
-      userId: "00000000-0000-4000-8000-000000000000",
+      // System-initiated refresh; the audit row records it as such. Must be
+      // the REAL system user (migration 037) — a made-up uuid violates the
+      // audit_log FK, the refreshed token never persists, and every oauth2
+      // connector dies one hour after connecting (found live, spec 092).
+      userId: SYSTEM_USER_ID,
     });
     log("info", "connector.token_refreshed", { provider: connector.provider });
     return refresh.accessToken;

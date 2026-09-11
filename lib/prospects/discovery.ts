@@ -56,8 +56,14 @@ export async function runProspectDiscovery(
     assertCanWrite(user);
     const adapter = getProspectSource(input.provider); // throws for guarded mock
     const [launch] = await sql`
-      select l.id, m.name as market_name from market_launches l
+      select l.id,
+        -- Qualify the city with its parent region (state): "Wilmington"
+        -- alone sent Perplexity to North Carolina (2026-08-21).
+        case when pm.name is not null and pm.kind in ('region', 'state', 'country')
+          then m.name || ', ' || pm.name else m.name end as market_name
+      from market_launches l
       join markets m on m.id = l.market_id
+      left join markets pm on pm.id = m.parent_id
       where l.id = ${input.launchId} and l.archived_at is null
     `;
     if (!launch) return fail(new ClassifiedError("not_found", "Launch not found."));

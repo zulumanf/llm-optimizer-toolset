@@ -33,7 +33,7 @@ export function AppShell({
     setDrawerOpen(false);
   }, [pathname]);
 
-  if (pathname.startsWith("/audit")) {
+  if (pathname.startsWith("/audit") || pathname.startsWith("/report/")) {
     return <main className="min-h-dvh">{children}</main>;
   }
   return (

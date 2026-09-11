@@ -12,11 +12,20 @@
  */
 import { ClassifiedError } from "@/lib/errors";
 import { mockProviderAllowed } from "@/lib/ai/registry";
+import { executeCapability } from "@/lib/connectors/execute";
+import { OUTREACH_PUBLIC_WEBSITE } from "@/lib/prospects/constants";
 
 export interface OutboundEmail {
   recipientEmail: string | null;
   subject: string | null;
   body: string;
+  /** Optional HTML rendering of `body` (spec 092: open-tracking pixel).
+   * Mechanical rendering only — the approved artifact is the plain text. */
+  htmlBody?: string | null;
+  /** Spec 127: reply into an existing Gmail thread. */
+  threadId?: string | null;
+  inReplyTo?: string | null;
+  references?: string | null;
 }
 
 export interface EmailChannel {
@@ -24,7 +33,9 @@ export interface EmailChannel {
   /** True when the channel actually transmits (and thus needs a recipient
    * address and an opt-out path in the body). */
   readonly transmits: boolean;
-  dispatch(message: OutboundEmail): Promise<{ providerMessageId: string | null }>;
+  dispatch(
+    message: OutboundEmail
+  ): Promise<{ providerMessageId: string | null; providerThreadId?: string | null }>;
 }
 
 const manualChannel: EmailChannel = {
@@ -44,13 +55,84 @@ const mockChannel: EmailChannel = {
     if (!message.recipientEmail) {
       throw new ClassifiedError("validation", "The mock channel requires a recipient email.");
     }
-    return { providerMessageId: `mock-${message.recipientEmail}` };
+    // Like Gmail, a reply stays in its thread and a fresh send opens one —
+    // the ledger learns a thread id either way (follow-up threading tests).
+    return {
+      providerMessageId: `mock-${message.recipientEmail}`,
+      providerThreadId: message.threadId ?? `mock-thread-${message.recipientEmail}`,
+    };
+  },
+};
+
+/**
+ * The first real transmitting channel (spec 091). Deliberately dumb: every
+ * gate (approval, DNC, suppression, recontact, territory, sender identity,
+ * daily cap) runs in sendProspectDraft before dispatch is reached, and the
+ * connector layer owns credentials, refresh, and the Gmail API shape.
+ * Prospect outreach is platform-scoped, so the connection is the
+ * platform-level (project_id null) gmail connection minted by
+ * scripts/connect-gmail.ts.
+ */
+const gmailChannel: EmailChannel = {
+  id: "gmail",
+  transmits: true,
+  async dispatch(message: OutboundEmail) {
+    if (!message.recipientEmail) {
+      throw new ClassifiedError("validation", "The gmail channel requires a recipient email.");
+    }
+    if (!message.subject || message.subject.trim().length === 0) {
+      throw new ClassifiedError("validation", "The gmail channel requires a subject line.");
+    }
+    const result = await executeCapability<{ messageId: string; threadId: string | null }>({
+      capability: "email.send_approved_message",
+      projectId: null,
+      input: {
+        to: message.recipientEmail,
+        subject: message.subject,
+        body: message.body,
+        ...(message.htmlBody ? { htmlBody: message.htmlBody } : {}),
+        ...(message.threadId ? { threadId: message.threadId } : {}),
+        ...(message.inReplyTo ? { inReplyTo: message.inReplyTo } : {}),
+        ...(message.references ? { references: message.references } : {}),
+      },
+      mode: "live",
+      provider: "gmail",
+    });
+    if (!result.ok) {
+      if (result.errorCode === "no_connection") {
+        throw new ClassifiedError(
+          "validation",
+          "No Gmail connection is configured — run scripts/connect-gmail.ts to authorize the sending mailbox."
+        );
+      }
+      if (result.errorCode === "revoked") {
+        throw new ClassifiedError(
+          "provider_auth",
+          "The Gmail connection has been revoked — re-run scripts/connect-gmail.ts to re-authorize."
+        );
+      }
+      // Transport-level failure: nothing was accepted by Gmail (the HTTP
+      // call failed or returned an error), so retrying is safe.
+      throw new ClassifiedError(
+        "internal",
+        `Gmail dispatch failed (${result.errorCode ?? "unknown"}): ${result.error ?? "no detail"}`
+      );
+    }
+    // A successful dispatch MUST be recorded even if Gmail's response
+    // carried no id — throwing here would roll back the ledger row for a
+    // message that actually left. Null id = "sent, id not returned".
+    const messageId = result.data?.messageId;
+    return {
+      providerMessageId: messageId && messageId.length > 0 ? messageId : null,
+      providerThreadId: result.data?.threadId ?? null,
+    };
   },
 };
 
 const CHANNELS: Record<string, EmailChannel> = {
   manual: manualChannel,
   mock: mockChannel,
+  gmail: gmailChannel,
 };
 
 export const OUTREACH_SEND_CHANNELS = Object.keys(CHANNELS);
@@ -84,6 +166,7 @@ export function optOutFooter(identity: {
 }): string {
   return (
     `\n\n—\n${identity.senderName} · ${identity.companyName}\n` +
+    `${OUTREACH_PUBLIC_WEBSITE}\n` +
     `${identity.postalAddress}\n` +
     `If you'd rather not hear from us, reply "unsubscribe" and we will not contact you again.`
   );

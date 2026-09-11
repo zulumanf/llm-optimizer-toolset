@@ -264,3 +264,116 @@ export async function portalReports(
     order by published_at desc
   `;
 }
+
+// ------------------------------------------------------------- spec 131
+
+export interface PortalEngagement {
+  startsOn: string;
+  endsOn: string;
+  stage: string;
+  marketName: string;
+  scopeSummary: string;
+  baseline: {
+    provider: string;
+    capturedAt: string | null;
+    questionCount: number;
+    answerCount: number;
+    recommendedCount: number;
+    distinctQuestions: number;
+    competitors: { name: string; recommendedCount: number }[];
+  } | null;
+  latestMeasurement: {
+    at: Date;
+    statement: string;
+    grade: string;
+    reasons: string[];
+  } | null;
+  nextMeasurementOn: string | null;
+  needsYourInput: { id: string; title: string; kind: "approval" | "input" | "access"; detail: string | null; proposedChange: string | null; targetUrl: string | null; why: string | null }[];
+  workingOn: { id: string; title: string; why: string | null }[];
+  changed: { id: string; title: string; at: Date; targetUrl: string | null; after: string | null; why: string | null }[];
+}
+
+/**
+ * The client's own engagement view: baseline, what we found, what we are
+ * working on, what needs them, what changed, measurement, next. Only
+ * client-visible work passes (filtered in SQL); commercial internals
+ * (fees, invoices, override reasons, other prospects) never do.
+ */
+export async function portalEngagement(
+  user: CurrentUser,
+  projectId: string
+): Promise<PortalEngagement | null> {
+  await assertProjectAccess(user, projectId);
+  const { engagementForProject, listMeasurements } = await import("@/lib/engagements/service");
+  const e = await engagementForProject(projectId);
+  if (!e) return null;
+  const measurements = await listMeasurements(e.id);
+  const baseline = measurements.find((m) => m.role === "baseline" && m.status === "frozen")?.snapshot ?? null;
+  const latest = measurements
+    .filter((m) => m.role !== "baseline" && (m.status === "frozen" || m.status === "non_comparable") && m.frozenAt)
+    .sort((a, b) => b.frozenAt!.getTime() - a.frozenAt!.getTime())[0];
+  const planned = measurements
+    .filter((m) => m.status === "planned" && m.scheduledFor)
+    .sort((a, b) => a.scheduledFor!.localeCompare(b.scheduledFor!))[0];
+  const tasks = await sql`
+    select id, title, status, hypothesis, observation, client_approval, blocked_reason, blocked_note,
+      target_url, after_state, coalesce(implemented_at, updated_at) as at
+    from tasks
+    where project_id = ${projectId} and client_visible and status != 'rejected'
+    order by updated_at desc
+  `;
+  const why = (t: Record<string, unknown>): string | null =>
+    (t.hypothesis as string | null) ?? (t.observation as string | null) ?? null;
+  return {
+    startsOn: e.startsOn,
+    endsOn: e.endsOn,
+    stage: e.stage,
+    marketName: e.marketName,
+    scopeSummary: e.scopeSummary,
+    baseline: baseline
+      ? {
+          provider: baseline.provider,
+          capturedAt: baseline.capturedAt,
+          questionCount: baseline.questionCount,
+          answerCount: baseline.answerCount,
+          recommendedCount: baseline.subject.recommendedCount,
+          distinctQuestions: baseline.subject.distinctQuestions,
+          competitors: baseline.competitors.map((c) => ({ name: c.name, recommendedCount: c.recommendedCount })),
+        }
+      : null,
+    latestMeasurement: latest
+      ? {
+          at: latest.frozenAt!,
+          statement: latest.comparison?.statement ?? "This measurement used a different instrument than the baseline, so no before/after is claimed.",
+          grade: latest.comparability?.grade ?? "not_comparable",
+          reasons: latest.comparability?.reasons ?? [],
+        }
+      : null,
+    nextMeasurementOn: planned?.scheduledFor ?? null,
+    needsYourInput: tasks
+      .filter((t) => t.clientApproval === "required" || t.blockedReason === "client_input" || t.blockedReason === "client_access")
+      .map((t) => ({
+        id: t.id as string,
+        title: t.title as string,
+        kind: t.clientApproval === "required" ? ("approval" as const) : t.blockedReason === "client_access" ? ("access" as const) : ("input" as const),
+        detail: (t.blockedNote as string | null) ?? null,
+        proposedChange: (t.afterState as string | null) ?? null,
+        targetUrl: (t.targetUrl as string | null) ?? null,
+        why: why(t),
+      })),
+    workingOn: tasks
+      .filter((t) => (t.status === "in_progress" || t.status === "approved") && t.clientApproval !== "required")
+      .map((t) => ({ id: t.id as string, title: t.title as string, why: why(t) })),
+    changed: tasks
+      .filter((t) => t.status === "done")
+      .map((t) => ({
+        id: t.id as string,
+        title: t.title as string,
+        at: t.at as Date,
+        targetUrl: (t.targetUrl as string | null) ?? null,
+        after: (t.afterState as string | null) ?? null,
+        why: why(t),
+      })),
+  };
+}

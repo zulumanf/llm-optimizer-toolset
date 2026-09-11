@@ -68,7 +68,6 @@ describe("parser accuracy harness", () => {
 
     const precision = truePositives / (truePositives + falsePositives);
     const recall = truePositives / (truePositives + falseNegatives);
-    // eslint-disable-next-line no-console
     console.log(
       `parser accuracy: precision=${precision.toFixed(3)} recall=${recall.toFixed(3)} (n=${CORPUS.length})`
     );

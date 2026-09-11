@@ -19,15 +19,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PriorityBreakdownDetails } from "@/components/control-tower/priority-breakdown";
 import { ResolveException } from "@/components/control-tower/resolve-exception";
 import { HealthComponents } from "@/components/control-tower/health-components";
+import { SEVERITY_VARIANT as SHARED_SEVERITY_VARIANT, type BadgeVariant } from "@/lib/ui/variants";
 
 export const dynamic = "force-dynamic";
 
-const SEVERITY_VARIANT = {
-  critical: "destructive",
-  high: "destructive",
-  medium: "default",
+// Registry values except low: this page has always rendered low-severity
+// items as outline (quieter than the shared secondary) — preserved.
+const SEVERITY_VARIANT: Record<string, BadgeVariant> = {
+  ...SHARED_SEVERITY_VARIANT,
   low: "outline",
-} as const;
+};
 
 const SOURCE_LABEL: Record<string, string> = {
   workflow_exception: "Exception",

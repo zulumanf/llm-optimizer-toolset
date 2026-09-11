@@ -153,7 +153,7 @@ describe.skipIf(!TEST_URL)("audit sense-check (integration)", () => {
       await sense.runSenseCheck(operator, { prospectId }, cannedCaller(CONCERNED))
     );
     expect(good.concerns).toHaveLength(2);
-    expect(good.agentVersion).toBe("audit-sense-check-v1");
+    expect(good.agentVersion).toBe("audit-sense-check-v2");
     expect(good.contentHash).toMatch(/^[a-f0-9]{64}$/);
     expect(good.error).toBeNull();
 

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { ProjectFormDialog } from "@/components/projects/project-form-dialog";
 import { formatDate } from "@/lib/format";
+import { portfolioScan } from "@/lib/engagements/portfolio";
 
 const TIERS = ["standard", "premium", "exclusive"] as const;
 
@@ -30,12 +31,17 @@ export default async function ProjectsPage({
     ? (tier as string)
     : null;
   const user = await getCurrentUser();
-  const projects = await listPortfolio({
-    includeArchived,
-    visibleIds: await visibleProjectIds(user),
-    ownerId: owner ?? null,
-    serviceTier: tierFilter,
-  });
+  const [projects, portfolio] = await Promise.all([
+    listPortfolio({
+      includeArchived,
+      visibleIds: await visibleProjectIds(user),
+      ownerId: owner ?? null,
+      serviceTier: tierFilter,
+    }),
+    portfolioScan(new Date(), { includeRecentlyClosed: false, cache: true }),
+  ]);
+  const human = (v: string | null | undefined) => (v ?? "").replaceAll("_", " ");
+  const WAITING: Record<string, string> = { us: "us", client: "client", third_party: "third party" };
   const filterHref = (next: { owner?: string | null; tier?: string | null }) => {
     const params = new URLSearchParams();
     if (includeArchived) params.set("archived", "1");
@@ -73,6 +79,51 @@ export default async function ProjectsPage({
           </>
         }
       />
+      {portfolio.clients.length > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">Active engagements</h2>
+          <div className="overflow-x-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Market</TableHead>
+                  <TableHead className="text-right">Day</TableHead>
+                  <TableHead>Stage</TableHead>
+                  <TableHead>Next action</TableHead>
+                  <TableHead>Waiting on</TableHead>
+                  <TableHead>Last change</TableHead>
+                  <TableHead>Next measurement</TableHead>
+                  <TableHead>Last update</TableHead>
+                  <TableHead>Renewal</TableHead>
+                  <TableHead>Billing</TableHead>
+                  <TableHead>QA</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {portfolio.clients.map((c) => (
+                  <TableRow key={c.overview.engagement.id}>
+                    <TableCell className="font-medium">
+                      <Link href={`/projects/${c.overview.engagement.projectId}/engagement`} className="underline-offset-2 hover:underline">{c.clientName}</Link>
+                    </TableCell>
+                    <TableCell>{c.overview.engagement.marketName}</TableCell>
+                    <TableCell className="text-right tabular-nums">{c.engagementDay}</TableCell>
+                    <TableCell><Badge variant="outline">{human(c.overview.derivedStage)}</Badge></TableCell>
+                    <TableCell className="max-w-xs"><span className="line-clamp-2 text-xs">{c.alerts[0]?.nextAction ?? c.overview.nextAction}</span></TableCell>
+                    <TableCell>{c.waitingOn ? WAITING[c.waitingOn] : "—"}</TableCell>
+                    <TableCell className="text-xs">{c.overview.changes[0] ? formatDate(c.overview.changes[0].at) : "none"}</TableCell>
+                    <TableCell className="text-xs tabular-nums">{c.overview.nextMeasurement?.scheduledFor ?? "none"}</TableCell>
+                    <TableCell className="text-xs">{c.overview.lastClientUpdate ? formatDate(c.overview.lastClientUpdate.at) : "never"}</TableCell>
+                    <TableCell className="text-xs tabular-nums">{c.overview.engagement.renewalReviewOn}</TableCell>
+                    <TableCell><Badge variant={c.billingState === "PAYMENT_CURRENT" ? "outline" : "destructive"}>{human(c.billingState).toLowerCase()}</Badge></TableCell>
+                    <TableCell><Badge variant={c.qaStatus === "CLEAR" ? "outline" : c.qaStatus === "P0" ? "destructive" : "secondary"}>{c.qaStatus}</Badge></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+      )}
       <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-muted-foreground">Tier:</span>
         <Link href={filterHref({ tier: null })}>

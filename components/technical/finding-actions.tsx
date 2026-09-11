@@ -1,9 +1,8 @@
 "use client";
 
-import { useTransition } from "react";
-import { toast } from "sonner";
 import { Check, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAction } from "@/lib/hooks/use-action";
 import {
   createTaskFromSiteFinding,
   dismissSiteFinding,
@@ -17,18 +16,14 @@ export function FindingActions({
   findingId: string;
   status: "open" | "task_created" | "dismissed";
 }) {
-  const [pending, startTransition] = useTransition();
+  const { pending, run } = useAction();
 
   const act = (
-    action: (input: unknown) => Promise<{ ok: boolean; error?: { message: string } }>,
+    action: (
+      input: unknown
+    ) => Promise<{ ok: true; data: unknown } | { ok: false; error?: { message: string } }>,
     success: string
-  ) => {
-    startTransition(async () => {
-      const result = await action({ findingId });
-      if (result.ok) toast.success(success);
-      else toast.error(result.error?.message ?? "Something went wrong.");
-    });
-  };
+  ) => run(() => action({ findingId }), { success });
 
   if (status === "task_created") return null;
   if (status === "dismissed") {

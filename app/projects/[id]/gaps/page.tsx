@@ -1,10 +1,10 @@
 import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
-import { Crosshair } from "lucide-react";
+import { Crosshair, ScanSearch } from "lucide-react";
 import { getProject } from "@/db/projects";
 import { sql } from "@/db/client";
 import { Badge } from "@/components/ui/badge";
-import { AnalyzeRunButton } from "@/components/gaps/analyze-run-button";
+import { BackgroundAction } from "@/components/jobs/background-action";
 import { FindingCard } from "@/components/gaps/finding-card";
 import { formatDate } from "@/lib/format";
 import { ProjectTabs } from "@/components/layout/project-tabs";
@@ -51,11 +51,14 @@ export default async function GapsPage({
         actions={
           <>
             {latestScoredRun[0] && (
-          <AnalyzeRunButton
-            runId={latestScoredRun[0].id as string}
-            runLabel={latestScoredRun[0].label as string}
-          />
-        )}
+              <BackgroundAction
+                type="analyze_gaps"
+                runId={latestScoredRun[0].id as string}
+                label={`Analyze "${latestScoredRun[0].label as string}"`}
+                workingLabel="Analyzing…"
+                icon={<ScanSearch className="size-4" />}
+              />
+            )}
           </>
         }
       />

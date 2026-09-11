@@ -1,19 +1,16 @@
 "use client";
 
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { RotateCcw } from "lucide-react";
 import { retryAutomationNode } from "@/app/automation/actions";
 import { Button } from "@/components/ui/button";
+import { useAction } from "@/lib/hooks/use-action";
 
 /**
  * Re-arm a failed node. Safe by construction: the (run, node, fan_key) unique
  * index means a retry cannot duplicate work that already settled.
  */
 export function RetryNodeButton({ nodeRunId }: { nodeRunId: string }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { pending, run } = useAction();
 
   return (
     <Button
@@ -21,14 +18,9 @@ export function RetryNodeButton({ nodeRunId }: { nodeRunId: string }) {
       variant="outline"
       disabled={pending}
       onClick={() =>
-        startTransition(async () => {
-          const result = await retryAutomationNode(nodeRunId);
-          if (!result.ok) {
-            toast.error(result.error.message);
-            return;
-          }
-          toast.success("Node re-armed. The next tick picks it up.");
-          router.refresh();
+        run(() => retryAutomationNode(nodeRunId), {
+          success: "Node re-armed. The next tick picks it up.",
+          refresh: true,
         })
       }
     >

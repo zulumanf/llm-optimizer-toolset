@@ -123,7 +123,10 @@ export async function connectorFetch(
       lastResponse = {
         ok: response.ok,
         status: response.status,
-        data: data === null ? null : redactSecrets(data),
+        // rawSecrets: the token-refresh exception (see ConnectorHttpRequest)
+        // — the credential must reach storeCredential intact; everything
+        // else keeps defense-in-depth redaction.
+        data: data === null ? null : request.rawSecrets ? data : redactSecrets(data),
         text: redactString(text.slice(0, 2000)),
         headers: safeHeaders,
         latencyMs,
