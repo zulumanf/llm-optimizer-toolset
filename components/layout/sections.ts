@@ -18,6 +18,7 @@ import {
   FileEdit,
   FileText,
   Flag,
+  Handshake,
   FlaskConical,
   History,
   LayoutDashboard,
@@ -29,6 +30,7 @@ import {
   Settings,
   ShieldAlert,
   Swords,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 
@@ -44,6 +46,9 @@ export const PROJECT_SECTIONS: ProjectSection[] = [
   // Second because it answers "what are we doing for this client?" — the
   // question asked most often, and previously three clicks deep.
   { path: "/plan", label: "Plan", icon: MapIcon },
+  // The paying client's one page: commercial state, onboarding, work,
+  // baseline vs remeasurement, renewal (spec 131).
+  { path: "/engagement", label: "Engagement", icon: Handshake },
   { path: "/knowledge", label: "Knowledge", icon: BookOpen },
   { path: "/prompts", label: "Prompts", icon: MessageSquareText },
   { path: "/runs", label: "Runs", icon: PlayCircle },
@@ -51,6 +56,7 @@ export const PROJECT_SECTIONS: ProjectSection[] = [
   { path: "/gaps", label: "Gaps", icon: Crosshair },
   { path: "/accuracy", label: "Accuracy", icon: ShieldAlert },
   { path: "/citations", label: "Citations", icon: Link2 },
+  { path: "/technical", label: "Technical", icon: Wrench },
   { path: "/content", label: "Content", icon: FileEdit },
   { path: "/competitors", label: "Competitors", icon: Swords },
   { path: "/campaigns", label: "Campaigns", icon: Flag },
@@ -79,7 +85,7 @@ export interface TabSet {
 
 export const TAB_SETS: TabSet[] = [
   { key: "measure", label: null, paths: ["/runs", "/review"] },
-  { key: "findings", label: "Findings", paths: ["/gaps", "/accuracy", "/citations"] },
+  { key: "findings", label: "Findings", paths: ["/gaps", "/accuracy", "/citations", "/technical"] },
   { key: "work", label: "Work", paths: ["/tasks", "/campaigns", "/interventions"] },
   { key: "reports", label: null, paths: ["/reports", "/validation"] },
 ];
@@ -96,7 +102,7 @@ export interface NavGroup {
 }
 
 export const PROJECT_NAV_GROUPS: NavGroup[] = [
-  { label: "Overview", paths: ["", "/plan", "/knowledge"] },
+  { label: "Overview", paths: ["", "/engagement", "/plan", "/knowledge"] },
   { label: "Measure", paths: ["/prompts", "/runs"] },
   { label: "Findings", paths: ["/gaps", "/competitors"] },
   { label: "Act", paths: ["/content", "/tasks", "/reports", "/activity"] },

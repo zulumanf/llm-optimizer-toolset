@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { listActiveCompanies, getSubjectCompany } from "@/db/companies";
@@ -54,24 +54,17 @@ export default async function KnowledgePage({
   );
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Knowledge
-      </nav>
-
-      <div className="mb-4">
-        <h1 className="text-2xl font-semibold">Client knowledge</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Knowledge" }]}
+        title="Client knowledge"
+        description={
+          <>
           The verified factual record. Agents may only use approved claims —
           never invented or recalled facts (docs/15).
-        </p>
-      </div>
-
+          </>
+        }
+      />
       <KnowledgeLayerNav projectId={id} />
 
       {/* The state of the layer at a glance, so a problem is visible before an
@@ -163,6 +156,6 @@ export default async function KnowledgePage({
           superseded/rejected kept for history
         </p>
       </section>
-    </div>
+    </PageShell>
   );
 }

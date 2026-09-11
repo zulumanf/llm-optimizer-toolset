@@ -307,3 +307,42 @@ export async function advanceCycle(cycleId: string): Promise<CycleState> {
 
   return state;
 }
+
+/**
+ * Start each active project's weekly_brief_v1 workflow (spec 017 C4) —
+ * the trailing-seven-days brief, idempotent per (project, week) via the
+ * run's idempotency key. Lived in the weekly-cycle route until the worker
+ * grew its own tick (2026-08-17); one implementation, two schedulers.
+ */
+export async function startWeeklyBriefs(): Promise<{ started: number; skipped: number }> {
+  const { startWorkflow } = await import("@/lib/workflow/engine");
+  const week = weekStart();
+  const today = new Date();
+  const periodStart = new Date(today.getTime() - 7 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const periodEnd = today.toISOString().slice(0, 10);
+
+  const projects = await sql`select id from projects where status = 'active'`;
+  let started = 0;
+  let skipped = 0;
+  for (const project of projects) {
+    try {
+      await startWorkflow({
+        definitionKey: "weekly_brief_v1",
+        projectId: project.id as string,
+        input: { periodStart, periodEnd },
+        idempotencyKey: `weekly-brief:${project.id}:${week}`,
+      });
+      started += 1;
+    } catch (err) {
+      // One client's brief failing to start must not stop the others'.
+      skipped += 1;
+      log("warn", "cron.weekly_brief_start_failed", {
+        projectId: project.id,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+  }
+  return { started, skipped };
+}

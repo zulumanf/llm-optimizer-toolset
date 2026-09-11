@@ -1,4 +1,4 @@
-import { Shield } from "lucide-react";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { getCurrentUser } from "@/lib/auth";
 import { listActiveProjects } from "@/db/projects";
 import {
@@ -35,22 +35,17 @@ export default async function ExclusivityPage() {
   ]);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold">
-            <Shield className="h-6 w-6" /> Market exclusivity
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Protected markets, active agreements, and prospect conflict checks
-            (spec 028). Every check is recorded immutably.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <MarketDialog markets={markets} />
-          <AgreementDialog projects={projects} markets={markets} />
-        </div>
-      </div>
+    <PageShell className="space-y-6">
+      <PageHeader
+        title="Market exclusivity"
+        description="Protected markets, active agreements, and prospect conflict checks. Every check is recorded immutably."
+        actions={
+          <>
+            <MarketDialog markets={markets} />
+            <AgreementDialog projects={projects} markets={markets} />
+          </>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -179,6 +174,6 @@ export default async function ExclusivityPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }

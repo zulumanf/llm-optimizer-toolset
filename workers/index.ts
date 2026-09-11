@@ -20,12 +20,19 @@ import { bootstrapWorkflows } from "@/lib/workflow/templates";
 // The automation layer registers ~110 more node handlers and 18 workflow
 // definitions on top of spec 018's three (specs/native-automation-and-connector-layer).
 import { ensureAutomationReady } from "@/lib/automation/dispatch";
+import { runAutomationTick, runWeeklyKick, tickDue } from "@/lib/ops/tick";
 import { dispatchOnce } from "@/workers/core";
 import { log } from "@/lib/logger";
 
 const WORKER_ID = `worker-${randomUUID().slice(0, 8)}`;
 const IDLE_POLL_MS = 2000;
 const STALE_LEASE_MINUTES = 15;
+/** The platform clock (2026-08-17): the worker is always on, so it ticks the
+ * scheduler itself — GitHub's heartbeat workflow is uptime-only now. Every
+ * tick runs automation dispatch + the weekly kick (both windowed/idempotent);
+ * connector-health probes ride once a day. */
+const TICK_INTERVAL_MS = 10 * 60_000;
+const HEALTH_INTERVAL_MS = 24 * 60 * 60_000;
 
 let shuttingDown = false;
 
@@ -39,8 +46,33 @@ async function main(): Promise<void> {
   await ensureAutomationReady();
   let sinceReclaim = 0;
   let jobsProcessed = 0;
+  let lastTickAt: number | null = null;
+  let lastHealthAt: number | null = null;
 
   while (!shuttingDown) {
+    // The scheduler tick, before job dispatch so a busy queue cannot starve
+    // it. Failures are logged, never fatal: the job loop must outlive a bad
+    // tick, and the next interval retries everything (all of it windowed).
+    if (tickDue(lastTickAt, Date.now(), TICK_INTERVAL_MS)) {
+      lastTickAt = Date.now();
+      const includeHealth = tickDue(lastHealthAt, lastTickAt, HEALTH_INTERVAL_MS);
+      if (includeHealth) lastHealthAt = lastTickAt;
+      try {
+        const report = await runAutomationTick({ includeHealth });
+        const weekly = await runWeeklyKick();
+        log("info", "worker.tick", {
+          triggersFired: report.triggers.fired,
+          triggersFailed: report.triggers.failed,
+          weekly: weekly as never,
+          includeHealth,
+        });
+      } catch (err) {
+        log("error", "worker.tick_failed", {
+          error: err instanceof Error ? err.message : "unknown",
+        });
+      }
+    }
+
     const outcome = await dispatchOnce(WORKER_ID);
     if (outcome.status !== "idle") jobsProcessed += 1;
     // The pulse (spec 059): every cycle, working or idle — a dead worker

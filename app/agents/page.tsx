@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { AGENTS } from "@/lib/agents/registry";
 import { agentMetrics } from "@/lib/automation/metrics";
 import { Badge } from "@/components/ui/badge";
@@ -23,22 +24,19 @@ export default async function AgentRegistryPage() {
   const measured = await agentMetrics();
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="mb-1 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Agent registry</h1>
-        <Link
-          href="/workflows"
-          className="text-sm text-muted-foreground underline hover:text-foreground"
-        >
-          Workflows
-        </Link>
-      </div>
-      <p className="mb-6 text-sm text-muted-foreground">
-        {implemented} of {AGENTS.length} agents have a runner today. The rest
-        have a fixed contract — schemas, scopes, prohibitions — but no
-        implementation, and are labelled <em>declared</em> rather than counted as
-        working.
-      </p>
+    <PageShell>
+      <PageHeader
+        title="Agent registry"
+        description={`${implemented} of ${AGENTS.length} agents have a runner today. The rest have a fixed contract — schemas, scopes, prohibitions — but no implementation, and are labelled "declared" rather than counted as working.`}
+        actions={
+          <Link
+            href="/workflows"
+            className="text-sm text-muted-foreground underline hover:text-foreground"
+          >
+            Workflows
+          </Link>
+        }
+      />
 
       {/* Measured behavior next to the declared contracts — agentMetrics()
           was computed and rendered nowhere (C5). This page previously showed
@@ -151,6 +149,6 @@ export default async function AgentRegistryPage() {
           </div>
         </section>
       ))}
-    </div>
+    </PageShell>
   );
 }

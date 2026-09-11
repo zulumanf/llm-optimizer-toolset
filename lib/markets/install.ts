@@ -76,6 +76,15 @@ export async function installMarketPack(
   if (!pack) {
     return fail(new ClassifiedError("not_found", `Unknown market pack "${parsed.data.packKey}".`));
   }
+  return installPackDefinition(user, pack);
+}
+
+/** The one installer (spec 082): registry packs and approved Perplexity
+ * drafts share this path — geo-tree upsert, install record, audit row. */
+export async function installPackDefinition(
+  user: CurrentUser,
+  pack: import("@/lib/markets/types").MarketPackDefinition
+): Promise<ActionResult<InstallResult>> {
   try {
     assertCanWrite(user);
     const result = await sql.begin(async (tx) => {

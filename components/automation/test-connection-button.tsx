@@ -1,11 +1,10 @@
 "use client";
 
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { PlugZap } from "lucide-react";
 import { testConnectorConnection } from "@/app/automation/actions";
 import { Button } from "@/components/ui/button";
+import { useAction } from "@/lib/hooks/use-action";
 
 /**
  * Probe a connection for real.
@@ -15,8 +14,7 @@ import { Button } from "@/components/ui/button";
  * credential is not a working integration.
  */
 export function TestConnectionButton({ connectionId }: { connectionId: string }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { pending, run } = useAction();
 
   return (
     <Button
@@ -24,19 +22,22 @@ export function TestConnectionButton({ connectionId }: { connectionId: string })
       variant="outline"
       disabled={pending}
       onClick={() =>
-        startTransition(async () => {
-          const result = await testConnectorConnection(connectionId);
-          if (!result.ok) {
-            toast.error(result.error.message);
-            return;
-          }
-          if (result.data.authorizationOk && result.data.readOk) {
-            toast.success(result.data.message);
-          } else {
-            toast.error(result.data.message);
-          }
-          router.refresh();
-        })
+        run(
+          async () => {
+            const result = await testConnectorConnection(connectionId);
+            if (result.ok) {
+              // A completed probe can still report a broken integration —
+              // that outcome toasts as an error, so it stays in-component.
+              if (result.data.authorizationOk && result.data.readOk) {
+                toast.success(result.data.message);
+              } else {
+                toast.error(result.data.message);
+              }
+            }
+            return result;
+          },
+          { refresh: true }
+        )
       }
     >
       <PlugZap className="mr-1.5 size-3.5" />

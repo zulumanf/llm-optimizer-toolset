@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
@@ -84,62 +85,60 @@ export default async function InterventionPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link
-          href={`/projects/${projectId}/interventions`}
-          className="hover:text-foreground"
-        >
-          Interventions
-        </Link>
-        {" / "}{intervention.title as string}
-      </nav>
-
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{intervention.title as string}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        crumbs={[
+          {
+            label: "Interventions",
+            href: `/projects/${projectId}/interventions`,
+          },
+          { label: intervention.title as string },
+        ]}
+        title={intervention.title as string}
+        description={
+          <>
             shipped {intervention.shipped as string} · target{" "}
             {intervention.setName as string} v{intervention.version as number}
             {(intervention.urls as string[]).length > 0 &&
               ` · ${(intervention.urls as string[]).join(", ")}`}
-          </p>
-          {intervention.hypothesis != null && (
-            <p className="mt-1 text-sm italic text-muted-foreground">
-              Hypothesis: {intervention.hypothesis as string}
-            </p>
-          )}
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <InterventionStatusBadge
-              status={intervention.status as InterventionStatus}
-              blockedReason={intervention.blockedReason as string | null}
-            />
-            {intervention.status === "blocked" && (
-              <span className="text-sm text-destructive">
-                {intervention.blockedReason as string}
+            {intervention.hypothesis != null && (
+              <span className="mt-1 block italic">
+                Hypothesis: {intervention.hypothesis as string}
               </span>
             )}
-            {intervention.baselineWeak && (
-              <Badge variant="outline" className="text-warning">
-                weak baseline — verdicts are indicative only
-              </Badge>
-            )}
-            {view.confoundedWith.map((other) => (
-              <Badge key={other.id} variant="destructive">
-                confounded with &ldquo;{other.title}&rdquo;
-              </Badge>
-            ))}
-          </div>
-          <div className="mt-3">
-            <InterventionStatusControls
-              interventionId={interventionId}
-              status={intervention.status as InterventionStatus}
-            />
-          </div>
-        </div>
-        <SuggestTasksButton
+          </>
+        }
+        actions={
+          <SuggestTasksButton
+            interventionId={interventionId}
+            hasNotable={view.verdicts.some((v) => v.verdict === "notable")}
+          />
+        }
+      />
+
+      <div className="mb-4 -mt-2 flex flex-wrap items-center gap-2">
+        <InterventionStatusBadge
+          status={intervention.status as InterventionStatus}
+          blockedReason={intervention.blockedReason as string | null}
+        />
+        {intervention.status === "blocked" && (
+          <span className="text-sm text-destructive">
+            {intervention.blockedReason as string}
+          </span>
+        )}
+        {intervention.baselineWeak && (
+          <Badge variant="outline" className="text-warning">
+            weak baseline — verdicts are indicative only
+          </Badge>
+        )}
+        {view.confoundedWith.map((other) => (
+          <Badge key={other.id} variant="destructive">
+            confounded with &ldquo;{other.title}&rdquo;
+          </Badge>
+        ))}
+        <InterventionStatusControls
           interventionId={interventionId}
-          hasNotable={view.verdicts.some((v) => v.verdict === "notable")}
+          status={intervention.status as InterventionStatus}
         />
       </div>
 
@@ -312,6 +311,6 @@ export default async function InterventionPage({
           and describes where the change happened — never why.
         </p>
       </section>
-    </div>
+    </PageShell>
   );
 }

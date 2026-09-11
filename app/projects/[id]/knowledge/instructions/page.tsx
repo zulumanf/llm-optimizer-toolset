@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import {
@@ -30,12 +30,11 @@ export default async function InstructionsPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href={`/projects/${id}`} className="hover:text-foreground">{project.name}</Link>
-        {" / "}Instructions
-      </nav>
-      <h1 className="mb-1 text-2xl font-semibold">Operating instructions</h1>
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: project.name, href: `/projects/${id}` }, { label: "Instructions" }]}
+        title="Operating instructions"
+      />
       <p className="mb-4 max-w-3xl text-sm text-muted-foreground">
         Rules, not facts. &ldquo;JC Luxury operates in Jersey City&rdquo; is a
         claim; &ldquo;lead with Jersey City before Hoboken&rdquo; is an
@@ -133,6 +132,6 @@ export default async function InstructionsPage({
           </ul>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }

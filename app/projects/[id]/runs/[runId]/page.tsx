@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
@@ -50,36 +51,28 @@ export default async function RunDetailPage({
   const isActive = run.status === "pending" || run.status === "running";
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
+    <PageShell>
       {isActive && <RunLiveRefresh />}
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${projectId}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}
-        <Link href={`/projects/${projectId}/runs`} className="hover:text-foreground">
-          Runs
-        </Link>
-        {" / "}{run.label}
-      </nav>
-
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">{run.label}</h1>
-            <Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        crumbs={[
+          { label: "Projects", href: "/projects" },
+          { label: project.name, href: `/projects/${projectId}` },
+          { label: "Runs", href: `/projects/${projectId}/runs` },
+          { label: run.label },
+        ]}
+        title={run.label}
+        badge={<Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>}
+        description={
+          <>
             {successes} captured · {failures} failed
             {run.statusDetail ? ` · ${run.statusDetail}` : ""} · $
             {Number(run.costUsd).toFixed(2)} of ${Number(run.budgetUsd).toFixed(2)}{" "}
             budget · {run.providers.map((p) => `${p.model}×${p.repetitions}`).join(", ")}
             {totalPlanned > 0 ? "" : ""}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
+          </>
+        }
+        actions={
+          <div className="flex shrink-0 items-center gap-2">
           {scores.length > 0 && (
             <Link
               href={`/projects/${projectId}/runs/${runId}/evidence`}
@@ -93,8 +86,9 @@ export default async function RunDetailPage({
             status={run.status}
             hasFailures={failures > 0}
           />
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       <section className="mb-6">
         <h2 className="mb-2 text-lg font-medium">Scores</h2>
@@ -266,6 +260,6 @@ export default async function RunDetailPage({
           </Table>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

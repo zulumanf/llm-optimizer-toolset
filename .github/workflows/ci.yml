@@ -1,9 +1,20 @@
 name: CI
 
+# paths-ignore: a push whose EVERY changed file matches is skipped entirely —
+# docs-only and spec-only changes cannot break the build they don't touch.
+# Any push mixing code with docs still runs the full suite.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "specs/**"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "specs/**"
 
 # One CI run per branch; a new push cancels the previous run
 concurrency:
@@ -43,11 +54,15 @@ jobs:
       # so a leaked key could never be spent by a test run.
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          # Full history so the migrations-changed check can diff against the
+          # PR base / previous push (Actions diet, 2026-08-18).
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22  # match production (Dockerfile node:22-alpine)
           cache: npm
 
       - run: npm ci
@@ -64,9 +79,35 @@ jobs:
       - name: Dependency audit (report)
         run: npm audit --audit-level=high || true
 
-      - name: Migrations apply and reverse cleanly
+      # The full reversibility walk (all migrations down and back up on a
+      # 2-core runner) grew into minutes of every run while migrations change
+      # on a small minority of PRs. It now runs only when db/migrations/** or
+      # the migrator itself changed — and runs unconditionally when the diff
+      # base can't be resolved, so uncertainty fails toward checking.
+      - name: Check whether migrations changed
+        id: migrations
         run: |
-          npx tsx scripts/migrate.ts up --db "$TEST_DATABASE_URL"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
+            echo "unknown diff base — running the reversibility check"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "$BASE"...HEAD -- db/migrations scripts/migrate.ts | grep -q .; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "no migration changes since $BASE"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Migrations apply cleanly
+        run: npx tsx scripts/migrate.ts up --db "$TEST_DATABASE_URL"
+
+      - name: Migrations reverse cleanly
+        if: steps.migrations.outputs.changed == 'true'
+        run: |
           # Every migration must roll back — historical reports depend on
           # being able to unwind a bad schema change (docs/09).
           for _ in $(seq 1 "$(ls db/migrations/*.sql | wc -l)"); do
@@ -108,11 +149,11 @@ jobs:
       E2E_DATABASE_URL: postgres://postgres:postgres@localhost:5433/llm_optimizer_e2e
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22  # match production (Dockerfile node:22-alpine)
           cache: npm
 
       - run: npm ci
@@ -132,20 +173,11 @@ jobs:
 
       - name: Upload traces on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-traces
           path: test-results/
           retention-days: 7
 
-  docker:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      # The deploy artifacts must stay buildable (spec 059) — a Dockerfile
-      # that rots is a deploy blocker discovered at the worst moment.
-      - name: Build web image
-        run: docker build -t avos-web .
-      - name: Build worker image
-        run: docker build -f Dockerfile.worker -t avos-worker .
+  # The docker job moved to docker.yml (Actions diet, 2026-08-18): it only
+  # runs when a Dockerfile, the dependency tree, or .dockerignore changes.

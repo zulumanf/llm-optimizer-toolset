@@ -24,6 +24,7 @@
  *     see their own obligations is a plan that does not get executed.
  */
 import type { PlanSummary } from "@/lib/plans/service";
+import { escapeHtml } from "@/lib/text/html";
 
 export type PlanExportFormat = "markdown" | "html";
 
@@ -218,12 +219,6 @@ ${body}
 </body></html>`;
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
 
 /** Bold and italic only — the export carries no links or images by design. */
 function inline(value: string): string {

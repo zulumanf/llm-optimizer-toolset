@@ -5,6 +5,7 @@
  * → pipeline with exclusivity gating → history/activities/immutability.
  */
 import { execSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
@@ -273,10 +274,74 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     // versions its numbers were computed with.
     expect(snapshot?.instrumentVersions?.scoring.length).toBeGreaterThan(0);
     expect(snapshot?.instrumentVersions?.parser.length).toBeGreaterThan(0);
+    // Collection provenance (spec 086): the snapshot states how the answers
+    // were collected, derived from stored instrument facts. A mock/API run
+    // is method 'api'; the search/model-only split covers every response;
+    // a prospect project measures for prospecting.
+    expect(snapshot?.collection?.method).toBe("api");
+    expect(
+      (snapshot?.collection?.searchEnabled ?? 0) +
+        (snapshot?.collection?.modelOnly ?? 0)
+    ).toBe(snapshot?.benchmark.responseCount);
+    // Purpose derives from stored facts: this fixture's project is kind
+    // 'client' (production benchmark projects are 'prospect' → prospecting)
+    // and the run was manual.
+    expect(snapshot?.collection?.purpose).toBe("client_baseline");
+    // No consumer observations were recorded → the section must be absent,
+    // never fabricated (API runs can't present as consumer UI).
+    expect(snapshot?.consumerValidation).toBeUndefined();
     const [viewCount] = await sql`
       select count(*)::int as n from prospect_audit_views where audit_id = ${auditId}
     `;
     expect(viewCount?.n).toBe(1);
+
+    // Consumer validation (spec 086 over the 011 workflow): record one
+    // clean-session observation and republish — the snapshot gains the
+    // section with its OWN denominator; the API counts stay untouched.
+    {
+      const evidence = await import("@/lib/evidence/service");
+      const [runRow] = await sql`
+        select project_id, prompt_set_version_id from runs where id = ${runId}
+      `;
+      const validation = unwrap(
+        await evidence.createClientValidationRun(operator, {
+          projectId: runRow?.projectId as string,
+          promptSetVersionId: runRow?.promptSetVersionId as string,
+          promptCount: 1,
+        })
+      );
+      const [vr] = await sql`
+        select selected_prompt_ids from client_validation_runs
+        where id = ${validation.validationRunId}
+      `;
+      unwrap(
+        await evidence.recordClientValidationObservation(operator, {
+          validationRunId: validation.validationRunId,
+          promptId: (vr?.selectedPromptIds as string[])[0]!,
+          provider: "chatgpt",
+          performedOn: "2026-08-18",
+          rawResponse: "Sure — Rivera Team is a strong option in this market.",
+          claimedMentioned: true,
+          claimedRecommended: false,
+        })
+      );
+      unwrap(await svc.publishAudit(operator, { prospectId }));
+      const republished = await svc.getAuditByToken(accessToken, {
+        userAgent: "vitest",
+      });
+      expect(republished?.consumerValidation).toEqual({
+        observations: 1,
+        mentioned: 1,
+        byProvider: [{ provider: "chatgpt", observations: 1, mentioned: 1 }],
+        performedFrom: "2026-08-18",
+        performedTo: "2026-08-18",
+      });
+      // Separate denominators: API response count is unchanged by the
+      // consumer observation.
+      expect(republished?.benchmark.responseCount).toBe(
+        snapshot?.benchmark.responseCount
+      );
+    }
 
     // Source-link liveness (spec 065): a dead receipt is an ack-required
     // warning — publish refuses, then publishes with a recorded reason.
@@ -327,8 +392,24 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     unwrap(await svc.revokeAudit(operator, { auditId: liveAuditId, reason: "content superseded" }));
     expect(await svc.getAuditByToken(accessToken)).toBeNull();
 
-    // Draft: generated from the approved finding, versioned, approved, sent
-    const draft = unwrap(await svc.createOutreachDraft(operator, { prospectId, channel: "email" }));
+    // Draft: generated from the approved finding, versioned, approved, sent.
+    // The spec-116 QA gate refuses approval without a bound contact that has
+    // an email, so bind one before drafting.
+    const draftContact = unwrap(
+      await svc.addContact(operator, {
+        prospectId,
+        name: "Ana Rivera",
+        email: "ana@riverateam.com",
+        isPrimary: true,
+      })
+    );
+    const draft = unwrap(
+      await svc.createOutreachDraft(operator, {
+        prospectId,
+        channel: "email",
+        contactId: draftContact.contactId,
+      })
+    );
     expect(draft.version).toBe(1);
     const [draftRow] = await sql`
       select body, generated_by from outreach_drafts where id = ${draft.draftId}
@@ -470,8 +551,13 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
       const [draftRow] = await sql`
         select body from outreach_drafts where id = ${draft.draftId}
       `;
+      // Spec 076: drafts embed the BRANDED link (slug + short key), falling
+      // back to the token URL only for prospects minted before the feature.
+      const { auditLinkForProspect } = await import("@/lib/prospects/links");
+      const branded = await auditLinkForProspect(prospectId);
+      expect(branded).not.toBeNull();
       expect(draftRow?.body as string).toContain(
-        `https://avos.example.com/audit/${accessToken}`
+        `https://avos.example.com/audit/${branded?.slug}/${branded?.key}`
       );
       expect(draftRow?.body as string).toContain('reply "show me"');
     } finally {
@@ -894,5 +980,190 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     await expect(
       sql`delete from prospect_activities where prospect_id = ${prospectId}`
     ).rejects.toThrow();
+  });
+
+  /** Launch-fix regressions (2026-08-14): shared setup — a linked, approved,
+   * publishable prospect over a freshly scored run. */
+  async function publishableProspect(): Promise<{
+    runId: string;
+    prospectId: string;
+  }> {
+    const { runId, prospectCompanyId } = await seedScoredRun();
+    const { prospectId } = await seedLaunchAndProspect(prospectCompanyId);
+    const { benchmarkId } = unwrap(await svc.linkBenchmark(operator, { prospectId, runId }));
+    unwrap(await svc.generateFindings(operator, { benchmarkId }));
+    const [candidate] = await sql`
+      select id from prospect_findings
+      where prospect_id = ${prospectId} and status = 'candidate'
+      order by rank_score desc limit 1
+    `;
+    unwrap(
+      await svc.reviewFinding(operator, {
+        findingId: candidate?.id as string,
+        decision: "approved",
+        makePrimary: true,
+      })
+    );
+    return { runId, prospectId };
+  }
+
+  it("transcript completeness: total stamped; a capped appendix is disclosed, never claimed complete (launch fix 1)", async () => {
+    const { AUDIT_TRANSCRIPT_CAP } = await import("@/lib/prospects/constants");
+    const { runId, prospectId } = await publishableProspect();
+
+    // Complete case: the snapshot holds every qualifying capture and says so.
+    const full = unwrap(await svc.publishAudit(operator, { prospectId }));
+    const fullSnap = await svc.getAuditByToken(full.accessToken, { userAgent: "vitest" });
+    expect(fullSnap?.transcripts?.length).toBe(6);
+    expect(fullSnap?.transcriptTotal).toBe(6);
+
+    // Blow past the cap with valid captures; the republished snapshot must
+    // carry the true total so the pages state shown-of-total, not "all".
+    const [seed] = await sql`
+      select prompt_id, prompt_text from responses where run_id = ${runId} limit 1
+    `;
+    await sql`
+      insert into responses
+        (run_id, prompt_id, prompt_text, provider, model, repetition, response_text)
+      select ${runId}, ${seed?.promptId}, ${seed?.promptText}, 'mock', 'mock-model',
+        100 + g, 'Filler answer number ' || g
+      from generate_series(1, ${AUDIT_TRANSCRIPT_CAP - 5}) as g
+    `;
+    const capped = unwrap(await svc.publishAudit(operator, { prospectId }));
+    const cappedSnap = await svc.getAuditByToken(capped.accessToken, { userAgent: "vitest" });
+    expect(cappedSnap?.transcriptTotal).toBe(6 + AUDIT_TRANSCRIPT_CAP - 5);
+    expect(cappedSnap?.transcripts?.length).toBe(AUDIT_TRANSCRIPT_CAP);
+    expect(cappedSnap?.transcriptTotal ?? 0).toBeGreaterThan(
+      cappedSnap?.transcripts?.length ?? 0
+    );
+  });
+
+  it("partial-run integrity: failed cells never count, partial needs a recorded reason, unfinished runs are hard-blocked (launch fix 2)", async () => {
+    const { runId, prospectId } = await publishableProspect();
+
+    // Two failed cells: one on an asked prompt, one on a prompt with no
+    // valid capture at all — the failed-only prompt must not count as
+    // asked-and-answered.
+    const [seed] = await sql`
+      select prompt_id, prompt_text from responses where run_id = ${runId} limit 1
+    `;
+    await sql`
+      insert into responses
+        (run_id, prompt_id, prompt_text, provider, model, repetition, error)
+      values
+        (${runId}, ${seed?.promptId}, ${seed?.promptText}, 'mock', 'mock-model', 90,
+          ${sql.json({ message: "timeout" })}),
+        (${runId}, ${randomUUID()}, 'which team should I avoid in manhattan?',
+          'mock', 'mock-model', 1, ${sql.json({ message: "timeout" })})
+    `;
+    await sql`
+      update runs set status = 'partial', status_detail = '2 of 8 cells failed'
+      where id = ${runId}
+    `;
+
+    // Refused without an acknowledgment…
+    const refused = await svc.publishAudit(operator, { prospectId });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/incomplete/);
+
+    // …publishable with a recorded reason, and the numbers stay honest:
+    // 2 prompts actually answered (not 3), 6 valid answers (not 8).
+    const acked = unwrap(
+      await svc.publishAudit(operator, {
+        prospectId,
+        acknowledgeWarnings: {
+          reason: "provider flake verified; captured cells representative",
+        },
+      })
+    );
+    const snap = await svc.getAuditByToken(acked.accessToken, { userAgent: "vitest" });
+    expect(snap?.benchmark.promptCount).toBe(2);
+    expect(snap?.benchmark.responseCount).toBe(6);
+    expect(snap?.transcriptTotal).toBe(6);
+    expect(snap?.transcripts?.length).toBe(6);
+    // The acknowledgment and the incompleteness warning are in the audit log.
+    const [logged] = await sql`
+      select detail from audit_log
+      where action = 'prospect.audit_publish' and entity_id = ${acked.auditId}
+    `;
+    expect(JSON.stringify(logged?.detail)).toContain("incomplete");
+    expect(JSON.stringify(logged?.detail)).toContain("captured cells representative");
+
+    // Still-running and failed runs are hard blocks — no acknowledgment path.
+    await sql`update runs set status = 'running', status_detail = null where id = ${runId}`;
+    const running = await svc.publishAudit(operator, {
+      prospectId,
+      acknowledgeWarnings: { reason: "trying to force through the gate" },
+    });
+    expect(running.ok).toBe(false);
+    if (!running.ok) expect(running.error.message).toMatch(/only a finished run/);
+    await sql`update runs set status = 'failed' where id = ${runId}`;
+    const failed = await svc.publishAudit(operator, {
+      prospectId,
+      acknowledgeWarnings: { reason: "trying to force through the gate" },
+    });
+    expect(failed.ok).toBe(false);
+  });
+
+  it("prompt echo: whole-word matching keeps common-word brands' organic recommendations (launch fix 4)", async () => {
+    const bench = await import("@/lib/prospects/benchmark");
+    const { PROMPT_ECHO_EXCLUDED } = await import("@/lib/scoring/prompt-echo");
+    const { runId } = await seedScoredRun();
+    const compass = unwrap(await companySvc.upsertCompany(operator, { name: "Compass" }));
+    const remax = unwrap(
+      await companySvc.upsertCompany(operator, { name: "RE/MAX (NJ) Collection" })
+    );
+
+    const [seed] = await sql`
+      select prompt_id from responses where run_id = ${runId} limit 1
+    `;
+    const crafted = [
+      // "encompassing" CONTAINS "compass" — substring matching wrongly
+      // treated this as Compass-echo and suppressed the recommendation.
+      {
+        text: "Which brokerage offers the most encompassing service in Manhattan?",
+        company: compass.id,
+      },
+      // A prompt that truly names the brand as a word stays excluded.
+      { text: "Is Compass the best brokerage in Manhattan?", company: compass.id },
+      // Regex metacharacters in a name must match literally, not error.
+      {
+        text: "How good is RE/MAX (NJ) Collection at luxury sales?",
+        company: remax.id,
+      },
+    ];
+    for (const [i, c] of crafted.entries()) {
+      const [resp] = await sql`
+        insert into responses
+          (run_id, prompt_id, prompt_text, provider, model, repetition, response_text)
+        values (${runId}, ${seed?.promptId}, ${c.text}, 'mock', 'mock-model',
+          ${50 + i}, 'You should work with them.')
+        returning id
+      `;
+      await sql`
+        insert into mentions
+          (response_id, company_id, mentioned, recommended, parser_version, confidence)
+        values (${resp?.id}, ${c.company}, true, true, 'test-fixture-v1', 1)
+      `;
+    }
+
+    // The stakes/excerpt counting rule (publishAudit's idiom), verbatim.
+    const rows = await sql`
+      select c.name, count(*)::int as organic_recs
+      from mentions m
+      join companies c on c.id = m.company_id
+      join responses r on r.id = m.response_id
+      where r.run_id = ${runId} and r.error is null and m.recommended
+        and ${bench.CURRENT} and ${PROMPT_ECHO_EXCLUDED}
+      group by c.name
+    `;
+    const byName = new Map(rows.map((r) => [r.name as string, Number(r.organicRecs)]));
+    expect(byName.get("Compass")).toBe(1); // the "encompassing" answer counts
+    expect(byName.has("RE/MAX (NJ) Collection")).toBe(false); // pure echo drops out
+
+    // The same rule through valuableVisibility's shared predicate: only the
+    // prompt that NAMED Compass is a branded (excluded) cell.
+    const vv = await bench.valuableVisibility(runId, compass.id);
+    expect(vv.brandedExcluded).toBe(1);
   });
 });

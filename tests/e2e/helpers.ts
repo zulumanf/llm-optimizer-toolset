@@ -6,6 +6,10 @@ export interface SeedState {
   clientProjectId: string;
   prospectId: string;
   auditToken: string;
+  refreshProspectName: string;
+  auditSlug: string;
+  auditKey: string;
+  reportSlug: string;
   suggestedTaskTitle: string;
   overdueTaskTitle: string;
 }

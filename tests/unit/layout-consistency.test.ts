@@ -58,77 +58,29 @@ const PAGES = pageFiles(APP_DIR).map((path) => ({
  * landed (6 widths → 10). The list below is the debt as of the freeze; it
  * may only shrink. A new page must use the shell or fail this suite.
  */
-const LEGACY_SHELLS = new Set([
-  "app/agents/page.tsx",
-  "app/approvals/page.tsx",
-  "app/audit/[token]/answers/page.tsx",
-  "app/audit/[token]/page.tsx",
-  "app/automation/connectors/page.tsx",
-  "app/automation/events/page.tsx",
-  "app/automation/outreach/page.tsx",
-  "app/automation/page.tsx",
-  "app/automation/runs/[runId]/page.tsx",
-  "app/automation/runs/page.tsx",
-  "app/automation/triggers/page.tsx",
-  "app/automation/workflows/[key]/page.tsx",
-  "app/automation/workflows/page.tsx",
-  "app/companies/page.tsx",
-  "app/control-tower/briefs/[briefId]/page.tsx",
-  "app/control-tower/page.tsx",
-  "app/exclusivity/page.tsx",
-  "app/login/page.tsx",
-  "app/notifications/page.tsx",
-  "app/onboarding/page.tsx",
-  "app/page.tsx",
-  "app/portal/[projectId]/page.tsx",
-  "app/portal/[projectId]/reports/page.tsx",
-  "app/portal/[projectId]/work/page.tsx",
-  "app/portal/page.tsx",
-  "app/projects/[id]/accuracy/page.tsx",
-  "app/projects/[id]/activity/page.tsx",
-  "app/projects/[id]/campaigns/[campaignId]/page.tsx",
-  "app/projects/[id]/campaigns/page.tsx",
-  "app/projects/[id]/competitors/page.tsx",
-  "app/projects/[id]/content/[assetId]/page.tsx",
-  "app/projects/[id]/content/page.tsx",
-  "app/projects/[id]/gaps/page.tsx",
-  "app/projects/[id]/interventions/[interventionId]/page.tsx",
-  "app/projects/[id]/interventions/page.tsx",
-  "app/projects/[id]/knowledge/builds/page.tsx",
-  "app/projects/[id]/knowledge/contradictions/page.tsx",
-  "app/projects/[id]/knowledge/instructions/page.tsx",
-  "app/projects/[id]/knowledge/packets/[packetId]/page.tsx",
-  "app/projects/[id]/knowledge/packets/page.tsx",
-  "app/projects/[id]/knowledge/page.tsx",
-  "app/projects/[id]/knowledge/sources/page.tsx",
-  "app/projects/[id]/knowledge/wiki/[slug]/page.tsx",
-  "app/projects/[id]/knowledge/wiki/page.tsx",
-  "app/projects/[id]/page.tsx",
-  "app/projects/[id]/prompts/[setId]/page.tsx",
-  "app/projects/[id]/prompts/[setId]/v/[version]/page.tsx",
-  "app/projects/[id]/prompts/page.tsx",
-  "app/projects/[id]/reports/[reportId]/page.tsx",
-  "app/projects/[id]/reports/page.tsx",
-  "app/projects/[id]/review/page.tsx",
-  "app/projects/[id]/runs/[runId]/evidence/page.tsx",
-  "app/projects/[id]/runs/[runId]/page.tsx",
-  "app/projects/[id]/runs/[runId]/responses/[responseId]/page.tsx",
-  "app/projects/[id]/runs/new/page.tsx",
-  "app/projects/[id]/runs/page.tsx",
-  "app/projects/[id]/settings/page.tsx",
-  "app/projects/[id]/tasks/page.tsx",
-  "app/projects/[id]/validation/page.tsx",
-  "app/projects/page.tsx",
-  "app/workflows/[runId]/page.tsx",
-  "app/workflows/page.tsx",
+/**
+ * Deliberate exemptions, NOT debt (split from the ratchet 2026-08-17):
+ * these pages' hand-rolled shells ARE the design and must never migrate.
+ */
+const INTENTIONAL_SHELLS = new Map<string, string>([
+  ["app/report/[slug]/page.tsx", "private report behind the clean URL (spec 134) — renders the document page"],
+  ["app/report/[slug]/answers/page.tsx", "private report appendix (spec 134) — renders the appendix"],
+  ["app/report/[slug]/walkthrough/page.tsx", "private report scheduling page (spec 134) — renders the scheduling page"],
+  ["app/portal/page.tsx", "client portal landing — the portal carries its own shell (spec 031)"],
+  ["app/portal/[projectId]/page.tsx", "client portal overview — portal shell (specs 031/085)"],
+  ["app/portal/[projectId]/work/page.tsx", "client portal — portal shell"],
+  ["app/portal/[projectId]/reports/page.tsx", "client portal — portal shell"],
+  ["app/login/page.tsx", "auth screen — renders before any workspace exists"],
 ]);
+
+const LEGACY_SHELLS = new Set<string>([]);
 
 // The ratchet: a page that migrates must leave the list, and a page not on
 // the list must use the shell. Both directions fail loudly.
 describe("legacy-shell ratchet", () => {
   it("every non-legacy page uses the layout primitives", () => {
     const offenders = PAGES.filter(
-      (p) => !LEGACY_SHELLS.has(p.rel) && !p.source.includes("@/components/layout/page")
+      (p) => !LEGACY_SHELLS.has(p.rel) && !INTENTIONAL_SHELLS.has(p.rel) && !p.source.includes("@/components/layout/page")
     ).map((p) => p.rel);
     expect(offenders).toEqual([]);
   });
@@ -151,7 +103,7 @@ describe("page layout consistency", () => {
   it("uses one content width on every migrated page", () => {
     const offenders: string[] = [];
     for (const page of PAGES) {
-      if (LEGACY_SHELLS.has(page.rel)) continue;
+      if (LEGACY_SHELLS.has(page.rel) || INTENTIONAL_SHELLS.has(page.rel)) continue;
       const widths = [...page.source.matchAll(/max-w-(\w+)/g)].map((m) => m[1]);
       // 7xl is the page container; prose/3xl are legitimate *text* measures
       // inside it. Anything else is a bespoke page width.
@@ -164,8 +116,15 @@ describe("page layout consistency", () => {
   it("keeps to the documented type scale", () => {
     // docs/04: "text-2xl page title · text-lg section · text-sm body · text-xs
     // metadata. Nothing else."
+    //
+    // Scoped exemption (spec 123 round 2): prospect-facing audit documents
+    // under app/audit/ follow audit-page-design, not the workspace scale —
+    // the hero metric is a display numeral and may render genuinely large.
+    // app/report/ (spec 134) is the same document behind the clean URL.
+    // The workspace rule stays intact everywhere else.
     const offenders: string[] = [];
     for (const page of PAGES) {
+      if (page.rel.startsWith("app/audit/") || page.rel.startsWith("app/report/")) continue;
       const sizes = [...page.source.matchAll(/text-(xs|sm|base|lg|xl|2xl|3xl|4xl)\b/g)].map(
         (m) => m[1]
       );
@@ -178,7 +137,7 @@ describe("page layout consistency", () => {
   it("gives every migrated page exactly one h1, via PageHeader", () => {
     const offenders: string[] = [];
     for (const page of PAGES) {
-      if (LEGACY_SHELLS.has(page.rel)) continue;
+      if (LEGACY_SHELLS.has(page.rel) || INTENTIONAL_SHELLS.has(page.rel)) continue;
       const h1s = (page.source.match(/<h1\b/g) ?? []).length;
       // PageHeader owns the h1; a page declaring its own has bypassed the shell.
       if (h1s > 0) offenders.push(`${page.rel}: ${h1s} bespoke <h1>`);

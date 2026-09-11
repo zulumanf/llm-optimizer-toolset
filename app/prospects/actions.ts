@@ -6,7 +6,12 @@ import * as discovery from "@/lib/prospects/discovery";
 import * as buying from "@/lib/prospects/buying-signals";
 import * as quickstart from "@/lib/prospects/quickstart";
 import * as exhibits from "@/lib/prospects/exhibits";
-
+import * as refresh from "@/lib/prospects/refresh";
+import * as senseCheckSvc from "@/lib/prospects/sense-check";
+import * as enrichmentSvc from "@/lib/prospects/enrichment";
+import * as positiveReplies from "@/lib/prospects/positive-replies";
+import * as marketResearch from "@/lib/markets/research";
+import * as followups from "@/lib/prospects/followups";
 const run = makeActionRunner(["/prospects", "layout"]);
 
 export async function createLaunch(input: unknown) {
@@ -90,6 +95,10 @@ export async function revokeAudit(input: unknown) {
 export async function expireAudit(input: unknown) {
   return run((u) => svc.expireAudit(u, input));
 }
+export async function revokeReportAccess(input: unknown) {
+  const { revokeReportAccess: revoke } = await import("@/lib/prospects/report-access");
+  return run((u) => revoke(u, input));
+}
 export async function createOutreachDraft(input: unknown) {
   return run((u) => svc.createOutreachDraft(u, input));
 }
@@ -101,6 +110,30 @@ export async function recordDraftSent(input: unknown) {
 }
 export async function sendProspectDraft(input: unknown) {
   return run((u) => svc.sendProspectDraft(u, input));
+}
+export async function recordProspectReply(input: unknown) {
+  return run((u) => svc.recordProspectReply(u, input));
+}
+export async function scheduleDraftSend(input: unknown) {
+  return run((u) => svc.scheduleDraftSend(u, input));
+}
+export async function enrollFollowupSequence(input: unknown) {
+  return run((u) => followups.enrollFollowupSequence(u, input));
+}
+export async function pauseFollowupSequence(input: unknown) {
+  return run((u) => followups.pauseFollowupSequence(u, input));
+}
+export async function resumeFollowupSequence(input: unknown) {
+  return run((u) => followups.resumeFollowupSequence(u, input));
+}
+export async function stopFollowupSequence(input: unknown) {
+  return run((u) => followups.stopFollowupSequence(u, input));
+}
+export async function setAllFollowupsPaused(input: unknown) {
+  return run((u) => followups.setAllFollowupsPaused(u, input));
+}
+export async function cancelScheduledSend(input: unknown) {
+  return run((u) => svc.cancelScheduledSend(u, input));
 }
 export async function generateRecordingPlan(input: unknown) {
   return run((u) => svc.generateRecordingPlan(u, input));
@@ -117,4 +150,39 @@ export async function addActivityNote(input: unknown) {
 
 export async function promoteProspect(input: unknown) {
   return run((u) => svc.promoteProspectToClient(u, input));
+}
+
+export async function approveAuditRefresh(input: unknown) {
+  return run((u) => refresh.approveAuditRefresh(u, input));
+}
+export async function dismissAuditRefresh(input: unknown) {
+  return run((u) => refresh.dismissAuditRefresh(u, input));
+}
+export async function runAuditSenseCheck(input: unknown) {
+  return run((u) => senseCheckSvc.runSenseCheck(u, input));
+}
+
+export async function enrichProspect(input: unknown) {
+  return run((u) => enrichmentSvc.enrichProspect(u, input));
+}
+export async function approveEnrichmentProposal(input: unknown) {
+  return run((u) => enrichmentSvc.approveEnrichmentProposal(u, input));
+}
+export async function rejectEnrichmentProposal(input: unknown) {
+  return run((u) => enrichmentSvc.rejectEnrichmentProposal(u, input));
+}
+
+export async function draftMarketPack(input: unknown) {
+  return run((u) => marketResearch.draftMarketPack(u, input));
+}
+export async function installMarketPackDraft(input: unknown) {
+  return run((u) => marketResearch.installMarketPackDraft(u, input));
+}
+export async function rejectMarketPackDraft(input: unknown) {
+  return run((u) => marketResearch.rejectMarketPackDraft(u, input));
+}
+
+/** A human records how a positive reply was handled (Today item). */
+export async function resolvePositiveReply(input: { prospectId: string; replyId: string; outcome: string; note?: string }) {
+  return run((u) => positiveReplies.resolvePositiveReply(u, input));
 }

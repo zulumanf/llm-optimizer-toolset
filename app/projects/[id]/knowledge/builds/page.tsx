@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { listBuilds, buildItems } from "@/db/knowledge";
@@ -34,12 +34,11 @@ export default async function BuildsPage({
   const noOpShare = totalPages > 0 ? Math.round((totalNoOp / totalPages) * 100) : null;
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href={`/projects/${id}`} className="hover:text-foreground">{project.name}</Link>
-        {" / "}Builds
-      </nav>
-      <h1 className="mb-1 text-2xl font-semibold">Knowledge builds</h1>
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: project.name, href: `/projects/${id}` }, { label: "Builds" }]}
+        title="Knowledge builds"
+      />
       <p className="mb-4 max-w-3xl text-sm text-muted-foreground">
         Compilation is incremental: a canonical change marks the pages that
         depend on it and only those are rebuilt. A rebuild whose output is
@@ -125,6 +124,6 @@ export default async function BuildsPage({
           })}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

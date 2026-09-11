@@ -46,7 +46,6 @@ describe.skipIf(!TEST_URL)("mcp tools (integration)", () => {
   let companySvc: typeof import("@/lib/companies/service");
   let parsing: typeof import("@/lib/parsing/service");
   let scoring: typeof import("@/lib/scoring/compute");
-  let attribution: typeof import("@/lib/attribution/service");
   let gaps: typeof import("@/lib/gaps/service");
   let mock: typeof import("@/lib/ai/mock");
 
@@ -62,7 +61,6 @@ describe.skipIf(!TEST_URL)("mcp tools (integration)", () => {
     companySvc = await import("@/lib/companies/service");
     parsing = await import("@/lib/parsing/service");
     scoring = await import("@/lib/scoring/compute");
-    attribution = await import("@/lib/attribution/service");
     gaps = await import("@/lib/gaps/service");
     mock = await import("@/lib/ai/mock");
     await sql.unsafe("drop schema public cascade; create schema public;");

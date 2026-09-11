@@ -3,13 +3,14 @@
  * current-revision mentions + the parse ledger row, maintains sources, and
  * enqueues compute_scores once the run is fully parsed and review-clear.
  */
+import { identityFactsFor } from "@/lib/prospects/entity-aliases";
 import { sql } from "@/db/client";
 import { enqueueJob } from "@/db/jobs";
 import { listCompaniesForProject, getSubjectCompany } from "@/db/companies";
 import { pendingReviewCount } from "@/db/mentions";
 import { classifyResponse } from "@/lib/parsing/classify";
 import { classifyResponseLlm } from "@/lib/parsing/classify-llm";
-import { extractUrls, urlDomain } from "@/lib/parsing/prepass";
+import { extractUrls, scanAliases, urlDomain } from "@/lib/parsing/prepass";
 import {
   classifySource,
   SOURCE_CLASSIFIER_VERSION,
@@ -93,7 +94,11 @@ export async function parseResponse(responseId: string): Promise<void> {
       where project_id = ${projectId} and status = 'approved'
       order by key asc
     `;
+    // Spec 130: verified lead-agent relationships (RealTrends team lead) are
+    // identity facts for every candidate, so a team named by its lead agent
+    // resolves to the team instead of "a person, not the company".
     const identityContext: Record<string, string[]> = {
+      ...(await identityFactsFor(companyInputs.map((c) => c.id))),
       [subject.id]: claimRows.map((c) => c.canonicalText as string),
     };
     try {
@@ -308,4 +313,91 @@ export async function enqueueParseJobs(runId: string): Promise<number> {
     });
   }
   return rows.length;
+}
+
+/**
+ * Parse ONE newly tracked company into an already-parsed run (spec 124
+ * cohort pass, 2026-08-31). The per-response parse ledger is append-once
+ * per parser version, so a company promoted AFTER a run was parsed would
+ * otherwise never receive mention rows for it. This runs the SAME active
+ * classifier (LLM with heuristic fallback) scoped to the one company, over
+ * only the responses whose text actually names it (the parser's own
+ * whole-word prepass — an unnamed company's truthful state is "no row",
+ * which every counter already reads as zero). Inserts append normal
+ * mention revisions; nothing existing is modified.
+ */
+export async function parseCompanyIntoRun(
+  runId: string,
+  companyId: string
+): Promise<{ scanned: number; hits: number; inserted: number; recommended: number }> {
+  const [run] = await sql`select id, project_id from runs where id = ${runId}`;
+  if (!run) throw new ClassifiedError("not_found", `Run ${runId} not found.`);
+  const projectId = run.projectId as string;
+  const companies = await listCompaniesForProject(projectId);
+  const company = companies.find((c) => c.id === companyId);
+  if (!company) {
+    throw new ClassifiedError(
+      "validation",
+      "Company is not tracked in this run's project — add it as a competitor first."
+    );
+  }
+  const subject = await getSubjectCompany(projectId);
+  const responses = await sql`
+    select r.id, r.response_text, r.prompt_text from responses r
+    where r.run_id = ${runId} and r.error is null
+  `;
+  const single = [{ id: company.id, name: company.name, aliases: company.aliases, domain: company.domain }];
+  let hits = 0;
+  let inserted = 0;
+  let recommended = 0;
+  for (const response of responses) {
+    const text = (response.responseText as string) ?? "";
+    if (scanAliases(text, single).length === 0) continue;
+    hits += 1;
+    const [existing] = await sql`
+      select 1 from mentions where response_id = ${response.id} and company_id = ${companyId}
+    `;
+    if (existing) continue; // already has revisions — nothing to backfill
+    let drafts;
+    let parserUsed: string = PARSER_VERSION_HEURISTIC;
+    let classifierModel: string | null = null;
+    let classifierPromptVersion: string | null = null;
+    if (llmClassificationAvailable()) {
+      try {
+        drafts = await classifyResponseLlm({
+          responseText: text,
+          promptText: (response.promptText as string) ?? "",
+          companies: single,
+          identityContext: { ...(await identityFactsFor([company.id])), ...(subject ? { [subject.id]: [] } : {}) },
+          projectId,
+        });
+        parserUsed = PARSER_VERSION_LLM;
+        classifierModel = modelForTask("mention_classification");
+        classifierPromptVersion = MENTION_CLASSIFIER_V2;
+      } catch {
+        drafts = classifyResponse(text, single);
+      }
+    } else {
+      drafts = classifyResponse(text, single);
+    }
+    for (const draft of drafts) {
+      await sql`
+        insert into mentions
+          (response_id, company_id, revision, mentioned, recommended,
+           list_position, sentiment, excerpt, cited_urls, parser_version,
+           confidence, needs_review, classifier_model, classifier_prompt_version)
+        values
+          (${response.id}, ${draft.companyId},
+           coalesce((select max(revision) from mentions
+             where response_id = ${response.id} and company_id = ${draft.companyId}), 0) + 1,
+           ${draft.mentioned}, ${draft.recommended}, ${draft.listPosition},
+           ${draft.sentiment}, ${draft.excerpt}, ${draft.citedUrls},
+           ${parserUsed}, ${draft.confidence}, ${draft.needsReview},
+           ${classifierModel}, ${classifierPromptVersion})
+      `;
+      inserted += 1;
+      if (draft.recommended) recommended += 1;
+    }
+  }
+  return { scanned: responses.length, hits, inserted, recommended };
 }

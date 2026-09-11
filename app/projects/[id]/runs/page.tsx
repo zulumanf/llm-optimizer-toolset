@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PlayCircle } from "lucide-react";
@@ -31,28 +32,23 @@ export default async function RunsPage({
   const reviewQueue = await listReviewQueue(id);
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
+    <PageShell>
       <ProjectTabs projectId={id} setKey="measure" counts={{ "/review": reviewQueue.length }} />
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Runs
-      </nav>
-
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Runs</h1>
-        {project.status === "active" && (
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Runs" }]}
+        title="Runs"
+        actions={
+          <>
+            {project.status === "active" && (
           <Button asChild size="sm">
             <Link href={`/projects/${id}/runs/new`}>
               <PlayCircle className="size-4" /> New run
             </Link>
           </Button>
         )}
-      </div>
-
+          </>
+        }
+      />
       {runs.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <PlayCircle className="size-8 text-muted-foreground" />
@@ -108,6 +104,6 @@ export default async function RunsPage({
           </Table>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

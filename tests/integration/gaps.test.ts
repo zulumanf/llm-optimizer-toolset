@@ -6,6 +6,7 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
+import { DETECTOR_VERSION } from "@/lib/gaps/detect";
 import { seedTestActors } from "../helpers/actors";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
@@ -144,9 +145,9 @@ describe.skipIf(!TEST_URL)("evidence gaps (integration)", () => {
     for (const row of rows) {
       expect(Number(row.opportunityScore)).toBeGreaterThan(0);
       expect(Number(row.severity)).toBeGreaterThanOrEqual(0);
-      // Epistemics (spec 064): every v1.1 finding is classified, confident,
-      // and evidence-backed.
-      expect(row.detectorVersion).toBe("gap-detector-v1.1");
+      // Epistemics (spec 064): every finding is classified, confident,
+      // and evidence-backed, stamped with the current detector version.
+      expect(row.detectorVersion).toBe(DETECTOR_VERSION);
       expect(["observation", "supported_finding"]).toContain(row.classification);
       expect(Number(row.confidence)).toBeGreaterThanOrEqual(0.5);
       expect(Number(row.confidence)).toBeLessThanOrEqual(0.9);

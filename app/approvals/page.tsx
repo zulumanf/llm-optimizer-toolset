@@ -6,6 +6,7 @@
  * operator had to know which runs were waiting. Ordered by urgency; recent
  * decisions stay visible below because they are the evidence trail.
  */
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import {
   pendingApprovalsAcrossRuns,
@@ -32,17 +33,17 @@ export default async function ApprovalsPage() {
   const now = Date.now();
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <div className="mb-6 flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold">Approvals</h1>
-        <p className="text-sm text-muted-foreground">
-          {pending.length === 0
+    <PageShell>
+      <PageHeader
+        title="Approvals"
+        description={
+          pending.length === 0
             ? "nothing waiting"
             : `${pending.length} waiting · ${
                 pending.filter((a) => a.dueAt && a.dueAt.getTime() < now).length
-              } overdue`}
-        </p>
-      </div>
+              } overdue`
+        }
+      />
 
       {pending.length === 0 ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
@@ -118,6 +119,6 @@ export default async function ApprovalsPage() {
           </ul>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }

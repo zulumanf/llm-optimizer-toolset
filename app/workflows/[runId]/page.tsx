@@ -1,25 +1,14 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { workflowRunDetail } from "@/db/control-tower";
 import { Badge } from "@/components/ui/badge";
 import { ApprovalDecision } from "@/components/approvals/approval-decision";
 import { RunGraph } from "@/components/workflows/run-graph";
+import { StateBadge } from "@/components/automation/state-badge";
 
 export const dynamic = "force-dynamic";
 
-const NODE_VARIANT: Record<string, "default" | "destructive" | "outline" | "secondary"> = {
-  succeeded: "outline",
-  running: "default",
-  pending: "outline",
-  ready: "outline",
-  failed_retryable: "secondary",
-  failed_terminal: "destructive",
-  timed_out: "destructive",
-  awaiting_approval: "secondary",
-  awaiting_verification: "secondary",
-  skipped: "outline",
-  cancelled: "outline",
-};
 
 export default async function WorkflowRunPage({
   params,
@@ -34,21 +23,25 @@ export default async function WorkflowRunPage({
   const pendingApprovals = approvals.filter((a) => a.decision === null);
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="mb-1 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{run.definitionName}</h1>
-        <Link
-          href="/workflows"
-          className="text-sm text-muted-foreground underline hover:text-foreground"
-        >
-          All workflows
-        </Link>
-      </div>
-      <p className="mb-6 text-sm text-muted-foreground">
-        <span className="font-mono text-xs">{run.definitionKey}</span> v{run.version}
-        {run.projectName ? ` · ${run.projectName}` : ""} · started{" "}
-        {run.startedAt.toISOString().slice(0, 16).replace("T", " ")}
-      </p>
+    <PageShell>
+      <PageHeader
+        title={run.definitionName}
+        description={
+          <>
+            <span className="font-mono text-xs">{run.definitionKey}</span> v{run.version}
+            {run.projectName ? ` · ${run.projectName}` : ""} · started{" "}
+            {run.startedAt.toISOString().slice(0, 16).replace("T", " ")}
+          </>
+        }
+        actions={
+          <Link
+            href="/workflows"
+            className="text-sm text-muted-foreground underline hover:text-foreground"
+          >
+            All workflows
+          </Link>
+        }
+      />
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Badge variant={run.state === "failed" ? "destructive" : "default"}>
@@ -129,9 +122,7 @@ export default async function WorkflowRunPage({
                       {node.fanKey || "—"}
                     </td>
                     <td className="p-2">
-                      <Badge variant={NODE_VARIANT[node.state] ?? "outline"}>
-                        {node.state.replace(/_/g, " ")}
-                      </Badge>
+                      <StateBadge state={node.state} />
                       {node.humanTouch && (
                         <span className="ml-1 text-xs text-muted-foreground">human</span>
                       )}
@@ -215,7 +206,7 @@ export default async function WorkflowRunPage({
           </table>
         </div>
       </section>
-    </div>
+    </PageShell>
   );
 }
 

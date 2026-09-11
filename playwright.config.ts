@@ -17,6 +17,10 @@ const env = {
   ALLOW_MOCK_SCORING: "1",
   APP_URL: `http://localhost:${PORT}`,
   NEXT_DIST_DIR: ".next-e2e",
+  // E2E never touches the network (docs/09): without this, any publish
+  // exercised through the UI would fetch receipt URLs at spec-065's
+  // dead-link gate and fail on the seed's example.com fixtures.
+  QA_SOURCE_LINK_CHECKS: "off",
   // CI runs the compiled app (below), and `next start` forces
   // NODE_ENV=production — where dev auth deliberately fails closed
   // (lib/env.ts). This is the explicit, visible override that rule
@@ -39,6 +43,11 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: "retain-on-failure",
+    // Headless Chromium announces itself as HeadlessChrome, which the
+    // private-report exchange (spec 134) rightly treats as a scanner. The
+    // suite is a human at a browser; say so.
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 e2e",
   },
   webServer: {
     // Three shapes (backlog #18 diagnosis):

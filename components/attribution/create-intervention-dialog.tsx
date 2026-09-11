@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createIntervention } from "@/app/attribution/actions";
+import { INTERVENTION_TYPES } from "@/lib/attribution/constants";
 
 const OFFSETS = ["+2w", "+6w", "+12w"] as const;
 
@@ -41,6 +42,7 @@ export function CreateInterventionDialog({ projectId, versions }: Props) {
   const [urls, setUrls] = useState("");
   const [hypothesis, setHypothesis] = useState("");
   const [versionId, setVersionId] = useState(versions[0]?.id ?? "");
+  const [interventionType, setInterventionType] = useState<string>("");
   const [offsets, setOffsets] = useState<string[]>([...OFFSETS]);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +60,7 @@ export function CreateInterventionDialog({ projectId, versions }: Props) {
         promptSetVersionId: versionId,
         postOffsets: offsets,
         hypothesis: hypothesis.trim() || undefined,
+        interventionType: interventionType || undefined,
       });
       if (result.ok) {
         toast.success(
@@ -131,6 +134,21 @@ export function CreateInterventionDialog({ projectId, versions }: Props) {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Kind of action (optional)</Label>
+            <Select value={interventionType} onValueChange={setInterventionType}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="What kind of change was this?" />
+              </SelectTrigger>
+              <SelectContent>
+                {INTERVENTION_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t.replaceAll("_", " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="int-urls">URLs (comma-separated, optional)</Label>

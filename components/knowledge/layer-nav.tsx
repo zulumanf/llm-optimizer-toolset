@@ -1,18 +1,19 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { PageTabs } from "@/components/layout/page-tabs";
 
 /**
- * Sub-navigation for the knowledge compilation layer (specs 020-024).
+ * Sub-navigation for the knowledge compilation layer (specs 020-024),
+ * rendered via the shared PageTabs bar (cleanup 2026-08-18 — this was the
+ * one nav styled as pills instead of the underline every sibling uses).
  *
  * The order is the pipeline order — sources, claims, contradictions,
- * instructions, wiki, builds, packets — because that is the order an operator
- * traces a problem in: "why does this page say that?" walks backwards along it.
+ * instructions, wiki, builds, packets — because that is the order an
+ * operator traces a problem in: "why does this page say that?" walks
+ * backwards along it.
  */
 const SECTIONS = [
-  { path: "", label: "Claims" },
+  { path: "", label: "Claims", exact: true },
   { path: "/sources", label: "Sources" },
   { path: "/contradictions", label: "Contradictions" },
   { path: "/instructions", label: "Instructions" },
@@ -23,30 +24,14 @@ const SECTIONS = [
 ] as const;
 
 export function KnowledgeLayerNav({ projectId }: { projectId: string }) {
-  const pathname = usePathname();
   const base = `/projects/${projectId}/knowledge`;
-
   return (
-    <nav className="mb-6 flex flex-wrap gap-1 border-b pb-2">
-      {SECTIONS.map((section) => {
-        const href = `${base}${section.path}`;
-        const active =
-          section.path === "" ? pathname === base : pathname.startsWith(href);
-        return (
-          <Link
-            key={section.path}
-            href={href}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-sm transition-colors",
-              active
-                ? "bg-secondary font-medium text-foreground"
-                : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-            )}
-          >
-            {section.label}
-          </Link>
-        );
-      })}
-    </nav>
+    <PageTabs
+      tabs={SECTIONS.map((section) => ({
+        href: `${base}${section.path}`,
+        label: section.label,
+        exact: "exact" in section ? section.exact : undefined,
+      }))}
+    />
   );
 }

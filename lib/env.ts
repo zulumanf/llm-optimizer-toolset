@@ -29,6 +29,9 @@ const envSchema = z
     AUTOMATION_CREDENTIAL_KEY: z.string().optional(),
     // Operator webhook for digests and system alerts (spec 059).
     DIGEST_WEBHOOK_URL: z.string().url().optional(),
+    // Spec 129 kill switch: "false" parks QA-passed report handoffs for a
+    // human send instead of scheduling the threaded reply.
+    REPORT_HANDOFF_AUTOSEND: z.string().optional(),
     // MCP server actor (spec 033) — required only by `npm run mcp`.
     MCP_USER_ID: z.string().optional(),
     // Spend ceiling override (lib/constants.ts falls back to $25).
@@ -42,6 +45,14 @@ const envSchema = z
     // Test/demo fences (spec 050) — never set in production.
     ALLOW_MOCK_PROVIDER: z.string().optional(),
     ALLOW_MOCK_SCORING: z.string().optional(),
+    // Production-behavior toggles previously read outside this schema
+    // (cleanup 2026-08-18). ALLOW_DEV_AUTH_IN_PROD=1 disables the
+    // production dev-auth refusal (devAuthRefusalReason below) — e2e only,
+    // never on a real deployment. QA_SOURCE_LINK_CHECKS=off skips the
+    // publish-time dead-link check (lib/qa/preflight.ts) — a test-only
+    // escape hatch, not an operator control (DECISIONS 2026-08-15).
+    ALLOW_DEV_AUTH_IN_PROD: z.string().optional(),
+    QA_SOURCE_LINK_CHECKS: z.string().optional(),
     // Backups (spec 059). Production MUST set the encryption key.
     BACKUP_ENCRYPTION_KEY: z.string().optional(),
     BACKUP_UPLOAD_CMD: z.string().optional(),
@@ -102,6 +113,20 @@ export function devAuthRefusalReason(
     "AUTH_MODE=supabase with the SUPABASE_* variables, or set " +
     "ALLOW_DEV_AUTH_IN_PROD=1 only if this instance is deliberately private."
   );
+}
+
+/**
+ * Base for absolute URLs the app issues about itself — auth redirects and the
+ * magic-link callback. Behind Railway's proxy the request's own origin is the
+ * container's internal hostname (e.g. https://98d71eb6ee29:8080), so anything
+ * built from it is unreachable from outside. APP_URL wins whenever set; the
+ * request-derived origin is only a dev fallback.
+ */
+export function publicOrigin(
+  requestOrigin: string,
+  appUrl: string | undefined = process.env.APP_URL
+): string {
+  return appUrl ?? requestOrigin;
 }
 
 let cached: Env | undefined;

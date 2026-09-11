@@ -20,4 +20,12 @@ export interface FrozenPrompt {
    * Absent on pre-063 versions = unspecified. */
   audience?: string | null;
   priceTier?: string | null;
+  /** Real-estate intent dimensions + provenance (spec 087), locked at freeze
+   * so displacement/coverage can segment historical runs and lineage survives
+   * into snapshots. Absent on pre-087 versions = unspecified. */
+  neighborhood?: string | null;
+  building?: string | null;
+  propertyType?: string | null;
+  source?: string | null;
+  templateRef?: string | null;
 }

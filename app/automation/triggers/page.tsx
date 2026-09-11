@@ -4,6 +4,7 @@
  * A client-scoped workflow's schedule ships disabled on purpose — firing one
  * without a client would run a per-client process with no client.
  */
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { listTriggers, triggerStats, recentReceipts, listWebhookEndpoints } from "@/db/triggers";
 import { listSubscriptions } from "@/db/events";
 import { listActiveProjects } from "@/db/projects";
@@ -29,15 +30,19 @@ export default async function TriggersPage() {
   const activeProjects = projectRows.map((p) => ({ id: p.id, name: p.name }));
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <h1 className="text-2xl font-semibold">Triggers</h1>
-      <p className="mt-1 mb-4 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        title="Triggers"
+        description={
+          <>
         A schedule&rsquo;s fire key is the <em>window&rsquo;s</em> identity, not the moment
         it ran — so any number of dispatchers racing on the same 09:00 slot produce
         exactly one run.
-      </p>
+          </>
+        }
+      />
 
-      <AutomationNav current="triggers" />
+      <AutomationNav />
 
       <section className="mb-8">
         <h2 className="mb-2 text-lg font-medium">Schedules and thresholds</h2>
@@ -273,6 +278,6 @@ export default async function TriggersPage() {
           </div>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }

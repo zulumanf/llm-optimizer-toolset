@@ -13,7 +13,17 @@ import { fail, type ActionResult } from "@/lib/actions/result";
 /** A path, optionally with the revalidation type revalidatePath accepts. */
 export type RevalidateTarget = string | [string, "layout" | "page"];
 
-export function makeActionRunner(...targets: RevalidateTarget[]) {
+/**
+ * A target computed from the successful result's data — for actions whose
+ * cache path embeds the created row's id (cleanup 2026-08-18; this is why
+ * app/projects/actions.ts carried a private copy of the runner). Always
+ * returns a LIST of targets, so a tuple target is never ambiguous with it.
+ */
+export type DynamicTargets = (data: unknown) => RevalidateTarget[];
+
+export function makeActionRunner(
+  ...targets: (RevalidateTarget | DynamicTargets)[]
+) {
   return async function run<T>(
     fn: (user: CurrentUser) => Promise<ActionResult<T>>
   ): Promise<ActionResult<T>> {
@@ -22,8 +32,12 @@ export function makeActionRunner(...targets: RevalidateTarget[]) {
       const result = await fn(user);
       if (result.ok) {
         for (const target of targets) {
-          if (typeof target === "string") revalidatePath(target);
-          else revalidatePath(target[0], target[1]);
+          const resolved =
+            typeof target === "function" ? target(result.data) : [target];
+          for (const entry of resolved) {
+            if (typeof entry === "string") revalidatePath(entry);
+            else revalidatePath(entry[0], entry[1]);
+          }
         }
       }
       return result;
