@@ -28,7 +28,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 async function ryanHash(): Promise<string> {
   const [q] = await sql`select pricing_policy_version, total_fee_usd, term_days, billing_structure, status, outcome, objections, preferred_solution, quoted_at, responded_at, engagement_id from pricing_quotes where id = ${RYAN_QUOTE}`;
   const [counts] = await sql`
-    select (select count(*) from pricing_quotes where status not in ('draft','superseded') and prospect_id in (select id from prospects p join market_launches l on l.id = p.launch_id where l.name not like ${TAG + "%"}))::int as real_quotes,
+    select (select count(*) from pricing_quotes where status not in ('draft','superseded') and prospect_id in (select p.id from prospects p join market_launches l on l.id = p.launch_id where l.name not like ${TAG + "%"}))::int as real_quotes,
       (select count(*) from client_engagements e join projects p on p.id = e.project_id where p.name not like ${TAG + "%"})::int as real_engagements,
       (select count(*) from prospect_outreach_sends)::int as sends,
       (select count(*) from exclusivity_agreements a join projects p on p.id = a.project_id where p.name not like ${TAG + "%"} and a.status in ('active','reserved'))::int as real_agreements`;
