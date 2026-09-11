@@ -3266,6 +3266,17 @@ never a discount, pilot, beta or founding price.
 - **postgres.js `postgres.camel` rewrites JSON object keys too.** Manifests with `FACT_*` keys are read as `manifest::text` and parsed. Recorded so nobody rediscovers it.
 - **Migration 110 down deletes the lane's QA-run kinds** (lifting the immutability trigger for exactly that statement). Rollback is the one destructive direction; forward never mutates history.
 
+## 2026-09-11 — First-client purchase path: frozen quote → agreement artifact → manual ledger, no provider (spec 140)
+
+- **The quote is the commercial snapshot; the engagement copies it, never the policy.** `signClient` takes `quoteId` and refuses restated terms that differ. A policy change tomorrow changes `activePricingPolicy()` only; `pricing_quotes` and `client_engagements` rows hold their own numbers and a trigger makes a presented quote's commercial fields immutable (migration 112). Ryan's v0 quote is one such row.
+- **Draft vs presented is a hard line.** A draft may be regenerated (`superseded`, pointer to its replacement); a presented quote is history. No status ever returns to draft.
+- **Agreement = deterministic artifact + recorded state, not a signature platform.** `engagement_agreements` renders Markdown under `engagement_agreement_v1` from the frozen terms; sent/signed rows are immutable and one live agreement exists per engagement. `LEGAL_REVIEW_STATUS = NOT_REVIEWED` is stamped on every artifact until counsel reviews the template — a business follow-up, not an engineering gate.
+- **Activation payment means installment 1 in full.** `commercialGate` gained `activationPaymentCents`; "any payment > 0" was too loose for a $2,500 × 3 contract. The whole-contract state (`paymentState`) is separate from the lifecycle stage; PAID_IN_FULL requires the contract total.
+- **Manual ledger stays; ids make it idempotent.** No Stripe. Installment invoices use `ENG-<id8>-n`; the existing `(external_invoice_id, kind)` unique index plus a read-before-insert make retries and duplicate provider callbacks one event.
+- **Idempotent signing by read, not by catching a unique violation.** A retry finds the live engagement for the project or quote first, so no second territory hold is created before the insert would have failed.
+- **Migration numbered 112, not 111.** 111 belongs to the concurrent spec 138 branch; apply order stays monotonic at merge.
+- **Reserved-market ("Tier-1") registry does not exist in code.** Founder control lives in the confirmed market definition and the conflict override discipline; nothing was added or unlocked.
+
 ## 2026-09-11 — Spec 138: personalized video walkthrough pipeline
 - **Stills + ffmpeg, not Remotion.** The repo has no video framework; Playwright (already a dev dependency) rasterizes one static HTML frame per scene and ffmpeg composes stills + narration into H.264/AAC. Why: correct, clear and fast beats cinematic; no new render framework, no browser screen recording, deterministic frames. Subtle motion is deferred until usage justifies it.
 - **The lane rides the generic ledgers.** Video state is a `stage` sub-column on `prospect_fulfillment_artifacts` (kind `video_walkthrough`), the job is a `jobs` row, the MP4/VTT are `evidence_artifacts`, QA verdicts are `prospect_report_qa_runs` kinds. One migration (113) adds columns and kinds; no video table.

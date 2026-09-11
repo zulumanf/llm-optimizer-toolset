@@ -9,6 +9,7 @@
  * PASS is never logged. Nothing here is a second source of truth: every
  * number comes from canonical rows and every rule is in qa.ts / rules.ts.
  */
+import { usdToCents } from "@/lib/pricing/policy";
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
@@ -336,8 +337,10 @@ function assemble(e: EngagementRow, data: PortfolioData, now: Date, otherClientN
     events,
   };
   const baseline = measurements.find((m) => m.role === "baseline" && m.status === "frozen") ?? null;
+  const activationPaymentCents = usdToCents(e.monthlyFeeUsd);
   const checklist: ChecklistItem[] = onboardingChecklist({
     contractStatus: e.contractStatus,
+    activationPaymentCents,
     paymentsReceivedCents: billing.receivedCents,
     activationOverrideReason: e.activationOverrideReason,
     subjectLinked: Boolean(subject),
@@ -351,7 +354,7 @@ function assemble(e: EngagementRow, data: PortfolioData, now: Date, otherClientN
     baselineFrozen: Boolean(baseline),
     planItems: work.filter((t) => t.status !== "rejected").length,
   });
-  const commercial = commercialGate({ contractStatus: e.contractStatus, paymentsReceivedCents: billing.receivedCents, activationOverrideReason: e.activationOverrideReason });
+  const commercial = commercialGate({ contractStatus: e.contractStatus, activationPaymentCents, paymentsReceivedCents: billing.receivedCents, activationOverrideReason: e.activationOverrideReason });
   const derivedStage = deriveStage(e.stage, e.renewalReviewOn, today);
   const renewalStatus = deriveRenewalStatus({ endsOn: e.endsOn, renewalReviewOn: e.renewalReviewOn, stored: e.renewalStatus, stage: e.stage }, today);
   const planned = measurements.filter((m) => m.status === "planned" && m.scheduledFor).sort((a, b) => a.scheduledFor!.localeCompare(b.scheduledFor!));

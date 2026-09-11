@@ -33,6 +33,8 @@ import {
   CONTEXT_PROVENANCES,
   CONTRACT_STATUSES,
   DECISION_CHANNELS,
+  DEFAULT_SCOPE_EXCLUSIONS,
+  DEFAULT_SCOPE_SUMMARY,
   TASK_CONFIDENCE,
   TASK_CONTROL,
   TASK_SCOPE,
@@ -154,10 +156,8 @@ export function SignClientDialog({ projectId, prospectId, defaultStart }: { proj
   const [paymentTerms, setPaymentTerms] = useState(paymentTermsDefault(policy));
   const [priceOverride, setPriceOverride] = useState("");
   const termsDiffer = Number(total) !== policy.totalFeeUsd || Number(termDays) !== policy.termDays;
-  const [scope, setScope] = useState(
-    "AI recommendation diagnosis over the frozen baseline question set; evidence improvements to owned pages and controlled profiles; implementation of high-confidence changes (with client approval where public); monitoring on a stated cadence; remeasurement on the same instrument at mid-term and end of term."
-  );
-  const [exclusions, setExclusions] = useState("Not included: general SEO, website redesign, social media management, paid ads, CRM implementation, general marketing.");
+  const [scope, setScope] = useState(DEFAULT_SCOPE_SUMMARY);
+  const [exclusions, setExclusions] = useState(DEFAULT_SCOPE_EXCLUSIONS);
   const [override, setOverride] = useState("");
   return (
     <ActionDialog trigger="Record signed engagement" title="Record signed engagement" submitLabel="Sign"

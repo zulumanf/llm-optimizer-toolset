@@ -9,7 +9,8 @@
 import { z } from "zod";
 import { sql } from "@/db/client";
 import type { TransactionSql } from "@/db/client";
-import { resolveEngagementPricing } from "@/lib/pricing/policy";
+import { paymentTermsDefault, pricingPolicy, resolveEngagementPricing, usdToCents } from "@/lib/pricing/policy";
+import { quoteById, type QuoteRow } from "@/lib/pricing/quotes";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany } from "@/db/companies";
 import { listComparisonCompanies } from "@/db/competitors";
@@ -33,6 +34,8 @@ import {
   CONTEXT_PROVENANCES,
   CONTRACT_STATUSES,
   DEFAULT_TERM_DAYS,
+  DEFAULT_SCOPE_SUMMARY,
+  DEFAULT_SCOPE_EXCLUSIONS,
   FORMER_CLIENT_COOLDOWN_DAYS,
   LIVE_ENGAGEMENT_STAGES,
   MEASUREMENT_ROLES,
@@ -106,6 +109,9 @@ export interface EngagementRow {
   closedAt: Date | null;
   closeReason: string | null;
   cooldownUntil: string | null;
+  /** Spec 140: the accepted quote this engagement was created from. */
+  quoteId: string | null;
+  clientLegalName: string;
 }
 
 function toIso(d: unknown): string {
@@ -152,6 +158,8 @@ export function mapEngagementRow(r: Record<string, unknown>): EngagementRow {
     closedAt: (r.closedAt as Date | null) ?? null,
     closeReason: (r.closeReason as string | null) ?? null,
     cooldownUntil: r.cooldownUntil ? toIso(r.cooldownUntil) : null,
+    quoteId: (r.quoteId as string | null) ?? null,
+    clientLegalName: (r.clientLegalName as string) ?? "",
   };
 }
 
@@ -260,24 +268,32 @@ async function liveEngagementConflicts(
 
 // ----------------------------------------------------------------- sign
 
-const signSchema = z.object({
-  prospectId: idSchema,
-  startsOn: dateSchema,
-  termDays: z.number().int().min(30).max(730).default(DEFAULT_TERM_DAYS),
-  monthlyFeeUsd: z.number().nonnegative(),
-  totalValueUsd: z.number().nonnegative(),
-  billingCadence: z.enum(BILLING_CADENCES).default("monthly"),
-  paymentTerms: z.string().trim().max(300).default(""),
-  /** Spec 135: required whenever total or term differ from the active policy. */
-  priceOverrideReason: z.string().trim().max(1000).optional(),
-  scopeSummary: z.string().trim().min(20).max(4000),
-  scopeExclusions: z.string().trim().max(4000).default(""),
+const signSchema = z
+  .object({
+    prospectId: idSchema,
+    /** Spec 140: the presented/accepted quote the engagement binds to. Terms
+     * come from the quote; the fields below may only restate them. */
+    quoteId: idSchema.optional(),
+    clientLegalName: z.string().trim().max(300).optional(),
+    startsOn: dateSchema,
+    termDays: z.number().int().min(30).max(730).optional(),
+    monthlyFeeUsd: z.number().nonnegative().optional(),
+    totalValueUsd: z.number().nonnegative().optional(),
+    billingCadence: z.enum(BILLING_CADENCES).default("monthly"),
+    paymentTerms: z.string().trim().max(300).default(""),
+    /** Spec 135: required whenever total or term differ from the active policy. */
+    priceOverrideReason: z.string().trim().max(1000).optional(),
+    scopeSummary: z.string().trim().min(20).max(4000).default(DEFAULT_SCOPE_SUMMARY),
+    scopeExclusions: z.string().trim().max(4000).default(DEFAULT_SCOPE_EXCLUSIONS),
   primaryContactId: idSchema.nullable().optional(),
   /** Named contact when no prospect_contacts row exists yet. */
   primaryContactName: z.string().trim().max(200).optional(),
-  /** Admin override with a reason when another live client overlaps the market. */
-  conflictOverrideRationale: z.string().trim().min(10).max(2000).optional(),
-});
+    /** Admin override with a reason when another live client overlaps the market. */
+    conflictOverrideRationale: z.string().trim().min(10).max(2000).optional(),
+  })
+  .refine((v) => v.quoteId !== undefined || (v.monthlyFeeUsd !== undefined && v.totalValueUsd !== undefined), {
+    message: "Sign from a quote, or state the installment and total explicitly.",
+  });
 
 export interface SignedClient {
   engagementId: string;
@@ -286,6 +302,20 @@ export interface SignedClient {
   promoted: boolean;
   competitorsAdded: number;
   measurementsPlanned: number;
+  /** Spec 140: a retry found the engagement already recorded; nothing was duplicated. */
+  alreadyExisted: boolean;
+}
+
+/** The live engagement already recorded for this prospect's project or this
+ * quote, if any — the idempotency read before signing. */
+async function existingLiveEngagement(promotedProjectId: string | null, quoteId: string | null): Promise<EngagementRow | null> {
+  const [row] = await sql`
+    ${ENGAGEMENT_SELECT}
+    where e.stage in ('signed','onboarding','active','renewal_review')
+      and ((${quoteId}::uuid is not null and e.quote_id = ${quoteId}::uuid)
+        or (${promotedProjectId}::uuid is not null and e.project_id = ${promotedProjectId}::uuid))
+    order by e.created_at desc limit 1`;
+  return row ? mapEngagementRow(row) : null;
 }
 
 /**
@@ -319,6 +349,37 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
       if (!contact) return fail(new ClassifiedError("validation", "Primary contact does not belong to this prospect."));
     }
 
+    // Spec 140: a retry returns the engagement already recorded — never a
+    // second client record, engagement, territory hold or invoice schedule.
+    const existing = await existingLiveEngagement(prospect.promotedProjectId as string | null, input.quoteId ?? null);
+    if (existing) {
+      return ok({ engagementId: existing.id, projectId: existing.projectId, agreementId: existing.exclusivityAgreementId ?? "", promoted: false, competitorsAdded: 0, measurementsPlanned: 0, alreadyExisted: true });
+    }
+
+    // Spec 140: terms come from the frozen quote when one is bound. A field
+    // that restates them must match — a quote's amount never changes at signing.
+    let quote: QuoteRow | null = null;
+    if (input.quoteId) {
+      quote = await quoteById(input.quoteId);
+      if (!quote || quote.prospectId !== prospect.id) return fail(new ClassifiedError("validation", "Quote not found for this prospect."));
+      if (quote.status !== "presented" && quote.status !== "accepted") {
+        return fail(new ClassifiedError("conflict", `Quote is ${quote.status}; only a presented or accepted quote becomes an engagement.`));
+      }
+      const mismatch =
+        (input.totalValueUsd !== undefined && input.totalValueUsd !== quote.totalFeeUsd) ||
+        (input.termDays !== undefined && input.termDays !== quote.termDays) ||
+        (input.monthlyFeeUsd !== undefined && input.monthlyFeeUsd !== quote.billing.installmentUsd);
+      if (mismatch) {
+        return fail(new ClassifiedError("validation", `Terms differ from the presented quote (${quote.totalFeeUsd} USD / ${quote.termDays} days / ${quote.billing.installmentUsd} × ${quote.billing.installments}). A presented quote is never edited — prepare a new quote instead.`));
+      }
+    }
+    const termDays = quote ? quote.termDays : (input.termDays ?? DEFAULT_TERM_DAYS);
+    const totalValueUsd = quote ? quote.totalFeeUsd : input.totalValueUsd!;
+    const monthlyFeeUsd = quote ? quote.billing.installmentUsd : input.monthlyFeeUsd!;
+    const quotePolicy = quote ? pricingPolicy(quote.pricingPolicyVersion) : null;
+    const paymentTerms = input.paymentTerms || (quotePolicy ? paymentTermsDefault(quotePolicy) : "");
+    const clientLegalName = input.clientLegalName ?? (prospect.businessName as string);
+
     const conflicts = await liveEngagementConflicts(prospect.marketId as string, prospect.promotedProjectId as string | null);
     if (conflicts.length > 0) {
       if (!input.conflictOverrideRationale) {
@@ -349,7 +410,9 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
     // an explicit founder override recorded next to the default.
     let pricing;
     try {
-      pricing = resolveEngagementPricing({ totalValueUsd: input.totalValueUsd, termDays: input.termDays, priceOverrideReason: input.priceOverrideReason });
+      pricing = quote
+        ? { policyVersion: quote.pricingPolicyVersion, defaultTotalValueUsd: quote.totalFeeUsd, totalValueUsd, overrideReason: null }
+        : resolveEngagementPricing({ totalValueUsd, termDays, priceOverrideReason: input.priceOverrideReason });
     } catch (err) {
       return fail(err);
     }
@@ -362,7 +425,7 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
       promoted = true;
     }
 
-    const dates = termDates(input.startsOn, input.termDays);
+    const dates = termDates(input.startsOn, termDays);
     const agreement = await createAgreement(user, {
       projectId,
       startsOn: input.startsOn,
@@ -403,16 +466,23 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
           project_id, prospect_id, market_id, exclusivity_agreement_id, primary_contact_id,
           primary_contact_name, owner_id, starts_on, ends_on, monthly_fee_usd, total_value_usd,
           billing_cadence, payment_terms, scope_summary, scope_exclusions, renewal_review_on, created_by,
-          pricing_policy_version, default_total_value_usd, price_override_reason
+          pricing_policy_version, default_total_value_usd, price_override_reason, quote_id, client_legal_name
         ) values (
           ${projectId}, ${prospect.id}, ${prospect.marketId}, ${agreement.data.agreementId},
           ${input.primaryContactId ?? null}, ${contactName}, ${user.id}, ${input.startsOn}, ${dates.endsOn},
-          ${input.monthlyFeeUsd}, ${input.totalValueUsd}, ${input.billingCadence}, ${input.paymentTerms},
+          ${monthlyFeeUsd}, ${totalValueUsd}, ${input.billingCadence}, ${paymentTerms},
           ${input.scopeSummary}, ${input.scopeExclusions}, ${dates.renewalReviewOn}, ${user.id},
-          ${pricing.policyVersion}, ${pricing.defaultTotalValueUsd}, ${pricing.overrideReason}
+          ${pricing.policyVersion}, ${pricing.defaultTotalValueUsd}, ${pricing.overrideReason}, ${quote?.id ?? null}, ${clientLegalName}
         ) returning id
       `;
       const id = row!.id as string;
+      if (quote) {
+        // The quote's commercial fields are frozen by trigger; only the outcome moves.
+        await tx`
+          update pricing_quotes set status = 'accepted', outcome = 'client_won', engagement_id = ${id},
+            responded_at = coalesce(responded_at, now()), outcome_recorded_by = ${user.id}, updated_at = now()
+          where id = ${quote.id}`;
+      }
       for (const m of plan) {
         await tx`
           insert into engagement_measurements (engagement_id, project_id, role, status, scheduled_for, reason, created_by)
@@ -428,9 +498,10 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
         detail: {
           prospectId: prospect.id,
           agreementId: agreement.data.agreementId,
-          monthlyFeeUsd: input.monthlyFeeUsd,
-          totalValueUsd: input.totalValueUsd,
-          termDays: input.termDays,
+          quoteId: quote?.id ?? null,
+          monthlyFeeUsd,
+          totalValueUsd,
+          termDays,
           conflictOverride: input.conflictOverrideRationale ?? null,
           conflicts: plain(conflicts),
         },
@@ -445,6 +516,7 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
       promoted,
       competitorsAdded,
       measurementsPlanned: plan.length,
+      alreadyExisted: false,
     });
   } catch (err) {
     return fail(err);
@@ -512,12 +584,20 @@ export async function recordBillingEvent(user: CurrentUser, raw: unknown): Promi
   const input = parsed.data;
   try {
     assertCanWrite(user);
+    const amountCents = usdToCents(input.amountUsd);
     const id = await sql.begin(async (tx) => {
       const e = await loadEngagementForWrite(tx, input.engagementId);
+      // Spec 140: the same invoice id + kind is one logical event — a retry or
+      // a duplicate provider callback returns the existing row, never a second.
+      if (input.externalInvoiceId) {
+        const [dup] = await tx`
+          select id from billing_events where external_invoice_id = ${input.externalInvoiceId} and kind = ${input.kind}`;
+        if (dup) return dup.id as string;
+      }
       const [row] = await tx`
         insert into billing_events (project_id, kind, external_invoice_id, amount_cents, due_date, contract_ref, detail)
         values (${e.projectId}, ${input.kind}, ${input.externalInvoiceId ?? null},
-          ${Math.round(input.amountUsd * 100)}, ${input.dueDate ?? null}, ${`engagement:${e.id}`},
+          ${amountCents}, ${input.dueDate ?? null}, ${`engagement:${e.id}`},
           ${tx.json({ note: input.note, recordedBy: user.id })})
         returning id
       `;
@@ -672,6 +752,7 @@ export async function startOnboarding(user: CurrentUser, raw: unknown): Promise<
       const gate = commercialGate({
         contractStatus: e.contractStatus,
         paymentsReceivedCents: await paymentsReceivedCents(e.id, e.projectId),
+        activationPaymentCents: usdToCents(e.monthlyFeeUsd),
         activationOverrideReason: input.overrideReason ?? e.activationOverrideReason,
       });
       if (!gate.ready) throw new ClassifiedError("validation", `Commercial gate not met: ${gate.reasons.join(" ")}`);
