@@ -432,6 +432,31 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect(h.status).toBe("scheduled");
   });
 
+  it("a founder may accept the reviewer's concerns (audited) but never an evidence block; the next pass proceeds without re-asking the model", async () => {
+    lane("NARROW_AUTONOMOUS");
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: blockingCaller });
+    let h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("needs_review");
+    const { reactivateHandoff } = await import("@/lib/prospects/fulfillment-lane");
+    await reactivateHandoff(admin, h.id, "Founder: the copy is mine; the reviewer over-read it.", { acceptReviewConcerns: true });
+    let asked = 0;
+    const counting: AgentCaller = async (...a) => { asked += 1; return blockingCaller(...a); };
+    await rh.processReportHandoffs(NOON, { caller: counting });
+    h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("scheduled");
+    expect(asked).toBe(0);
+    const [run] = await sql`select passed, agent_version, output from prospect_report_qa_runs where handoff_id = ${h.id} and kind = 'release_review' order by created_at desc limit 1`;
+    expect(run).toMatchObject({ passed: true, agentVersion: "founder-accepted:fulfillment-release-review-v2" });
+    // An evidence block cannot be accepted away.
+    await sql`truncate prospect_report_qa_runs, prospect_fulfillment_artifacts, prospect_fact_manifests, prospect_report_handoffs cascade`;
+    await sql`update companies set aliases = '{}' where id = ${PROSPECT_CO}`;
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    const blocked = (await rh.handoffForProspect(prospectId))!;
+    expect(blocked.reason).toContain("EVIDENCE_RELEASE_BLOCKED");
+    await expect(reactivateHandoff(admin, blocked.id, "try", { acceptReviewConcerns: true })).rejects.toThrow(/Only a semantic-review block can be accepted/);
+  });
+
   it("24: the same Gmail reply ingested twice — sequentially and concurrently — yields one reply row, one handoff, one draft", async () => {
     lane("NARROW_AUTONOMOUS");
     const a = unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Yes", gmailMessageId: "gm-dup", receivedAt: new Date("2026-09-03T20:00:00Z") }));

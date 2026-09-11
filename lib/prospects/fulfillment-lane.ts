@@ -196,18 +196,41 @@ export function operatorView(h: LaneHandoffView, ctx: { prospectName: string; re
 
 // ------------------------------------------------------------ DB readers
 
+export const REVIEW_OVERRIDE_ACTION = "prospect.report_handoff_review_accepted";
+
 /** Explicit founder reactivation: the only way out of needs_review that is
- * not a stop. Re-enters at the eligibility check — never past it. */
-export async function reactivateHandoff(user: CurrentUser, handoffId: string, reason: string): Promise<void> {
-  const [h] = await sql`select id, prospect_id, status from prospect_report_handoffs where id = ${handoffId}`;
+ * not a stop. Re-enters at the eligibility check — never past it. With
+ * `acceptReviewConcerns`, the founder takes responsibility for the copy the
+ * semantic reviewer blocked: the next pass records the reviewer's concerns
+ * as accepted instead of re-asking the model. Evidence, manifest and
+ * template assertions are deterministic and can never be accepted away. */
+export async function reactivateHandoff(user: CurrentUser, handoffId: string, reason: string, opts: { acceptReviewConcerns?: boolean } = {}): Promise<void> {
+  const [h] = await sql`select id, prospect_id, status, reason from prospect_report_handoffs where id = ${handoffId}`;
   if (!h) throw new ClassifiedError("not_found", "Handoff not found.");
   assertTransition(h.status as HandoffStatus, "autonomy_eligible");
+  if (opts.acceptReviewConcerns && !/semantic review/.test((h.reason as string | null) ?? "")) {
+    throw new ClassifiedError("validation", "Only a semantic-review block can be accepted; evidence and assertion blocks must be resolved.");
+  }
   await sql.begin(async (tx) => {
     await tx`update prospect_report_handoffs set status = 'autonomy_eligible', reason = null, attempts = 0, auto_verdict = null,
       reactivated_at = now(), reactivated_by = ${user.id}, updated_at = now() where id = ${handoffId} and status = 'needs_review'`;
-    await writeAudit(tx, { userId: user.id, action: "prospect.report_handoff_reactivated", entity: "prospect_report_handoff", entityId: handoffId, detail: { reason } });
-    await logActivity(tx, h.prospectId as string, "report_handoff_reactivated", { handoffId, reason }, user.id);
+    await writeAudit(tx, { userId: user.id, action: "prospect.report_handoff_reactivated", entity: "prospect_report_handoff", entityId: handoffId, detail: { reason, acceptReviewConcerns: Boolean(opts.acceptReviewConcerns) } });
+    if (opts.acceptReviewConcerns) {
+      await writeAudit(tx, { userId: user.id, action: REVIEW_OVERRIDE_ACTION, entity: "prospect_report_handoff", entityId: handoffId, detail: { reason, blockedReason: h.reason } });
+    }
+    await logActivity(tx, h.prospectId as string, "report_handoff_reactivated", { handoffId, reason, acceptReviewConcerns: Boolean(opts.acceptReviewConcerns) }, user.id);
   });
+}
+
+/** The founder's standing acceptance of the reviewer's concerns for this
+ * handoff, if recorded after the reviewer's latest block. */
+export async function reviewOverrideFor(handoffId: string): Promise<{ userId: string; reason: string; at: Date } | null> {
+  const [row] = await sql`
+    select a.user_id, a.detail->>'reason' as reason, a.at from audit_log a
+    where a.action = ${REVIEW_OVERRIDE_ACTION} and a.entity_id = ${handoffId}
+      and a.at > coalesce((select max(q.created_at) from prospect_report_qa_runs q where q.handoff_id = ${handoffId} and q.kind = 'release_review' and not q.passed), '-infinity'::timestamptz)
+    order by a.at desc limit 1`;
+  return row ? { userId: row.userId as string, reason: (row.reason as string) ?? "", at: new Date(row.at as Date) } : null;
 }
 
 export interface FulfillmentMetrics {
