@@ -834,7 +834,7 @@ async function advanceClaimed(h: ReportHandoff, now: Date, opts: { caller?: Agen
     const [handSent] = await sql`select sent_recorded_at from outreach_drafts where id = ${draftId}`;
     if (handSent?.sentRecordedAt) h = await transition(h, "scheduled", { reason: "sent outside the lane's schedule (founder / dispatcher); following the ledger" });
   }
-  if (h.status === "release_ready") {
+  if (h.status === "release_ready" && h.draftId) {
     // A held handoff re-validates at most every HELD_RECHECK_MINUTES (the
     // shadow recount is not free); a transmit verdict always re-validates.
     if (h.autoVerdict !== "transmit" && now.getTime() - h.updatedAt.getTime() < HELD_RECHECK_MINUTES * 60_000) return h;
