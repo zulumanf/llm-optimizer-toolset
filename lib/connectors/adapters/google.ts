@@ -294,9 +294,11 @@ function encodeMessage(args: {
   unsubscribeUrl?: string;
   inReplyTo?: string;
   references?: string;
+  messageId?: string;
 }): string {
   const headers = [`To: ${args.to}`, `From: ${args.from}`, `Subject: ${args.subject}`];
   if (args.replyTo) headers.push(`Reply-To: ${args.replyTo}`);
+  if (args.messageId) headers.push(`Message-ID: ${args.messageId}`);
   if (args.inReplyTo) headers.push(`In-Reply-To: ${args.inReplyTo}`);
   if (args.references) headers.push(`References: ${args.references}`);
   // A one-click unsubscribe header is a compliance field, not a nicety.
@@ -573,6 +575,7 @@ export const gmailConnector = buildAdapter({
               typeof input.unsubscribeUrl === "string" ? input.unsubscribeUrl : undefined,
             inReplyTo: typeof input.inReplyTo === "string" ? input.inReplyTo : undefined,
             references: typeof input.references === "string" ? input.references : undefined,
+            messageId: typeof input.messageId === "string" ? input.messageId : undefined,
           }),
           ...(threadId ? { threadId } : {}),
         },

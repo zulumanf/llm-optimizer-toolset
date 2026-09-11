@@ -91,6 +91,23 @@ export const auditSenseCheck = z.object({
 });
 export type AuditSenseCheckOutput = z.infer<typeof auditSenseCheck>;
 
+/** Spec 137: the lane's single adversarial release reviewer. */
+export const fulfillmentReleaseReview = z.object({
+  verdict: z.enum(["PASS", "BLOCK"]),
+  reasons: z
+    .array(
+      z.object({
+        code: z.enum(["causal", "provider", "guarantee", "entity", "methodology", "implementation", "language", "leak"]).catch("language"),
+        detail: z.string().min(1),
+        quote: z.string().nullable().default(null),
+      })
+    )
+    .default([]),
+  confidence,
+  confidenceNote: z.string().min(1),
+});
+export type FulfillmentReleaseReviewOutput = z.infer<typeof fulfillmentReleaseReview>;
+
 /** Spec 129: the private report read from the recipient's point of view.
  * `verdict` is the only field the send gate acts on besides blocking
  * concerns and confidence; everything else is for the founder's eyes. */
@@ -403,6 +420,7 @@ const AGENT_SCHEMAS = {
   generate_executive_narrative: executiveNarrative,
   repurpose_content: repurposedAsset,
   report_prospect_review: reportProspectReview,
+  fulfillment_release_review: fulfillmentReleaseReview,
   // Spec 132 constrained reviewers: advisory issues over a supplied fact pack.
   client_communication_review: clientReview,
   client_evidence_review: clientReview,

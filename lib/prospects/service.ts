@@ -2264,7 +2264,7 @@ export async function sendProspectDraft(
     const result = await sql.begin(async (tx) => {
       const [draft] = await tx`
         select id, prospect_id, contact_id, subject, body, status, sent_recorded_at,
-          sequence_id, touch_number, reply_to_id
+          sequence_id, touch_number, reply_to_id, send_intent_key, send_message_id
         from outreach_drafts where id = ${input.draftId} for update
       `;
       if (!draft) throw new ClassifiedError("not_found", "Draft not found.");
@@ -2543,6 +2543,16 @@ export async function sendProspectDraft(
           check("evidence_release_verified", true, "no competitive count claim in this draft");
         }
       }
+      // Spec 137 send-time revalidation: a draft staged by the fulfillment
+      // lane transmits only while its handoff is releasable and the fact
+      // manifest recompiled from a FRESH verdict still hashes to the one its
+      // artifacts were compiled from. A correction, recount, entity or
+      // denominator change in the gap marks the artifacts stale and refuses.
+      if (draft.sendIntentKey) {
+        const { fulfillmentSendRecheck } = await import("@/lib/prospects/report-handoff");
+        const re = await fulfillmentSendRecheck(tx, draft.id as string);
+        check("fulfillment_manifest_current", re.passed, re.detail);
+      }
       // Deterministic QA re-check at dispatch (spec 116): a draft approved
       // against one audit state must not transmit stale or inconsistent
       // numbers after a republish. Aggregated as one ledgered verdict.
@@ -2629,6 +2639,7 @@ export async function sendProspectDraft(
         body,
         htmlBody,
         ...threading,
+        messageId: (draft.sendMessageId as string | null) ?? null,
       });
       const sendId = await writeLedger(
         dispatched.providerMessageId,

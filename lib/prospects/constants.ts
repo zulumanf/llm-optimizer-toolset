@@ -330,7 +330,9 @@ export const FOLLOWUP_MAX_BODY_WORDS = 120;
 
 /** Spec 129: the threaded reply that delivers the private report after a
  * positive reply. Version string IS the template identity on the draft. */
-export const REPORT_DELIVERY_TEMPLATE_VERSION = "mismatch_report_delivery_v1";
+/** v1: spec 129 (snapshot-fed). v2: spec 137 — every figure comes from the
+ * fact manifest; the validated summary sentence is compiled, not written. */
+export const REPORT_DELIVERY_TEMPLATE_VERSION = "mismatch_report_delivery_v2";
 /** Spec 130's ENGAGEMENT_OFFER moved to the versioned policy list in
  * lib/pricing/policy.ts (spec 135): the one offer stated on a private report
  * when, and only when, the prospect asked for pricing is the ACTIVE policy

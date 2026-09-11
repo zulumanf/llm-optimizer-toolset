@@ -1315,7 +1315,10 @@ function handoffDisplay(
     }
     case "needs_review": return { reportState: "NEEDS_REVIEW", nextAction: "Fix the report or send by hand", reason: row.reason };
     case "stopped": return { reportState: "STOPPED", nextAction: "No report: the prospect opted out or is blocked", reason: row.reason };
-    case "qa_passed": return { reportState: "READY_TO_SEND", nextAction: "QA passed; autosend is off, reply in thread by hand", reason: row.reason };
+    case "qa_passed": return { reportState: "READY_TO_SEND", nextAction: "QA passed; awaiting the release policy", reason: row.reason };
+    // Spec 137: every gate passed; the lane mode held the send (SHADOW /
+    // canary / kill switch). The staged reply is approved and sendable by hand.
+    case "release_ready": return { reportState: "READY_TO_SEND", nextAction: "All gates passed; lane held the send — send the staged reply by hand or wait for the dispatcher", reason: row.reason };
     default: return { reportState: "IN_PROGRESS", nextAction: "Generating and QA-ing the report", reason: row.reason };
   }
 }

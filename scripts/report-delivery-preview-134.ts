@@ -8,7 +8,10 @@
  */
 import "dotenv/config";
 import { sql } from "@/db/client";
-import { renderReportDelivery, lintReportDelivery } from "@/lib/prospects/report-handoff";
+import { renderReportDelivery, lintReportDelivery, approvedEvidenceFromBlock } from "@/lib/prospects/report-handoff";
+import { verifyEvidenceRelease } from "@/lib/prospects/evidence-release";
+import { compileFactManifest } from "@/lib/prospects/fact-manifest";
+import { marketShortName } from "@/lib/prospects/mismatch";
 import { sequenceForProspect, firstNameFrom, footerTailFrom, prospectEntityType } from "@/lib/prospects/followups";
 import { slugifyBusinessName } from "@/lib/prospects/links";
 import { invitationLinkLabels } from "@/lib/prospects/report-access";
@@ -52,7 +55,10 @@ async function main() {
   const slug = reportSlug ?? slugifyBusinessName(p.businessName as string);
   const url = reportInvitationUrl(slug, link.key as string);
   if (!url) throw new Error("APP_URL not set");
-  const rendered = renderReportDelivery({ firstName: firstNameFrom(t1Body), brandedUrl: url, block, snapshot: evidence, entityType, footerTail: footerTailFrom(t1Body) });
+  const verdict = await verifyEvidenceRelease(evidence, { prospectId, sendId: seq?.touch1SendId ?? null });
+  const compiled = compileFactManifest({ snapshot: evidence, verdict, market: marketShortName((p.market as string | null) ?? ""), prospectEntityType: entityType, approvedExampleIds: approvedEvidenceFromBlock(block).exampleIds, approvedFirstActionId: approvedEvidenceFromBlock(block).firstActionId });
+  if (!compiled.ok) throw new Error(`manifest not compilable: ${compiled.reason}`);
+  const rendered = renderReportDelivery({ firstName: firstNameFrom(t1Body), brandedUrl: url, manifest: compiled.manifest, footerTail: footerTailFrom(t1Body) });
   const lint = lintReportDelivery(rendered.body, url);
   const html = plainTextToTrackedHtml(rendered.body, null, invitationLinkLabels(rendered.body, p.businessName as string));
   const redact = (s: string) => s.split(link.key as string).join("<invitation-key>");

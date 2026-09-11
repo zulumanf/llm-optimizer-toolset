@@ -150,6 +150,11 @@ export default async function OperationsPage() {
                   {w.answeredAt ? ` · answered ${w.answeredAt.toLocaleDateString()}` : " · not answered"}
                 </span>
                 <span className="line-clamp-1 basis-full text-muted-foreground">{w.nextAction ?? "No next action recorded."}</span>
+                {w.lane && (w.lane.whyStopped || w.handoff?.autoVerdict === "would_send") ? (
+                  <span className="line-clamp-2 basis-full text-xs text-muted-foreground">
+                    {w.lane.state.replaceAll("_", " ").toLowerCase()}{w.lane.whyStopped ? ` · stopped: ${w.lane.whyStopped}` : ""} · evidence {w.lane.evidenceStatus} · report {w.lane.reportStatus} · next: {w.lane.nextAction}
+                  </span>
+                ) : null}
                 <span className="ml-auto"><PositiveReplyResolve prospectId={w.prospectId} replyId={w.replyId} businessName={w.businessName} /></span>
               </li>
             ))}

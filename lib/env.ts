@@ -32,6 +32,13 @@ const envSchema = z
     // Spec 129 kill switch: "false" parks QA-passed report handoffs for a
     // human send instead of scheduling the threaded reply.
     REPORT_HANDOFF_AUTOSEND: z.string().optional(),
+    // Spec 137 autonomous fulfillment lane. Mode: SHADOW (default — prepare
+    // everything, record the verdict, transmit nothing) | CANARY | 
+    // NARROW_AUTONOMOUS | MANUAL_ONLY. Percent applies to CANARY. The kill
+    // switch forbids autonomous transmission in every mode.
+    AUTONOMOUS_POSITIVE_REPLY_MODE: z.string().optional(),
+    AUTONOMOUS_POSITIVE_REPLY_CANARY_PERCENT: z.string().optional(),
+    AUTONOMOUS_POSITIVE_REPLY_KILL_SWITCH: z.string().optional(),
     // MCP server actor (spec 033) — required only by `npm run mcp`.
     MCP_USER_ID: z.string().optional(),
     // Spend ceiling override (lib/constants.ts falls back to $25).

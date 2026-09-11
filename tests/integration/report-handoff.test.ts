@@ -1,9 +1,11 @@
 /**
- * Spec 129: a positive reply on a mismatch prospect becomes a published
- * private report, three QA passes, and a threaded reply — or a parked
- * handoff with the reason. Agents are stubbed at the caller boundary; the
- * report is published through the real publishAudit over the followups
- * fixture; Gmail is mocked at the connector boundary.
+ * Spec 129 + 137: a positive reply on a mismatch prospect walks the
+ * autonomous fulfillment lane — autonomy classification, evidence release
+ * verification, the published private report, the fact manifest, artifact
+ * assertions, ONE adversarial review, the release policy, a durable send
+ * intent — or parks with a deterministic reason. The reviewer is stubbed at
+ * the caller boundary; the report is published through the real
+ * publishAudit; Gmail is mocked at the connector boundary.
  */
 import { execSync } from "node:child_process";
 import { join } from "node:path";
@@ -37,21 +39,42 @@ vi.mock("@/lib/prospects/evidence-release", async (orig) => {
   // exercises the unstubbed layer.
   const real = await orig<typeof import("@/lib/prospects/evidence-release")>();
   const { countClaimEntityGate } = await import("@/lib/prospects/entity-aliases");
-  const verdictFor = async (s: MismatchEvidenceSnapshot) => {
+  const { latestEvidenceCorrection } = await import("@/lib/prospects/evidence-corrections");
+  const verdictFor = async (s: MismatchEvidenceSnapshot, ctx?: { prospectId: string; sendId: string | null }) => {
     const g = await countClaimEntityGate({ prospect: s.prospect, competitor: s.competitor });
     const checks = g.statuses.map((st, i) => ({
       name: i === 0 ? "PROSPECT_ENTITY_VERIFIED" : "COMPETITOR_ENTITY_VERIFIED",
       passed: st.verified, detail: st.reason,
       reason: st.verified ? null : i === 0 ? "PROSPECT_ENTITY_UNVERIFIED" : "COMPETITOR_ENTITY_UNVERIFIED",
     }));
-    return { version: real.EVIDENCE_RELEASE_VERSION, verified: g.passed, reasons: checks.filter((c) => !c.passed).map((c) => c.reason), checks, diagnostics: {} };
+    // Mirror of the real integrity check: a correction in force whose counts
+    // differ from the claim is PENDING_CORRECTION.
+    const corr = ctx ? await latestEvidenceCorrection(ctx.prospectId, ctx.sendId) : null;
+    const pending = corr !== null && (corr.correctedSnapshot.prospect.recommendationCount !== s.prospect.recommendationCount || corr.correctedSnapshot.competitor.recommendationCount !== s.competitor.recommendationCount);
+    checks.push({ name: "NO_PENDING_CORRECTION", passed: !pending, detail: pending ? "correction in force" : "no correction", reason: pending ? "PENDING_CORRECTION" : null });
+    const reasons = checks.filter((c) => !c.passed).map((c) => c.reason);
+    return {
+      version: real.EVIDENCE_RELEASE_VERSION, verified: reasons.length === 0, reasons, checks,
+      diagnostics: {
+        runId: s.runId, provider: s.provider, expectedCells: s.answerCount, validCells: s.answerCount, errorCells: 0, otherProviderCells: 0,
+        stated: { prospect: s.prospect.recommendationCount, competitor: s.competitor.recommendationCount, denominator: s.answerCount },
+        primary: { prospect: s.prospect.recommendationCount, competitor: s.competitor.recommendationCount, denominator: s.answerCount },
+        shadow: { prospect: s.prospect.recommendationCount, competitor: s.competitor.recommendationCount, denominator: s.answerCount },
+        coverageGaps: { prospect: 0, competitor: 0 },
+        entityLevels: { prospect: g.statuses[0]?.level ?? null, competitor: g.statuses[1]?.level ?? null },
+        productionRecords: { prospect: s.prospect.productionSignalId, competitor: s.competitor.productionSignalId },
+        parserVersions: [], correctionId: corr?.id ?? null,
+      },
+    };
   };
   return {
     ...real,
     verifyEvidenceRelease: verdictFor,
-    verifyDraftEvidenceRelease: async (db: unknown, draft: { id: string }) => {
+    verifyDraftEvidenceRelease: async (db: unknown, draft: { id: string; prospectId: string; sequenceId: string | null }) => {
       const found = await real.evidenceSnapshotForDraft(db as never, draft.id);
-      return found ? verdictFor(found.snapshot) : null;
+      if (!found) return null;
+      const [seq] = draft.sequenceId ? await (db as typeof import("@/db/client")["sql"])`select touch1_send_id from outreach_followup_sequences where id = ${draft.sequenceId}` : [];
+      return verdictFor(found.snapshot, { prospectId: draft.prospectId, sendId: (seq?.touch1SendId as string | null) ?? null });
     },
   };
 });
@@ -77,18 +100,20 @@ const T1_BODY = [
 ].join("\n");
 const T1_SENT = new Date("2026-09-01T13:07:00Z");
 
-const passingCaller: AgentCaller = async ({ system }) => ({
-  text: system.includes("verdict") 
-    ? JSON.stringify({ verdict: "send", concerns: [], firstImpression: "Clear and specific.", topQuestion: null, confidence: 0.85, confidenceNote: "Full report supplied." })
-    : JSON.stringify({ concerns: [], overallReadsFair: true, confidence: 0.85, confidenceNote: "Full report supplied." }),
+const passingCaller: AgentCaller = async () => ({
+  text: JSON.stringify({ verdict: "PASS", reasons: [], confidence: 0.85, confidenceNote: "Full email and report supplied." }),
   tokensIn: 10, tokensOut: 10,
 });
-const blockingCaller: AgentCaller = async ({ system }) => ({
-  text: system.includes("verdict")
-    ? JSON.stringify({ verdict: "fix", concerns: [{ severity: "blocking", area: "jargon", detail: "Uses the word prompt.", quote: "prompt" }], firstImpression: "Confusing.", topQuestion: "What is a prompt?", confidence: 0.9, confidenceNote: "n/a" })
-    : JSON.stringify({ concerns: [], overallReadsFair: true, confidence: 0.85, confidenceNote: "n/a" }),
+const blockingCaller: AgentCaller = async () => ({
+  text: JSON.stringify({ verdict: "BLOCK", reasons: [{ code: "methodology", detail: "Calls the test a ranking.", quote: "ranked" }], confidence: 0.9, confidenceNote: "n/a" }),
   tokensIn: 10, tokensOut: 10,
 });
+const LANE_ENV = ["AUTONOMOUS_POSITIVE_REPLY_MODE", "AUTONOMOUS_POSITIVE_REPLY_CANARY_PERCENT", "AUTONOMOUS_POSITIVE_REPLY_KILL_SWITCH", "REPORT_HANDOFF_AUTOSEND"] as const;
+const lane = (mode?: string, extra: Record<string, string> = {}): void => {
+  for (const k of LANE_ENV) delete process.env[k];
+  if (mode) process.env.AUTONOMOUS_POSITIVE_REPLY_MODE = mode;
+  Object.assign(process.env, extra);
+};
 
 describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => {
   let sql: (typeof import("@/db/client"))["sql"];
@@ -125,10 +150,10 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
 
   beforeEach(async () => {
     executeCapability.mockReset();
-    delete process.env.REPORT_HANDOFF_AUTOSEND;
+    lane();
     await sql.unsafe(
       `truncate audit_log, jobs, suppression_entries, prospect_report_qa_runs, prospect_report_handoffs, prospect_replies, outreach_email_opens,
-       prospect_outreach_sends, outreach_followup_sequences, outreach_drafts, prospect_activities, prospect_stage_history, screen_recording_plans,
+       prospect_outreach_sends, prospect_fulfillment_artifacts, prospect_fact_manifests, outreach_followup_sequences, outreach_drafts, prospect_activities, prospect_stage_history, screen_recording_plans,
        prospect_contacts, prospect_audit_views, prospect_audit_links, prospect_audits, audit_sense_checks, prospect_findings, prospect_benchmarks,
        prospect_authority_signals, realtrends_records, prospects, market_launches, exclusivity_checks, exclusivity_scopes,
        exclusivity_agreements, markets, connector_connections, claims, competitors, scores, sources, response_parses,
@@ -185,8 +210,8 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
   }
   const NOON = new Date("2026-09-04T16:00:00Z");
 
-  it("yes → report published over the frozen evidence → 3 QA passes → threaded reply scheduled → drained → sent + audit_sent", async () => {
-    process.env.REPORT_HANDOFF_AUTOSEND = "true"; // opt-in since 2026-09-07; the default parks at qa_passed
+  it("yes → autonomy eligible → evidence verified → report published → manifest + assertions → review → release → send intent → drained → sent + audit_sent", async () => {
+    lane("NARROW_AUTONOMOUS");
     await sayYes();
     const r1 = await rh.processReportHandoffs(NOON, { caller: passingCaller });
     expect(r1.enqueued).toBe(1);
@@ -199,15 +224,28 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect(block.competitor.recommendationCount).toBe(14);
     expect(block.answerCount).toBe(64);
     const runs = await sql`select kind, passed, content_hash from prospect_report_qa_runs where handoff_id = ${h.id} order by created_at`;
-    expect(runs.map((x) => [x.kind, x.passed])).toEqual([["deterministic", true], ["prospect_review", true], ["sense_check", true]]);
-    expect(new Set(runs.map((x) => x.contentHash)).size).toBe(1);
-    const [d] = await sql`select subject, body, reply_to_id, scheduled_send_at, prompt_version, status from outreach_drafts where id = ${h.draftId}`;
-    expect(d!.promptVersion).toBe("mismatch_report_delivery_v1");
+    expect(runs.map((x) => [x.kind, x.passed])).toEqual([["release_gate", true], ["deterministic", true], ["manifest_assertion", true], ["release_review", true]]);
+    expect(h.autonomyClass).toBe("autonomy_eligible");
+    expect(h.autoVerdict).toBe("transmit");
+    expect(h.laneMode).toBe("NARROW_AUTONOMOUS");
+    // ONE canonical manifest; the report and the email are artifacts of it.
+    const [mf] = await sql`select id, manifest::text as manifest_text from prospect_fact_manifests where id = ${h.manifestId}`;
+    const facts = (JSON.parse(mf!.manifestText as string) as { facts: Record<string, { display: string; value: unknown }> }).facts;
+    expect(facts.FACT_COMPETITOR_RECOMMENDATIONS!.value).toBe(14);
+    expect(facts.FACT_DENOMINATOR!.value).toBe(64);
+    expect(facts.FACT_RECOMMENDATION_MULTIPLE!.display).toBe("2x as often");
+    expect(facts.FACT_PRODUCTION_RATIO!.display).toBe("roughly 62%");
+    const arts = await sql`select kind, revision, status, manifest_id from prospect_fulfillment_artifacts where handoff_id = ${h.id} order by kind`;
+    expect(arts.map((a) => [a.kind, Number(a.revision), a.status, a.manifestId === h.manifestId])).toEqual([["positive_reply_email", 1, "ready", true], ["private_report", 1, "ready", true]]);
+    const [d] = await sql`select subject, body, reply_to_id, scheduled_send_at, prompt_version, status, send_intent_key, send_message_id from outreach_drafts where id = ${h.draftId}`;
+    expect(d!.promptVersion).toBe("mismatch_report_delivery_v2");
     expect(d!.subject).toBe("Re: Ryan - Reno");
     expect(d!.replyToId).toBe(h.replyId);
+    expect(d!.sendIntentKey).toMatch(/^[0-9a-f]{64}$/);
+    expect(d!.sendMessageId).toMatch(/^<rf-[0-9a-f]{32}@recommendedfirst\.com>$/);
     // Spec 134: the delivered link is the private-report invitation.
-    expect(d!.body).toContain("Here it is: https://app.test.local/report/rivera-team/");
-    expect(d!.body).toContain("RealTrends has your team at $47.2M closed versus $29.4M closed for Lumina.");
+    expect(d!.body).toContain("\nhttps://app.test.local/report/rivera-team/");
+    expect(d!.body).toContain("The biggest thing that stood out: Lumina closed roughly 62% of your team's volume, but was recommended 2x as often in the same 64-answer test.");
     expect(d!.body).not.toMatch(/[—–]/);
     const slotMin = (new Date(d!.scheduledSendAt as Date).getTime() - NOON.getTime()) / 60_000;
     expect(slotMin).toBeGreaterThanOrEqual(4);
@@ -223,34 +261,48 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     const r3 = await rh.processReportHandoffs(NOON, { caller: passingCaller });
     expect(r3.sent).toBe(1);
     expect((await rh.handoffForProspect(prospectId))!.status).toBe("sent");
+    expect((await sql`select status from prospect_fulfillment_artifacts where handoff_id = ${h.id}`).every((a) => a.status === "sent")).toBe(true);
+    // 17: everything behind the action is reconstructable from the ledgers.
+    const { reconstructFulfillment } = await import("@/lib/prospects/fulfillment-lane");
+    const rec = (await reconstructFulfillment(h.id))!;
+    expect(rec.reply).toMatchObject({ classification: "positive_interest", gmailMessageId: "gm-yes" });
+    expect((rec.qaRuns as unknown[]).length).toBe(4);
+    expect((rec.sends as { providerMessageId: string }[])[0]!.providerMessageId).toContain("mock-");
+    expect(JSON.stringify(rec)).not.toMatch(/api[_-]?key|refresh_token|access_token/i);
     const [p] = await sql`select stage from prospects where id = ${prospectId}`;
     expect(p!.stage).toBe("audit_sent");
     const view = (await fu.listFollowupSequences({ prospectId }))[0]!;
     expect(view.handoff?.reportState).toBe("SENT");
   });
 
-  it("a blocking prospect-review concern parks the handoff with the reason and creates no draft", async () => {
+  it("a BLOCK from the adversarial reviewer parks the handoff with the quoted reason; the staged draft cannot transmit", async () => {
+    lane("NARROW_AUTONOMOUS");
     await sayYes();
     await rh.processReportHandoffs(NOON, { caller: blockingCaller });
     const h = (await rh.handoffForProspect(prospectId))!;
     expect(h.status).toBe("needs_review");
-    expect(h.reason).toContain('verdict "fix"');
-    expect(h.reason).toContain("Uses the word prompt");
-    expect(h.draftId).toBeNull();
+    expect(h.reason).toContain("RELEASE_BLOCKED: semantic review: [methodology] Calls the test a ranking.");
     expect(h.auditId).toBeTruthy(); // the report itself is generated and kept
+    expect(h.draftId).toBeTruthy(); // staged before review — approved, unscheduled
+    const [d] = await sql`select scheduled_send_at from outreach_drafts where id = ${h.draftId}`;
+    expect(d!.scheduledSendAt).toBeNull();
+    const refused = await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "mock", businessPurpose: "Deliver the report he asked for" });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/handoff is needs_review/);
     expect((await fu.listFollowupSequences({ prospectId }))[0]!.handoff?.reportState).toBe("NEEDS_REVIEW");
     // A failed LLM call is a failure row, never a pass.
     const failing: AgentCaller = async () => { throw new Error("provider down"); };
-    await sql`truncate prospect_report_qa_runs, prospect_report_handoffs`;
+    await sql`truncate prospect_report_qa_runs, prospect_fulfillment_artifacts, prospect_fact_manifests, prospect_report_handoffs cascade`;
     await rh.processReportHandoffs(NOON, { caller: failing });
     const h2 = (await rh.handoffForProspect(prospectId))!;
     expect(h2.status).toBe("needs_review");
-    expect(h2.reason).toContain("did not complete");
-    const runs = await sql`select kind, passed, error from prospect_report_qa_runs where handoff_id = ${h2.id} and kind <> 'deterministic'`;
+    expect(h2.reason).toContain("reviewer unavailable: provider down");
+    const runs = await sql`select kind, passed, error from prospect_report_qa_runs where handoff_id = ${h2.id} and kind = 'release_review'`;
+    expect(runs.length).toBe(1);
     expect(runs.every((r) => r.passed === false && String(r.error).includes("provider down"))).toBe(true);
   });
 
-  it("a hand-recorded yes with NO sequence still gets a handoff, an owner and a due date; autosend default parks at qa_passed", async () => {
+  it("a hand-recorded yes with NO sequence still gets a handoff, an owner and a due date; the default lane (SHADOW) prepares everything and holds", async () => {
     // Operating review 2026-09-07: both real positive replies had failed the
     // old preconditions (Gmail-ingested + enrolled sequence).
     await sql`delete from outreach_followup_sequences where prospect_id = ${prospectId}`;
@@ -265,17 +317,38 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect(r1.enqueued).toBe(1);
     const h = (await rh.handoffForProspect(prospectId))!;
     expect(h.sequenceId).toBeNull();
-    expect(h.status).toBe("qa_passed");
-    expect(h.reason).toContain("send by hand");
-    expect(h.draftId).toBeNull();
-    // A second pass creates nothing new; resolving the reply clears Today.
-    expect((await rh.processReportHandoffs(NOON, { caller: passingCaller })).enqueued).toBe(0);
+    expect(h.status).toBe("release_ready");
+    expect(h.autoVerdict).toBe("would_send");
+    expect(h.laneMode).toBe("SHADOW");
+    expect(h.reason).toContain("SHADOW: all gates passed; would have sent");
+    expect(h.draftId).toBeTruthy();
+    const [d] = await sql`select scheduled_send_at, status from outreach_drafts where id = ${h.draftId}`;
+    expect(d).toMatchObject({ scheduledSendAt: null, status: "approved" });
+    expect((await sql`select count(*)::int as n from prospect_outreach_sends where prospect_id = ${prospectId} and sent_at > '2026-09-03'`)[0]!.n).toBe(0);
+    // Today shows the lane's verdict and the next action.
+    const w = (await pr.positiveRepliesWaiting(NOON)).find((x) => x.replyId === rec.replyId)!;
+    expect(w.lane?.state).toBe("RELEASE_READY_SHADOW_HELD");
+    expect(w.lane?.nextAction).toMatch(/SHADOW/);
+    // Further passes create nothing new (28) and never time a held handoff out.
+    const r2 = await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    expect(r2.enqueued).toBe(0);
+    expect(r2.held).toBe(1);
+    for (let i = 0; i < 4; i++) await rh.processReportHandoffs(new Date(NOON.getTime() + (i + 1) * 3_600_000), { caller: passingCaller });
+    const held = (await rh.handoffForProspect(prospectId))!;
+    expect(held.status).toBe("release_ready");
+    expect(held.attempts).toBeLessThanOrEqual(3);
+    expect((await sql`select count(*)::int as n from outreach_drafts where reply_to_id = ${rec.replyId}`)[0]!.n).toBe(1);
+    expect((await sql`select count(*)::int as n from prospect_fulfillment_artifacts where handoff_id = ${h.id}`)[0]!.n).toBe(2);
+    // The founder may still send the staged reply by hand (recorded through
+    // the same gate; a hand-recorded reply has no Gmail thread to reply into).
+    unwrap(await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "manual", businessPurpose: "Deliver the report he asked for" }));
+    expect((await sql`select count(*)::int as n from prospect_outreach_sends where draft_id = ${h.draftId} and allowed`)[0]!.n).toBe(1);
     unwrap(await pr.resolvePositiveReply(operator, { prospectId, replyId: rec.replyId, outcome: "Report sent by hand; offer stated." }));
     expect((await pr.positiveRepliesWaiting(NOON)).map((w) => w.replyId)).not.toContain(rec.replyId);
   });
 
-  it("an unverified entity parks the hand-off at needs_review before any reply is drafted (fail closed, spec 136)", async () => {
-    process.env.REPORT_HANDOFF_AUTOSEND = "true";
+  it("an unverified entity parks the hand-off at needs_review before any report or reply exists (fail closed, spec 136)", async () => {
+    lane("NARROW_AUTONOMOUS");
     await sql`update companies set aliases = '{}' where id = ${PROSPECT_CO}`;
     await sayYes();
     await rh.processReportHandoffs(NOON, { caller: passingCaller });
@@ -285,6 +358,8 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     // no delivery draft exists for the send gate to refuse.
     expect(h.status).toBe("needs_review");
     expect(h.draftId).toBeNull();
+    expect(h.auditId).toBeNull();
+    expect(h.manifestId).toBeNull();
     expect(JSON.stringify(h)).toContain("EVIDENCE_RELEASE_BLOCKED");
     expect(JSON.stringify(h)).toContain("PROSPECT_ENTITY_UNVERIFIED");
     // The send gate itself still refuses a count-stating draft for the
@@ -308,20 +383,224 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect(again.providerMessageId).toContain("mock-");
   });
 
-  it("autosend off parks at qa_passed; a later unsubscribe stops before any send", async () => {
-    process.env.REPORT_HANDOFF_AUTOSEND = "false";
+  it("the kill switch holds in every mode; a later unsubscribe stops a held handoff and its staged draft can never transmit (32)", async () => {
+    lane("NARROW_AUTONOMOUS", { AUTONOMOUS_POSITIVE_REPLY_KILL_SWITCH: "true" });
     await sayYes();
     await rh.processReportHandoffs(NOON, { caller: passingCaller });
     let h = (await rh.handoffForProspect(prospectId))!;
-    expect(h.status).toBe("qa_passed");
-    expect(h.draftId).toBeNull();
+    expect(h.status).toBe("release_ready");
+    expect(h.autoVerdict).toBe("would_send");
+    expect(h.reason).toContain("kill switch");
     expect((await fu.listFollowupSequences({ prospectId }))[0]!.handoff?.reportState).toBe("READY_TO_SEND");
-    delete process.env.REPORT_HANDOFF_AUTOSEND;
     unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Actually, please unsubscribe me.", gmailMessageId: "gm-no", receivedAt: new Date("2026-09-04T15:00:00Z") }));
     await rh.processReportHandoffs(NOON, { caller: passingCaller });
     h = (await rh.handoffForProspect(prospectId))!;
     expect(h.status).toBe("stopped");
     expect(h.reason).toContain("unsubscribe");
-    expect(h.draftId).toBeNull();
+    const refused = await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "mock", businessPurpose: "Deliver the report he asked for" });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/suppressed|handoff is stopped/);
+    expect((await sql`select count(*)::int as n from prospect_outreach_sends where draft_id = ${h.draftId} and allowed`)[0]!.n).toBe(0);
   });
+
+  it("complex replies always escalate (20): 'Yes, how much?' parks immediately with no report, no draft; founder reactivation re-enters at the eligibility check (31)", async () => {
+    lane("NARROW_AUTONOMOUS");
+    unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Yes, how much?", gmailMessageId: "gm-price", receivedAt: new Date("2026-09-03T20:00:00Z") }));
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    let h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("needs_review");
+    expect(h.autonomyClass).toBe("escalate");
+    expect(h.autoVerdict).toBe("escalated");
+    expect(h.reason).toMatch(/^ESCALATED_TO_FOUNDER: (pricing or cost language|question in the reply)/);
+    expect(h.auditId).toBeNull();
+    expect(h.draftId).toBeNull();
+    const w = (await (await import("@/lib/prospects/positive-replies")).positiveRepliesWaiting(NOON)).find((x) => x.prospectId === prospectId)!;
+    expect(w.lane).toMatchObject({ state: "ESCALATED_TO_FOUNDER", reportStatus: "not published" });
+    expect(w.lane!.whyStopped).toContain("ESCALATED_TO_FOUNDER");
+    // Repeated ticks never move an escalated handoff (30/31).
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    expect((await rh.handoffForProspect(prospectId))!.status).toBe("needs_review");
+    // Explicit founder reactivation is the only way back in — and it lands at
+    // the eligibility check, never past the gates.
+    const { reactivateHandoff, assertTransition } = await import("@/lib/prospects/fulfillment-lane");
+    expect(() => assertTransition("needs_review", "scheduled")).toThrow(/Invalid fulfillment transition/);
+    await reactivateHandoff(admin, h.id, "Spoke to Ryan; he just wants the report.");
+    h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("autonomy_eligible");
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("scheduled");
+  });
+
+  it("24: the same Gmail reply ingested twice — sequentially and concurrently — yields one reply row, one handoff, one draft", async () => {
+    lane("NARROW_AUTONOMOUS");
+    const a = unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Yes", gmailMessageId: "gm-dup", receivedAt: new Date("2026-09-03T20:00:00Z") }));
+    const b = unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Yes", gmailMessageId: "gm-dup", receivedAt: new Date("2026-09-03T20:00:00Z") }));
+    expect(b.replyId).toBe(a.replyId);
+    const both = await Promise.allSettled([
+      svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Yes", gmailMessageId: "gm-dup", receivedAt: new Date("2026-09-03T20:00:00Z") }),
+      svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Yes", gmailMessageId: "gm-dup", receivedAt: new Date("2026-09-03T20:00:00Z") }),
+    ]);
+    expect(both.some((r) => r.status === "fulfilled")).toBe(true);
+    expect((await sql`select count(*)::int as n from prospect_replies where gmail_message_id = 'gm-dup'`)[0]!.n).toBe(1);
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    expect((await sql`select count(*)::int as n from prospect_report_handoffs where prospect_id = ${prospectId}`)[0]!.n).toBe(1);
+    expect((await sql`select count(*)::int as n from outreach_drafts where reply_to_id = ${a.replyId}`)[0]!.n).toBe(1);
+  });
+
+  it("26/48: two workers advancing the same handoff concurrently produce one send intent, one artifact revision per kind (25)", async () => {
+    lane("NARROW_AUTONOMOUS");
+    await sayYes();
+    await rh.enqueueReportHandoffs();
+    const h0 = (await rh.handoffForProspect(prospectId))!;
+    const results = await Promise.allSettled([
+      rh.advanceReportHandoff(h0, NOON, { caller: passingCaller }),
+      rh.advanceReportHandoff(h0, NOON, { caller: passingCaller }),
+      rh.advanceReportHandoff(h0, NOON, { caller: passingCaller }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled").length).toBeGreaterThanOrEqual(1);
+    const h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("scheduled");
+    expect((await sql`select count(*)::int as n from outreach_drafts where reply_to_id = ${h.replyId}`)[0]!.n).toBe(1);
+    expect((await sql`select count(*)::int as n from outreach_drafts where send_intent_key is not null and prospect_id = ${prospectId}`)[0]!.n).toBe(1);
+    const arts = await sql`select kind, count(*)::int as n from prospect_fulfillment_artifacts where handoff_id = ${h.id} and status <> 'superseded' group by kind`;
+    expect(arts.every((a) => a.n === 1)).toBe(true);
+    // A worker retry after the send intent exists is a no-op on the outbox.
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    expect((await sql`select count(*)::int as n from outreach_drafts where reply_to_id = ${h.replyId}`)[0]!.n).toBe(1);
+  });
+
+  it("27: Gmail accepted the message but the worker died before the ledger commit — reconciliation by Message-ID records the send and never resends", async () => {
+    lane("NARROW_AUTONOMOUS");
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    const h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("scheduled");
+    const [d] = await sql`select send_message_id from outreach_drafts where id = ${h.draftId}`;
+    const fingerprint = (d!.sendMessageId as string).replace(/^<|>$/g, "");
+    // Simulate the crash: a claim older than the stale window, no ledger row.
+    await sql`update outreach_drafts set send_claimed_at = now() - interval '30 minutes', send_attempts = 1, scheduled_send_at = now() - interval '1 minute' where id = ${h.draftId}`;
+    const calls: string[] = [];
+    executeCapability.mockImplementation(async (args: { capability: string; input: { q?: string } }) => {
+      calls.push(args.capability);
+      if (args.capability === "email.search_messages" && args.input.q === `rfc822msgid:${fingerprint}`) {
+        return { ok: true, data: { messages: [{ id: "gm-sent-1", threadId: "thread-1", messageId: `<${fingerprint}>`, from: SENDER, to: RECIPIENT, subject: "Re: Ryan - Reno", date: "2026-09-04T16:05:00Z", labelIds: ["SENT"], body: "..." }] } };
+      }
+      return { ok: false, errorCode: "unsupported" };
+    });
+    const { drainScheduledSends } = await import("@/lib/prospects/scheduled-sends");
+    const r = await drainScheduledSends();
+    expect(r).toMatchObject({ reconciled: 1, sent: 0, parked: 0 });
+    expect(calls).not.toContain("email.send_approved_message");
+    const sends = await sql`select provider_message_id, reconciled_from, allowed, gmail_thread_id from prospect_outreach_sends where draft_id = ${h.draftId}`;
+    expect(sends).toHaveLength(1);
+    expect(sends[0]).toMatchObject({ providerMessageId: "gm-sent-1", reconciledFrom: "gmail rfc822msgid search", allowed: true, gmailThreadId: "thread-1" });
+    const [after] = await sql`select sent_recorded_at, send_claimed_at, scheduled_send_at from outreach_drafts where id = ${h.draftId}`;
+    expect(after!.sentRecordedAt).not.toBeNull();
+    expect(after!.sendClaimedAt).toBeNull();
+    // Repeated ticks: no duplicate send (28); the handoff observes the ledger and completes.
+    expect(await drainScheduledSends()).toMatchObject({ due: 0, sent: 0, reconciled: 0 });
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    expect((await rh.handoffForProspect(prospectId))!.status).toBe("sent");
+    expect((await sql`select count(*)::int as n from prospect_outreach_sends where draft_id = ${h.draftId}`)[0]!.n).toBe(1);
+  });
+
+  it("27b: a stale claim whose fingerprint is NOT in the mailbox parks (no blind resend); a failed search parks too", async () => {
+    lane("NARROW_AUTONOMOUS");
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    const h = (await rh.handoffForProspect(prospectId))!;
+    await sql`update outreach_drafts set send_claimed_at = now() - interval '30 minutes', send_attempts = 1, scheduled_send_at = now() - interval '1 minute' where id = ${h.draftId}`;
+    executeCapability.mockImplementation(async (args: { capability: string }) => (args.capability === "email.search_messages" ? { ok: true, data: { messages: [] } } : { ok: false, errorCode: "unsupported" }));
+    const { drainScheduledSends } = await import("@/lib/prospects/scheduled-sends");
+    expect(await drainScheduledSends()).toMatchObject({ reconciled: 0, sent: 0, parked: 1 });
+    const [d] = await sql`select last_send_error, scheduled_send_at, sent_recorded_at from outreach_drafts where id = ${h.draftId}`;
+    expect(d!.lastSendError).toContain("safe to reschedule");
+    expect(d!.scheduledSendAt).toBeNull();
+    expect(d!.sentRecordedAt).toBeNull();
+    expect((await sql`select count(*)::int as n from prospect_outreach_sends where draft_id = ${h.draftId}`)[0]!.n).toBe(0);
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    expect((await rh.handoffForProspect(prospectId))!.status).toBe("needs_review");
+  });
+
+  it("23/46: a correction inserted after the artifacts were rendered blocks at send time, marks them stale and parks the handoff", async () => {
+    lane("NARROW_AUTONOMOUS");
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    const h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("scheduled");
+    // The correction ledger learns that Lumina was really recommended 29 times.
+    const seq = (await fu.sequenceForProspect(prospectId))!;
+    const [t1] = await sql`select id from outreach_drafts where prospect_id = ${prospectId} and evidence_snapshot is not null order by created_at asc limit 1`;
+    const [run] = await sql`select id from runs limit 1`;
+    const corrected = { ...snapshot, competitor: { ...snapshot.competitor, recommendationCount: 29 } };
+    await sql`insert into outreach_evidence_corrections (prospect_id, evidence_draft_id, send_id, source_run_id, original_snapshot, corrected_snapshot, reason, corrected_by)
+      values (${prospectId}, ${t1!.id}, ${seq.touch1SendId}, ${run!.id}, ${sql.json(snapshot as never)}, ${sql.json(corrected as never)}, 'competitor alias added', ${operator.id})`;
+    await sql`update outreach_drafts set scheduled_send_at = now() - interval '1 minute' where id = ${h.draftId}`;
+    const refused = await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "mock", businessPurpose: "Deliver the report he asked for", unattended: true });
+    expect(refused.ok).toBe(false);
+    const [ledger] = await sql`select allowed, gate_verdict from prospect_outreach_sends where draft_id = ${h.draftId} order by sent_at desc limit 1`;
+    expect(ledger!.allowed).toBe(false);
+    const checks = (ledger!.gateVerdict as { checks: { name: string; passed: boolean; detail: string }[] }).checks;
+    expect(checks.find((c) => c.name === "evidence_release_verified")).toMatchObject({ passed: false });
+    expect(checks.find((c) => c.name === "fulfillment_manifest_current")!.detail).toContain("SEND_TIME_REVALIDATION_FAILED");
+    const arts = await sql`select status, stale_reason from prospect_fulfillment_artifacts where handoff_id = ${h.id}`;
+    expect(arts.every((a) => a.status === "stale")).toBe(true);
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    expect((await rh.handoffForProspect(prospectId))!.status).toBe("needs_review");
+  });
+
+  it("45: a suppression added between preparation and dispatch refuses at the gate; the handoff parks with the reason", async () => {
+    lane("NARROW_AUTONOMOUS");
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    const h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("scheduled");
+    const { suppress } = await import("@/lib/outreach/suppression");
+    await sql.begin(async (tx) => { await suppress(tx, { scope: "email", value: RECIPIENT, reason: "opt_out", detail: "test", projectId: null, userId: operator.id }); });
+    await sql`update outreach_drafts set scheduled_send_at = now() - interval '1 minute' where id = ${h.draftId}`;
+    const { drainScheduledSends } = await import("@/lib/prospects/scheduled-sends");
+    const r = await drainScheduledSends();
+    expect(r).toMatchObject({ sent: 0, parked: 1 });
+    expect((await sql`select count(*)::int as n from prospect_outreach_sends where draft_id = ${h.draftId} and allowed`)[0]!.n).toBe(0);
+    // A suppressed recipient is terminal for the lane: no external response.
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    const after = (await rh.handoffForProspect(prospectId))!;
+    expect(after.status).toBe("stopped");
+    expect(after.reason).toMatch(/suppressed/i);
+  });
+
+  it("47: a market policy change (territory reserved) between preparation and dispatch refuses at the gate", async () => {
+    lane("NARROW_AUTONOMOUS");
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    const h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("scheduled");
+    const [market] = await sql`select id from markets limit 1`;
+    const [project] = await sql`select id from projects order by created_at asc limit 1`;
+    unwrap(await m.exclusivity.createAgreement(operator, { projectId: project!.id as string, startsOn: new Date().toISOString().slice(0, 10), status: "reserved", scopes: [{ marketId: market!.id as string, serviceCategory: null, segment: null }] }));
+    const refused = await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "mock", businessPurpose: "Deliver the report he asked for", unattended: true });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/Territory conflict/);
+  });
+
+  it("CANARY is a deterministic percentage: 100% transmits, 0% holds as would_send", async () => {
+    lane("CANARY", { AUTONOMOUS_POSITIVE_REPLY_CANARY_PERCENT: "100" });
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    expect((await rh.handoffForProspect(prospectId))!).toMatchObject({ status: "scheduled", autoVerdict: "transmit", laneMode: "CANARY" });
+    // Drafts are never erased: a re-run finds the SAME send intent (duplicate prevented).
+    await sql`update outreach_drafts set scheduled_send_at = null where reply_to_id is not null`;
+    await sql`truncate prospect_report_qa_runs, prospect_fulfillment_artifacts, prospect_fact_manifests, prospect_report_handoffs cascade`;
+    lane("CANARY", { AUTONOMOUS_POSITIVE_REPLY_CANARY_PERCENT: "0" });
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    expect((await rh.handoffForProspect(prospectId))!).toMatchObject({ status: "release_ready", autoVerdict: "would_send" });
+    expect((await sql`select count(*)::int as n from outreach_drafts where reply_to_id is not null and prospect_id = ${prospectId}`)[0]!.n).toBe(1);
+    expect((await sql`select count(*)::int as n from audit_log where action = 'prospect.fulfillment_duplicate_prevented'`)[0]!.n).toBe(1);
+    const { fulfillmentMetrics } = await import("@/lib/prospects/fulfillment-lane");
+    const metrics = await fulfillmentMetrics(new Date("2026-01-01"));
+    expect(metrics).toMatchObject({ autonomyEligible: 1, shadowWouldSend: 1, autonomousSends: 0, duplicateActionPrevented: 1 });
+  });
+
 });

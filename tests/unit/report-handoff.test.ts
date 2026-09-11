@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  assertDeliveryMatchesManifest,
   deliverySlot,
   gateAgentVerdicts,
   lintReportDelivery,
@@ -16,6 +17,7 @@ import { reportProspectReview } from "@/lib/automation/nodes/agent";
 import { MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
 import type { AuditMismatchBlock } from "@/lib/prospects/audit-mismatch";
 import type { MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
+import { manifestFor } from "../fixtures/fact-manifest";
 
 const snapshot: MismatchEvidenceSnapshot = {
   templateVersion: "competitive_mismatch_reply_v1", runId: "11111111-1111-4111-8111-111111111111", provider: "openai",
@@ -118,29 +120,34 @@ describe("agent gates", () => {
 const TAIL = ["Brooklyn, NY", 'If you\'d rather not hear from us, reply "unsubscribe" and we will not contact you again.'];
 const URL = "https://app.recommendedfirst.com/audit/kane-and-partners/y9BnX64cZtgN08Q0";
 
-describe("delivery email", () => {
-  it("renders one link, one observation, one question, agent/team wording, and passes lint", () => {
-    const team = renderReportDelivery({ firstName: "Ryan", brandedUrl: URL, block, snapshot, entityType: "team", footerTail: TAIL });
-    expect(team.body).toContain(`Here it is: ${URL}`);
-    expect(team.body).toContain("Harbor View Group came up across 2 different questions, especially around Midtown. That surprised me given RealTrends has your team at $47.2M closed versus $29.4M closed for Harbor View Group.");
-    expect(team.body).toContain("Are those areas your team is trying to grow in?");
-    expect(team.cta).toBe("Are those areas your team is trying to grow in?");
+describe("delivery email (spec 137 template v2, manifest-fed)", () => {
+  const manifest = manifestFor(snapshot, "team");
+  it("renders one link and ONE compiled comparison sentence whose figures are all manifest figures, and passes lint + assertion", () => {
+    const team = renderReportDelivery({ firstName: "Ryan", brandedUrl: URL, manifest, footerTail: TAIL });
+    expect(team.body).toContain(`\n${URL}\n`);
+    expect(team.body).toContain("The biggest thing that stood out: Harbor View Group closed roughly 62% of your team's volume, but was recommended 2x as often in the same 64-answer test.");
+    expect(team.summary.factIds).toEqual(["FACT_COMPETITOR_NAME", "FACT_PRODUCTION_RATIO", "FACT_RECOMMENDATION_MULTIPLE", "FACT_DENOMINATOR"]);
     expect(lintReportDelivery(team.body, URL)).toEqual([]);
+    expect(assertDeliveryMatchesManifest(team.body, URL, manifest)).toEqual([]);
     expect(team.body).not.toMatch(/[—–]/);
-    const agent = renderReportDelivery({ firstName: "Ryan", brandedUrl: URL, block: { ...block, competitorNeighborhoods: [] }, snapshot, entityType: "individual", footerTail: TAIL });
-    expect(agent.body).toContain("RealTrends has you at $47.2M closed");
-    expect(agent.body).toContain("Is that the kind of business you're trying to grow?");
+    const agent = renderReportDelivery({ firstName: "Ryan", brandedUrl: URL, manifest: manifestFor(snapshot, "individual"), footerTail: TAIL });
+    expect(agent.body).toContain("of your volume");
     expect(agent.body).not.toMatch(/your team/i);
-    expect(lintReportDelivery(agent.body, URL)).toEqual([]);
-    const single = renderReportDelivery({ firstName: "Ryan", brandedUrl: URL, block: { ...block, distinctQuestions: { prospect: 1, competitor: 1 }, competitorNeighborhoods: [] }, snapshot, entityType: "team", footerTail: TAIL });
-    expect(single.body).toContain("Harbor View Group was recommended in 14 of 64 answers versus 7 for your team.");
+  });
+  it("an invented quantitative sentence fails the manifest assertion deterministically", () => {
+    const r = renderReportDelivery({ firstName: "Ryan", brandedUrl: URL, manifest, footerTail: TAIL });
+    const tampered = r.body.replace("I also included", "You were recommended in 9 of 100 answers. I also included");
+    const issues = assertDeliveryMatchesManifest(tampered, URL, manifest);
+    expect(issues.map((i) => i.detail).join()).toContain("9, 100");
+    // The footer's postal/zip digits are outside the assertion (below the signature).
+    expect(assertDeliveryMatchesManifest(r.body.replace("Brooklyn, NY", "Brooklyn, NY 11201"), URL, manifest)).toEqual([]);
   });
   it("lint rejects a missing or doubled link, a second link, and follow-up copy violations", () => {
-    const r = renderReportDelivery({ firstName: "Ryan", brandedUrl: URL, block, snapshot, entityType: "team", footerTail: TAIL });
+    const r = renderReportDelivery({ firstName: "Ryan", brandedUrl: URL, manifest, footerTail: TAIL });
     expect(lintReportDelivery(r.body.replace(URL, "the report"), URL)[0]!.detail).toContain("exactly once");
     expect(lintReportDelivery(`${r.body}\n${URL}`, URL)[0]!.detail).toContain("exactly once");
     expect(lintReportDelivery(r.body.replace("Francisco\n", "Francisco https://calendly.com/x\n"), URL).length).toBeGreaterThan(0);
-    expect(lintReportDelivery(r.body.replace("Here it is", "Here it is — finally"), URL).map((i) => i.detail).join()).toContain("em dash");
+    expect(lintReportDelivery(r.body.replace("Absolutely.", "Absolutely — finally"), URL).map((i) => i.detail).join()).toContain("em dash");
   });
 });
 
