@@ -15,27 +15,8 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
 import { addContextItem, confirmMarketDefinition, getEngagement, listContextItems } from "@/lib/engagements/service";
 
-export const ENTITY_TYPES = ["team", "individual_agent", "brokerage", "business"] as const;
-export type EntityType = (typeof ENTITY_TYPES)[number];
-
-export interface OnboardingPrefill {
-  engagementId: string;
-  legalName: string;
-  brandName: string;
-  entityType: EntityType;
-  teamLead: string;
-  brokerage: string;
-  website: string;
-  profileUrls: string[];
-  primaryContactName: string;
-  contactEmail: string;
-  marketName: string;
-  marketDefinition: string;
-  marketDefinitionConfirmed: boolean;
-  aliases: string[];
-  /** Which fields came from a verified record (operator sees provenance). */
-  prefilled: string[];
-}
+import { ENTITY_TYPES, type EntityType, type OnboardingPrefill } from "@/lib/engagements/constants";
+export { ENTITY_TYPES, type EntityType, type OnboardingPrefill };
 
 /** Known facts first: prospect row, canonical company, primary contact. */
 export async function onboardingPrefill(engagementId: string): Promise<OnboardingPrefill | null> {

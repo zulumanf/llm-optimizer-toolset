@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import * as actions from "@/app/commercial/actions";
 import type { ActionResult } from "@/lib/actions/result";
 import { PRICING_OBJECTIONS, QUOTE_RESPONSE_STATUSES, activePricingPolicy, offerLabel, billingLabel, pricingReplyLines } from "@/lib/pricing/policy";
-import { ENTITY_TYPES, type OnboardingPrefill } from "@/lib/engagements/onboarding-intake";
+import { ENTITY_TYPES, type OnboardingPrefill } from "@/lib/engagements/constants";
 
 const human = (s: string) => s.replace(/_/g, " ");
 

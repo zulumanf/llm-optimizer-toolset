@@ -157,3 +157,26 @@ export const BILLING_KINDS = [
   "invoice_overdue",
 ] as const;
 export type BillingKind = (typeof BILLING_KINDS)[number];
+
+/** Spec 140: onboarding intake vocabulary and prefill shape (client-safe). */
+export const ENTITY_TYPES = ["team", "individual_agent", "brokerage", "business"] as const;
+export type EntityType = (typeof ENTITY_TYPES)[number];
+
+export interface OnboardingPrefill {
+  engagementId: string;
+  legalName: string;
+  brandName: string;
+  entityType: EntityType;
+  teamLead: string;
+  brokerage: string;
+  website: string;
+  profileUrls: string[];
+  primaryContactName: string;
+  contactEmail: string;
+  marketName: string;
+  marketDefinition: string;
+  marketDefinitionConfirmed: boolean;
+  aliases: string[];
+  /** Which fields came from a verified record (operator sees provenance). */
+  prefilled: string[];
+}

@@ -12,7 +12,7 @@ import { formatDate } from "@/lib/format";
 import { usd } from "@/lib/pricing/policy";
 import type { CommercialState } from "@/lib/engagements/commercial";
 import { activationPrerequisites } from "@/lib/engagements/commercial";
-import type { OnboardingPrefill } from "@/lib/engagements/onboarding-intake";
+import type { OnboardingPrefill } from "@/lib/engagements/constants";
 import {
   ActivateExclusivityButton,
   AgreementSentDialog,
