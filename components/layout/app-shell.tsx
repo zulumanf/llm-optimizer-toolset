@@ -2,28 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-<<<<<<< HEAD
-import { isMarketingPath } from "@/lib/marketing/constants";
-=======
 import { Menu, X } from "lucide-react";
->>>>>>> origin/main
+import { isMarketingPath } from "@/lib/marketing/constants";
 
 /**
  * One shell, two worlds (spec 048 CRO reassessment): /audit/* is a document
  * a stranger reads — it gets NO workspace chrome, for staff too. An operator
  * previewing the page must see exactly what the prospect sees, and a
-<<<<<<< HEAD
  * screenshot must never carry internal client names. The marketing site
  * (spec 061) is the same world: public pages carry their own chrome.
  * Everywhere else keeps the sidebar + assistant frame.
-=======
- * screenshot must never carry internal client names. Everywhere else keeps
- * the sidebar + assistant frame.
  *
  * Responsive (spec 083): at lg+ the sidebar is the static panel it always
  * was; below lg it becomes a slide-over behind a slim top bar. Same
  * server-rendered sidebar content in both — no second nav to drift.
->>>>>>> origin/main
  */
 export function AppShell({
   sidebar,
@@ -35,9 +27,6 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-<<<<<<< HEAD
-  if (pathname.startsWith("/audit") || isMarketingPath(pathname)) {
-=======
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Navigation closes the drawer — tapping a nav link should land on the
@@ -46,8 +35,7 @@ export function AppShell({
     setDrawerOpen(false);
   }, [pathname]);
 
-  if (pathname.startsWith("/audit") || pathname.startsWith("/report/")) {
->>>>>>> origin/main
+  if (pathname.startsWith("/audit") || pathname.startsWith("/report/") || isMarketingPath(pathname)) {
     return <main className="min-h-dvh">{children}</main>;
   }
   return (
