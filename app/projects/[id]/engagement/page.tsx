@@ -33,6 +33,9 @@ import { getCurrentUser } from "@/lib/auth";
 import { marketOutreachConflicts } from "@/lib/engagements/service";
 import { listQaEvents, portfolioClient } from "@/lib/engagements/portfolio";
 import { renderQuestions } from "@/lib/engagements/onboarding-questions";
+import { CommercialPanel } from "@/components/engagements/commercial-panel";
+import { commercialStateForProject, commercialStateForProspect } from "@/lib/engagements/commercial";
+import { onboardingPrefill } from "@/lib/engagements/onboarding-intake";
 import { daysBetween, todayIso } from "@/lib/engagements/rules";
 import { formatDate } from "@/lib/format";
 
@@ -70,6 +73,8 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
       where (promoted_project_id = ${id} or benchmark_project_id = ${id}) and archived_at is null
       order by updated_at desc limit 1
     `;
+    // Spec 140: the purchase path starts on the prospect; show it here too.
+    const linkedCommercial = linked ? await commercialStateForProspect(linked.id as string) : null;
     return (
       <PageShell>
         <PageHeader crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Engagement" }]} title="Engagement" description="No signed engagement is recorded for this client yet." />
@@ -81,6 +86,7 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
           }
           action={<SignClientDialog projectId={id} prospectId={(linked?.id as string | undefined) ?? null} defaultStart={todayIso()} />}
         />
+        {linkedCommercial && <CommercialPanel state={linkedCommercial} prefill={null} today={todayIso()} />}
       </PageShell>
     );
   }
@@ -90,7 +96,12 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
   const daysLeft = daysBetween(today, e.endsOn);
   const baseline = view.measurements.find((m) => m.role === "baseline" && m.status === "frozen");
   const plannedSlots = view.measurements.filter((m) => m.status === "planned").map((m) => ({ id: m.id, role: m.role, scheduledFor: m.scheduledFor }));
-  const [outreachConflicts, qaEvents] = await Promise.all([marketOutreachConflicts(e.id), listQaEvents(e.id)]);
+  const [outreachConflicts, qaEvents, commercialState, prefill] = await Promise.all([
+    marketOutreachConflicts(e.id),
+    listQaEvents(e.id),
+    commercialStateForProject(id),
+    onboardingPrefill(e.id),
+  ]);
   const qaVariant = client.qaStatus === "CLEAR" ? "outline" : client.qaStatus === "P0" ? "destructive" : "secondary";
   const isAdmin = user.role === "admin";
   const evidenceOptions = baseline?.snapshot
@@ -148,6 +159,7 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
           </p>
         </CardContent>
       </Card>
+      {commercialState && <CommercialPanel state={commercialState} prefill={prefill} today={today} />}
 
       <Section title="Delivery QA" description="Deterministic alerts for this client, ranked; open events persist until resolved or overridden with a reason.">
         {client.alerts.length === 0 && qaEvents.length === 0 ? (

@@ -20,6 +20,8 @@ export interface BillingStructure {
   installmentUsd: number;
   /** Customer-facing due points, one per installment. */
   schedule: readonly string[];
+  /** Days after the start date each installment falls due, one per installment. */
+  dueDayOffsets: readonly number[];
   /** Maps onto client_engagements.billing_cadence. */
   cadence: "monthly" | "upfront" | "custom";
 }
@@ -51,7 +53,7 @@ export const PRICING_POLICIES: readonly PricingPolicy[] = [
     offerName: "Initial 90-day engagement",
     termDays: 90,
     totalFeeUsd: 22_500,
-    billing: { installments: 3, installmentUsd: 7_500, schedule: ["month 1", "month 2", "month 3"], cadence: "monthly" },
+    billing: { installments: 3, installmentUsd: 7_500, schedule: ["month 1", "month 2", "month 3"], dueDayOffsets: [0, 30, 60], cadence: "monthly" },
     effectiveFrom: "2026-09-05",
     effectiveTo: "2026-09-07",
     status: "retired",
@@ -70,7 +72,7 @@ export const PRICING_POLICIES: readonly PricingPolicy[] = [
     offerName: "90-Day Market Implementation Engagement",
     termDays: 90,
     totalFeeUsd: 7_500,
-    billing: { installments: 3, installmentUsd: 2_500, schedule: ["at signing", "day 30", "day 60"], cadence: "monthly" },
+    billing: { installments: 3, installmentUsd: 2_500, schedule: ["at signing", "day 30", "day 60"], dueDayOffsets: [0, 30, 60], cadence: "monthly" },
     effectiveFrom: "2026-09-07",
     effectiveTo: null,
     status: "active",
@@ -110,7 +112,14 @@ export type PricingObjection = (typeof PRICING_OBJECTIONS)[number];
 export const PREFERRED_SOLUTIONS = ["DONE_FOR_YOU", "DONE_WITH_YOU", "DIY"] as const;
 export type PreferredSolution = (typeof PREFERRED_SOLUTIONS)[number];
 
-export const QUOTE_STATUSES = ["presented", "accepted", "declined", "withdrawn"] as const;
+/** Spec 140: draft = prepared, not yet shown; presented = frozen; superseded =
+ * an unpresented draft regenerated under a newer policy. */
+export const QUOTE_STATUSES = ["draft", "presented", "accepted", "declined", "withdrawn", "superseded"] as const;
+export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
+/** Statuses the founder may record as the prospect's response. */
+export const QUOTE_RESPONSE_STATUSES = ["accepted", "declined", "withdrawn"] as const;
+/** A quote still in play for a prospect (one at a time). */
+export const OPEN_QUOTE_STATUSES: readonly QuoteStatus[] = ["draft", "presented", "accepted"];
 export const QUOTE_OUTCOMES = ["open", "client_won", "lost"] as const;
 
 /** Founder-visible decision points. Nothing raises price automatically. */
@@ -123,7 +132,101 @@ export const PRICING_MILESTONES = {
 export function activePricingPolicy(): PricingPolicy {
   const active = PRICING_POLICIES.filter((p) => p.status === "active");
   if (active.length !== 1) throw new Error(`exactly one active pricing policy expected, found ${active.length}`);
-  return active[0]!;
+  return validatePolicy(active[0]!);
+}
+
+// ------------------------------------------------------------------ money
+// Money is whole USD in policy entries and integer cents everywhere it is
+// summed (billing_events.amount_cents). No float arithmetic on amounts.
+
+const CENTS_PER_USD = 100;
+
+/** Whole-dollar or exact-cent USD → integer cents. Refuses sub-cent input. */
+export function usdToCents(usd: number): number {
+  const cents = Math.round(usd * CENTS_PER_USD);
+  if (!Number.isFinite(usd) || Math.abs(cents - usd * CENTS_PER_USD) > 1e-6) {
+    throw new ClassifiedError("validation", `Amount ${usd} is not an exact number of cents.`);
+  }
+  return cents;
+}
+
+export function centsToUsd(cents: number): number {
+  return cents / CENTS_PER_USD;
+}
+
+export interface PolicyMoney {
+  totalCents: number;
+  installmentCents: number;
+  installments: number;
+  termDays: number;
+}
+
+/** The policy's economics in integer cents. */
+export function policyMoney(p: PricingPolicy): PolicyMoney {
+  return {
+    totalCents: usdToCents(p.totalFeeUsd),
+    installmentCents: usdToCents(p.billing.installmentUsd),
+    installments: p.billing.installments,
+    termDays: p.termDays,
+  };
+}
+
+/** Structural invariants every policy entry must hold: the installments sum
+ * exactly to the total, and the schedule has one entry per installment. */
+export function validatePolicy(p: PricingPolicy): PricingPolicy {
+  const m = policyMoney(p);
+  if (m.installmentCents * m.installments !== m.totalCents) {
+    throw new Error(`pricing policy ${p.version}: ${m.installments} × ${m.installmentCents} cents ≠ ${m.totalCents} cents`);
+  }
+  if (p.billing.schedule.length !== m.installments || p.billing.dueDayOffsets.length !== m.installments) {
+    throw new Error(`pricing policy ${p.version}: schedule must list one entry per installment`);
+  }
+  return p;
+}
+
+export interface Installment {
+  /** 1-based. */
+  n: number;
+  amountUsd: number;
+  amountCents: number;
+  /** ISO date the installment is due. */
+  dueOn: string;
+  label: string;
+}
+
+/** Deterministic installment schedule from a start date (integer cents;
+ * dates are start + policy day offsets). */
+export function installmentSchedule(
+  billing: BillingStructure,
+  startsOn: string
+): Installment[] {
+  const base = new Date(`${startsOn}T00:00:00Z`);
+  if (Number.isNaN(base.getTime())) throw new ClassifiedError("validation", `Invalid start date "${startsOn}".`);
+  const amountCents = usdToCents(billing.installmentUsd);
+  return billing.dueDayOffsets.map((offset, i) => {
+    const d = new Date(base.getTime() + offset * 86_400_000);
+    return {
+      n: i + 1,
+      amountUsd: billing.installmentUsd,
+      amountCents,
+      dueOn: d.toISOString().slice(0, 10),
+      label: billing.schedule[i] ?? `installment ${i + 1}`,
+    };
+  });
+}
+
+/** Operational run-rate semantics (spec 140). The monthly equivalent is what
+ * one installment represents; the annualized figure is a RUN RATE — never
+ * contracted or expected annual revenue, never a renewal assumption. */
+export interface RunRate {
+  monthlyEquivalentUsd: number;
+  annualizedRunRateUsd: number;
+  annualizedLabel: "ANNUALIZED RUN RATE";
+  contractedTotalUsd: number;
+}
+export function runRate(p: PricingPolicy): RunRate {
+  const monthly = p.billing.installmentUsd;
+  return { monthlyEquivalentUsd: monthly, annualizedRunRateUsd: monthly * 12, annualizedLabel: "ANNUALIZED RUN RATE", contractedTotalUsd: p.totalFeeUsd };
 }
 
 export function pricingPolicy(version: string): PricingPolicy | null {

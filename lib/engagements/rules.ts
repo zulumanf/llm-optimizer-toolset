@@ -55,6 +55,8 @@ export function termDates(startsOn: string, termDays = DEFAULT_TERM_DAYS): TermD
 
 export interface CommercialGateInput {
   contractStatus: ContractStatus;
+  /** Spec 140: cents required before activation (the first installment in full). */
+  activationPaymentCents?: number;
   /** Sum of payment_received billing events, in cents. */
   paymentsReceivedCents: number;
   activationOverrideReason: string | null;
@@ -73,10 +75,15 @@ export function commercialGate(input: CommercialGateInput): GateVerdict {
   if (input.contractStatus !== "signed") {
     reasons.push(`Contract is "${input.contractStatus}", not signed.`);
   }
-  const paid = input.paymentsReceivedCents > 0;
-  const overridden = Boolean(input.activationOverrideReason?.trim());
-  if (!paid && !overridden) {
-    reasons.push("No payment received has been recorded (or a founder override with a reason).");
+  // Spec 140: the activation payment is the first installment in full, not
+  // "any amount"; rows without an installment amount keep the > 0 rule.
+  const required = input.activationPaymentCents ?? 0;
+  if (!activationPaid(input)) {
+    reasons.push(
+      required > 0 && input.paymentsReceivedCents > 0
+        ? `Activation payment incomplete: $${(input.paymentsReceivedCents / 100).toLocaleString("en-US")} of the required $${(required / 100).toLocaleString("en-US")} first installment received.`
+        : "No payment received has been recorded (or a founder override with a reason)."
+    );
   }
   return { ready: reasons.length === 0, reasons };
 }
@@ -85,6 +92,7 @@ export function commercialGate(input: CommercialGateInput): GateVerdict {
 
 export interface OnboardingInput {
   contractStatus: ContractStatus;
+  activationPaymentCents?: number;
   paymentsReceivedCents: number;
   activationOverrideReason: string | null;
   /** Subject company linked and a named primary contact recorded. */
@@ -107,6 +115,14 @@ export interface ChecklistItem {
   detail: string;
 }
 
+/** The activation payment condition alone (first installment in full, or a
+ * written founder override) — shared by the gate and the checklist. */
+export function activationPaid(i: { activationPaymentCents?: number; paymentsReceivedCents: number; activationOverrideReason: string | null }): boolean {
+  const required = i.activationPaymentCents ?? 0;
+  const paid = required > 0 ? i.paymentsReceivedCents >= required : i.paymentsReceivedCents > 0;
+  return paid || Boolean(i.activationOverrideReason?.trim());
+}
+
 export function onboardingChecklist(i: OnboardingInput): ChecklistItem[] {
   const gate = commercialGate(i);
   return [
@@ -119,7 +135,7 @@ export function onboardingChecklist(i: OnboardingInput): ChecklistItem[] {
     {
       key: "payment",
       label: "Payment state known",
-      done: i.paymentsReceivedCents > 0 || Boolean(i.activationOverrideReason?.trim()),
+      done: activationPaid(i),
       detail:
         i.paymentsReceivedCents > 0
           ? `payments received $${(i.paymentsReceivedCents / 100).toLocaleString("en-US")}`

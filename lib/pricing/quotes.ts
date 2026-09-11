@@ -23,9 +23,24 @@ import {
   PRICING_MILESTONES,
   PRICING_OBJECTIONS,
   PREFERRED_SOLUTIONS,
-  QUOTE_STATUSES,
+  QUOTE_RESPONSE_STATUSES,
+  OPEN_QUOTE_STATUSES,
+  assertQuotablePolicy,
   usd,
+  type PricingPolicy,
+  type QuoteStatus,
 } from "@/lib/pricing/policy";
+
+/** Billing structure as stored on a quote row (frozen copy of the policy's). */
+export interface QuoteBilling {
+  installments: number;
+  installmentUsd: number;
+  schedule: string[];
+  dueDayOffsets: number[];
+}
+export function billingSnapshot(p: PricingPolicy): QuoteBilling {
+  return { installments: p.billing.installments, installmentUsd: p.billing.installmentUsd, schedule: [...p.billing.schedule], dueDayOffsets: [...p.billing.dueDayOffsets] };
+}
 
 /** Called inside the send transaction: if the body states a policy's offer,
  * the send IS a presented quote. Returns the quote id or null. */
@@ -43,7 +58,7 @@ export async function recordQuoteFromSend(
        billing_structure, quoted_at, channel, draft_id, send_id, status, recorded_by)
     values (${input.prospectId}, ${(p?.companyId as string | null) ?? null}, ${(p?.marketId as string | null) ?? null},
       ${policy.version}, ${policy.offerName}, ${policy.totalFeeUsd}, ${policy.termDays},
-      ${tx.json({ installments: policy.billing.installments, installmentUsd: policy.billing.installmentUsd, schedule: [...policy.billing.schedule] } as never)},
+      ${tx.json(billingSnapshot(policy) as never)},
       ${input.sentAt}, ${input.channel}, ${input.draftId}, ${input.sendId}, 'presented', ${input.userId})
     on conflict (send_id) where send_id is not null do nothing
     returning id`;
@@ -52,9 +67,203 @@ export async function recordQuoteFromSend(
   return row.id as string;
 }
 
+// ------------------------------------------------------- quote lifecycle
+
+export interface QuoteRow {
+  id: string;
+  prospectId: string;
+  companyId: string | null;
+  marketId: string | null;
+  engagementId: string | null;
+  pricingPolicyVersion: string;
+  offerName: string;
+  totalFeeUsd: number;
+  termDays: number;
+  billing: QuoteBilling;
+  scopeVersion: string;
+  quotedAt: Date;
+  presentedAt: Date | null;
+  channel: string;
+  status: QuoteStatus;
+  outcome: string;
+  objections: string[];
+  respondedAt: Date | null;
+  responseSummary: string | null;
+  recordedBy: string | null;
+  supersededBy: string | null;
+}
+
+function mapQuote(r: Record<string, unknown>): QuoteRow {
+  const b = (r.billingStructure as Partial<QuoteBilling> | null) ?? {};
+  return {
+    id: r.id as string,
+    prospectId: r.prospectId as string,
+    companyId: (r.companyId as string | null) ?? null,
+    marketId: (r.marketId as string | null) ?? null,
+    engagementId: (r.engagementId as string | null) ?? null,
+    pricingPolicyVersion: r.pricingPolicyVersion as string,
+    offerName: r.offerName as string,
+    totalFeeUsd: Number(r.totalFeeUsd),
+    termDays: Number(r.termDays),
+    billing: {
+      installments: Number(b.installments ?? 0),
+      installmentUsd: Number(b.installmentUsd ?? 0),
+      schedule: b.schedule ?? [],
+      dueDayOffsets: b.dueDayOffsets ?? [],
+    },
+    scopeVersion: (r.scopeVersion as string) ?? "",
+    quotedAt: r.quotedAt as Date,
+    presentedAt: (r.presentedAt as Date | null) ?? null,
+    channel: r.channel as string,
+    status: r.status as QuoteStatus,
+    outcome: r.outcome as string,
+    objections: (r.objections as string[]) ?? [],
+    respondedAt: (r.respondedAt as Date | null) ?? null,
+    responseSummary: (r.responseSummary as string | null) ?? null,
+    recordedBy: (r.recordedBy as string | null) ?? null,
+    supersededBy: (r.supersededBy as string | null) ?? null,
+  };
+}
+
+const QUOTE_COLUMNS = sql`id, prospect_id, company_id, market_id, engagement_id, pricing_policy_version, offer_name, total_fee_usd,
+  term_days, billing_structure, scope_version, quoted_at, presented_at, channel, status, outcome, objections, responded_at,
+  response_summary, recorded_by, superseded_by`;
+
+export async function quoteById(quoteId: string): Promise<QuoteRow | null> {
+  const [r] = await sql`select ${QUOTE_COLUMNS} from pricing_quotes where id = ${quoteId}`;
+  return r ? mapQuote(r) : null;
+}
+
+export async function quotesForProspect(prospectId: string): Promise<QuoteRow[]> {
+  const rows = await sql`select ${QUOTE_COLUMNS} from pricing_quotes where prospect_id = ${prospectId} order by quoted_at desc`;
+  return rows.map(mapQuote);
+}
+
+/** The prospect's one quote still in play (draft, presented or accepted). */
+export async function openQuoteForProspect(prospectId: string): Promise<QuoteRow | null> {
+  const [r] = await sql`
+    select ${QUOTE_COLUMNS} from pricing_quotes
+    where prospect_id = ${prospectId} and status = any(${[...OPEN_QUOTE_STATUSES]}::text[])
+    order by quoted_at desc limit 1`;
+  return r ? mapQuote(r) : null;
+}
+
+const prepareSchema = z.object({
+  prospectId: z.string().uuid(),
+  /** Defaults to the active policy; a retired policy is refused. */
+  policyVersion: z.string().optional(),
+  scopeVersion: z.string().trim().max(100).optional(),
+});
+
+/** Scope version stamped on a new quote: the active policy's version is the
+ * scope definition until a separate scope registry exists. */
+export const QUOTE_SCOPE_VERSION = "scope_90d_market_implementation_v1";
+
+/**
+ * Founder prepares a quote under the CURRENT policy (spec 140). Nothing is
+ * sent. Idempotent: a prospect with an open quote gets that quote back — a
+ * retry never creates a second one. Fixtures and real prospects alike.
+ */
+export async function prepareQuote(user: CurrentUser, raw: unknown): Promise<ActionResult<{ quote: QuoteRow; created: boolean }>> {
+  const parsed = prepareSchema.safeParse(raw);
+  if (!parsed.success) return fail(new ClassifiedError("validation", "Invalid quote input."));
+  const i = parsed.data;
+  try {
+    assertCanWrite(user);
+    const policy = assertQuotablePolicy(i.policyVersion ?? activePricingPolicy().version);
+    const existing = await openQuoteForProspect(i.prospectId);
+    if (existing) return ok({ quote: existing, created: false });
+    const [p] = await sql`
+      select p.company_id, p.archived_at, l.market_id from prospects p join market_launches l on l.id = p.launch_id where p.id = ${i.prospectId}`;
+    if (!p || p.archivedAt) throw new ClassifiedError("not_found", "Prospect not found.");
+    const id = await sql.begin(async (tx) => {
+      const [row] = await tx`
+        insert into pricing_quotes
+          (prospect_id, company_id, market_id, pricing_policy_version, offer_name, total_fee_usd, term_days,
+           billing_structure, scope_version, quoted_at, channel, status, recorded_by)
+        values (${i.prospectId}, ${(p.companyId as string | null) ?? null}, ${(p.marketId as string | null) ?? null},
+          ${policy.version}, ${policy.offerName}, ${policy.totalFeeUsd}, ${policy.termDays},
+          ${tx.json(billingSnapshot(policy) as never)}, ${i.scopeVersion ?? QUOTE_SCOPE_VERSION}, now(), 'manual', 'draft', ${user.id})
+        returning id`;
+      await writeAudit(tx, { userId: user.id, action: "pricing.quote_prepared", entity: "pricing_quote", entityId: row!.id as string, detail: { policy: policy.version, totalFeeUsd: policy.totalFeeUsd, termDays: policy.termDays } });
+      await logActivity(tx, i.prospectId, "pricing_quote_prepared", { quoteId: row!.id, policy: policy.version, totalFeeUsd: policy.totalFeeUsd }, user.id);
+      return row!.id as string;
+    });
+    const quote = (await quoteById(id))!;
+    return ok({ quote, created: true });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+const presentSchema = z.object({
+  quoteId: z.string().uuid(),
+  channel: z.enum(["email", "call", "meeting", "manual"]).default("email"),
+  presentedAt: z.coerce.date().optional(),
+  note: z.string().trim().max(1000).optional(),
+});
+
+/** Founder records that the quote WAS shown to the prospect. From here the
+ * commercial fields are frozen by the database trigger. Idempotent. */
+export async function markQuotePresented(user: CurrentUser, raw: unknown): Promise<ActionResult<{ quote: QuoteRow }>> {
+  const parsed = presentSchema.safeParse(raw);
+  if (!parsed.success) return fail(new ClassifiedError("validation", "Invalid input."));
+  const i = parsed.data;
+  try {
+    assertCanWrite(user);
+    const q = await quoteById(i.quoteId);
+    if (!q) throw new ClassifiedError("not_found", "Quote not found.");
+    if (q.status !== "draft") return ok({ quote: q });
+    await sql.begin(async (tx) => {
+      await tx`
+        update pricing_quotes set status = 'presented', presented_at = ${i.presentedAt ?? new Date()}, channel = ${i.channel},
+          response_summary = coalesce(${i.note ?? null}, response_summary), updated_at = now()
+        where id = ${q.id} and status = 'draft'`;
+      await writeAudit(tx, { userId: user.id, action: "pricing.quote_presented", entity: "pricing_quote", entityId: q.id, detail: { channel: i.channel, presentedAt: i.presentedAt ?? null } });
+      await logActivity(tx, q.prospectId, "pricing_quoted", { quoteId: q.id, policy: q.pricingPolicyVersion, totalFeeUsd: q.totalFeeUsd, channel: i.channel }, user.id);
+    });
+    return ok({ quote: (await quoteById(q.id))! });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * An UNPRESENTED draft may be regenerated under the current policy (founder
+ * rule: nothing shown to the prospect is ever rewritten). The old draft is
+ * marked superseded and points at its replacement; a presented quote is
+ * refused here — record its outcome instead.
+ */
+export async function regenerateDraftQuote(user: CurrentUser, raw: unknown): Promise<ActionResult<{ quote: QuoteRow; supersededQuoteId: string }>> {
+  const parsed = z.object({ quoteId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) return fail(new ClassifiedError("validation", "Invalid quote id."));
+  try {
+    assertCanWrite(user);
+    const q = await quoteById(parsed.data.quoteId);
+    if (!q) throw new ClassifiedError("not_found", "Quote not found.");
+    if (q.status !== "draft") throw new ClassifiedError("conflict", `Quote is ${q.status}; only an unpresented draft can be regenerated.`);
+    const policy = activePricingPolicy();
+    const newId = await sql.begin(async (tx) => {
+      const [row] = await tx`
+        insert into pricing_quotes
+          (prospect_id, company_id, market_id, pricing_policy_version, offer_name, total_fee_usd, term_days,
+           billing_structure, scope_version, quoted_at, channel, status, recorded_by)
+        values (${q.prospectId}, ${q.companyId}, ${q.marketId}, ${policy.version}, ${policy.offerName}, ${policy.totalFeeUsd}, ${policy.termDays},
+          ${tx.json(billingSnapshot(policy) as never)}, ${q.scopeVersion || QUOTE_SCOPE_VERSION}, now(), 'manual', 'draft', ${user.id})
+        returning id`;
+      await tx`update pricing_quotes set status = 'superseded', superseded_by = ${row!.id}, updated_at = now() where id = ${q.id} and status = 'draft'`;
+      await writeAudit(tx, { userId: user.id, action: "pricing.quote_regenerated", entity: "pricing_quote", entityId: row!.id as string, detail: { supersededQuoteId: q.id, from: q.pricingPolicyVersion, to: policy.version } });
+      return row!.id as string;
+    });
+    return ok({ quote: (await quoteById(newId))!, supersededQuoteId: q.id });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 const outcomeSchema = z.object({
   quoteId: z.string().uuid(),
-  status: z.enum(QUOTE_STATUSES),
+  status: z.enum(QUOTE_RESPONSE_STATUSES),
   objections: z.array(z.enum(PRICING_OBJECTIONS)).default([]),
   preferredSolution: z.enum(PREFERRED_SOLUTIONS).nullable().optional(),
   outcome: z.enum(["open", "client_won", "lost"]).optional(),
@@ -73,8 +282,11 @@ export async function recordQuoteOutcome(user: CurrentUser, raw: unknown): Promi
   try {
     assertCanWrite(user);
     await sql.begin(async (tx) => {
-      const [q] = await tx`select id, prospect_id from pricing_quotes where id = ${i.quoteId}`;
+      const [q] = await tx`select id, prospect_id, status from pricing_quotes where id = ${i.quoteId}`;
       if (!q) throw new ClassifiedError("not_found", "Quote not found.");
+      if (q.status === "draft" || q.status === "superseded") {
+        throw new ClassifiedError("conflict", `Quote is ${q.status}: a response can only be recorded on a presented quote.`);
+      }
       const outcome = i.outcome ?? (i.status === "accepted" ? "client_won" : i.status === "declined" ? "lost" : "open");
       await tx`
         update pricing_quotes set
@@ -141,6 +353,7 @@ export async function pricingLearning(): Promise<PricingLearning> {
     join market_launches l on l.id = p.launch_id
     left join markets m on m.id = coalesce(q.market_id, l.market_id)
     where p.archived_at is null and l.name not like ${fixture}
+      and q.status not in ('draft', 'superseded')
     order by q.quoted_at desc`;
   const conversations: PricingConversationRow[] = rows.map((r) => ({
     quoteId: r.id as string,
