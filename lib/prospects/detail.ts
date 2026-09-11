@@ -1,3 +1,4 @@
+import { AUDIT_VIEW_PUBLISH_QA_WINDOW_MINUTES } from "@/lib/prospects/constants";
 /**
  * Read model for the prospect detail page (spec 032). Server-only queries —
  * staff access is enforced by the /prospects segment layout; nothing here is
@@ -8,6 +9,8 @@ import { sql } from "@/db/client";
 import type { AuditSnapshot } from "@/lib/prospects/service";
 
 export interface ProspectDetail {
+  /** Spec 134: clean private-report slug, null until the first audit. */
+  reportSlug: string | null;
   id: string;
   launchId: string;
   launchName: string;
@@ -54,7 +57,7 @@ export async function getProspectDetail(id: string): Promise<ProspectDetail | nu
       p.qualification_override_reason,
       p.relationship_strength, p.stage, p.next_action, p.next_action_on::text,
       p.do_not_contact, p.do_not_contact_reason, p.conflict_status, p.notes,
-      p.benchmark_project_id, p.promoted_project_id
+      p.benchmark_project_id, p.promoted_project_id, p.report_slug
     from prospects p
     join market_launches l on l.id = p.launch_id
     join markets m on m.id = l.market_id
@@ -184,6 +187,9 @@ export interface AuditRow {
   viewCount: number;
   firstViewedAt: Date | null;
   lastViewedAt: Date | null;
+  /** Spec 134: authorized external sessions that reached this audit. */
+  externalSessionCount: number;
+  firstExternalAccessAt: Date | null;
   snapshot: AuditSnapshot;
 }
 
@@ -192,11 +198,17 @@ export async function listAudits(prospectId: string): Promise<AuditRow[]> {
     select a.id, a.headline, a.status, a.access_token, a.expires_at,
       a.published_at, a.snapshot,
       (select count(*)::int from prospect_audit_views v
-        where v.audit_id = a.id and not v.is_internal) as view_count,
+        where v.audit_id = a.id and not v.is_internal
+          and (a.published_at is null or v.viewed_at >= a.published_at + ${AUDIT_VIEW_PUBLISH_QA_WINDOW_MINUTES} * interval '1 minute')) as view_count,
       (select min(v.viewed_at) from prospect_audit_views v
-        where v.audit_id = a.id and not v.is_internal) as first_viewed_at,
+        where v.audit_id = a.id and not v.is_internal
+          and (a.published_at is null or v.viewed_at >= a.published_at + ${AUDIT_VIEW_PUBLISH_QA_WINDOW_MINUTES} * interval '1 minute')) as first_viewed_at,
       (select max(v.viewed_at) from prospect_audit_views v
-        where v.audit_id = a.id and not v.is_internal) as last_viewed_at
+        where v.audit_id = a.id and not v.is_internal) as last_viewed_at,
+      (select count(*)::int from prospect_report_sessions s
+        where s.audit_id = a.id and not s.is_internal and s.first_used_at is not null) as external_session_count,
+      (select min(s.first_used_at) from prospect_report_sessions s
+        where s.audit_id = a.id and not s.is_internal) as first_external_access_at
     from prospect_audits a
     where a.prospect_id = ${prospectId}
     order by a.created_at desc
@@ -215,18 +227,37 @@ export interface DraftRow {
   status: string;
   approvedAt: Date | null;
   sentRecordedAt: Date | null;
+  scheduledSendAt: Date | null;
+  lastSendError: string | null;
   contactId: string | null;
   contactName: string | null;
   contactEmail: string | null;
+  /** Whether any allowed send of this draft carried an open-tracking pixel
+   * (spec 092). False renders as "not tracked", never as zero opens. */
+  openTracked: boolean;
+  openCount: number;
+  lastOpenedAt: Date | null;
 }
 
 export async function listDrafts(prospectId: string): Promise<DraftRow[]> {
   return sql<DraftRow[]>`
     select d.id, d.channel, d.version, d.subject, d.body, d.cta, d.generated_by,
-      d.status, d.approved_at, d.sent_recorded_at, d.contact_id,
-      c.name as contact_name, c.email as contact_email
+      d.status, d.approved_at, d.sent_recorded_at, d.scheduled_send_at,
+      d.last_send_error, d.contact_id,
+      c.name as contact_name, c.email as contact_email,
+      coalesce(o.open_tracked, false) as open_tracked,
+      coalesce(o.open_count, 0) as open_count,
+      o.last_opened_at
     from outreach_drafts d
     left join prospect_contacts c on c.id = d.contact_id
+    left join lateral (
+      select bool_or(s.open_token is not null) as open_tracked,
+        count(op.id)::int as open_count,
+        max(op.opened_at) as last_opened_at
+      from prospect_outreach_sends s
+      left join outreach_open_signal op on op.send_id = s.id and op.signal_class <> 'scanner'
+      where s.draft_id = d.id and s.allowed
+    ) o on true
     where d.prospect_id = ${prospectId}
     order by d.channel asc, d.version desc
   `;

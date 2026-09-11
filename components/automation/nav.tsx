@@ -1,38 +1,36 @@
+"use client";
+
 import Link from "next/link";
+import { PageTabs } from "@/components/layout/page-tabs";
 
+/**
+ * Automation section tabs — rendered via the shared PageTabs bar (cleanup
+ * 2026-08-18; this was one of three hand-rolled copies of the same
+ * underline nav). Active state derives from the pathname, so run/workflow
+ * detail pages light up their parent tab without a prop.
+ */
 const TABS = [
-  { key: "overview", href: "/automation", label: "Overview" },
-  { key: "workflows", href: "/automation/workflows", label: "Workflows" },
-  { key: "runs", href: "/automation/runs", label: "Runs" },
-  { key: "connectors", href: "/automation/connectors", label: "Connectors" },
-  { key: "triggers", href: "/automation/triggers", label: "Triggers" },
-  { key: "events", href: "/automation/events", label: "Events" },
-  { key: "outreach", href: "/automation/outreach", label: "Outreach" },
-] as const;
+  { href: "/automation", label: "Overview", exact: true },
+  { href: "/automation/workflows", label: "Workflows" },
+  { href: "/automation/runs", label: "Runs" },
+  { href: "/automation/connectors", label: "Connectors" },
+  { href: "/automation/triggers", label: "Triggers" },
+  { href: "/automation/events", label: "Events" },
+  { href: "/automation/outreach", label: "Outreach" },
+];
 
-export function AutomationNav({ current }: { current: string }) {
+export function AutomationNav() {
   return (
-    <nav className="mb-6 flex flex-wrap gap-1 border-b" aria-label="Automation sections">
-      {TABS.map((tab) => (
+    <PageTabs
+      tabs={TABS}
+      trailing={
         <Link
-          key={tab.key}
-          href={tab.href}
-          aria-current={tab.key === current ? "page" : undefined}
-          className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
-            tab.key === current
-              ? "border-foreground font-medium"
-              : "border-transparent text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground"
-          }`}
+          href="/control-tower"
+          className="-mb-px border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
         >
-          {tab.label}
+          Control tower &rarr;
         </Link>
-      ))}
-      <Link
-        href="/control-tower"
-        className="-mb-px border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-      >
-        Control tower →
-      </Link>
-    </nav>
+      }
+    />
   );
 }

@@ -71,11 +71,16 @@ export async function generateBrief(input: {
 }
 
 export async function acknowledgeDrift(input: unknown) {
-  const { getCurrentUser } = await import("@/lib/auth");
-  const { acknowledgeDriftSignal } = await import("@/lib/drift/detect");
-  const { revalidatePath } = await import("next/cache");
-  const user = await getCurrentUser();
-  const result = await acknowledgeDriftSignal(user, input);
-  if (result.ok) revalidatePath("/control-tower");
-  return result;
+  // Was the one action in the app with no try/catch (an auth failure
+  // escaped as an unhandled rejection) and with dynamic re-imports of
+  // modules already imported at the top of this file (cleanup 2026-08-18).
+  try {
+    const user = await getCurrentUser();
+    const { acknowledgeDriftSignal } = await import("@/lib/drift/detect");
+    const result = await acknowledgeDriftSignal(user, input);
+    if (result.ok) revalidatePath("/control-tower");
+    return result;
+  } catch (err) {
+    return fail(err);
+  }
 }

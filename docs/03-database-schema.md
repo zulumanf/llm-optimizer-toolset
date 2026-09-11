@@ -1,5 +1,16 @@
 # 03 — Database Schema
 
+> **The migrations are the schema.** This document stopped tracking new
+> tables at migration 023 (2026-08-01) and was never the mechanism keeping
+> itself honest — `db/migrations/` is the source of truth (83 files, ~160
+> tables as of 2026-08-18), applied in filename order by
+> `scripts/migrate.ts` and recorded in `schema_migrations`. What follows is
+> kept for the **conventions** section below and as a narrative map of the
+> core measurement spine (projects → prompts → runs → responses → mentions
+> → scores). For anything newer — prospects, audits, citations,
+> automation, knowledge, discoverability — read the migration that created
+> it; each carries a header naming its spec.
+
 Postgres (Supabase). Conventions: `id uuid pk default gen_random_uuid()`, `created_at timestamptz default now()` on every table; snake_case; foreign keys always indexed; **no hard deletes on experiment data** (`archived_at` instead). Tables marked **IMMUTABLE** are insert-only, enforced by trigger.
 
 Entity flow:

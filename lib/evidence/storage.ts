@@ -15,6 +15,9 @@ export function artifactPath(storageKey: string): string {
   return resolveStoragePath(EVIDENCE_ROOT, storageKey);
 }
 
+/** NO PRODUCTION CALLER YET (cleanup audit 2026-08-18): evidence_artifacts
+ * has two readers but nothing captures artifacts through this path — the
+ * screenshot/HTML-snapshot capture flow is unshipped. Do not delete. */
 export async function storeArtifact(args: {
   responseId?: string | null;
   kind: "screenshot" | "raw_json" | "html_snapshot" | "video" | "export_file";

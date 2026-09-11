@@ -414,6 +414,73 @@ describe.skipIf(!TEST_URL)("prospect send gate (integration)", () => {
     if (!refused.ok) expect(refused.error.message).toMatch(/cap is 3/);
   });
 
+  it("spec 127: a follow-up to a prospect already counted by the brokerage cap passes", async () => {
+    // Three distinct prospects of one brokerage in one market fill the cap.
+    // A follow-up to one of THEM is not a fourth prospect — the unique-
+    // prospect cap must exclude the recipient's own prior send.
+    const { draftId, prospectId } = await seedApprovedDraft();
+    await sql`update prospects set brokerage_affiliation = 'Compass' where id = ${prospectId}`;
+    const [first] = await sql`select launch_id from prospects where id = ${prospectId}`;
+    const [finding] = await sql`select id from prospect_findings limit 1`;
+    const [own] = await sql`
+      insert into outreach_drafts (prospect_id, finding_id, channel, body, generated_by, status)
+      values (${prospectId}, ${finding?.id}, 'email', 'x', 'operator', 'approved')
+      returning id
+    `;
+    await sql`
+      insert into prospect_outreach_sends (draft_id, prospect_id, channel,
+        recipient_email, body_hash, business_purpose, gate_verdict, allowed, sent_by, sent_at)
+      values (${own?.id}, ${prospectId}, 'manual', 'own@compass.com', 'h',
+        'seeded', '{"checks":[]}', true, ${operator.id}, now() - interval '40 days')
+    `;
+    for (let i = 0; i < 2; i += 1) await seedBrokerageSend(first?.launchId as string, "Compass", i);
+    const sent = await svc.sendProspectDraft(operator, { draftId, channel: "mock", businessPurpose: PURPOSE });
+    expect(sent.ok).toBe(true);
+  });
+
+  const seedBrokerageSend = async (launchId: string, brokerage: string, i: number) => {
+    const [finding] = await sql`select id from prospect_findings limit 1`;
+    const [p] = await sql`
+      insert into prospects (launch_id, business_name, prospect_type, brokerage_affiliation)
+      values (${launchId}, ${`${brokerage} Team ${launchId.slice(0, 4)}-${i}`}, 'team', ${brokerage})
+      returning id`;
+    const [d] = await sql`
+      insert into outreach_drafts (prospect_id, finding_id, channel, body, generated_by, status)
+      values (${p?.id}, ${finding?.id}, 'email', 'x', 'operator', 'approved')
+      returning id`;
+    await sql`
+      insert into prospect_outreach_sends (draft_id, prospect_id, channel,
+        recipient_email, body_hash, business_purpose, gate_verdict, allowed, sent_by)
+      values (${d?.id}, ${p?.id}, 'manual', ${`b${launchId.slice(0, 4)}${i}@example.com`}, 'h',
+        'seeded', '{"checks":[]}', true, ${operator.id})`;
+  };
+
+  it("spec 120: the cap ignores the same brand in another market", async () => {
+    const { draftId, prospectId } = await seedApprovedDraft();
+    await sql`update prospects set brokerage_affiliation = 'Compass' where id = ${prospectId}`;
+    const [first] = await sql`
+      select launch_id, (select market_id from market_launches where id = launch_id) as market_id
+      from prospects where id = ${prospectId}`;
+    const [other] = await sql`
+      insert into market_launches (name, market_id) values ('Elsewhere luxury residential', ${first?.marketId})
+      returning id`;
+    for (let i = 0; i < 3; i += 1) await seedBrokerageSend(other?.id as string, "Compass", i);
+    // Would have refused under the global cap; market scoping lets it pass.
+    const sent = await svc.sendProspectDraft(operator, { draftId, channel: "mock", businessPurpose: PURPOSE });
+    expect(sent.ok).toBe(true);
+  });
+
+  it("spec 120: suffix variants share one in-market cap bucket", async () => {
+    const { draftId, prospectId } = await seedApprovedDraft();
+    await sql`update prospects set brokerage_affiliation = 'Long & Foster Real Estate' where id = ${prospectId}`;
+    const [first] = await sql`select launch_id from prospects where id = ${prospectId}`;
+    for (let i = 0; i < 3; i += 1)
+      await seedBrokerageSend(first?.launchId as string, "Long & Foster Real Estate Inc.", i);
+    const refused = await svc.sendProspectDraft(operator, { draftId, channel: "mock", businessPurpose: PURPOSE });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/cap is 3/);
+  });
+
   it("spec 052: a reserved territory blocks at send time; a recorded override passes", async () => {
     const { draftId, prospectId } = await seedApprovedDraft();
     const [market] = await sql`select id from markets limit 1`;

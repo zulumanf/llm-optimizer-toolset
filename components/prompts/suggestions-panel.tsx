@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
 import { Lightbulb, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +16,7 @@ import {
   approvePromptSuggestion,
   rejectPromptSuggestion,
 } from "@/app/prompts/actions";
+import { useAction } from "@/lib/hooks/use-action";
 import { MARKET_PACKS } from "@/lib/markets/packs";
 
 export interface SuggestionRow {
@@ -40,41 +40,31 @@ export function SuggestionsPanel({
   setId: string;
   suggestions: SuggestionRow[];
 }) {
-  const [pending, startTransition] = useTransition();
+  const { pending, run } = useAction();
   const [packKey, setPackKey] = useState<string>(MARKET_PACKS[0]?.key ?? "");
 
-  const propose = () => {
-    startTransition(async () => {
-      const result = await generatePromptSuggestions({ setId, packKey });
-      if (result.ok) {
-        const r = result.data as {
+  const propose = () =>
+    run(() => generatePromptSuggestions({ setId, packKey }), {
+      success: (data) => {
+        const r = data as {
           staged: number;
           skippedExisting: number;
           skippedByCap: number;
         };
-        toast.success(
-          r.staged > 0
-            ? `Staged ${r.staged} suggestion(s) for review (${r.skippedExisting} already covered).`
-            : `Nothing new to propose — ${r.skippedExisting} combination(s) already covered.`
-        );
-      } else {
-        toast.error(result.error.message);
-      }
+        return r.staged > 0
+          ? `Staged ${r.staged} suggestion(s) for review (${r.skippedExisting} already covered).`
+          : `Nothing new to propose — ${r.skippedExisting} combination(s) already covered.`;
+      },
     });
-  };
 
-  const decide = (suggestionId: string, approve: boolean) => {
-    startTransition(async () => {
-      const result = approve
-        ? await approvePromptSuggestion({ suggestionId })
-        : await rejectPromptSuggestion({ suggestionId });
-      if (result.ok) {
-        toast.success(approve ? "Added to the set." : "Rejected.");
-      } else {
-        toast.error(result.error.message);
-      }
-    });
-  };
+  const decide = (suggestionId: string, approve: boolean) =>
+    run(
+      () =>
+        approve
+          ? approvePromptSuggestion({ suggestionId })
+          : rejectPromptSuggestion({ suggestionId }),
+      { success: approve ? "Added to the set." : "Rejected." }
+    );
 
   return (
     <section className="mt-8">

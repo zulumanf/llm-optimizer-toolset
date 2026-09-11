@@ -14,7 +14,6 @@
  *     breach — averaging that against successes would let a leak hide behind a
  *     good score.
  */
-import { sql } from "@/db/client";
 import {
   RETRIEVAL_FORBIDDEN_TOLERANCE,
   RETRIEVAL_RECALL_FLOOR,
@@ -103,28 +102,6 @@ export function scoreFixture(
 }
 
 /** Persist a score so regressions are visible across runs, not just in CI. */
-export async function recordEvaluation(
-  suite: string,
-  score: FixtureScore,
-  projectId: string | null,
-  packetId?: string | null
-): Promise<void> {
-  await sql`
-    insert into retrieval_evaluations (
-      suite, fixture_key, task_type, project_id, required_total, required_found,
-      forbidden_total, forbidden_present, recall, precision, token_count,
-      token_budget, passed, failures, packet_id
-    ) values (
-      ${suite}, ${score.fixtureKey}, ${score.taskType}, ${projectId},
-      ${score.requiredTotal}, ${score.requiredFound}, ${score.forbiddenTotal},
-      ${score.forbiddenPresent}, ${score.recall},
-      ${score.forbiddenTotal === 0 ? null : 1 - score.forbiddenPresent / score.forbiddenTotal},
-      ${score.tokenCount}, ${score.tokenBudget}, ${score.passed},
-      ${sql.json(score.failures as never)}, ${packetId ?? null}
-    )
-  `;
-}
-
 export interface SuiteSummary {
   suite: string;
   fixtures: number;

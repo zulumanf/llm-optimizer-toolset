@@ -53,10 +53,18 @@ export interface AuditContentInput {
 }
 
 /** Deterministic serialization — hashed on both the check and publish sides. */
+/** How the comparison set is constructed — the checker must read the same
+ * explanation the audit page's table footnote gives the prospect (spec 094:
+ * without it, every mixed individual/team/brand set reads as cherry-picked). */
+export const COMPARISON_SET_NOTE =
+  "Comparison set: every entity the captured answers named — individual " +
+  "agents, teams, and brokerage brands together — not a curated peer group.";
+
 export function serializeAuditContent(content: AuditContentInput): string {
   return JSON.stringify({
     prospect: content.prospectName,
     finding: { title: content.findingTitle, explanation: content.findingExplanation },
+    metricsNote: COMPARISON_SET_NOTE,
     metrics: content.metrics,
     signals: content.signals,
     humanFinding: content.humanFinding,

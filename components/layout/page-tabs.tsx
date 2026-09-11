@@ -15,15 +15,27 @@ export interface PageTab {
   label: string;
   /** Attention count shown on the tab (e.g. pending review). */
   count?: number;
+  /** Match only the exact path — for a tab whose href is the section base
+   * (otherwise it would light up on every sibling). */
+  exact?: boolean;
 }
 
-export function PageTabs({ tabs }: { tabs: PageTab[] }) {
+export function PageTabs({
+  tabs,
+  trailing,
+}: {
+  tabs: PageTab[];
+  /** Rendered after the tabs on the same border row (e.g. an escape-hatch
+   * link) — kept here so consumers don't hand-roll the bar to add one. */
+  trailing?: React.ReactNode;
+}) {
   const pathname = usePathname();
   return (
-    <div className="mb-4 flex gap-1 border-b">
+    <div className="mb-4 flex flex-wrap gap-1 border-b">
       {tabs.map((tab) => {
-        const active =
-          pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+        const active = tab.exact
+          ? pathname === tab.href
+          : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
         return (
           <Link
             key={tab.href}
@@ -44,6 +56,7 @@ export function PageTabs({ tabs }: { tabs: PageTab[] }) {
           </Link>
         );
       })}
+      {trailing}
     </div>
   );
 }

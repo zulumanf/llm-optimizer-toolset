@@ -18,7 +18,7 @@ import type { AuthoritySignalKind } from "@/lib/prospects/constants";
 import { logSampleConfidence } from "@/lib/confidence";
 import { CURRENT_REVISION } from "@/db/mentions";
 
-export const DIAGNOSIS_VERSION = "prospect-diagnosis-v2";
+export const DIAGNOSIS_VERSION = "prospect-diagnosis-v3";
 
 const EVIDENCE_PROMPT_LIMIT = 5;
 const CITED_DOMAIN_LIMIT = 5;
@@ -71,13 +71,13 @@ export interface DiagnoseInputs {
 
 const SUGGESTED_ACTIONS: Record<string, string> = {
   no_organic_visibility:
-    "Build presence on the surfaces the answers cite (see source targets) and publish neighborhood-specific proof of work.",
+    "Build presence on the third-party surfaces the answers cite (see source targets) and publish neighborhood-specific proof of work.",
   mentioned_never_recommended:
     "Add differentiation and proof (rankings, verified sales, reviews) to the pages models retrieve — being known is not being endorsed.",
   missing_from_cited_sources:
-    "Get profiles or coverage on the cited domains — the answers pull from them, not from your own site.",
+    "The cited domains are clues to the public sources visible in this sample. Improving accurate, consistent representation across relevant third-party profiles (portals, directories, local press) and building authoritative on-site content may improve how AI systems describe you over time.",
   competitors_dominate_sources:
-    "Target the competitor-controlled surfaces with neutral third-party alternatives (directories, local press) the models also cite.",
+    "Strengthen the neutral third-party surfaces (directories, local press) the answers also cite — competitor-owned pages are not available surfaces.",
   missing_from_high_intent_prompts:
     "Create content matching the questions buyers and sellers actually ask (best listing agent, who should sell my X) — you only appear on general ones.",
   entity_ambiguity:
@@ -207,8 +207,16 @@ export function deriveDiagnoses(inputs: DiagnoseInputs): Diagnosis[] {
       add(
         "missing_from_cited_sources",
         "Not in the retrieval path",
-        [`The answers cited their sources ${totalCitations} times — never your own site.`],
-        "The models are building these answers from other people's pages; presence on the cited surfaces may matter more than your own site here.",
+        // Precise, auditable units (spec 093 rounds 1+2): the count names
+        // its denominator and how repeats are treated — a bare "cited N
+        // times" reads implausibly high and invites the exact skeptical
+        // question it should be answering.
+        [
+          `Across the ${totalResponses} captured answers we recorded ${totalCitations} displayed source citations (repeated citations counted each time they appeared) — your own site appeared 0 times.`,
+        ],
+        // One sentence of reading, no stacked hedges (round 2) — the longer
+        // "how to act on it" text lives in the suggested action.
+        "The cited domains show the public information environment surfaced in this sample; your site did not appear among them.",
         sampleConfidence(totalCitations),
         { citedDomains: top }
       );

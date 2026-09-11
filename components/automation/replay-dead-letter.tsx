@@ -1,11 +1,9 @@
 "use client";
 
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { Repeat } from "lucide-react";
 import { replayDeadLetter } from "@/app/automation/actions";
 import { Button } from "@/components/ui/button";
+import { useAction } from "@/lib/hooks/use-action";
 
 /**
  * Replay a dead-lettered delivery. Safe because consumption is idempotent: the
@@ -13,8 +11,7 @@ import { Button } from "@/components/ui/button";
  * work that already succeeded.
  */
 export function ReplayDeadLetterButton({ attemptId }: { attemptId: string }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { pending, run } = useAction();
 
   return (
     <Button
@@ -22,18 +19,12 @@ export function ReplayDeadLetterButton({ attemptId }: { attemptId: string }) {
       variant="outline"
       disabled={pending}
       onClick={() =>
-        startTransition(async () => {
-          const result = await replayDeadLetter(attemptId);
-          if (!result.ok) {
-            toast.error(result.error.message);
-            return;
-          }
-          toast.success(
-            result.data.replayed
+        run(() => replayDeadLetter(attemptId), {
+          success: (data) =>
+            data.replayed
               ? "Re-armed. The next dispatch retries it."
-              : "It was no longer dead-lettered."
-          );
-          router.refresh();
+              : "It was no longer dead-lettered.",
+          refresh: true,
         })
       }
     >

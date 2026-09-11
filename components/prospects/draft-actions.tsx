@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Check, Mail, MailOpen, Pencil, Send } from "lucide-react";
+import { CalendarClock, CalendarOff, Check, Mail, MailOpen, Pencil, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,9 +24,15 @@ import {
 } from "@/components/ui/select";
 import {
   approveOutreachDraft,
+  cancelScheduledSend,
   createOutreachDraft,
+  recordProspectReply,
+  scheduleDraftSend,
   sendProspectDraft,
 } from "@/app/prospects/actions";
+
+const DEFAULT_PURPOSE =
+  "AI-visibility benchmark findings relevant to their team's market position";
 
 export interface DraftContactOption {
   id: string;
@@ -77,17 +83,30 @@ function ContactSelect({
  * an unbound draft falls back to the business address and the contact gate
  * never fires.
  */
+/** An eligible comparison the operator may pick instead of the automatic
+ * best (spec 124). Only validated candidates ever reach this list. */
+export interface MismatchCandidateOption {
+  companyId: string;
+  label: string;
+}
+
+/** Sentinel for "let the system pick the strongest eligible comparison". */
+const AUTO_COMPETITOR = "auto";
+
 export function GenerateDraftButton({
   prospectId,
   contacts,
+  mismatchCandidates = [],
 }: {
   prospectId: string;
   contacts: DraftContactOption[];
+  mismatchCandidates?: MismatchCandidateOption[];
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const primary = contacts.find((c) => c.isPrimary && !c.doNotContact);
   const [contactId, setContactId] = useState<string>(primary?.id ?? ACCOUNT_DEFAULT);
+  const [competitorId, setCompetitorId] = useState<string>(AUTO_COMPETITOR);
 
   const generate = () => {
     startTransition(async () => {
@@ -95,6 +114,8 @@ export function GenerateDraftButton({
         prospectId,
         channel: "email",
         contactId: contactId === ACCOUNT_DEFAULT ? undefined : contactId,
+        competitorCompanyId:
+          competitorId === AUTO_COMPETITOR ? undefined : competitorId,
       });
       if (result.ok) {
         toast.success(`Draft v${result.data.version} generated for review.`);
@@ -109,7 +130,7 @@ export function GenerateDraftButton({
   if (contacts.length === 0) {
     return (
       <Button size="sm" variant="outline" onClick={generate} disabled={pending}>
-        <Mail className="size-4" /> {pending ? "Generating…" : "Generate reply-first draft"}
+        <Mail className="size-4" /> {pending ? "Generating…" : "Generate draft"}
       </Button>
     );
   }
@@ -118,7 +139,7 @@ export function GenerateDraftButton({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm" variant="outline">
-          <Mail className="size-4" /> Generate reply-first draft
+          <Mail className="size-4" /> Generate draft
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -133,6 +154,29 @@ export function GenerateDraftButton({
             when the send is recorded.
           </p>
         </div>
+        {mismatchCandidates.length > 0 && (
+          <div className="space-y-1.5">
+            <Label>Comparison</Label>
+            <Select value={competitorId} onValueChange={setCompetitorId}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={AUTO_COMPETITOR}>
+                  Strongest eligible comparison (automatic)
+                </SelectItem>
+                {mismatchCandidates.map((c) => (
+                  <SelectItem key={c.companyId} value={c.companyId}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Only comparisons that pass every eligibility check are listed.
+            </p>
+          </div>
+        )}
         <DialogFooter>
           <Button onClick={generate} disabled={pending}>
             {pending ? "Generating…" : "Generate draft"}
@@ -275,6 +319,161 @@ export function OpenInMailButton({
   );
 }
 
+/**
+ * The platform's own transmission (spec 091): sends the approved text
+ * through the connected Gmail mailbox, behind the full gate chain. The
+ * dialog is the human click PRINCIPLES #8 requires for this exact send.
+ */
+export function SendViaGmailButton({ draftId }: { draftId: string }) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [purpose, setPurpose] = useState(DEFAULT_PURPOSE);
+
+  const send = () => {
+    startTransition(async () => {
+      const result = await sendProspectDraft({
+        draftId,
+        channel: "gmail",
+        businessPurpose: purpose,
+      });
+      if (result.ok) {
+        toast.success("Sent via Gmail — gate ledger written.");
+        setOpen(false);
+      } else {
+        toast.error(result.error.message);
+      }
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm">
+          <Send className="size-4" /> Send via Gmail
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Send this approved email now?</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-1.5">
+          <Label htmlFor="send-purpose">Business purpose (recorded on the send ledger)</Label>
+          <Textarea
+            id="send-purpose"
+            value={purpose}
+            onChange={(e) => setPurpose(e.target.value)}
+            rows={2}
+          />
+          <p className="text-xs text-muted-foreground">
+            Every gate re-runs before transmission: suppression, do-not-contact,
+            re-contact windows, territory, sender identity, daily cap.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button onClick={send} disabled={pending || purpose.trim().length < 10}>
+            {pending ? "Sending…" : "Send now"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Schedule the transmission of an approved draft (spec 091). The named
+ * time and stated purpose are the human confirmation the worker executes;
+ * the gate still re-runs in full when the time arrives.
+ */
+export function ScheduleSendButton({ draftId }: { draftId: string }) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [sendAt, setSendAt] = useState("");
+  const [purpose, setPurpose] = useState(DEFAULT_PURPOSE);
+
+  const schedule = () => {
+    startTransition(async () => {
+      const result = await scheduleDraftSend({
+        draftId,
+        sendAt: new Date(sendAt).toISOString(),
+        businessPurpose: purpose,
+      });
+      if (result.ok) {
+        toast.success(
+          `Scheduled — sends via Gmail around ${new Date(sendAt).toLocaleString()}.`
+        );
+        setOpen(false);
+      } else {
+        toast.error(result.error.message);
+      }
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          <CalendarClock className="size-4" /> Schedule send
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Schedule this approved email</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="schedule-at">Send at</Label>
+            <Input
+              id="schedule-at"
+              type="datetime-local"
+              value={sendAt}
+              onChange={(e) => setSendAt(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              The worker checks roughly every 10 minutes, so the send lands
+              shortly after this time. Up to 30 days ahead.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="schedule-purpose">
+              Business purpose (recorded on the send ledger)
+            </Label>
+            <Textarea
+              id="schedule-purpose"
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              rows={2}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            onClick={schedule}
+            disabled={pending || !sendAt || purpose.trim().length < 10}
+          >
+            {pending ? "Scheduling…" : "Schedule"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function CancelScheduledSendButton({ draftId }: { draftId: string }) {
+  const [pending, startTransition] = useTransition();
+  const cancel = () => {
+    startTransition(async () => {
+      const result = await cancelScheduledSend({ draftId });
+      if (result.ok) toast.success("Schedule cancelled — the draft stays approved.");
+      else toast.error(result.error.message);
+    });
+  };
+  return (
+    <Button size="sm" variant="outline" onClick={cancel} disabled={pending}>
+      <CalendarOff className="size-4" /> {pending ? "Cancelling…" : "Cancel schedule"}
+    </Button>
+  );
+}
+
 export function RecordSentButton({ draftId }: { draftId: string }) {
   const [pending, startTransition] = useTransition();
   const record = () => {
@@ -303,5 +502,78 @@ export function RecordSentButton({ draftId }: { draftId: string }) {
     <Button size="sm" variant="outline" onClick={record} disabled={pending}>
       <Send className="size-4" /> Record sent
     </Button>
+  );
+}
+
+/**
+ * Record what a reply said (spec 124). The inbox is still read by a human —
+ * this writes the insert-only reply ledger row, classifies deterministically,
+ * advances the stage for real conversations, and suppresses unsubscribes.
+ */
+export function RecordReplyButton({
+  prospectId,
+  contacts,
+}: {
+  prospectId: string;
+  contacts: DraftContactOption[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const primary = contacts.find((c) => c.isPrimary);
+  const [contactId, setContactId] = useState<string>(primary?.id ?? ACCOUNT_DEFAULT);
+  const [bodyText, setBodyText] = useState("");
+
+  const record = () => {
+    startTransition(async () => {
+      const result = await recordProspectReply({
+        prospectId,
+        contactId: contactId === ACCOUNT_DEFAULT ? undefined : contactId,
+        bodyText,
+      });
+      if (result.ok) {
+        toast.success(
+          `Reply recorded — classified ${result.data.classification.replaceAll("_", " ")}.`
+        );
+        setBodyText("");
+        setOpen(false);
+      } else {
+        toast.error(result.error.message);
+      }
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          <MailOpen className="size-4" /> Record reply
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>What did they reply?</DialogTitle>
+        </DialogHeader>
+        {contacts.length > 0 && (
+          <div className="space-y-1.5">
+            <Label>From</Label>
+            <ContactSelect contacts={contacts} value={contactId} onChange={setContactId} />
+          </div>
+        )}
+        <div className="space-y-1.5">
+          <Label>Reply text</Label>
+          <Textarea
+            value={bodyText}
+            onChange={(e) => setBodyText(e.target.value)}
+            rows={5}
+            placeholder="Paste the reply as received — it is classified automatically and kept as the record."
+          />
+        </div>
+        <DialogFooter>
+          <Button onClick={record} disabled={pending || bodyText.trim().length === 0}>
+            {pending ? "Recording…" : "Record reply"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

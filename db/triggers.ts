@@ -94,11 +94,6 @@ export async function upsertTrigger(
   return row!.id as string;
 }
 
-export async function getTrigger(triggerId: string): Promise<AutomationTrigger | null> {
-  const [row] = await sql`select * from automation_triggers where id = ${triggerId}`;
-  return row ? toTrigger(row) : null;
-}
-
 export async function getTriggerByKey(key: string): Promise<AutomationTrigger | null> {
   const [row] = await sql`select * from automation_triggers where key = ${key}`;
   return row ? toTrigger(row) : null;
@@ -281,40 +276,6 @@ function toEndpoint(row: Record<string, unknown>): WebhookEndpoint {
     rateLimitPerMinute: Number(row.rateLimitPerMinute ?? 60),
     revokedAt: (row.revokedAt as Date | null) ?? null,
   };
-}
-
-export async function insertWebhookEndpoint(
-  tx: Tx,
-  args: {
-    slug: string;
-    provider: string;
-    projectId: string | null;
-    triggerId: string | null;
-    eventType: string;
-    signatureScheme: WebhookEndpoint["signatureScheme"];
-    secret: { ciphertext: Buffer; iv: Buffer; authTag: Buffer } | null;
-    rateLimitPerMinute: number;
-    createdBy: string | null;
-  }
-): Promise<string> {
-  const [row] = await tx`
-    insert into webhook_endpoints (
-      slug, provider, project_id, trigger_id, event_type, signature_scheme,
-      secret_ciphertext, secret_iv, secret_auth_tag, rate_limit_per_minute, created_by
-    ) values (
-      ${args.slug}, ${args.provider}, ${args.projectId}, ${args.triggerId},
-      ${args.eventType}, ${args.signatureScheme},
-      ${args.secret?.ciphertext ?? null}, ${args.secret?.iv ?? null},
-      ${args.secret?.authTag ?? null}, ${args.rateLimitPerMinute}, ${args.createdBy}
-    )
-    on conflict (slug) do update set
-      provider = excluded.provider,
-      event_type = excluded.event_type,
-      signature_scheme = excluded.signature_scheme,
-      rate_limit_per_minute = excluded.rate_limit_per_minute
-    returning id
-  `;
-  return row!.id as string;
 }
 
 export async function endpointBySlug(slug: string): Promise<WebhookEndpoint | null> {

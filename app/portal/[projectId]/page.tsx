@@ -2,9 +2,11 @@ import Link from "next/link";
 import {
   nextMondayIso,
   portalCompetitive,
+  portalEngagement,
   portalOverview,
   portalWork,
 } from "@/lib/portal/service";
+import { PortalEngagementBlock } from "@/components/portal/engagement-block";
 import { getCurrentUser } from "@/lib/auth";
 import {
   AuthorityTrendChart,
@@ -32,13 +34,17 @@ export default async function PortalOverviewPage({
 }) {
   const { projectId } = await params;
   const user = await getCurrentUser();
-  const [overview, rivals, work] = await Promise.all([
+  const [overview, rivals, work, engagement] = await Promise.all([
     portalOverview(user, projectId),
     portalCompetitive(user, projectId),
     portalWork(user, projectId),
+    portalEngagement(user, projectId),
   ]);
 
   if (overview.headlines.length === 0) {
+    // A retained client whose measurement lives in a frozen baseline package
+    // (spec 131) sees their program even before a project-owned scored run.
+    if (engagement) return <PortalEngagementBlock engagement={engagement} />;
     return (
       <p className="rounded-md border border-dashed p-8 text-sm text-muted-foreground">
         Measurement is being set up — numbers appear here after the first
@@ -60,6 +66,7 @@ export default async function PortalOverviewPage({
 
   return (
     <div className="space-y-10">
+      {engagement && <PortalEngagementBlock engagement={engagement} />}
       {/* 1. Is it working? */}
       {rec && (
         <section>

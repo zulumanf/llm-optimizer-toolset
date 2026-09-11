@@ -33,7 +33,7 @@ export default async function AutomationRunsPage({
         }
       />
 
-      <AutomationNav current="runs" />
+      <AutomationNav />
 
       <div className="mb-4 flex gap-2 text-sm">
         <Link

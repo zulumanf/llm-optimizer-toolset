@@ -125,7 +125,7 @@ export default async function RunDetailPage({
       ) : null}
 
       <div className="mt-4">
-        <AutomationNav current="runs" />
+        <AutomationNav />
       </div>
 
       <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">

@@ -277,13 +277,14 @@ describe.skipIf(!TEST_URL)("prospect authority & visibility gap (integration)", 
     expect(snapshot?.authorityGap?.authorityScore).toBe(13.05);
     expect(snapshot?.authorityGap?.visibilityScore).toBe(0);
     expect(snapshot?.authorityGap?.gap).toBe(13.05);
-    expect(snapshot?.authorityGap?.authorityVersion).toBe("authority-v2");
+    expect(snapshot?.authorityGap?.authorityVersion).toBe("authority-v3");
     expect(snapshot?.authorityGap?.visibilityVersion).toBe("valuable-visibility-v1");
     expect(snapshot?.authorityGap?.signals).toEqual([
       {
         label: "Ranked #2 Manhattan team by closed volume",
         provenance: "verified",
         sourceUrl: "https://example.com/ranking",
+        sourceType: null,
       },
     ]);
     // The snapshot carries no internal signal ids.
