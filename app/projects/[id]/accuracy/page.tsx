@@ -5,7 +5,7 @@ import { ShieldAlert } from "lucide-react";
 import { getProject } from "@/db/projects";
 import { sql } from "@/db/client";
 import { Badge } from "@/components/ui/badge";
-import { AnalyzeAccuracyButton } from "@/components/accuracy/analyze-button";
+import { BackgroundAction } from "@/components/jobs/background-action";
 import { AccuracyFindingCard } from "@/components/accuracy/finding-card";
 import { formatDate } from "@/lib/format";
 import { ProjectTabs } from "@/components/layout/project-tabs";
@@ -69,11 +69,14 @@ export default async function AccuracyPage({
         actions={
           <>
             {analysable[0] && (
-          <AnalyzeAccuracyButton
-            runId={analysable[0].id as string}
-            runLabel={analysable[0].label as string}
-          />
-        )}
+              <BackgroundAction
+                type="analyze_accuracy"
+                runId={analysable[0].id as string}
+                label={`Analyze "${analysable[0].label as string}"`}
+                workingLabel="Auditing answers…"
+                icon={<ShieldAlert className="size-4" />}
+              />
+            )}
           </>
         }
       />

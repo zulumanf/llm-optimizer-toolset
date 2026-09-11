@@ -78,15 +78,15 @@ async function main(): Promise<void> {
     if (qa.length > 0) warn(entity, "qaDraft", qa.map((i) => `${i.check}: ${i.detail}`).join(" | "));
 
     // -- RealTrends canonical revalidation
-    const rt = async (companyId: string, label: string) => {
+    const rt = async (companyId: string) => {
       const rows = await sql`
         select entity_name, entity_type, volume_usd, production_year, city, state
         from realtrends_records where company_id = ${companyId}
         order by production_year desc, volume_usd desc limit 1`;
       return rows[0] ?? null;
     };
-    const prt = await rt(snap.prospect.companyId, "prospect");
-    const crt = await rt(snap.competitor.companyId, "competitor");
+    const prt = await rt(snap.prospect.companyId);
+    const crt = await rt(snap.competitor.companyId);
     if (!prt) warn(entity, "rt_prospect", "no matched realtrends_records row for prospect company");
     if (!crt) warn(entity, "rt_competitor", "no matched realtrends_records row for competitor company");
     if (prt && crt) {

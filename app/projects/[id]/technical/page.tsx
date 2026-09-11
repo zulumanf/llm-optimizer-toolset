@@ -8,6 +8,7 @@ import { latestScan, listScanFindings } from "@/lib/discoverability/service";
 import { ScanButton } from "@/components/technical/scan-button";
 import { FindingActions } from "@/components/technical/finding-actions";
 import { formatDate } from "@/lib/format";
+import { SEVERITY_VARIANT } from "@/lib/ui/variants";
 
 const BAND_LABELS: Record<string, string> = {
   do_now: "Do now",
@@ -16,13 +17,6 @@ const BAND_LABELS: Record<string, string> = {
   low_priority: "Low priority",
 };
 
-const SEVERITY_VARIANT: Record<string, "destructive" | "default" | "secondary" | "outline"> = {
-  critical: "destructive",
-  high: "destructive",
-  medium: "default",
-  low: "secondary",
-  info: "outline",
-};
 
 export default async function TechnicalPage({
   params,

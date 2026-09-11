@@ -58,7 +58,7 @@ export default async function AutomationWorkflowsPage() {
         }
       />
 
-      <AutomationNav current="workflows" />
+      <AutomationNav />
 
       {invalid.length > 0 ? (
         <div className="mb-6 rounded-lg border border-destructive/40 bg-destructive/5 p-4">

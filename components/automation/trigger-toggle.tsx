@@ -1,10 +1,8 @@
 "use client";
 
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { setTriggerEnabled } from "@/app/automation/actions";
 import { Button } from "@/components/ui/button";
+import { useAction } from "@/lib/hooks/use-action";
 
 /** Enabling a trigger is an admin act, and it is audited. */
 export function TriggerToggle({
@@ -14,8 +12,7 @@ export function TriggerToggle({
   triggerId: string;
   enabled: boolean;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { pending, run } = useAction();
 
   return (
     <Button
@@ -23,14 +20,9 @@ export function TriggerToggle({
       variant={enabled ? "outline" : "default"}
       disabled={pending}
       onClick={() =>
-        startTransition(async () => {
-          const result = await setTriggerEnabled({ triggerId, enabled: !enabled });
-          if (!result.ok) {
-            toast.error(result.error.message);
-            return;
-          }
-          toast.success(enabled ? "Trigger disabled." : "Trigger enabled.");
-          router.refresh();
+        run(() => setTriggerEnabled({ triggerId, enabled: !enabled }), {
+          success: enabled ? "Trigger disabled." : "Trigger enabled.",
+          refresh: true,
         })
       }
     >

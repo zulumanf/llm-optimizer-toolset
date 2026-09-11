@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { makeActionRunner } from "@/lib/actions/run";
 import { assertRole, getCurrentUser } from "@/lib/auth";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import * as svc from "@/lib/notifications/service";
@@ -22,15 +23,13 @@ export async function syncNotifications(): Promise<
   }
 }
 
+// The other three actions here wrap non-ActionResult service calls behind
+// an operator role gate, so they keep their explicit shape; this one is the
+// textbook runner case.
+const run = makeActionRunner(["/", "layout"]);
+
 export async function setNotificationStatus(input: unknown) {
-  try {
-    const user = await getCurrentUser();
-    const result = await svc.setNotificationStatus(user, input);
-    if (result.ok) revalidatePath("/", "layout");
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
+  return run((user) => svc.setNotificationStatus(user, input));
 }
 
 export async function markAllRead(): Promise<ActionResult<{ count: number }>> {

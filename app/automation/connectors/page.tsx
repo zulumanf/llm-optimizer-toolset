@@ -53,7 +53,7 @@ export default async function ConnectorsPage() {
         }
       />
 
-      <AutomationNav current="connectors" />
+      <AutomationNav />
 
       {!keyReady ? (
         <div className="mb-6 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-4">

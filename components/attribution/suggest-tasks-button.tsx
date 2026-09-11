@@ -1,10 +1,8 @@
 "use client";
 
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { ListPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAction } from "@/lib/hooks/use-action";
 import { suggestTasksFromIntervention } from "@/app/attribution/actions";
 
 interface Props {
@@ -13,8 +11,7 @@ interface Props {
 }
 
 export function SuggestTasksButton({ interventionId, hasNotable }: Props) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { pending, run } = useAction();
   if (!hasNotable) return null;
 
   return (
@@ -23,16 +20,10 @@ export function SuggestTasksButton({ interventionId, hasNotable }: Props) {
       variant="outline"
       disabled={pending}
       onClick={() =>
-        startTransition(async () => {
-          const result = await suggestTasksFromIntervention({ interventionId });
-          if (result.ok) {
-            toast.success(
-              `${result.data.created} task${result.data.created === 1 ? "" : "s"} suggested (awaiting approval).`
-            );
-            router.refresh();
-          } else {
-            toast.error(result.error.message);
-          }
+        run(() => suggestTasksFromIntervention({ interventionId }), {
+          success: (data) =>
+            `${data.created} task${data.created === 1 ? "" : "s"} suggested (awaiting approval).`,
+          refresh: true,
         })
       }
     >
