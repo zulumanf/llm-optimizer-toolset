@@ -91,10 +91,10 @@ describe("narrative — typed, personalized, honest", () => {
     expect(n.diagnosis[1]!.observed).toContain("Mordecai");
     expect(n.diagnosis[2]!.observed).toContain("zillow.com");
     expect(n.diagnosis[2]!.observed).toContain("your own website was not one of them");
-    expect(n.diagnosis[2]!.mayMean).toContain("appear to carry far more of the answers");
+    expect(n.diagnosis[2]!.mayMean).toContain("appeared in the answers far more often than");
     expect(JSON.stringify(n.diagnosis)).not.toMatch(/carry more weight|drawing on|rely on/);
     for (const d of n.diagnosis) {
-      expect(d.mayMean).toMatch(/may|appear/);
+      expect(d.mayMean).toMatch(/In the captured answers|may|appear|not a reason/);
       expect(d.investigate.length).toBeGreaterThan(20);
     }
   });
@@ -109,7 +109,7 @@ describe("narrative — typed, personalized, honest", () => {
     expect(n.contextQuestions.length).toBe(3);
     expect(n.contextQuestions[0]).toContain("David Worters");
     expect(n.contextQuestions[1]).toContain("Mordecai and Hayes Barton");
-    expect(n.ctaBridge).toContain("Mordecai and Hayes Barton are actually the parts of Raleigh");
+    expect(n.ctaBridge).toContain("Mordecai and Hayes Barton are the parts of Raleigh that matter most to you");
   });
   it("less-concerned checks state the actual status, including when the competitor was concentrated", () => {
     expect(n.lessConcerned[0]!.status).toContain("3 different questions");

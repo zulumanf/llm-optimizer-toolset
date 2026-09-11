@@ -578,7 +578,7 @@ export default async function ProspectAuditPage({ auditId, reportSlug, sessionId
             </p>
           )}
           <p className="mt-2 max-w-[65ch] text-sm">
-            <span className="font-medium">AI recommendations:</span>{" "}
+            <span className="font-medium">Recommended in the test:</span>{" "}
             <span className={`tabular-nums ${pain ? "text-destructive" : ""}`}>
               {stakes.yourRecommendations} of the {responseCount} answers we
               tested
@@ -1218,7 +1218,7 @@ export default async function ProspectAuditPage({ auditId, reportSlug, sessionId
               <span className="font-medium text-foreground">
                 How to read this report:
               </span>{" "}
-              a point-in-time audit of a defined set of AI answers, designed
+              a point-in-time review of a defined set of AI answers, designed
               to identify visibility gaps and possible source patterns. It is
               not a judgment of service quality, and it does not predict lead
               flow, prove competitive superiority, or guarantee future AI

@@ -26,7 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     # 15 stopped fitting on 2026-08-05: the suite grew past 1,400 tests and
     # the reversibility loop walks 57 migrations on a 2-core runner.
-    timeout-minutes: 30
+    # 30 stopped fitting on 2026-09-11 (#174): 231 test files, 113
+    # migrations, and a slow-disk runner ran DB-bound tests 4x slower than
+    # the previous main run while CPU-bound tests were unchanged.
+    timeout-minutes: 60
 
     services:
       postgres:

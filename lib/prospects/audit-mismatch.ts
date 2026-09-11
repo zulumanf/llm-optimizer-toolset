@@ -93,7 +93,7 @@ export interface AuditMismatchBlock {
   /** RealTrends entity level of the prospect's frozen production record;
    * "you" vs "your team" everywhere on the page. Absent on pre-2026-09-04
    * snapshots (rendered as a team). */
-  entityType?: "individual" | "team";
+  entityType?: ReportEntityType;
   /** Spec 130: present when the counts on this page differ from the ones the
    * email stated because entity resolution was corrected against the same
    * answers. Both values are shown; nothing is hidden. */
@@ -148,9 +148,16 @@ export interface NameAppearance {
 
 /** Second-person reference for the prospect: an individual agent is "you",
  * a team is "your team". */
-export function entityRef(entityType: "individual" | "team" | null | undefined): { ref: string; Ref: string; yours: string; team: boolean } {
-  const team = entityType !== "individual";
-  return { ref: team ? "your team" : "you", Ref: team ? "Your team" : "You", yours: team ? "your team's" : "your", team };
+/** Customer-facing entity type: the RealTrends record level (individual /
+ * team) or a brokerage. Unknown reads as a team (the conservative form). */
+export type ReportEntityType = "individual" | "team" | "brokerage";
+
+/** Deterministic entity-aware wording. The MEASURED entity is always the
+ * business on the production record — never the recipient by name. */
+export function entityRef(entityType: ReportEntityType | null | undefined): { ref: string; Ref: string; yours: string; team: boolean; isAre: string } {
+  if (entityType === "individual") return { ref: "you", Ref: "You", yours: "your", team: false, isAre: "are" };
+  if (entityType === "brokerage") return { ref: "your brokerage", Ref: "Your brokerage", yours: "your brokerage's", team: false, isAre: "is" };
+  return { ref: "your team", Ref: "Your team", yours: "your team's", team: true, isAre: "is" };
 }
 
 const MAX_QUOTE = 240;
@@ -238,7 +245,7 @@ export interface NarrativeInput {
   sources: AuditMismatchBlock["sources"];
   ownSiteCited: boolean | null;
   distinctQuestions: { prospect: number; competitor: number };
-  entityType?: "individual" | "team" | null;
+  entityType?: ReportEntityType | null;
 }
 
 /** Diagnosis, priorities, context questions, less-concerned checks and the
@@ -246,7 +253,7 @@ export interface NarrativeInput {
 export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosis" | "priorities" | "contextQuestions" | "lessConcerned" | "note" | "ctaBridge"> {
   const p = i.prospect;
   const c = i.competitor;
-  const { ref, team } = entityRef(i.entityType);
+  const { ref, yours, team } = entityRef(i.entityType);
   const gapLead = i.gaps[0] ?? null;
   const gapLabels = i.gaps.map((g) => g.label.replace(" questions", "").toLowerCase());
   const nbhd = i.competitorNeighborhoods.slice(0, 3);
@@ -256,14 +263,14 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
   diagnosis.push({
     area: "Track record",
     observed: `Your ${p.productionDisplay} is well ahead of ${possessive(c.name)} ${c.productionDisplay} on the RealTrends record, but that advantage is not reflected in the answers: ${p.recommendationCount} recommendation${p.recommendationCount === 1 ? "" : "s"} for ${ref} against ${c.recommendationCount} for ${c.name}, out of the same ${i.answerCount} answers.`,
-    mayMean: `${c.name} may have a clearer public trail connecting them with ${i.market} and the questions where they appeared.`,
+    mayMean: `In the captured answers, ${c.name} was named together with ${i.market} and these question types more often than ${ref}. Whether their public pages make that connection more consistently is what to check; the answers alone do not say why.`,
     investigate: `How consistently your production, specialties, neighborhoods and ${team ? "team identity" : "name"} are represented across your own site and the independent websites that kept appearing in the answers.`,
   });
   if (gapLead) {
     diagnosis.push({
       area: "Where they show up",
       observed: `${gapLead.competitor} of ${possessive(c.name)} ${c.recommendationCount} recommendations came from ${gapLead.label.toLowerCase()}${nbhd.length ? `, most often about ${list(nbhd)}` : ""}; ${ref} had ${gapLead.prospect} there.`,
-      mayMean: `${possessive(c.name)} name appears to be more strongly associated with ${gapLabels.length ? list(gapLabels) : "those searches"}${nbhd.length ? ` in ${list(nbhd)}` : ""} than yours is.`,
+      mayMean: `In the captured answers, ${c.name} was named for ${gapLabels.length ? list(gapLabels) : "those searches"}${nbhd.length ? ` in ${list(nbhd)}` : ""} more often than ${ref}. That is an observation about the answers, not a reason.`,
       investigate: `Why their name is tied to those specific searches: recent sales, listings and profiles that name ${nbhd.length ? list(nbhd) : "those areas"} explicitly.`,
     });
   }
@@ -271,7 +278,7 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
     diagnosis.push({
       area: "Where the information comes from",
       observed: `The answers pointed to ${list(platforms)} again and again${i.ownSiteCited === false ? "; your own website was not one of them" : ""}.`,
-      mayMean: `Those portal profiles appear to carry far more of the answers than either ${team ? "team's" : "agent's"} own website, which makes them one of the first places I'd inspect.`,
+      mayMean: `Those portal profiles appeared in the answers far more often than ${yours} own website, which makes them one of the first places I'd inspect.`,
       investigate: `Whether ${team ? "your team, brokerage," : "you, your brokerage,"} neighborhoods and specialties read the same way on those portals as they do on your site.`,
     });
   }
@@ -324,8 +331,8 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
   const note = {
     paragraphs: [
       `The reason I reached out wasn't simply because ${ref} showed up less often.`,
-      `It was because your production record is strong enough that the gap looked unusual: ${ratio} on the same RealTrends record, and ${p.recommendationCount} recommendation${p.recommendationCount === 1 ? "" : "s"} against ${c.recommendationCount}.`,
-      `If the real-world numbers clearly favored ${c.name}, I probably wouldn't have contacted you. Here, they point in the opposite direction. That's what made this worth looking into.`,
+      `What stood out is that your production record is strong enough that the gap looked unusual: ${ratio} on the same RealTrends record, and ${p.recommendationCount} recommendation${p.recommendationCount === 1 ? "" : "s"} against ${c.recommendationCount}.`,
+      `If the real-world numbers had favored ${c.name}, there would be nothing unusual to point out. Here, they point in the opposite direction. That's what made this worth looking into.`,
     ],
     question: gapLead
       ? `The part I'd want to understand from you is whether ${gapLead.label.toLowerCase()}${nbhd.length ? ` in ${list(nbhd)}` : ""} are the part of the market you care about most.`
@@ -333,8 +340,8 @@ export function narrative(i: NarrativeInput): Pick<AuditMismatchBlock, "diagnosi
   };
 
   const ctaBridge = nbhd.length
-    ? `The main thing I'd want to understand from you is whether ${list(nbhd)} are actually the parts of ${i.market} you're trying to win. That changes what I'd work on first.`
-    : `The main thing I'd want to understand from you is which parts of ${i.market} you're actually trying to win. That changes what I'd work on first.`;
+    ? `The main thing I'd want to understand from you is whether ${list(nbhd)} are the parts of ${i.market} that matter most to you. That changes what I'd work on first.`
+    : `The main thing I'd want to understand from you is which parts of ${i.market} matter most to you. That changes what I'd work on first.`;
 
   return { diagnosis, priorities, contextQuestions, lessConcerned, note, ctaBridge };
 }
@@ -346,7 +353,7 @@ export function correctionNote(i: {
   teamName: string;
   competitor: string;
   answerCount: number;
-  entityType?: "individual" | "team" | null;
+  entityType?: ReportEntityType | null;
 }): string {
   const { ref } = entityRef(i.entityType);
   const c = i.correction;
@@ -365,7 +372,7 @@ export function changeFirstRows(i: {
   competitor: AuditMismatchBlock["competitor"];
   answerCount: number;
   questionCount: number;
-  entityType?: "individual" | "team" | null;
+  entityType?: ReportEntityType | null;
   correction: ReportCorrection | null;
   appearances: NameAppearance[];
   sources: AuditMismatchBlock["sources"];
@@ -376,7 +383,7 @@ export function changeFirstRows(i: {
   facts?: { ownedDomain?: string | null; leadRole?: string | null; brokerage?: string | null };
 }): ChangeFirstRow[] {
   const rows: ChangeFirstRow[] = [];
-  const { ref, team } = entityRef(i.entityType);
+  const { ref, team, yours, isAre } = entityRef(i.entityType);
   const comp = i.competitor.name;
   const teamName = i.prospect.name;
   const own = i.facts?.ownedDomain ?? null;
@@ -408,11 +415,11 @@ export function changeFirstRows(i: {
   if (platforms.length > 0) {
     rows.push({
       title: `The profiles the answers already use`,
-      observed: `${list(platforms)} appeared repeatedly across the ${i.answerCount} captured answers${i.ownSiteCited === false ? `; ${team ? "the team's" : "your"} own website did not appear` : ""}.`,
-      change: `Audit ${team ? "the team's" : "your"} profiles on those sites so the same facts appear everywhere: ${team ? "team name, the lead-agent-to-team relationship, " : "name, brokerage, "}production, neighborhoods covered and bio wording.`,
-      where: `${list(platforms)} profile pages for ${team ? "the team and its lead agent" : "you"}. The specific fields to fix get identified in the audit, not guessed here.`,
+      observed: `${list(platforms)} appeared repeatedly across the ${i.answerCount} captured answers${i.ownSiteCited === false ? `; ${yours} own website did not appear` : ""}.`,
+      change: `Bring ${yours} profiles on those sites in line so the same facts appear everywhere: ${team ? "team name, who leads it, " : "name, brokerage, "}production, neighborhoods covered and bio wording.`,
+      where: `${list(platforms)} profile pages for ${ref}. The specific fields to fix get confirmed at the start of the work, not guessed here.`,
       whyFirst: `These pages are already appearing in the answers, so they are more relevant to inspect than any website that is not.`,
-      test: `${rerun}; compare recommendation frequency, which websites the answers point to, and how ${ref} ${team ? "is" : "are"} named.`,
+      test: `${rerun}; compare recommendation frequency, which websites the answers point to, and how ${ref} ${isAre} named.`,
     });
   }
 
@@ -420,9 +427,9 @@ export function changeFirstRows(i: {
   const nbhd = i.competitorNeighborhoods.slice(0, 3);
   if (nbhdGap && nbhd.length > 0) {
     rows.push({
-      title: `${list(nbhd)}, if those are areas you want to win`,
+      title: `${list(nbhd)}, if those areas matter to you`,
       observed: `${comp} was recommended in ${nbhdGap.competitor} neighborhood answers, most often for ${list(nbhd)}; ${ref} in ${nbhdGap.prospect}.`,
-      change: `If those are areas you're trying to win, make ${team ? "the team's" : "your"} track record there explicit on your own pages and supporting profiles, with the sales behind it.`,
+      change: `If those areas matter to you, state ${yours} sales there plainly on your own pages and supporting profiles.`,
       where: `${own ? `Your own site (${own}) area pages` : "Your own site's area pages"}, then the supporting profiles.`,
       whyFirst: `That is where the captured gap shows up. If those neighborhoods are not priorities for you, this one matters less.`,
       test: `Compare the same neighborhood questions before and after: recommendations for ${ref} in ${list(nbhd)}.`,

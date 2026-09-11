@@ -139,7 +139,7 @@ describe("report correction note and change-first rows", () => {
     expect(rows[1]!.observed).toContain("zillow.com and realtor.com appeared repeatedly");
     expect(rows[1]!.observed).not.toMatch(/\b(172|140|488|396)\b/);
     expect(rows[1]!.observed).toContain("own website did not appear");
-    expect(rows[2]!.title).toContain("if those are areas you want to win");
+    expect(rows[2]!.title).toContain("if those areas matter to you");
     expect(rows[2]!.observed).toContain("Eastown, John Ball Park and Ridgemoor");
     const text = rows.map((r) => `${r.title} ${r.observed} ${r.change} ${r.where} ${r.whyFirst} ${r.test}`).join(" ");
     expect(text).not.toMatch(/will (get you )?rank|would have changed|causes|doesn't know|ChatGPT/i);

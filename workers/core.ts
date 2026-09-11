@@ -47,6 +47,13 @@ export const handlers: Record<
       payload as { interventionId: string; offsetLabel: string }
     );
   },
+  // Spec 138: render one personalized video walkthrough revision (script →
+  // narration → stills → MP4 → QA); idempotent on the artifact's generation
+  // key, never delivers.
+  render_video_walkthrough: async (payload) => {
+    const { processVideoWalkthroughJob } = await import("@/lib/prospects/video-walkthrough");
+    await processVideoWalkthroughJob(payload.artifactId as string, { workerId: process.env.WORKER_ID ?? null });
+  },
   // Spec 051: fetch each shipped intervention URL through safeFetch and
   // record the result — "it actually shipped" becomes a database fact.
   verify_intervention_urls: async (payload) => {

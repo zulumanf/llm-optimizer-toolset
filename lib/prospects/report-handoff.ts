@@ -29,7 +29,7 @@ import {
 import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
 import { compileFactManifest, evidenceHashOf, assertReportMatchesManifest, assertTextNumbersManifested, validatedSummarySentence, type CompiledSentence, type FactManifest } from "@/lib/prospects/fact-manifest";
 import { evidenceSnapshotForDraft, releaseGateDetail, verifyEvidenceRelease, type EvidenceReleaseVerdict } from "@/lib/prospects/evidence-release";
-import { assertTransition, releaseDecision, resolveLaneConfig, reviewOverrideFor, sendIntentKey, sendMessageIdFor, senderDomainOf, HANDOFF_STATUSES, type HandoffStatus } from "@/lib/prospects/fulfillment-lane";
+import { assertTransition, releaseDecision, resolveLaneConfig, reviewOverrideFor, sendIntentKey, sendMessageIdFor, senderDomainOf, videoReleasableFor, HANDOFF_STATUSES, type HandoffStatus, type LaneConfig } from "@/lib/prospects/fulfillment-lane";
 import { classifyForAutonomy, type AutonomyClass } from "@/lib/prospects/reply-preprocess";
 import { checkSuppression } from "@/lib/outreach/suppression";
 import {
@@ -51,7 +51,7 @@ import {
   type FollowupSequence,
 } from "@/lib/prospects/followups";
 import { lintFollowupCopy, type ProspectEntityType } from "@/lib/prospects/followup-templates";
-import type { AuditMismatchBlock } from "@/lib/prospects/audit-mismatch";
+import { entityRef, type AuditMismatchBlock } from "@/lib/prospects/audit-mismatch";
 import type { DraftQaIssue } from "@/lib/prospects/draft-qa";
 import type { MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
 import { reportInvitationUrl } from "@/lib/prospects/urls";
@@ -126,8 +126,7 @@ function toHandoff(r: Record<string, unknown>): ReportHandoff {
 export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prospectName: string; market: string }): string {
   const out: string[] = [];
   const h = (t: string): void => { out.push("", `## ${t}`); };
-  const you = block.entityType === "individual" ? "you" : "your team";
-  const You = block.entityType === "individual" ? "You" : "Your team";
+  const { ref: you, Ref: You, isAre } = entityRef(block.entityType);
   const comp = block.competitor.name;
   const captured = block.capturedAt ? block.capturedAt.slice(0, 10) : null;
   const notFluke = block.distinctQuestions.competitor >= 3;
@@ -138,17 +137,17 @@ export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prosp
   if (block.correction) out.push(block.correction.note);
   h("The finding");
   out.push(
-    `RealTrends has ${you} ahead. AI recommends ${comp} more often.`,
-    `On the RealTrends record for ${block.metricLabel}, ${you} ${block.entityType === "individual" ? "are" : "is"} ahead of ${comp}. In our ${ctx.market} test, ${comp} was recommended more often.`,
-    `Figure 01 · Production vs AI recommendations`,
+    `RealTrends has ${you} ahead. In our test, ${comp} was recommended more often.`,
+    `On the RealTrends record for ${block.metricLabel}, ${you} ${isAre} ahead of ${comp}. In our ${ctx.market} test, ${comp} was recommended more often.`,
+    `Figure 01 · Production vs recommendation frequency`,
     `${block.prospect.productionYear ?? ""} ${block.metricLabel} (RealTrends): ${You} ${block.prospect.productionDisplay.replace(/ closed$/, "")} · ${comp} ${block.competitor.productionDisplay.replace(/ closed$/, "")}`,
-    `AI recommendations, same ${ctx.market} test: ${You} ${block.prospect.recommendationCount} / ${block.answerCount} · ${comp} ${block.competitor.recommendationCount} / ${block.answerCount}`,
+    `Recommended in the test (${ctx.market}): ${You} ${block.prospect.recommendationCount} / ${block.answerCount} · ${comp} ${block.competitor.recommendationCount} / ${block.answerCount}`,
     `${You} closed more ${block.metricLabel.replace(/^closed /, "")}. ${comp} was recommended more.${notFluke ? ` ${comp} appeared across ${block.distinctQuestions.competitor} different questions.` : ""}`,
     `Difference: ${block.competitor.recommendationCount - block.prospect.recommendationCount} recommendations on the same ${block.answerCount} answers.`
   );
   if (block.changeFirst?.length) {
     h("What I'd change first");
-    out.push(`Observed in the answers, the smallest change I'd make, and how the same test would show whether it moved. None of this is a ranking promise.`);
+    out.push(`What I observed in the answers, the smallest change I'd look at first, and how to run the same test again afterwards to compare. None of this is a ranking promise.`);
     for (const r of block.changeFirst) out.push(`- ${r.title} · Observed: ${r.observed} · Change: ${r.change} · Where: ${r.where} · Why first: ${r.whyFirst} · Test: ${r.test}`);
   }
   h("What we asked");
@@ -338,7 +337,12 @@ export interface DeliveryInput {
   brandedUrl: string;
   manifest: FactManifest;
   footerTail: string[];
+  /** Spec 139: true ONLY when a releasable video walkthrough exists for this
+   * handoff (the report embeds it; one destination). Never a promise. */
+  videoIncluded?: boolean;
 }
+export const DELIVERY_VARIANTS = { reportOnly: "report_only", reportAndVideo: "report_and_video" } as const;
+export const deliveryVariantOf = (videoIncluded: boolean): string => (videoIncluded ? DELIVERY_VARIANTS.reportAndVideo : DELIVERY_VARIANTS.reportOnly);
 
 /** The threaded reply that keeps the promise (spec 137 template v2): one
  * link, ONE compiled comparison sentence whose every figure is a manifest
@@ -347,7 +351,9 @@ export function renderReportDelivery(i: DeliveryInput): { body: string; cta: str
   const summary = validatedSummarySentence(i.manifest);
   const lines = [
     `${i.firstName},`, ``,
-    `Absolutely. I put together the exact questions and side-by-side results here:`, ``,
+    i.videoIncluded
+      ? `Absolutely. I put together a quick walkthrough along with the exact questions and side-by-side results here:`
+      : `Absolutely. I put together the exact questions and side-by-side results here:`, ``,
     i.brandedUrl, ``,
     `The biggest thing that stood out: ${summary.text}`, ``,
     `I also included where that gap shows up and the first thing I'd look at changing.`, ``,
@@ -372,6 +378,37 @@ export function assertDeliveryMatchesManifest(body: string, brandedUrl: string, 
   const above = body.split("\n--\n")[0] ?? body;
   const text = above.split(brandedUrl).join(" ");
   return assertTextNumbersManifested(text, manifest).map((x) => ({ check: `manifest_${x.check}`, detail: x.detail }));
+}
+
+/** Spec 139: the deterministic half of the release-review policy. Asserted
+ * causes, promised or predicted outcomes, rank promises and consumer-ChatGPT
+ * generalizations block in code, before any model reads the report. */
+const ASSERTION_PATTERNS: { check: string; re: RegExp; subject?: RegExp }[] = [
+  // A cause is asserted only when the sentence is about recommendations/answers.
+  { check: "asserted_cause", re: /\b(because|is why|drives|controls|caused by|the reason (is|for))\b/i, subject: /\b(recommend\w*|answers?|shortlist)\b/i },
+  { check: "promised_outcome", re: /\b(will|going to)\s+(rank|get you|move|increase|improve|produce|generate|fix|win)\b/i },
+  { check: "guarantee", re: /\b(guarantee[ds]?|promise[ds]?|ensure[ds]?)\b/i },
+  { check: "rank_claim", re: /\b(rank(ed|ing)?\s*#?\s*\d|number one|#1)\b/i },
+  { check: "consumer_generalization", re: /\b(every|all)\s+ChatGPT\s+(users?|answers?|conversations?)\b/i },
+];
+/** Hedged or negated sentences are the report's honest form; the
+ * disclaimers name the words on purpose ("not a guarantee", "none of this
+ * is a ranking promise", "without claiming one source controls"). */
+const HEDGE = /\b(may|might|appears?|worth checking|what to check|no promise|none of this|not a\b|not simply|without claiming|does not (predict|prove|guarantee)|cannot say|do not say why|not a promise|isn'?t|never|no one)\b/i;
+export function lintReportAssertions(serialized: string): DraftQaIssue[] {
+  const issues: DraftQaIssue[] = [];
+  // The founder's note is where the sender says why they reached out — a
+  // named non-blocker in the review policy; everything else is linted.
+  const linted = serialized.split("\n## Francisco's note")[0] ?? serialized;
+  for (const sentence of linted.split(/(?<=[.!?])\s+|\n/)) {
+    if (!sentence.trim() || HEDGE.test(sentence)) continue;
+    for (const p of ASSERTION_PATTERNS) {
+      if (p.subject && !p.subject.test(sentence)) continue;
+      const m = sentence.match(p.re);
+      if (m) issues.push({ check: `report_${p.check}`, detail: `"${m[0]}" in: ${sentence.trim().slice(0, 140)}` });
+    }
+  }
+  return issues;
 }
 
 /** When the report reply leaves: 4–12 min after the "yes" inside 07:00–20:00
@@ -644,7 +681,7 @@ async function runReleaseReview(h: ReportHandoff, email: string, serializedRepor
   const hash = reportContentHash(content);
   // A founder who accepted the reviewer's concerns after its latest block
   // is the semantic verdict for this handoff (audited; never for evidence).
-  const override = await reviewOverrideFor(h.id);
+  const override = await reviewOverrideFor(h.id, hash);
   if (override) {
     await recordQaRun(h, "release_review", hash, true, { acceptedBy: override.userId, reason: override.reason, at: override.at.toISOString() }, { agentVersion: `founder-accepted:${p.version}` });
     return { passed: true, detail: `reviewer concerns accepted by the founder (${override.reason.slice(0, 120)})` };
@@ -693,7 +730,10 @@ async function recordArtifact(h: ReportHandoff, kind: ArtifactKind, manifestId: 
 }
 
 async function markArtifactsStale(handoffId: string, reason: string): Promise<void> {
-  await sql`update prospect_fulfillment_artifacts set status = 'stale', stale_reason = ${reason}, updated_at = now()
+  await sql`update prospect_fulfillment_artifacts set status = 'stale', stale_reason = ${reason},
+      stage = case when kind = 'video_walkthrough' then 'stale' else stage end,
+      meta = case when kind = 'video_walkthrough' then meta || ${sql.json({ reason: `STALE: ${reason}`, failureClass: "REVIEW_REQUIRED" } as never)} else meta end,
+      updated_at = now()
     where handoff_id = ${handoffId} and status in ('prepared', 'ready')`;
 }
 
@@ -790,39 +830,46 @@ async function advanceClaimed(h: ReportHandoff, now: Date, opts: { caller?: Agen
     const serialized = serializeReportForReview(audit.block, { prospectName: ctx.businessName, market: ctx.market });
     const reportHash = reportContentHash(serialized);
     const entityType = v.manifest.facts.FACT_PROSPECT_ENTITY_TYPE.value as ProspectEntityType;
-    const deterministic = qaMismatchReport(audit.block, ctx.seq.evidenceSnapshot, entityType);
+    const deterministic = [...qaMismatchReport(audit.block, ctx.seq.evidenceSnapshot, entityType), ...lintReportAssertions(serialized)];
     const reportIssues = assertReportMatchesManifest(audit.block, v.manifest);
     await recordArtifact(h, "private_report", manifestId, audit.block.templateVersion, reportHash, { auditId: audit.id });
     await recordQaRun(h, "deterministic", reportHash, deterministic.length === 0, { issues: deterministic });
     if (deterministic.length) return note(h, "needs_review", `RELEASE_BLOCKED: ${deterministic.map((i) => `[${i.check}] ${i.detail}`).join(" ")}`, actor.id, { manifestId, releaseVerdict: v.verdict });
-    // The invitation link (spec 134) — the credential leaves the address bar after one click.
-    const [link] = await sql`
-      select p.report_slug, l.key from prospect_audit_links l join prospects p on p.id = l.prospect_id
-      where l.prospect_id = ${h.prospectId} and l.revoked_at is null and p.report_slug is not null limit 1`;
-    const url = link ? reportInvitationUrl(link.reportSlug as string, link.key as string) : null;
-    if (!url) return note(h, "needs_review", "RELEASE_BLOCKED: no private-report invitation (APP_URL, report_slug or prospect_audit_links missing)", actor.id, { manifestId, releaseVerdict: v.verdict });
-    const rendered = renderReportDelivery({ firstName: ctx.firstName, brandedUrl: url, manifest: v.manifest, footerTail: ctx.footerTail });
-    const emailIssues = [...lintReportDelivery(rendered.body, url), ...assertDeliveryMatchesManifest(rendered.body, url, v.manifest)];
-    const bodyHash = createHash("sha256").update(rendered.body).digest("hex");
-    await recordQaRun(h, "manifest_assertion", bodyHash, reportIssues.length === 0 && emailIssues.length === 0, { report: reportIssues, email: emailIssues, summaryFactIds: rendered.summary.factIds });
-    if (reportIssues.length || emailIssues.length) {
-      return note(h, "needs_review", `RELEASE_BLOCKED: ARTIFACT_ASSERTION_FAILED ${[...reportIssues, ...emailIssues].map((i) => `[${i.check}] ${i.detail}`).join(" ")}`, actor.id, { manifestId, releaseVerdict: v.verdict });
+    if (reportIssues.length) {
+      await recordQaRun(h, "manifest_assertion", reportHash, false, { report: reportIssues });
+      return note(h, "needs_review", `RELEASE_BLOCKED: ARTIFACT_ASSERTION_FAILED ${reportIssues.map((i) => `[${i.check}] ${i.detail}`).join(" ")}`, actor.id, { manifestId, releaseVerdict: v.verdict });
     }
-    // The staged reply: approved, UNSCHEDULED, carrying its send intent. The
-    // founder can send it by hand in any mode; the lane schedules it only
-    // when the release policy says transmit.
-    const subject = ctx.touch1Subject ? (ctx.touch1Subject.startsWith("Re: ") ? ctx.touch1Subject : `Re: ${ctx.touch1Subject}`) : `Re: ${ctx.firstName}`;
-    const intentKey = sendIntentKey({ prospectId: h.prospectId, replyId: h.replyId, manifestHash: v.manifest.manifestHash, messageType: "positive_reply_report_delivery", templateVersion: REPORT_DELIVERY_TEMPLATE_VERSION });
-    const sender = await getActiveSenderIdentity();
-    const messageId = sendMessageIdFor(intentKey, senderDomainOf(sender?.replyToEmail));
-    const draftId = await stageDeliveryDraft(h, ctx, actor, { subject, body: rendered.body, cta: rendered.cta, intentKey, messageId, auditId: audit.id });
-    await recordArtifact(h, "positive_reply_email", manifestId, REPORT_DELIVERY_TEMPLATE_VERSION, bodyHash, { draftId, auditId: audit.id });
-    const review = await runReleaseReview(h, rendered.body, serialized, opts.caller);
-    if (!review.passed) return note(h, "needs_review", `RELEASE_BLOCKED: semantic review: ${review.detail}`, actor.id, { manifestId, draftId, releaseVerdict: v.verdict });
-    h = await transition(h, "qa_passed", { manifestId, draftId, reason: review.detail, releaseVerdict: v.verdict });
+    // The walkthrough sentence exists only when a releasable video does.
+    const videoNow = await videoReleasableFor(h.id);
+    const staged = await stageEmail(h, ctx, actor, { manifest: v.manifest, manifestId, audit, serialized, videoIncluded: videoNow.releasable, caller: opts.caller });
+    if (!staged.ok) return note(h, "needs_review", staged.reason, actor.id, { manifestId, draftId: staged.draftId ?? undefined, releaseVerdict: v.verdict });
+    const draftId = staged.draftId;
+    h = await transition(h, "qa_passed", { manifestId, draftId, reason: staged.reviewDetail, releaseVerdict: v.verdict });
+    // Spec 138: the personalized video walkthrough is prepared over the SAME
+    // manifest and approved evidence, in its own lane (generic job queue);
+    // its failure never corrupts the report or the email, and creation
+    // never delivers (VIDEO_WALKTHROUGH_MODE, default SHADOW).
+    try {
+      const { prepareVideoWalkthrough } = await import("@/lib/prospects/video-walkthrough");
+      const reportArtifact = await recordArtifact(h, "private_report", manifestId, audit.block.templateVersion, reportHash, { auditId: audit.id });
+      const video = await prepareVideoWalkthrough({ handoff: { id: h.id, prospectId: h.prospectId, replyId: h.replyId }, firstName: ctx.firstName, manifestId, manifest: v.manifest, block: audit.block, approved, reportArtifact: { artifactId: reportArtifact.id, revision: reportArtifact.revision }, actorId: actor.id });
+      log("info", "report_handoff.video_prepared", { handoffId: h.id, outcome: video.outcome, artifactId: video.artifactId, detail: video.detail });
+    } catch (err) {
+      log("warn", "report_handoff.video_prepare_failed", { handoffId: h.id, error: err instanceof Error ? err.message : "unknown" });
+    }
   }
 
-  // 4. SEMANTIC_QA passed → release policy.
+  // 4. SEMANTIC_QA passed → release policy. Under report_and_video the
+  // handoff holds here (WAITING_FOR_VIDEO) until the video lane says the
+  // walkthrough is releasable; then the email is re-staged as the video
+  // variant (new draft revision, old one superseded) and re-reviewed. A
+  // releasable video never transmits by itself: the lane mode still decides.
+  if (h.status === "qa_passed" && cfg.releasePolicy === "report_and_video") {
+    const held = await holdOrRestageForVideo(h, ctx, actor, cfg, audit, opts.caller);
+    if (held.hold) return held.handoff;
+    h = held.handoff;
+    if (h.status !== "qa_passed") return h;
+  }
   if (h.status === "qa_passed") {
     const decision = releaseDecision(cfg, h.id);
     if (decision.action === "manual_only") return note(h, "needs_review", `ESCALATED_TO_FOUNDER: ${decision.detail}`, actor.id, { laneMode: cfg.mode, autoVerdict: "escalated" });
@@ -840,6 +887,14 @@ async function advanceClaimed(h: ReportHandoff, now: Date, opts: { caller?: Agen
     if (!draftId) return h;
     const [handSent] = await sql`select sent_recorded_at from outreach_drafts where id = ${draftId}`;
     if (handSent?.sentRecordedAt) h = await transition(h, "scheduled", { reason: "sent outside the lane's schedule (founder / dispatcher); following the ledger" });
+  }
+  if (h.status === "release_ready" && cfg.releasePolicy === "report_and_video") {
+    const vr = await videoReleasableFor(h.id);
+    if (!vr.releasable) {
+      h = await transition(h, "qa_passed", { reason: `WAITING_FOR_VIDEO: ${vr.detail}`, autoVerdict: "held" });
+      await sql.begin(async (tx) => { await logActivity(tx, h.prospectId, "report_handoff_waiting_for_video", { handoffId: h.id, detail: vr.detail }, actor.id); });
+      return h;
+    }
   }
   if (h.status === "release_ready" && h.draftId) {
     // A held handoff re-validates at most every HELD_RECHECK_MINUTES (the
@@ -873,7 +928,7 @@ async function advanceClaimed(h: ReportHandoff, now: Date, opts: { caller?: Agen
       const { transitionStage } = await import("@/lib/prospects/service");
       const moved = await transitionStage(actor, { prospectId: h.prospectId, toStage: "audit_sent", reason: "Private report delivered in thread (spec 129/137)." });
       if (!moved.ok) log("warn", "report_handoff.stage_not_advanced", { handoffId: h.id, error: moved.error.message });
-      await sql`update prospect_fulfillment_artifacts set status = 'sent', updated_at = now() where handoff_id = ${h.id} and status = 'ready'`;
+      await sql`update prospect_fulfillment_artifacts set status = 'sent', updated_at = now() where handoff_id = ${h.id} and status = 'ready' and kind in ('private_report', 'positive_reply_email')`;
       h = await transition(h, "sent", { reason: null });
       await sql.begin(async (tx) => { await logActivity(tx, h.prospectId, "report_handoff_sent", { handoffId: h.id }, actor.id); });
       return h;
@@ -883,6 +938,100 @@ async function advanceClaimed(h: ReportHandoff, now: Date, opts: { caller?: Agen
     }
   }
   return (await getReportHandoff(h.id)) ?? h;
+}
+
+interface StageEmailInput {
+  manifest: FactManifest;
+  manifestId: string;
+  audit: { id: string; block: AuditMismatchBlock };
+  serialized: string;
+  videoIncluded: boolean;
+  caller?: AgentCaller;
+}
+type StageEmailResult = { ok: true; draftId: string; reviewDetail: string } | { ok: false; reason: string; draftId: string | null };
+
+/** Render → lint → assert against the manifest → stage the draft (one per
+ * send intent; the variant is part of the intent) → ONE semantic review.
+ * The founder can send a staged draft by hand in any mode; the lane
+ * schedules it only when the release policy says transmit. */
+async function stageEmail(h: ReportHandoff, ctx: HandoffContext, actor: CurrentUser, i: StageEmailInput): Promise<StageEmailResult> {
+  // The invitation link (spec 134) — the credential leaves the address bar after one click.
+  const [link] = await sql`
+    select p.report_slug, l.key from prospect_audit_links l join prospects p on p.id = l.prospect_id
+    where l.prospect_id = ${h.prospectId} and l.revoked_at is null and p.report_slug is not null limit 1`;
+  const url = link ? reportInvitationUrl(link.reportSlug as string, link.key as string) : null;
+  if (!url) return { ok: false, reason: "RELEASE_BLOCKED: no private-report invitation (APP_URL, report_slug or prospect_audit_links missing)", draftId: null };
+  const rendered = renderReportDelivery({ firstName: ctx.firstName, brandedUrl: url, manifest: i.manifest, footerTail: ctx.footerTail, videoIncluded: i.videoIncluded });
+  const emailIssues = [...lintReportDelivery(rendered.body, url), ...assertDeliveryMatchesManifest(rendered.body, url, i.manifest)];
+  const bodyHash = createHash("sha256").update(rendered.body).digest("hex");
+  await recordQaRun(h, "manifest_assertion", bodyHash, emailIssues.length === 0, { email: emailIssues, summaryFactIds: rendered.summary.factIds, variant: deliveryVariantOf(i.videoIncluded) });
+  if (emailIssues.length) return { ok: false, reason: `RELEASE_BLOCKED: ARTIFACT_ASSERTION_FAILED ${emailIssues.map((x) => `[${x.check}] ${x.detail}`).join(" ")}`, draftId: null };
+  const subject = ctx.touch1Subject ? (ctx.touch1Subject.startsWith("Re: ") ? ctx.touch1Subject : `Re: ${ctx.touch1Subject}`) : `Re: ${ctx.firstName}`;
+  const intentKey = sendIntentKey({ prospectId: h.prospectId, replyId: h.replyId, manifestHash: i.manifest.manifestHash, messageType: "positive_reply_report_delivery", templateVersion: REPORT_DELIVERY_TEMPLATE_VERSION, variant: deliveryVariantOf(i.videoIncluded) });
+  const sender = await getActiveSenderIdentity();
+  const messageId = sendMessageIdFor(intentKey, senderDomainOf(sender?.replyToEmail));
+  const draftId = await stageDeliveryDraft(h, ctx, actor, { subject, body: rendered.body, cta: rendered.cta, intentKey, messageId, auditId: i.audit.id });
+  // A previously staged reply for this handoff (another variant, or an
+  // earlier report revision) is superseded — never deleted, never sendable.
+  if (h.draftId && h.draftId !== draftId) {
+    await sql`update outreach_drafts set status = 'superseded', scheduled_send_at = null where id = ${h.draftId} and sent_recorded_at is null and status = 'approved'`;
+  }
+  await recordArtifact(h, "positive_reply_email", i.manifestId, REPORT_DELIVERY_TEMPLATE_VERSION, bodyHash, { draftId, auditId: i.audit.id });
+  const review = await runReleaseReview(h, rendered.body, i.serialized, i.caller);
+  if (!review.passed) return { ok: false, reason: `RELEASE_BLOCKED: semantic review: ${review.detail}`, draftId };
+  return { ok: true, draftId, reviewDetail: review.detail };
+}
+
+async function prepareVideoIfMissing(h: ReportHandoff, ctx: HandoffContext, actor: CurrentUser, audit: { id: string; block: AuditMismatchBlock }): Promise<void> {
+  if (!h.manifestId) return;
+  try {
+    const vw = await import("@/lib/prospects/video-walkthrough");
+    const current = await vw.videoForHandoff(h.id);
+    if (current && current.status !== "stale" && current.status !== "superseded") return;
+    const [stored] = await sql`select manifest::text as manifest_text from prospect_fact_manifests where id = ${h.manifestId}`;
+    if (!stored) return;
+    const manifest = JSON.parse(stored.manifestText as string) as FactManifest;
+    const serialized = serializeReportForReview(audit.block, { prospectName: ctx.businessName, market: ctx.market });
+    const reportArtifact = await recordArtifact(h, "private_report", h.manifestId, audit.block.templateVersion, reportContentHash(serialized), { auditId: audit.id });
+    const video = await vw.prepareVideoWalkthrough({ handoff: { id: h.id, prospectId: h.prospectId, replyId: h.replyId }, firstName: ctx.firstName, manifestId: h.manifestId, manifest, block: audit.block, approved: approvedEvidenceFromBlock(audit.block), reportArtifact: { artifactId: reportArtifact.id, revision: reportArtifact.revision }, actorId: actor.id });
+    log("info", "report_handoff.video_prepared", { handoffId: h.id, outcome: video.outcome, artifactId: video.artifactId, detail: video.detail, at: "waiting_for_video" });
+  } catch (err) {
+    log("warn", "report_handoff.video_prepare_failed", { handoffId: h.id, error: err instanceof Error ? err.message : "unknown" });
+  }
+}
+
+/** report_and_video: hold at qa_passed until the video lane reports a
+ * releasable walkthrough; then make sure the staged email is the video
+ * variant (re-stage + re-review; the report-only draft is superseded,
+ * never deleted). Returns hold=true when nothing may proceed this tick. */
+async function holdOrRestageForVideo(h: ReportHandoff, ctx: HandoffContext, actor: CurrentUser, cfg: LaneConfig, audit: { id: string; block: AuditMismatchBlock }, caller?: AgentCaller): Promise<{ hold: boolean; handoff: ReportHandoff }> {
+  const vr = await videoReleasableFor(h.id);
+  if (!vr.releasable) {
+    // A handoff that reached qa_passed before the video lane existed (or
+    // whose video went stale) has no video revision to wait for: prepare
+    // one from the SAME manifest and the published report's approved
+    // evidence. Idempotent on the generation key; never delivers.
+    await prepareVideoIfMissing(h, ctx, actor, audit);
+    const reason = `WAITING_FOR_VIDEO: report ready; ${vr.detail}`;
+    if (h.reason !== reason) await sql`update prospect_report_handoffs set reason = ${reason}, auto_verdict = 'held', lane_mode = ${cfg.mode}, updated_at = now() where id = ${h.id} and status = 'qa_passed'`;
+    return { hold: true, handoff: (await getReportHandoff(h.id)) ?? h };
+  }
+  const [stored] = h.manifestId ? await sql`select manifest::text as manifest_text from prospect_fact_manifests where id = ${h.manifestId}` : [];
+  if (!stored || !h.manifestId) return { hold: true, handoff: await note(h, "needs_review", "RELEASE_BLOCKED: handoff has no fact manifest to re-stage from", actor.id) };
+  const manifest = JSON.parse(stored.manifestText as string) as FactManifest;
+  const wantKey = sendIntentKey({ prospectId: h.prospectId, replyId: h.replyId, manifestHash: manifest.manifestHash, messageType: "positive_reply_report_delivery", templateVersion: REPORT_DELIVERY_TEMPLATE_VERSION, variant: DELIVERY_VARIANTS.reportAndVideo });
+  const [current] = h.draftId ? await sql`select id, send_intent_key, sent_recorded_at from outreach_drafts where id = ${h.draftId}` : [];
+  if (current?.sentRecordedAt) return { hold: false, handoff: h };
+  if (current?.sendIntentKey === wantKey) return { hold: false, handoff: h };
+  const serialized = serializeReportForReview(audit.block, { prospectName: ctx.businessName, market: ctx.market });
+  const staged = await stageEmail(h, ctx, actor, { manifest, manifestId: h.manifestId, audit, serialized, videoIncluded: true, caller });
+  if (!staged.ok) return { hold: true, handoff: await note(h, "needs_review", staged.reason, actor.id, { draftId: staged.draftId ?? undefined }) };
+  if (current && current.id !== staged.draftId) {
+    await sql`update outreach_drafts set status = 'superseded', scheduled_send_at = null where id = ${current.id} and sent_recorded_at is null and status = 'approved'`;
+  }
+  const [r] = await sql`update prospect_report_handoffs set draft_id = ${staged.draftId}, reason = ${`video walkthrough releasable; email re-staged as the video variant. ${staged.reviewDetail}`}, updated_at = now() where id = ${h.id} returning *`;
+  await sql.begin(async (tx) => { await logActivity(tx, h.prospectId, "report_handoff_video_restaged", { handoffId: h.id, draftId: staged.draftId, supersededDraftId: current?.id ?? null }, actor.id); });
+  return { hold: false, handoff: toHandoff(r!) };
 }
 
 /** Insert the staged delivery draft once per send intent. A retried worker
@@ -933,7 +1082,23 @@ async function stageDeliveryDraft(
  * changes the hash: the artifacts are marked stale and the send refuses.
  * Runs inside the send gate (any channel, human or dispatcher).
  */
+/** Drafts whose recheck is on the current async stack. The video lane's
+ * binding check calls this recheck, and this recheck asks the video lane
+ * whether the video is releasable: the inner call answers with the manifest
+ * checks only, so the two lanes never chase each other. */
+const RECHECK_IN_FLIGHT = new Set<string>();
+
 export async function fulfillmentSendRecheck(db: TransactionSql | typeof sql, draftId: string): Promise<{ passed: boolean; detail: string }> {
+  if (RECHECK_IN_FLIGHT.has(draftId)) return fulfillmentSendRecheckCore(db, draftId, { includeVideo: false });
+  RECHECK_IN_FLIGHT.add(draftId);
+  try {
+    return await fulfillmentSendRecheckCore(db, draftId, { includeVideo: true });
+  } finally {
+    RECHECK_IN_FLIGHT.delete(draftId);
+  }
+}
+
+async function fulfillmentSendRecheckCore(db: TransactionSql | typeof sql, draftId: string, opts: { includeVideo: boolean }): Promise<{ passed: boolean; detail: string }> {
   // jsonb is read as text: the client's camelCase transform would mangle
   // FACT_* keys (postgres.camel also rewrites JSON object keys).
   const [h] = await db`select h.*, m.manifest::text as manifest_text, m.manifest_hash from prospect_report_handoffs h
@@ -955,10 +1120,20 @@ export async function fulfillmentSendRecheck(db: TransactionSql | typeof sql, dr
     snapshot: found.snapshot, verdict, market: stored.facts.FACT_MARKET.value as string, prospectEntityType: entityType,
     approvedExampleIds: stored.facts.FACT_APPROVED_EXAMPLE_IDS.value as string[], approvedFirstActionId: stored.facts.FACT_APPROVED_FIRST_ACTION_ID.value as string | null,
   });
-  const reason = !compiled.ok ? `manifest no longer compiles: ${compiled.reason}` : compiled.manifest.manifestHash !== (h.manifestHash as string) ? `fact manifest changed since preparation (${(h.manifestHash as string).slice(0, 12)} → ${compiled.manifest.manifestHash.slice(0, 12)})` : null;
+  let reason = !compiled.ok ? `manifest no longer compiles: ${compiled.reason}` : compiled.manifest.manifestHash !== (h.manifestHash as string) ? `fact manifest changed since preparation (${(h.manifestHash as string).slice(0, 12)} → ${compiled.manifest.manifestHash.slice(0, 12)})` : null;
+  // Spec 139: under report_and_video no email leaves without a releasable
+  // video walkthrough, and the email must be the variant that names it.
+  if (!reason && opts.includeVideo && resolveLaneConfig().releasePolicy === "report_and_video") {
+    const vr = await videoReleasableFor(h.id as string);
+    const [d] = await db`select send_intent_key from outreach_drafts where id = ${draftId}`;
+    const videoKey = sendIntentKey({ prospectId: h.prospectId as string, replyId: h.replyId as string, manifestHash: h.manifestHash as string, messageType: "positive_reply_report_delivery", templateVersion: REPORT_DELIVERY_TEMPLATE_VERSION, variant: DELIVERY_VARIANTS.reportAndVideo });
+    if (!vr.releasable) return { passed: false, detail: `WAITING_FOR_VIDEO: ${vr.detail}` };
+    if (d?.sendIntentKey !== videoKey) reason = "staged email is the report-only variant; the video variant must be re-staged and reviewed";
+  }
   if (reason) {
-    await markArtifactsStale(h.id as string, reason);
+    await markArtifactsStale(h.id as string, `SEND_TIME_REVALIDATION_FAILED: ${reason}`);
     return { passed: false, detail: `SEND_TIME_REVALIDATION_FAILED: ${reason}` };
   }
-  return { passed: true, detail: `fact manifest ${(h.manifestHash as string).slice(0, 12)} re-verified at send time` };
+  const [video] = await db`select stage from prospect_fulfillment_artifacts where handoff_id = ${h.id} and kind = 'video_walkthrough' order by revision desc limit 1`;
+  return { passed: true, detail: `fact manifest ${(h.manifestHash as string).slice(0, 12)} re-verified at send time; video ${video ? (video.stage as string) : "not prepared"} (not carried by this email)` };
 }
