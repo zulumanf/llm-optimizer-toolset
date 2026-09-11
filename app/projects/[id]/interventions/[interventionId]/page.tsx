@@ -284,7 +284,7 @@ export default async function InterventionPage({
                         )}
                       </TableCell>
                       <TableCell
-                        className="max-w-56 text-xs text-muted-foreground"
+                        className="max-w-xs text-xs text-muted-foreground"
                         title={verdict.providers
                           .map(
                             (p) =>
