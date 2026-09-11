@@ -11,6 +11,7 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
+import { ClassifiedError } from "@/lib/errors";
 import type { AgentCaller } from "@/lib/ai/agent";
 import { seedTestActors } from "../helpers/actors";
 import { unwrap } from "../helpers/result";
@@ -31,6 +32,9 @@ const admin: CurrentUser = { id: "00000000-0000-4000-8000-000000000001", email: 
 
 const executeCapability = vi.fn();
 vi.mock("@/lib/connectors/execute", () => ({ executeCapability: (...args: unknown[]) => executeCapability(...args) }));
+// Spec 138: the video lane's binaries (ffmpeg, ffprobe, Chromium) are mocked
+// per test; preparation must see them as available on every CI box.
+vi.mock("@/lib/video/render", async (orig) => ({ ...(await orig<typeof import("@/lib/video/render")>()), rendererAvailability: async () => ({ available: true, detail: "mocked" }) }));
 vi.mock("@/lib/prospects/evidence-release", async (orig) => {
   // Spec 136: the release layer re-verifies against a real frozen run; this
   // suite's snapshot names a fixture run, so the run/production/count checks
@@ -108,12 +112,31 @@ const blockingCaller: AgentCaller = async () => ({
   text: JSON.stringify({ verdict: "BLOCK", reasons: [{ code: "methodology", detail: "Calls the test a ranking.", quote: "ranked" }], confidence: 0.9, confidenceNote: "n/a" }),
   tokensIn: 10, tokensOut: 10,
 });
-const LANE_ENV = ["AUTONOMOUS_POSITIVE_REPLY_MODE", "AUTONOMOUS_POSITIVE_REPLY_CANARY_PERCENT", "AUTONOMOUS_POSITIVE_REPLY_KILL_SWITCH", "REPORT_HANDOFF_AUTOSEND"] as const;
+const LANE_ENV = ["AUTONOMOUS_POSITIVE_REPLY_MODE", "AUTONOMOUS_POSITIVE_REPLY_CANARY_PERCENT", "AUTONOMOUS_POSITIVE_REPLY_KILL_SWITCH", "REPORT_HANDOFF_AUTOSEND", "FULFILLMENT_RELEASE_POLICY"] as const;
+/** Most cases exercise the report-only path explicitly; the code default is
+ * report_and_video (spec 139), covered by its own cases below. */
 const lane = (mode?: string, extra: Record<string, string> = {}): void => {
   for (const k of LANE_ENV) delete process.env[k];
+  process.env.FULFILLMENT_RELEASE_POLICY = "report_only";
   if (mode) process.env.AUTONOMOUS_POSITIVE_REPLY_MODE = mode;
   Object.assign(process.env, extra);
 };
+/** A releasable video walkthrough as the video lane (spec 138) records one:
+ * stage release_ready / status ready, bound to the manifest, with passed
+ * script, semantic and artifact QA rows on its hashes. */
+async function fakeReleasableVideo(db: (typeof import("@/db/client"))["sql"], handoffId: string, manifestId: string): Promise<string> {
+  const meta = { scriptHash: "script-sha", render: { sha256: "render-sha" }, timestamps: {} };
+  const [existing] = await db`select id from prospect_fulfillment_artifacts where handoff_id = ${handoffId} and kind = 'video_walkthrough' order by revision desc limit 1`;
+  const [row] = existing
+    ? await db`update prospect_fulfillment_artifacts set status = 'ready', stage = 'release_ready', manifest_id = ${manifestId}, content_hash = 'render-sha', meta = meta || ${db.json(meta as never)}, updated_at = now() where id = ${existing.id} returning id`
+    : await db`insert into prospect_fulfillment_artifacts (handoff_id, prospect_id, kind, revision, manifest_id, template_version, content_hash, status, stage, generation_key, meta)
+      select ${handoffId}, h.prospect_id, 'video_walkthrough', 1, ${manifestId}, 'video-template-v1', 'render-sha', 'ready', 'release_ready', 'gen-1', ${db.json(meta as never)}
+      from prospect_report_handoffs h where h.id = ${handoffId} returning id`;
+  for (const [kind, hash] of [["video_script_qa", "script-sha"], ["video_semantic_review", "script-sha"], ["video_artifact_qa", "render-sha"]] as const) {
+    await db`insert into prospect_report_qa_runs (handoff_id, kind, content_hash, passed, output) values (${handoffId}, ${kind}, ${hash}, true, '{}')`;
+  }
+  return row!.id as string;
+}
 
 describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => {
   let sql: (typeof import("@/db/client"))["sql"];
@@ -224,7 +247,7 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect(block.competitor.recommendationCount).toBe(14);
     expect(block.answerCount).toBe(64);
     const runs = await sql`select kind, passed, content_hash from prospect_report_qa_runs where handoff_id = ${h.id} order by created_at`;
-    expect(runs.map((x) => [x.kind, x.passed])).toEqual([["release_gate", true], ["deterministic", true], ["manifest_assertion", true], ["release_review", true]]);
+    expect(runs.filter((x) => !String(x.kind).startsWith("video_")).map((x) => [x.kind, x.passed])).toEqual([["release_gate", true], ["deterministic", true], ["manifest_assertion", true], ["release_review", true]]);
     expect(h.autonomyClass).toBe("autonomy_eligible");
     expect(h.autoVerdict).toBe("transmit");
     expect(h.laneMode).toBe("NARROW_AUTONOMOUS");
@@ -235,7 +258,7 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect(facts.FACT_DENOMINATOR!.value).toBe(64);
     expect(facts.FACT_RECOMMENDATION_MULTIPLE!.display).toBe("2x as often");
     expect(facts.FACT_PRODUCTION_RATIO!.display).toBe("roughly 62%");
-    const arts = await sql`select kind, revision, status, manifest_id from prospect_fulfillment_artifacts where handoff_id = ${h.id} order by kind`;
+    const arts = await sql`select kind, revision, status, manifest_id from prospect_fulfillment_artifacts where handoff_id = ${h.id} and kind in ('private_report', 'positive_reply_email') order by kind`;
     expect(arts.map((a) => [a.kind, Number(a.revision), a.status, a.manifestId === h.manifestId])).toEqual([["positive_reply_email", 1, "ready", true], ["private_report", 1, "ready", true]]);
     const [d] = await sql`select subject, body, reply_to_id, scheduled_send_at, prompt_version, status, send_intent_key, send_message_id from outreach_drafts where id = ${h.draftId}`;
     expect(d!.promptVersion).toBe("mismatch_report_delivery_v2");
@@ -261,12 +284,14 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     const r3 = await rh.processReportHandoffs(NOON, { caller: passingCaller });
     expect(r3.sent).toBe(1);
     expect((await rh.handoffForProspect(prospectId))!.status).toBe("sent");
-    expect((await sql`select status from prospect_fulfillment_artifacts where handoff_id = ${h.id}`).every((a) => a.status === "sent")).toBe(true);
+    expect((await sql`select status from prospect_fulfillment_artifacts where handoff_id = ${h.id} and kind in ('private_report', 'positive_reply_email')`).every((a) => a.status === "sent")).toBe(true);
     // 17: everything behind the action is reconstructable from the ledgers.
     const { reconstructFulfillment } = await import("@/lib/prospects/fulfillment-lane");
     const rec = (await reconstructFulfillment(h.id))!;
     expect(rec.reply).toMatchObject({ classification: "positive_interest", gmailMessageId: "gm-yes" });
-    expect((rec.qaRuns as unknown[]).length).toBe(4);
+    const qaRuns = rec.qaRuns as { kind: string }[];
+    expect(qaRuns.filter((q) => !q.kind.startsWith("video_")).length).toBe(4);
+    expect(qaRuns.some((q) => q.kind === "video_script_qa")).toBe(true); // spec 138: the video's script QA rides the same ledger
     expect((rec.sends as { providerMessageId: string }[])[0]!.providerMessageId).toContain("mock-");
     expect(JSON.stringify(rec)).not.toMatch(/api[_-]?key|refresh_token|access_token/i);
     const [p] = await sql`select stage from prospects where id = ${prospectId}`;
@@ -338,7 +363,7 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect(held.status).toBe("release_ready");
     expect(held.attempts).toBeLessThanOrEqual(3);
     expect((await sql`select count(*)::int as n from outreach_drafts where reply_to_id = ${rec.replyId}`)[0]!.n).toBe(1);
-    expect((await sql`select count(*)::int as n from prospect_fulfillment_artifacts where handoff_id = ${h.id}`)[0]!.n).toBe(2);
+    expect((await sql`select count(*)::int as n from prospect_fulfillment_artifacts where handoff_id = ${h.id} and kind in ('private_report', 'positive_reply_email')`)[0]!.n).toBe(2);
     // The founder may still send the staged reply by hand (recorded through
     // the same gate; a hand-recorded reply has no Gmail thread to reply into).
     unwrap(await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "manual", businessPurpose: "Deliver the report he asked for" }));
@@ -447,7 +472,8 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect(h.status).toBe("scheduled");
     expect(asked).toBe(0);
     const [run] = await sql`select passed, agent_version, output from prospect_report_qa_runs where handoff_id = ${h.id} and kind = 'release_review' order by created_at desc limit 1`;
-    expect(run).toMatchObject({ passed: true, agentVersion: "founder-accepted:fulfillment-release-review-v2" });
+    expect(run).toMatchObject({ passed: true });
+    expect(run!.agentVersion).toMatch(/^founder-accepted:fulfillment-release-review-v\d+$/);
     // An evidence block cannot be accepted away.
     await sql`truncate prospect_report_qa_runs, prospect_fulfillment_artifacts, prospect_fact_manifests, prospect_report_handoffs cascade`;
     await sql`update companies set aliases = '{}' where id = ${PROSPECT_CO}`;
@@ -455,6 +481,84 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     const blocked = (await rh.handoffForProspect(prospectId))!;
     expect(blocked.reason).toContain("EVIDENCE_RELEASE_BLOCKED");
     await expect(reactivateHandoff(admin, blocked.id, "try", { acceptReviewConcerns: true })).rejects.toThrow(/Only a semantic-review block can be accepted/);
+  });
+
+  it("spec 139: report_and_video holds at qa_passed (WAITING_FOR_VIDEO); the staged email never promises a walkthrough; a held draft cannot transmit", async () => {
+    lane("NARROW_AUTONOMOUS", { FULFILLMENT_RELEASE_POLICY: "report_and_video" });
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    const h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("qa_passed");
+    expect(h.reason).toMatch(/^WAITING_FOR_VIDEO/);
+    expect(h.autoVerdict).toBe("held");
+    const [d] = await sql`select body, scheduled_send_at from outreach_drafts where id = ${h.draftId}`;
+    expect(d!.body).not.toMatch(/walkthrough/i);
+    expect(d!.scheduledSendAt).toBeNull();
+    // 13: even a founder hand-send of the held draft is refused at the gate.
+    const refused = await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "mock", businessPurpose: "Deliver the report she asked for" });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toMatch(/handoff is qa_passed/);
+    // Repeated ticks hold; nothing is sent.
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    expect((await rh.handoffForProspect(prospectId))!.status).toBe("qa_passed");
+    expect((await sql`select count(*)::int as n from prospect_outreach_sends where prospect_id = ${prospectId} and allowed and sent_at > '2026-09-03'`)[0]!.n).toBe(0);
+    // A release_ready handoff that predates the policy steps back to the hold.
+    lane("SHADOW", { FULFILLMENT_RELEASE_POLICY: "report_only" });
+    await sql`update prospect_report_handoffs set status = 'release_ready', auto_verdict = 'would_send', updated_at = now() - interval '1 hour' where id = ${h.id}`;
+    lane("SHADOW", { FULFILLMENT_RELEASE_POLICY: "report_and_video" });
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    expect((await rh.handoffForProspect(prospectId))!).toMatchObject({ status: "qa_passed" });
+  });
+
+  it("spec 139: a releasable video re-stages the email as the video variant (old draft superseded, reviewer re-run) and STAGES for founder review under SHADOW — no send (18/19)", { timeout: 30_000 }, async () => {
+    lane("SHADOW", { FULFILLMENT_RELEASE_POLICY: "report_and_video" });
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    let h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("qa_passed");
+    const reportOnlyDraft = h.draftId!;
+    await fakeReleasableVideo(sql, h.id, h.manifestId!);
+    let reviews = 0;
+    const counting: AgentCaller = async (...a) => { reviews += 1; return passingCaller(...a); };
+    await rh.processReportHandoffs(NOON, { caller: counting });
+    h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("release_ready");
+    expect(h.autoVerdict).toBe("would_send");
+    expect(reviews).toBe(1);
+    expect(h.draftId).not.toBe(reportOnlyDraft);
+    const [video] = await sql`select body, scheduled_send_at, status from outreach_drafts where id = ${h.draftId}`;
+    expect(video!.body).toContain("I put together a quick walkthrough along with the exact questions and side-by-side results here:");
+    expect(video!.scheduledSendAt).toBeNull();
+    expect(video!.status).toBe("approved");
+    const [old] = await sql`select status from outreach_drafts where id = ${reportOnlyDraft}`;
+    expect(old!.status).toBe("superseded");
+    expect((await sql`select count(*)::int as n from outreach_drafts where reply_to_id = ${h.replyId}`)[0]!.n).toBe(2);
+    expect((await sql`select count(*)::int as n from prospect_outreach_sends where prospect_id = ${prospectId} and allowed and sent_at > '2026-09-03'`)[0]!.n).toBe(0);
+    // 16: the same manifest backs report, email and video.
+    const arts = await sql`select kind, manifest_id from prospect_fulfillment_artifacts where handoff_id = ${h.id} and status <> 'superseded'`;
+    expect(new Set(arts.map((a) => a.manifestId)).size).toBe(1);
+    // Ticks after that: still held for the founder, still one video draft.
+    await rh.processReportHandoffs(new Date(NOON.getTime() + 3_600_000), { caller: counting });
+    expect((await rh.handoffForProspect(prospectId))!.status).toBe("release_ready");
+    expect(reviews).toBe(1);
+  });
+
+  it("spec 139: a founder acceptance is bound to the artifact it accepted — a revised report is reviewed again", async () => {
+    lane("NARROW_AUTONOMOUS");
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: blockingCaller });
+    const h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("needs_review");
+    const { reactivateHandoff } = await import("@/lib/prospects/fulfillment-lane");
+    await reactivateHandoff(admin, h.id, "accepted", { acceptReviewConcerns: true });
+    // The artifact under review changes before the next pass (here: the
+    // email's greeting, derived from the delivered Touch 1) — a new hash.
+    await sql`update prospects set business_name = 'Rivera Team (Reno)' where id = ${prospectId}`;
+    let asked = 0;
+    const counting: AgentCaller = async (...a) => { asked += 1; return blockingCaller(...a); };
+    await rh.processReportHandoffs(NOON, { caller: counting });
+    expect(asked).toBe(1);
+    expect((await rh.handoffForProspect(prospectId))!.status).toBe("needs_review");
   });
 
   it("24: the same Gmail reply ingested twice — sequentially and concurrently — yields one reply row, one handoff, one draft", async () => {
@@ -628,4 +732,171 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect(metrics).toMatchObject({ autonomyEligible: 1, shadowWouldSend: 1, autonomousSends: 0, duplicateActionPrevented: 1 });
   });
 
+
+  // ------------------------------------------------------------ spec 138
+  describe("spec 138: personalized video walkthrough lane", () => {
+    const VIDEO_ENV = ["VIDEO_WALKTHROUGH_MODE", "VIDEO_WALKTHROUGH_KILL_SWITCH", "VIDEO_WALKTHROUGH_RELEASE_KILL_SWITCH", "VIDEO_TTS_PROVIDER", "VIDEO_ALLOW_FIXTURE_INTRO"] as const;
+    let assetRoot = "";
+    let vw: typeof import("@/lib/prospects/video-walkthrough");
+    let tts: typeof import("@/lib/video/tts");
+    let render: typeof import("@/lib/video/render");
+    beforeAll(async () => {
+      vw = await import("@/lib/prospects/video-walkthrough");
+      tts = await import("@/lib/video/tts");
+      render = await import("@/lib/video/render");
+      const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+      const { tmpdir } = await import("node:os");
+      assetRoot = mkdtempSync(join(tmpdir(), "video-assets-"));
+      mkdirSync(join(assetRoot, "founder-intro"), { recursive: true });
+      writeFileSync(join(assetRoot, "founder-intro", "founder-intro-fixture.mp4"), "FIXTURE INTRO CLIP");
+    });
+    const videoEnv = (extra: Record<string, string> = {}): void => {
+      for (const k of VIDEO_ENV) delete process.env[k];
+      Object.assign(process.env, { VIDEO_TTS_PROVIDER: "mock", VIDEO_ALLOW_FIXTURE_INTRO: "true" }, extra);
+    };
+    const prepared = async () => {
+      lane("SHADOW"); videoEnv();
+      await sayYes();
+      await rh.processReportHandoffs(NOON, { caller: passingCaller });
+      const h = (await rh.handoffForProspect(prospectId))!;
+      expect(h.status).toBe("release_ready");
+      const v = (await vw.videoForHandoff(h.id))!;
+      return { h, v };
+    };
+    const runJob = (id: string, over: Partial<Parameters<typeof vw.processVideoWalkthroughJob>[1]> = {}) =>
+      vw.processVideoWalkthroughJob(id, { tts: tts.mockTtsProvider(), render: render.mockRenderDeps(), caller: passingCaller, assetRoot, workerId: "w1", ...over });
+
+    it("50/1/2/52/54: a verified handoff enqueues ONE video over the SAME manifest as the report; the job renders to release_ready and the release gate sees it (SHADOW: held)", async () => {
+      const { h, v } = await prepared();
+      expect(v.stage).toBe("queued");
+      expect(v.manifestId).toBe(h.manifestId);
+      const [mrow] = await sql`select manifest_hash from prospect_fact_manifests where id = ${h.manifestId}`;
+      expect(v.meta.manifestHash).toBe(mrow!.manifestHash);
+      expect(v.meta.reportArtifactId).toBeTruthy();
+      expect((await sql`select count(*)::int as n from jobs where type = 'render_video_walkthrough'`)[0]!.n).toBe(1);
+      // Another lane pass creates nothing new (54).
+      await rh.processReportHandoffs(NOON, { caller: passingCaller });
+      expect((await sql`select count(*)::int as n from prospect_fulfillment_artifacts where handoff_id = ${h.id} and kind = 'video_walkthrough'`)[0]!.n).toBe(1);
+      const done = (await runJob(v.id))!;
+      expect(done.stage).toBe("release_ready");
+      expect(done.status).toBe("ready");
+      expect(done.meta.render!.durationMs).toBeGreaterThanOrEqual(55_000);
+      expect(done.meta.render!.durationMs).toBeLessThanOrEqual(95_000);
+      expect(done.meta.narration!.provider).toBe("mock");
+      expect(done.meta.narration!.segments.length).toBe(8);
+      expect(done.meta.distribution).toMatchObject({ kind: "local_storage", visibility: "ACCESS_GATED" });
+      expect(JSON.stringify(done.meta)).not.toMatch(/xi-api-key|ELEVENLABS_API_KEY/);
+      const files = await sql`select kind, mime_type from evidence_artifacts where storage_key like ${`video-walkthrough/${h.id}/%`} order by kind`;
+      expect(files.map((f) => `${f.kind}:${f.mimeType}`)).toEqual(["export_file:text/vtt", "video:video/mp4"]);
+      const qa = await sql`select kind, passed from prospect_report_qa_runs where handoff_id = ${h.id} and kind like 'video_%' order by kind`;
+      expect(qa.map((q) => `${q.kind}=${q.passed}`)).toEqual(["video_artifact_qa=true", "video_script_qa=true", "video_semantic_review=true"]);
+      expect(await vw.videoReleaseRecheck(h.id)).toMatchObject({ passed: true, stage: "release_ready" });
+      expect((await rh.fulfillmentSendRecheck(sql, h.draftId!)).detail).toContain("video release_ready");
+      expect(await vw.videoStatusForHandoff(h.id)).toBe("release-ready, held (SHADOW)");
+      const rec = (await vw.reconstructVideoWalkthrough(v.id))!;
+      expect((rec.qaRuns as unknown[]).length).toBe(3);
+      expect((rec.files as unknown[]).length).toBe(2);
+      expect((rec.jobs as unknown[]).length).toBe(1);
+      // The email that goes out never marks the video as sent (V1 does not carry it).
+      unwrap(await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "manual", businessPurpose: "Deliver the report he asked for" }));
+      await rh.processReportHandoffs(NOON, { caller: passingCaller });
+      expect((await vw.getVideoArtifact(v.id))!.status).toBe("ready");
+    });
+
+    it("44/32/21: two workers on the same job produce one video; a render failure retries idempotently without re-synthesizing narration", async () => {
+      const { v } = await prepared();
+      let ttsCalls = 0;
+      let composes = 0;
+      let failFirst = true;
+      const deps = () => ({
+        tts: tts.mockTtsProvider({ onCall: () => { ttsCalls += 1; } }),
+        render: render.mockRenderDeps({ onCompose: () => { composes += 1; }, failCompose: () => { if (failFirst) { failFirst = false; return new ClassifiedError("timeout", "ffmpeg exceeded budget"); } return null; } }),
+      });
+      await expect(runJob(v.id, deps())).rejects.toThrow(/ffmpeg exceeded/);
+      let row = (await vw.getVideoArtifact(v.id))!;
+      expect(row.stage).toBe("failed_retryable");
+      expect(row.meta.failureClass).toBe("RETRYABLE");
+      // Narration is content-addressed on disk (script hash + voice + segment):
+      // a previous case with the same script may already have paid for it.
+      const afterFirstAttempt = ttsCalls;
+      expect(afterFirstAttempt).toBeLessThanOrEqual(8);
+      const [a, b] = await Promise.all([runJob(v.id, deps()), runJob(v.id, deps())]);
+      row = (await vw.getVideoArtifact(v.id))!;
+      expect(row.stage).toBe("release_ready");
+      expect([a!.stage, b!.stage]).toContain("release_ready");
+      expect(ttsCalls).toBe(afterFirstAttempt); // nothing re-synthesized on retry or by the second worker
+      expect(composes).toBe(2); // the failed attempt + exactly one successful render
+      expect((await sql`select count(*)::int as n from evidence_artifacts where kind = 'video' and storage_key like ${`video-walkthrough/${row.handoffId}/%`}`)[0]!.n).toBe(1);
+      expect(row.meta.narration!.cachedSegments).toBe(8);
+    });
+
+    it("19/51: a semantic BLOCK parks the video for review and leaves the report and email untouched", async () => {
+      const { h, v } = await prepared();
+      const row = (await runJob(v.id, { caller: blockingCaller }))!;
+      expect(row.stage).toBe("review_required");
+      expect(row.meta.reason).toMatch(/semantic review/);
+      expect((await rh.handoffForProspect(prospectId))!.status).toBe("release_ready");
+      const arts = await sql`select kind, status from prospect_fulfillment_artifacts where handoff_id = ${h.id} and kind in ('private_report', 'positive_reply_email')`;
+      expect(arts.every((a) => a.status === "ready")).toBe(true);
+      expect((await vw.videoReleaseRecheck(h.id)).passed).toBe(false);
+      // Founder requeue after fixing the cause; a passing pass finishes it.
+      await vw.requeueVideoWalkthrough(operator, v.id, "wording reviewed by hand");
+      expect((await runJob(v.id))!.stage).toBe("release_ready");
+    });
+
+    it("28: a 112-second render fails VIDEO_DURATION_QA (never sped up to fit); 31: a missing founder intro blocks before any spend", async () => {
+      const { v } = await prepared();
+      const long = (await runJob(v.id, { render: render.mockRenderDeps({ probeOverride: { durationMs: 112_000 } }) }))!;
+      expect(long.stage).toBe("review_required");
+      expect(long.meta.reason).toMatch(/^VIDEO_DURATION_QA_FAIL/);
+      await sql`truncate prospect_report_qa_runs, prospect_fulfillment_artifacts, prospect_fact_manifests, prospect_report_handoffs, jobs cascade`;
+      const { v: v2 } = await prepared();
+      let ttsCalls = 0;
+      const missing = (await runJob(v2.id, { assetRoot: join(assetRoot, "nope"), tts: tts.mockTtsProvider({ onCall: () => { ttsCalls += 1; } }) }))!;
+      expect(missing.stage).toBe("review_required");
+      expect(missing.meta.reason).toMatch(/FOUNDER_INTRO_MISSING/);
+      expect(ttsCalls).toBe(0);
+    });
+
+    it("41/42/53/7: evidence corrected during the render marks the artifact stale; it can never pass the release gate", async () => {
+      const { h, v } = await prepared();
+      const seq = (await fu.sequenceForProspect(prospectId))!;
+      const [t1] = await sql`select id from outreach_drafts where prospect_id = ${prospectId} and evidence_snapshot is not null order by created_at asc limit 1`;
+      const [run] = await sql`select id from runs limit 1`;
+      const corrected = { ...snapshot, competitor: { ...snapshot.competitor, recommendationCount: 29 } };
+      const correctDuringRender = render.mockRenderDeps({
+        onCompose: () => {
+          void sql`insert into outreach_evidence_corrections (prospect_id, evidence_draft_id, send_id, source_run_id, original_snapshot, corrected_snapshot, reason, corrected_by)
+            values (${prospectId}, ${t1!.id}, ${seq.touch1SendId}, ${run!.id}, ${sql.json(snapshot as never)}, ${sql.json(corrected as never)}, 'competitor alias added', ${operator.id})`.execute();
+        },
+      });
+      const row = (await runJob(v.id, { render: correctDuringRender }))!;
+      expect(row.stage).toBe("stale");
+      expect(row.status).toBe("stale");
+      expect(row.meta.reason).toMatch(/SEND_TIME_REVALIDATION_FAILED|superseded/);
+      expect((await vw.videoReleaseRecheck(h.id)).passed).toBe(false);
+      await expect(vw.requeueVideoWalkthrough(operator, v.id, "x")).rejects.toThrow(/stale/);
+      // The email's own recheck sees the same stale state.
+      expect((await rh.fulfillmentSendRecheck(sql, h.draftId!)).passed).toBe(false);
+    });
+
+    it("43: a suppression before delivery blocks the video's release; the kill switches stop new jobs and release", async () => {
+      const { h, v } = await prepared();
+      expect((await runJob(v.id))!.stage).toBe("release_ready");
+      const { suppress } = await import("@/lib/outreach/suppression");
+      await sql.begin(async (tx) => { await suppress(tx, { scope: "email", value: RECIPIENT, reason: "opt_out", detail: "test", projectId: null, userId: operator.id }); });
+      const rc = await vw.videoReleaseRecheck(h.id);
+      expect(rc.passed).toBe(false);
+      expect(rc.detail).toMatch(/TERMINAL: suppressed/);
+      expect((await vw.videoReleaseRecheck(h.id, { ...process.env, VIDEO_WALKTHROUGH_RELEASE_KILL_SWITCH: "true" })).detail).toMatch(/RELEASE_KILL_SWITCH/);
+      await sql`truncate prospect_report_qa_runs, prospect_fulfillment_artifacts, prospect_fact_manifests, prospect_report_handoffs, jobs, suppression_entries cascade`;
+      lane("SHADOW"); videoEnv({ VIDEO_WALKTHROUGH_KILL_SWITCH: "true" });
+      await sayYes();
+      await rh.processReportHandoffs(NOON, { caller: passingCaller });
+      const h2 = (await rh.handoffForProspect(prospectId))!;
+      expect(h2.status).toBe("release_ready");
+      expect(await vw.videoForHandoff(h2.id)).toBeNull();
+      expect((await sql`select count(*)::int as n from jobs where type = 'render_video_walkthrough'`)[0]!.n).toBe(0);
+    });
+  });
 });

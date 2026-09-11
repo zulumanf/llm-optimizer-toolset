@@ -2,6 +2,11 @@
 # depends on: benchmark execution, parsing, scoring, workflow ticks, event
 # delivery. Runs migrations on boot so web and worker never race a deploy
 # against an old schema.
+#
+# Spec 138: the video walkthrough job needs ffmpeg/ffprobe, a Chromium for
+# Playwright to rasterize scene stills, and real fonts. Alpine's packages
+# keep the image small; VIDEO_CHROMIUM_PATH points Playwright at the system
+# browser instead of downloading its own.
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -10,6 +15,8 @@ RUN npm ci
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apk add --no-cache ffmpeg chromium nss freetype harfbuzz ca-certificates ttf-liberation font-noto fontconfig
+ENV VIDEO_CHROMIUM_PATH=/usr/bin/chromium-browser
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 CMD ["sh", "-c", "npx tsx scripts/migrate.ts up && npx tsx workers/index.ts"]

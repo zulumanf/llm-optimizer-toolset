@@ -22,10 +22,17 @@ export type LaneMode = (typeof LANE_MODES)[number];
 export const DEFAULT_LANE_MODE: LaneMode = "SHADOW";
 export const DEFAULT_CANARY_PERCENT = 10;
 
+export const RELEASE_POLICIES = ["report_and_video", "report_only"] as const;
+export type ReleasePolicy = (typeof RELEASE_POLICIES)[number];
+/** Fail closed toward the intended experiment: a handoff waits for a
+ * releasable video walkthrough unless the policy explicitly says report_only. */
+export const DEFAULT_RELEASE_POLICY: ReleasePolicy = "report_and_video";
+
 export interface LaneConfig {
   mode: LaneMode;
   canaryPercent: number;
   killSwitch: boolean;
+  releasePolicy: ReleasePolicy;
   source: string;
 }
 
@@ -36,10 +43,12 @@ export function resolveLaneConfig(env: Record<string, string | undefined> = proc
   const killSwitch = env.AUTONOMOUS_POSITIVE_REPLY_KILL_SWITCH === "true";
   const pct = Number(env.AUTONOMOUS_POSITIVE_REPLY_CANARY_PERCENT ?? DEFAULT_CANARY_PERCENT);
   const canaryPercent = Number.isFinite(pct) ? Math.min(100, Math.max(0, Math.floor(pct))) : DEFAULT_CANARY_PERCENT;
+  const rawPolicy = (env.FULFILLMENT_RELEASE_POLICY ?? "").toLowerCase();
+  const releasePolicy: ReleasePolicy = (RELEASE_POLICIES as readonly string[]).includes(rawPolicy) ? (rawPolicy as ReleasePolicy) : DEFAULT_RELEASE_POLICY;
   const raw = (env.AUTONOMOUS_POSITIVE_REPLY_MODE ?? "").toUpperCase();
-  if ((LANE_MODES as readonly string[]).includes(raw)) return { mode: raw as LaneMode, canaryPercent, killSwitch, source: "AUTONOMOUS_POSITIVE_REPLY_MODE" };
-  if (env.REPORT_HANDOFF_AUTOSEND === "true") return { mode: "NARROW_AUTONOMOUS", canaryPercent, killSwitch, source: "REPORT_HANDOFF_AUTOSEND=true (legacy opt-in)" };
-  return { mode: DEFAULT_LANE_MODE, canaryPercent, killSwitch, source: "default" };
+  if ((LANE_MODES as readonly string[]).includes(raw)) return { mode: raw as LaneMode, canaryPercent, killSwitch, releasePolicy, source: "AUTONOMOUS_POSITIVE_REPLY_MODE" };
+  if (env.REPORT_HANDOFF_AUTOSEND === "true") return { mode: "NARROW_AUTONOMOUS", canaryPercent, killSwitch, releasePolicy, source: "REPORT_HANDOFF_AUTOSEND=true (legacy opt-in)" };
+  return { mode: DEFAULT_LANE_MODE, canaryPercent, killSwitch, releasePolicy, source: "default" };
 }
 
 /** Deterministic 0–99 bucket for canary selection. */
@@ -85,7 +94,9 @@ export const LANE_TRANSITIONS: Record<HandoffStatus, readonly HandoffStatus[]> =
   evidence_verified: ["report_published", "needs_review", "stopped"],
   report_published: ["qa_passed", "needs_review", "stopped"],
   qa_passed: ["release_ready", "needs_review", "stopped"],
-  release_ready: ["scheduled", "needs_review", "stopped"],
+  // release_ready → qa_passed: the release policy gained a dependency the
+  // artifacts no longer satisfy (WAITING_FOR_VIDEO); the report stays ready.
+  release_ready: ["scheduled", "qa_passed", "needs_review", "stopped"],
   scheduled: ["sent", "needs_review", "stopped"],
   needs_review: ["autonomy_eligible", "stopped"],
   sent: [],
@@ -109,7 +120,7 @@ export function conceptualState(h: { status: HandoffStatus; autoVerdict: string 
     case "autonomy_eligible": return "AUTONOMY_ELIGIBLE";
     case "evidence_verified": return "EVIDENCE_VERIFIED";
     case "report_published": return "REPORT_READY";
-    case "qa_passed": return "SEMANTIC_QA_PASSED";
+    case "qa_passed": return /^WAITING_FOR_VIDEO/.test(h.reason ?? "") ? "REPORT_READY_WAITING_FOR_VIDEO" : "SEMANTIC_QA_PASSED";
     case "release_ready": return h.autoVerdict === "would_send" ? "RELEASE_READY_SHADOW_HELD" : "RELEASE_READY";
     case "scheduled": return "SEND_INTENT_CREATED";
     case "sent": return "SENT_AWAITING_RESPONSE";
@@ -125,8 +136,8 @@ export type FulfillmentMessageType = (typeof FULFILLMENT_MESSAGE_TYPES)[number];
 
 /** One logical external action = one identity: prospect + source reply +
  * evidence/manifest version + message type + template. */
-export function sendIntentKey(i: { prospectId: string; replyId: string; manifestHash: string; messageType: FulfillmentMessageType; templateVersion: string }): string {
-  return createHash("sha256").update([i.prospectId, i.replyId, i.manifestHash, i.messageType, i.templateVersion].join("|")).digest("hex");
+export function sendIntentKey(i: { prospectId: string; replyId: string; manifestHash: string; messageType: FulfillmentMessageType; templateVersion: string; variant?: string }): string {
+  return createHash("sha256").update([i.prospectId, i.replyId, i.manifestHash, i.messageType, i.templateVersion, i.variant ?? ""].join("|")).digest("hex");
 }
 
 /** The RFC 5322 Message-ID stamped on the outgoing mail — the fingerprint
@@ -138,6 +149,25 @@ export function sendMessageIdFor(intentKey: string, senderDomain: string): strin
 export function senderDomainOf(email: string | null | undefined, fallback = "recommendedfirst.com"): string {
   const at = (email ?? "").lastIndexOf("@");
   return at > 0 ? (email as string).slice(at + 1).toLowerCase() : fallback;
+}
+
+// ------------------------------------------------------------ video readiness
+
+export interface VideoReleasability { releasable: boolean; artifactId: string | null; detail: string }
+
+/** Is a releasable video walkthrough on file for this handoff? Delegates to
+ * the video lane's own release recheck (stage release_ready, status ready,
+ * current binding to the manifest, passed script/semantic/artifact QA, not
+ * delivered, release switch open) — the ONE definition. A handoff held at
+ * qa_passed may ask too. Any failure to answer is "not releasable". */
+export async function videoReleasableFor(handoffId: string): Promise<VideoReleasability> {
+  try {
+    const { videoReleaseRecheck } = await import("@/lib/prospects/video-walkthrough");
+    const r = await videoReleaseRecheck(handoffId, process.env, { handoffStatuses: ["qa_passed", "release_ready", "scheduled"] });
+    return { releasable: r.passed, artifactId: r.artifactId, detail: r.detail };
+  } catch (err) {
+    return { releasable: false, artifactId: null, detail: `video lane unavailable: ${err instanceof Error ? err.message.slice(0, 120) : "unknown"}` };
+  }
 }
 
 // ------------------------------------------------------------ operator view
@@ -176,6 +206,7 @@ export function operatorView(h: LaneHandoffView, ctx: { prospectName: string; re
   let nextAction: string;
   switch (h.status) {
     case "needs_review": nextAction = h.autonomyClass === "escalate" ? "Read the reply and answer by hand (publish + reply)." : "Resolve the block, then reactivate or answer by hand."; break;
+    case "qa_passed": nextAction = /^WAITING_FOR_VIDEO/.test(h.reason ?? "") ? "Report ready; waiting for a releasable video walkthrough before founder review." : "Awaiting the release policy."; break;
     case "stopped": nextAction = "No external response (terminal)."; break;
     case "release_ready": nextAction = h.autoVerdict === "would_send" ? "SHADOW: review the staged reply; send by hand if you agree." : "Awaiting release."; break;
     case "scheduled": nextAction = "Send intent created; dispatcher will transmit."; break;
@@ -189,7 +220,7 @@ export function operatorView(h: LaneHandoffView, ctx: { prospectName: string; re
     whyStopped: stopped ? (h.reason ?? h.autonomyReason ?? "unspecified") : null,
     evidenceStatus,
     reportStatus,
-    videoStatus: ctx.videoStatus ?? "not part of this release policy",
+    videoStatus: ctx.videoStatus ?? (/^WAITING_FOR_VIDEO/.test(h.reason ?? "") ? "not releasable yet (required by the release policy)" : "not part of this release policy"),
     nextAction,
   };
 }
@@ -216,7 +247,10 @@ export async function reactivateHandoff(user: CurrentUser, handoffId: string, re
       reactivated_at = now(), reactivated_by = ${user.id}, updated_at = now() where id = ${handoffId} and status = 'needs_review'`;
     await writeAudit(tx, { userId: user.id, action: "prospect.report_handoff_reactivated", entity: "prospect_report_handoff", entityId: handoffId, detail: { reason, acceptReviewConcerns: Boolean(opts.acceptReviewConcerns) } });
     if (opts.acceptReviewConcerns) {
-      await writeAudit(tx, { userId: user.id, action: REVIEW_OVERRIDE_ACTION, entity: "prospect_report_handoff", entityId: handoffId, detail: { reason, blockedReason: h.reason } });
+      // Bound to the content hash the reviewer blocked: a revised report or
+      // email is a new artifact and is reviewed again.
+      const [blocked] = await tx`select content_hash from prospect_report_qa_runs where handoff_id = ${handoffId} and kind = 'release_review' and not passed order by created_at desc limit 1`;
+      await writeAudit(tx, { userId: user.id, action: REVIEW_OVERRIDE_ACTION, entity: "prospect_report_handoff", entityId: handoffId, detail: { reason, blockedReason: h.reason, contentHash: (blocked?.contentHash as string | null) ?? null } });
     }
     await logActivity(tx, h.prospectId as string, "report_handoff_reactivated", { handoffId, reason, acceptReviewConcerns: Boolean(opts.acceptReviewConcerns) }, user.id);
   });
@@ -224,11 +258,10 @@ export async function reactivateHandoff(user: CurrentUser, handoffId: string, re
 
 /** The founder's standing acceptance of the reviewer's concerns for this
  * handoff, if recorded after the reviewer's latest block. */
-export async function reviewOverrideFor(handoffId: string): Promise<{ userId: string; reason: string; at: Date } | null> {
+export async function reviewOverrideFor(handoffId: string, contentHash: string): Promise<{ userId: string; reason: string; at: Date } | null> {
   const [row] = await sql`
     select a.user_id, a.detail->>'reason' as reason, a.at from audit_log a
-    where a.action = ${REVIEW_OVERRIDE_ACTION} and a.entity_id = ${handoffId}
-      and a.at > coalesce((select max(q.created_at) from prospect_report_qa_runs q where q.handoff_id = ${handoffId} and q.kind = 'release_review' and not q.passed), '-infinity'::timestamptz)
+    where a.action = ${REVIEW_OVERRIDE_ACTION} and a.entity_id = ${handoffId} and a.detail->>'contentHash' = ${contentHash}
     order by a.at desc limit 1`;
   return row ? { userId: row.userId as string, reason: (row.reason as string) ?? "", at: new Date(row.at as Date) } : null;
 }

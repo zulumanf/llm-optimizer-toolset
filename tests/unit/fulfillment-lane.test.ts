@@ -45,6 +45,13 @@ describe("state machine", () => {
 });
 
 describe("lane modes", () => {
+  it("release policy defaults to report_and_video; report_only must be explicit; garbage falls back closed", () => {
+    expect(resolveLaneConfig({}).releasePolicy).toBe("report_and_video");
+    expect(resolveLaneConfig({ FULFILLMENT_RELEASE_POLICY: "report_only" }).releasePolicy).toBe("report_only");
+    expect(resolveLaneConfig({ FULFILLMENT_RELEASE_POLICY: "video_only" }).releasePolicy).toBe("report_and_video");
+    expect(canTransition("release_ready", "qa_passed")).toBe(true);
+    expect(conceptualState({ status: "qa_passed", autoVerdict: "held", reason: "WAITING_FOR_VIDEO: no video artifact" })).toBe("REPORT_READY_WAITING_FOR_VIDEO");
+  });
   it("defaults to SHADOW; the legacy spec 129 opt-in maps to NARROW_AUTONOMOUS; explicit mode wins", () => {
     expect(resolveLaneConfig({}).mode).toBe("SHADOW");
     expect(resolveLaneConfig({ REPORT_HANDOFF_AUTOSEND: "true" }).mode).toBe("NARROW_AUTONOMOUS");

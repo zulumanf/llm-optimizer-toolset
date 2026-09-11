@@ -75,7 +75,7 @@ export function MismatchReport({
       <section className="grid gap-8 py-12 lg:grid-cols-12" data-signal-section="hero">
         <div className="lg:col-span-5">
           <h1 className={`${serifClass} text-balance text-3xl leading-tight sm:text-4xl`}>
-            RealTrends has {ref} ahead. AI recommends {b.competitor.name} more often.
+            RealTrends has {ref} ahead. In our test, {b.competitor.name} was recommended more often.
           </h1>
           <p className="mt-5 max-w-[48ch] text-sm leading-relaxed">
             On the RealTrends record for {b.metricLabel}, {ref} {team ? "is" : "are"} ahead of {b.competitor.name}. In our {market} test, {b.competitor.name} was recommended more often.
@@ -95,12 +95,12 @@ export function MismatchReport({
           )}
         </div>
         <figure className="lg:col-span-7">
-          <figcaption className="text-xs uppercase tracking-wide text-muted-foreground">Figure 01 · Production vs AI recommendations</figcaption>
+          <figcaption className="text-xs uppercase tracking-wide text-muted-foreground">Figure 01 · Production vs recommendation frequency</figcaption>
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-y py-3 text-sm sm:hidden">
             <dt className="col-span-2 text-xs uppercase tracking-wide text-muted-foreground">{b.prospect.productionYear ?? ""} {b.metricLabel} · RealTrends</dt>
             <dd><span className="block text-xs text-muted-foreground">{Ref}</span><span className="text-2xl tabular-nums">{b.prospect.productionDisplay.replace(/ closed$/, "")}</span></dd>
             <dd><span className="block text-xs text-muted-foreground">{b.competitor.name}</span><span className="text-2xl tabular-nums">{b.competitor.productionDisplay.replace(/ closed$/, "")}</span></dd>
-            <dt className="col-span-2 mt-2 text-xs uppercase tracking-wide text-muted-foreground">AI recommendations · same {market} test</dt>
+            <dt className="col-span-2 mt-2 text-xs uppercase tracking-wide text-muted-foreground">Recommended in the test · {market}</dt>
             <dd><span className="block text-xs text-muted-foreground">{Ref}</span><span className="text-2xl tabular-nums text-destructive">{b.prospect.recommendationCount}</span> <span className="text-xs text-muted-foreground">/ {b.answerCount}</span></dd>
             <dd><span className="block text-xs text-muted-foreground">{b.competitor.name}</span><span className="text-2xl tabular-nums">{b.competitor.recommendationCount}</span> <span className="text-xs text-muted-foreground">/ {b.answerCount}</span></dd>
           </dl>
@@ -123,7 +123,7 @@ export function MismatchReport({
               </tr>
               <tr className="align-top">
                 <td className="py-4 pr-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">AI recommendations</p>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Recommended in the test</p>
                   <p className="text-xs text-muted-foreground">Same {market} test</p>
                 </td>
                 <td className="py-4 text-2xl tabular-nums"><span className="text-destructive">{b.prospect.recommendationCount}</span> <span className="text-sm text-muted-foreground">/ {b.answerCount}</span></td>
@@ -141,7 +141,7 @@ export function MismatchReport({
         <section className="grid gap-8 border-t py-10 lg:grid-cols-12" data-signal-section="change-first">
           <div className="lg:col-span-3">
             <h2 className="text-xs uppercase tracking-wide text-muted-foreground">What I’d change first</h2>
-            <p className="mt-3 max-w-[32ch] text-xs leading-relaxed text-muted-foreground">What the answers showed, the exact change, where, why it comes first, and how the same test would show whether it moved. None of this is a ranking promise.</p>
+            <p className="mt-3 max-w-[32ch] text-xs leading-relaxed text-muted-foreground">What the answers showed, the exact change, where, why it comes first, and how to run the same test again afterwards to compare. None of this is a ranking promise.</p>
           </div>
           <ol className="divide-y lg:col-span-9">
             {b.changeFirst!.map((r, i) => (

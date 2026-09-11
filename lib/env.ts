@@ -39,6 +39,23 @@ const envSchema = z
     AUTONOMOUS_POSITIVE_REPLY_MODE: z.string().optional(),
     AUTONOMOUS_POSITIVE_REPLY_CANARY_PERCENT: z.string().optional(),
     AUTONOMOUS_POSITIVE_REPLY_KILL_SWITCH: z.string().optional(),
+    // Spec 138 release policy: report_and_video (default — a handoff holds at
+    // WAITING_FOR_VIDEO until a releasable walkthrough exists) | report_only.
+    FULFILLMENT_RELEASE_POLICY: z.string().optional(),
+    // Spec 138 personalized video walkthrough. Mode: SHADOW (default —
+    // prepare, QA, stage, never deliver) | CANARY | MANUAL_ONLY. The kill
+    // switch stops NEW video jobs; the release kill switch stops release of
+    // finished videos in every mode. Distribution: local_storage (default)
+    // | unlisted_youtube (declared, not implemented). TTS provider "mock"
+    // and the fixture intro are refused in production.
+    VIDEO_WALKTHROUGH_MODE: z.string().optional(),
+    VIDEO_WALKTHROUGH_KILL_SWITCH: z.string().optional(),
+    VIDEO_WALKTHROUGH_RELEASE_KILL_SWITCH: z.string().optional(),
+    VIDEO_DISTRIBUTION: z.string().optional(),
+    VIDEO_TTS_PROVIDER: z.string().optional(),
+    VIDEO_ALLOW_FIXTURE_INTRO: z.string().optional(),
+    ELEVENLABS_API_KEY: z.string().optional(),
+    ELEVENLABS_VOICE_ID: z.string().optional(),
     // MCP server actor (spec 033) — required only by `npm run mcp`.
     MCP_USER_ID: z.string().optional(),
     // Spend ceiling override (lib/constants.ts falls back to $25).

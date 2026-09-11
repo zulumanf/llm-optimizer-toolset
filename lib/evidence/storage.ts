@@ -9,7 +9,7 @@ import { sql } from "@/db/client";
 import { ClassifiedError } from "@/lib/errors";
 import { resolveStoragePath, writeImmutable } from "@/lib/storage/content-addressed";
 
-const EVIDENCE_ROOT = join(process.cwd(), "var", "evidence");
+export const EVIDENCE_ROOT = join(process.cwd(), "var", "evidence");
 
 export function artifactPath(storageKey: string): string {
   return resolveStoragePath(EVIDENCE_ROOT, storageKey);
@@ -27,13 +27,21 @@ export async function storeArtifact(args: {
   captureMethod: string;
   note?: string;
   createdBy?: string;
-}): Promise<{ artifactId: string; sha256: string }> {
+  /** Spec 138: the same bytes under the same key is the same artifact — a
+   * retried render or a second worker gets the existing row back. */
+  reuseExisting?: boolean;
+}): Promise<{ artifactId: string; sha256: string; reused?: boolean }> {
   const { sha256, alreadyExisted } = await writeImmutable(
     EVIDENCE_ROOT,
     args.storageKey,
     args.bytes
   );
-  if (alreadyExisted) {
+  if (alreadyExisted && args.reuseExisting) {
+    const [existing] = await sql`select id, sha256 from evidence_artifacts where storage_key = ${args.storageKey}`;
+    if (existing && existing.sha256 === sha256) return { artifactId: existing.id as string, sha256, reused: true };
+    if (existing) throw new ClassifiedError("conflict", `An artifact with different bytes is already stored at "${args.storageKey}".`);
+    // File present, row missing (crash between write and insert): fall through and insert.
+  } else if (alreadyExisted) {
     // Evidence keys are unique by construction. A collision means a caller is
     // about to reuse a key that already holds different bytes — refuse loudly
     // rather than let the row and the file disagree.

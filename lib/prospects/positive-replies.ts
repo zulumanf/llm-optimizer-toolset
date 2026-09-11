@@ -97,7 +97,9 @@ export async function positiveRepliesWaiting(now: Date = new Date()): Promise<Po
       (select max(s.sent_at) from prospect_outreach_sends s where s.prospect_id = p.id and s.allowed and s.sent_at > c.received_at) as answered_at,
       (select json_build_object('status', h.status, 'reason', h.reason, 'autoVerdict', h.auto_verdict, 'autonomyClass', h.autonomy_class, 'laneMode', h.lane_mode, 'releaseVerdict', h.release_verdict)
          from prospect_report_handoffs h where h.reply_id = c.id order by h.created_at desc limit 1) as handoff,
-      exists (select 1 from prospect_audits a where a.prospect_id = p.id and a.status = 'published') as report_published
+      exists (select 1 from prospect_audits a where a.prospect_id = p.id and a.status = 'published') as report_published,
+      (select v.stage from prospect_fulfillment_artifacts v join prospect_report_handoffs h2 on h2.id = v.handoff_id
+         where h2.reply_id = c.id and v.kind = 'video_walkthrough' order by v.revision desc limit 1) as video_stage
     from canonical c
     join prospects p on p.id = c.prospect_id
     left join users u on u.id = p.owner_id
@@ -128,7 +130,7 @@ export async function positiveRepliesWaiting(now: Date = new Date()): Promise<Po
       lane: hv
         ? operatorView(
             { status: hv.status as HandoffStatus, reason: hv.reason, autonomyClass: hv.autonomyClass as "autonomy_eligible" | "escalate" | null, autonomyReason: null, autoVerdict: hv.autoVerdict, laneMode: hv.laneMode, releaseVerdict: hv.releaseVerdict },
-            { prospectName: r.businessName as string, replyExcerpt: excerpt, reportPublished: Boolean(r.reportPublished) }
+            { prospectName: r.businessName as string, replyExcerpt: excerpt, reportPublished: Boolean(r.reportPublished), videoStatus: r.videoStage ? `video ${r.videoStage as string}` : undefined }
           )
         : null,
       reportPublished: Boolean(r.reportPublished),

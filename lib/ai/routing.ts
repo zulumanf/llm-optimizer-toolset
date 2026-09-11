@@ -121,6 +121,11 @@ export const TASK_ROUTES = {
     rationale:
       "The one adversarial semantic read before an autonomous release; wording judgment (causality, provider overgeneralization, guarantees) after code has verified every figure (spec 137).",
   },
+  video_semantic_review: {
+    tier: "frontier",
+    rationale:
+      "The one adversarial read of a personalized video narration before it can be released; wording judgment only, after code compiled and verified every figure (spec 138).",
+  },
   extract_claims: {
     tier: "cheap",
     rationale: "Narrow extraction, human-approved downstream (audit A4 downgrade).",
