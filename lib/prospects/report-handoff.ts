@@ -636,6 +636,13 @@ export async function advanceReportHandoff(h: ReportHandoff, now: Date, opts: { 
     const serialized = serializeReportForReview(audit.block, { prospectName: ctx.businessName, market: ctx.market });
     const hash = reportContentHash(serialized);
     const deterministic = qaMismatchReport(audit.block, ctx.seq.evidenceSnapshot, await prospectEntityType(ctx.seq.evidenceSnapshot));
+    // Spec 136: the report's competitive evidence goes through the same
+    // release verification as every other customer-facing claim.
+    {
+      const { verifyEvidenceRelease, releaseGateDetail } = await import("@/lib/prospects/evidence-release");
+      const verdict = await verifyEvidenceRelease(ctx.seq.evidenceSnapshot, { prospectId: ctx.seq.prospectId, sendId: ctx.seq.touch1SendId });
+      if (!verdict.verified) deterministic.push({ check: "evidence_release", detail: releaseGateDetail(verdict) });
+    }
     await recordQaRun(h, "deterministic", hash, deterministic.length === 0, { issues: deterministic });
     if (deterministic.length) return note(h, "needs_review", deterministic.map((i) => `[${i.check}] ${i.detail}`).join(" "), actor.id);
     const { review, sense } = await runAgents(h, serialized, hash, opts.caller);

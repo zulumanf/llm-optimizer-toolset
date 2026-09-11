@@ -1114,6 +1114,14 @@ export async function resumeFollowupSequence(user: CurrentUser, raw: unknown): P
     const seq = await getFollowupSequence(p.data.sequenceId);
     if (!seq) throw new ClassifiedError("not_found", "Sequence not found.");
     if (seq.status !== "paused") throw new ClassifiedError("validation", `Sequence is ${seq.status}.`);
+    // Spec 136: a paused sequence continues only when its effective evidence
+    // (frozen snapshot with the latest correction overlaid) re-verifies. The
+    // send gate re-checks each touch at transmission regardless.
+    {
+      const { verifyEvidenceRelease, releaseGateDetail } = await import("@/lib/prospects/evidence-release");
+      const verdict = await verifyEvidenceRelease(seq.evidenceSnapshot, { prospectId: seq.prospectId, sendId: seq.touch1SendId });
+      if (!verdict.verified) throw new ClassifiedError("validation", `Cannot resume: ${releaseGateDetail(verdict)}`);
+    }
     await setSequence(seq.id, { status: "active", pausedUntil: null, pauseReason: null });
     await sql.begin(async (tx) => {
       await writeAudit(tx, { userId: user.id, action: "prospect.followup_resumed", entity: "outreach_followup_sequence", entityId: seq.id, detail: {} });

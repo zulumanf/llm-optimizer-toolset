@@ -29,6 +29,32 @@ const admin: CurrentUser = { id: "00000000-0000-4000-8000-000000000001", email: 
 
 const executeCapability = vi.fn();
 vi.mock("@/lib/connectors/execute", () => ({ executeCapability: (...args: unknown[]) => executeCapability(...args) }));
+vi.mock("@/lib/prospects/evidence-release", async (orig) => {
+  // Spec 136: the release layer re-verifies against a real frozen run; this
+  // suite's snapshot names a fixture run, so the run/production/count checks
+  // are stubbed verified while the entity checks stay REAL (the resolver is
+  // what several cases here assert on). tests/integration/evidence-release.test.ts
+  // exercises the unstubbed layer.
+  const real = await orig<typeof import("@/lib/prospects/evidence-release")>();
+  const { countClaimEntityGate } = await import("@/lib/prospects/entity-aliases");
+  const verdictFor = async (s: MismatchEvidenceSnapshot) => {
+    const g = await countClaimEntityGate({ prospect: s.prospect, competitor: s.competitor });
+    const checks = g.statuses.map((st, i) => ({
+      name: i === 0 ? "PROSPECT_ENTITY_VERIFIED" : "COMPETITOR_ENTITY_VERIFIED",
+      passed: st.verified, detail: st.reason,
+      reason: st.verified ? null : i === 0 ? "PROSPECT_ENTITY_UNVERIFIED" : "COMPETITOR_ENTITY_UNVERIFIED",
+    }));
+    return { version: real.EVIDENCE_RELEASE_VERSION, verified: g.passed, reasons: checks.filter((c) => !c.passed).map((c) => c.reason), checks, diagnostics: {} };
+  };
+  return {
+    ...real,
+    verifyEvidenceRelease: verdictFor,
+    verifyDraftEvidenceRelease: async (db: unknown, draft: { id: string }) => {
+      const found = await real.evidenceSnapshotForDraft(db as never, draft.id);
+      return found ? verdictFor(found.snapshot) : null;
+    },
+  };
+});
 vi.mock("@/lib/prospects/mismatch", async (orig) => {
   const real = await orig<typeof import("@/lib/prospects/mismatch")>();
   return {
@@ -248,23 +274,37 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect((await pr.positiveRepliesWaiting(NOON)).map((w) => w.replyId)).not.toContain(rec.replyId);
   });
 
-  it("an unverified entity refuses the report delivery with ENTITY_RESOLUTION_UNVERIFIED (fail closed)", async () => {
+  it("an unverified entity parks the hand-off at needs_review before any reply is drafted (fail closed, spec 136)", async () => {
     process.env.REPORT_HANDOFF_AUTOSEND = "true";
     await sql`update companies set aliases = '{}' where id = ${PROSPECT_CO}`;
     await sayYes();
     await rh.processReportHandoffs(NOON, { caller: passingCaller });
     const h = (await rh.handoffForProspect(prospectId))!;
-    expect(h.status).toBe("scheduled");
-    await sql`update outreach_drafts set scheduled_send_at = now() - interval '1 minute' where id = ${h.draftId}`;
-    const res = await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "mock", businessPurpose: "Deliver the report he asked for", unattended: true });
+    // Spec 136: the report's evidence goes through the release layer inside
+    // the deterministic QA pass — the hand-off never reaches "scheduled", so
+    // no delivery draft exists for the send gate to refuse.
+    expect(h.status).toBe("needs_review");
+    expect(h.draftId).toBeNull();
+    expect(JSON.stringify(h)).toContain("EVIDENCE_RELEASE_BLOCKED");
+    expect(JSON.stringify(h)).toContain("PROSPECT_ENTITY_UNVERIFIED");
+    // The send gate itself still refuses a count-stating draft for the
+    // unverified entity (belt and braces): a hand-built delivery draft
+    // carrying the frozen evidence is ledgered as refused.
+    const [t1] = await sql`select id, finding_id, contact_id from outreach_drafts where prospect_id = ${prospectId} and evidence_snapshot is not null order by created_at asc limit 1`;
+    const [d] = await sql`
+      insert into outreach_drafts (prospect_id, finding_id, channel, contact_id, parent_id, version, subject, body, generated_by, status, approved_by, approved_at, created_by)
+      values (${prospectId}, ${t1!.findingId}, 'email', ${t1!.contactId}, ${t1!.id}, 2, 'Re: Ryan - Reno', ${'Ryan,\n\nThe report is ready.\n\n123 Grand St, Jersey City, NJ 07302\nIf you\'d rather not hear from us, reply "unsubscribe" and we will not contact you again.'}, 'operator', 'approved', ${operator.id}, now(), ${operator.id})
+      returning id
+    `;
+    const res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Deliver the report he asked for" });
     expect(res.ok).toBe(false);
-    const [ledger] = await sql`select allowed, gate_verdict from prospect_outreach_sends where draft_id = ${h.draftId} order by sent_at desc limit 1`;
+    const [ledger] = await sql`select allowed, gate_verdict from prospect_outreach_sends where draft_id = ${d!.id} order by sent_at desc limit 1`;
     expect(ledger!.allowed).toBe(false);
     expect(JSON.stringify(ledger!.gateVerdict)).toContain("ENTITY_RESOLUTION_UNVERIFIED");
     // The same draft transmits once the entity is verified again.
     const ea = await import("@/lib/prospects/entity-aliases");
     await ea.applyVerifiedAliases(operator, PROSPECT_CO);
-    const again = unwrap(await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "mock", businessPurpose: "Deliver the report he asked for", unattended: true }));
+    const again = unwrap(await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Deliver the report he asked for" }));
     expect(again.providerMessageId).toContain("mock-");
   });
 

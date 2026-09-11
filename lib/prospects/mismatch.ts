@@ -139,8 +139,8 @@ const dedupe = <T>(xs: T[]): T[] => [...new Set(xs)];
 /** Shared metric for a pair: closed volume when both sides report it, else
  * sides when both report that; volume and sides never compare. */
 export function sharedMetric(
-  a: ProductionEvidence,
-  b: ProductionEvidence
+  a: Pick<ProductionEvidence, "volumeUsd" | "sides">,
+  b: Pick<ProductionEvidence, "volumeUsd" | "sides">
 ): MismatchMetricType | null {
   if (a.volumeUsd > 0 && b.volumeUsd > 0) return "closed_volume";
   if (a.sides > 0 && b.sides > 0) return "sides";

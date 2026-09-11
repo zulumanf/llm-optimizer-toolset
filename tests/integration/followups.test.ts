@@ -45,6 +45,32 @@ let snapshot: MismatchEvidenceSnapshot;
 
 const executeCapability = vi.fn();
 vi.mock("@/lib/connectors/execute", () => ({ executeCapability: (...args: unknown[]) => executeCapability(...args) }));
+vi.mock("@/lib/prospects/evidence-release", async (orig) => {
+  // Spec 136: the release layer re-verifies against a real frozen run; this
+  // suite's snapshot names a fixture run, so the run/production/count checks
+  // are stubbed verified while the entity checks stay REAL (the resolver is
+  // what several cases here assert on). tests/integration/evidence-release.test.ts
+  // exercises the unstubbed layer.
+  const real = await orig<typeof import("@/lib/prospects/evidence-release")>();
+  const { countClaimEntityGate } = await import("@/lib/prospects/entity-aliases");
+  const verdictFor = async (s: MismatchEvidenceSnapshot) => {
+    const g = await countClaimEntityGate({ prospect: s.prospect, competitor: s.competitor });
+    const checks = g.statuses.map((st, i) => ({
+      name: i === 0 ? "PROSPECT_ENTITY_VERIFIED" : "COMPETITOR_ENTITY_VERIFIED",
+      passed: st.verified, detail: st.reason,
+      reason: st.verified ? null : i === 0 ? "PROSPECT_ENTITY_UNVERIFIED" : "COMPETITOR_ENTITY_UNVERIFIED",
+    }));
+    return { version: real.EVIDENCE_RELEASE_VERSION, verified: g.passed, reasons: checks.filter((c) => !c.passed).map((c) => c.reason), checks, diagnostics: {} };
+  };
+  return {
+    ...real,
+    verifyEvidenceRelease: verdictFor,
+    verifyDraftEvidenceRelease: async (db: unknown, draft: { id: string }) => {
+      const found = await real.evidenceSnapshotForDraft(db as never, draft.id);
+      return found ? verdictFor(found.snapshot) : null;
+    },
+  };
+});
 vi.mock("@/lib/prospects/mismatch", async (orig) => {
   const real = await orig<typeof import("@/lib/prospects/mismatch")>();
   return {
