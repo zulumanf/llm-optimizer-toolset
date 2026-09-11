@@ -1,9 +1,11 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { getRun, listRunCells } from "@/db/runs";
 import { listScoresForRun } from "@/db/scores";
 import { pendingReviewCount } from "@/db/mentions";
+import { runCoverage } from "@/lib/scoring/coverage";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -30,6 +32,15 @@ export default async function RunDetailPage({
     listScoresForRun(runId),
     pendingReviewCount(runId),
   ]);
+  // Coverage reads the same mentions scoring reads — only meaningful once
+  // the run has scored (spec 063).
+  const coverage = scores.length > 0 ? await runCoverage(runId) : null;
+  const DIMENSION_LABELS: Record<string, string> = {
+    category: "Category",
+    intent: "Intent",
+    audience: "Audience",
+    price_tier: "Price tier",
+  };
 
   const successes = cells.filter((c) => c.error === null).length;
   const failures = cells.filter((c) => c.error !== null).length;
@@ -40,36 +51,28 @@ export default async function RunDetailPage({
   const isActive = run.status === "pending" || run.status === "running";
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
+    <PageShell>
       {isActive && <RunLiveRefresh />}
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${projectId}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}
-        <Link href={`/projects/${projectId}/runs`} className="hover:text-foreground">
-          Runs
-        </Link>
-        {" / "}{run.label}
-      </nav>
-
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">{run.label}</h1>
-            <Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        crumbs={[
+          { label: "Projects", href: "/projects" },
+          { label: project.name, href: `/projects/${projectId}` },
+          { label: "Runs", href: `/projects/${projectId}/runs` },
+          { label: run.label },
+        ]}
+        title={run.label}
+        badge={<Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>}
+        description={
+          <>
             {successes} captured · {failures} failed
             {run.statusDetail ? ` · ${run.statusDetail}` : ""} · $
             {Number(run.costUsd).toFixed(2)} of ${Number(run.budgetUsd).toFixed(2)}{" "}
             budget · {run.providers.map((p) => `${p.model}×${p.repetitions}`).join(", ")}
             {totalPlanned > 0 ? "" : ""}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
+          </>
+        }
+        actions={
+          <div className="flex shrink-0 items-center gap-2">
           {scores.length > 0 && (
             <Link
               href={`/projects/${projectId}/runs/${runId}/evidence`}
@@ -83,8 +86,9 @@ export default async function RunDetailPage({
             status={run.status}
             hasFailures={failures > 0}
           />
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       <section className="mb-6">
         <h2 className="mb-2 text-lg font-medium">Scores</h2>
@@ -150,6 +154,57 @@ export default async function RunDetailPage({
         )}
       </section>
 
+      {coverage && coverage.length > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">
+            Coverage{" "}
+            <span className="text-sm font-normal text-muted-foreground">
+              (own brand, prompts where it appears — counted, holdouts excluded)
+            </span>
+          </h2>
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Dimension</TableHead>
+                  <TableHead>Segment</TableHead>
+                  <TableHead className="text-right">Prompts</TableHead>
+                  <TableHead className="text-right">Brought up</TableHead>
+                  <TableHead className="text-right">Recommended</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {coverage.map((row) => (
+                  <TableRow key={`${row.dimension}-${row.segment}`}>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {DIMENSION_LABELS[row.dimension] ?? row.dimension}
+                    </TableCell>
+                    <TableCell className="text-sm font-medium">{row.segment}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {row.promptCount}
+                    </TableCell>
+                    <TableCell
+                      className={`text-right tabular-nums ${
+                        row.mentionedPrompts === 0 ? "text-destructive" : ""
+                      }`}
+                    >
+                      {row.mentionedPrompts}/{row.promptCount}
+                    </TableCell>
+                    <TableCell
+                      className={`text-right tabular-nums ${
+                        row.recommendedPrompts === 0 ? "text-destructive" : ""
+                      }`}
+                    >
+                      {row.recommendedPrompts}/{row.promptCount}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+      )}
+
       {cells.length === 0 ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
           {isActive
@@ -205,6 +260,6 @@ export default async function RunDetailPage({
           </Table>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

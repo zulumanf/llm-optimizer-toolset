@@ -5,6 +5,7 @@
  * step — so a sequence that stopped because someone replied looks different from
  * one that stopped because a dispatcher died.
  */
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { sql } from "@/db/client";
 import { listSuppressions } from "@/lib/outreach/suppression";
 import { Badge } from "@/components/ui/badge";
@@ -55,15 +56,19 @@ export default async function OutreachPage() {
   const active = suppressions.filter((entry) => entry.liftedAt === null);
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <h1 className="text-2xl font-semibold">Outreach</h1>
-      <p className="mt-1 mb-4 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        title="Outreach"
+        description={
+          <>
         Suppression is matched on the normalised address, so a plus-tag cannot slip
         past a do-not-contact instruction. An opt-out or hard bounce suppresses
         globally, not just for the sequence it arrived on.
-      </p>
+          </>
+        }
+      />
 
-      <AutomationNav current="outreach" />
+      <AutomationNav />
 
       <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card>
@@ -231,6 +236,6 @@ export default async function OutreachPage() {
           then un-stopped&rdquo; is exactly what an audit needs.
         </p>
       </section>
-    </div>
+    </PageShell>
   );
 }

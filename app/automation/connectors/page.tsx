@@ -6,6 +6,7 @@
  * a real third party is labelled `verified`, because none has been executed
  * against one from this repository.
  */
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { AlertTriangle } from "lucide-react";
 import { listConnectors, connectorStatusCounts } from "@/lib/connectors/registry";
 import { CONNECTOR_CAPABILITIES, EXPIRY_WARNING_DAYS } from "@/lib/connectors/types";
@@ -39,16 +40,20 @@ export default async function ConnectorsPage() {
   const keyReady = encryptionAvailable();
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <h1 className="text-2xl font-semibold">Connectors</h1>
-      <p className="mt-1 mb-4 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        title="Connectors"
+        description={
+          <>
         Workflows name a capability; the connector layer decides which provider
         serves it. Credentials never leave{" "}
         <code className="font-mono text-xs">lib/connectors/credentials.ts</code> —
         no node, agent, page, or adapter can read one.
-      </p>
+          </>
+        }
+      />
 
-      <AutomationNav current="connectors" />
+      <AutomationNav />
 
       {!keyReady ? (
         <div className="mb-6 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
@@ -298,6 +303,6 @@ export default async function ConnectorsPage() {
           Every declared capability has at least one adapter.
         </p>
       )}
-    </div>
+    </PageShell>
   );
 }

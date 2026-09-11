@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
@@ -17,6 +18,8 @@ import { FreezeButton } from "@/components/prompts/freeze-button";
 import { DuplicateSetDialog } from "@/components/prompts/duplicate-set-dialog";
 import { ImportPromptsDialog } from "@/components/prompts/import-prompts-dialog";
 import { GenerateMarketDialog } from "@/components/prompts/generate-market-dialog";
+import { SuggestionsPanel } from "@/components/prompts/suggestions-panel";
+import { listPromptSuggestions } from "@/lib/prompts/suggest";
 import { clusterPrompts, PROMPT_CLUSTER_VERSION } from "@/lib/prompts/cluster";
 import { formatDate } from "@/lib/format";
 
@@ -32,9 +35,10 @@ export default async function PromptSetDetailPage({
   ]);
   if (!project || !set || set.projectId !== projectId) notFound();
 
-  const [prompts, versions] = await Promise.all([
+  const [prompts, versions, suggestions] = await Promise.all([
     listActivePrompts(setId),
     listVersionSummaries(setId),
+    listPromptSuggestions(setId),
   ]);
   const latest = versions[0] ?? null;
   const latestVersion = latest ? await getVersion(setId, latest.version) : null;
@@ -53,30 +57,18 @@ export default async function PromptSetDetailPage({
   const orderedIds = prompts.map((p) => p.id);
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${projectId}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}
-        <Link
-          href={`/projects/${projectId}/prompts`}
-          className="hover:text-foreground"
-        >
-          Prompts
-        </Link>
-        {" / "}{set.name}
-      </nav>
-
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">{set.name}</h1>
-            {set.archivedAt && <Badge variant="outline">archived</Badge>}
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        crumbs={[
+          { label: "Projects", href: "/projects" },
+          { label: project.name, href: `/projects/${projectId}` },
+          { label: "Prompts", href: `/projects/${projectId}/prompts` },
+          { label: set.name },
+        ]}
+        title={set.name}
+        badge={set.archivedAt && <Badge variant="outline">archived</Badge>}
+        description={
+          <>
             {prompts.length} prompt{prompts.length === 1 ? "" : "s"}
             {latest
               ? ` · last frozen v${latest.version} (${formatDate(latest.frozenAt)})`
@@ -84,28 +76,28 @@ export default async function PromptSetDetailPage({
             {editedSinceFreeze && (
               <span className="text-warning"> · edited since freeze ⚠</span>
             )}
-          </p>
-          {set.description && (
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              {set.description}
-            </p>
-          )}
-        </div>
-        {isEditable && (
-          <div className="flex shrink-0 gap-2">
-            <SetFormDialog mode="edit" set={set} />
-            <ImportPromptsDialog setId={set.id} />
-            <GenerateMarketDialog setId={set.id} />
-            <DuplicateSetDialog sourceSetId={set.id} sourceName={set.name} />
-            <FreezeButton
-              setId={set.id}
-              nextVersion={(latest?.version ?? 0) + 1}
-              promptCount={prompts.length}
-              disabled={prompts.length === 0 || (latest !== null && !editedSinceFreeze)}
-            />
-          </div>
-        )}
-      </div>
+            {set.description && (
+              <span className="block mt-1">{set.description}</span>
+            )}
+          </>
+        }
+        actions={
+          isEditable && (
+            <div className="flex shrink-0 gap-2">
+              <SetFormDialog mode="edit" set={set} />
+              <ImportPromptsDialog setId={set.id} />
+              <GenerateMarketDialog setId={set.id} />
+              <DuplicateSetDialog sourceSetId={set.id} sourceName={set.name} />
+              <FreezeButton
+                setId={set.id}
+                nextVersion={(latest?.version ?? 0) + 1}
+                promptCount={prompts.length}
+                disabled={prompts.length === 0 || (latest !== null && !editedSinceFreeze)}
+              />
+            </div>
+          )
+        }
+      />
 
       {prompts.length === 0 ? (
         <div className="rounded-lg border border-dashed p-10 text-center">
@@ -150,6 +142,25 @@ export default async function PromptSetDetailPage({
             </div>
           )}
         </div>
+      )}
+
+      {isEditable && (
+        <SuggestionsPanel
+          setId={set.id}
+          suggestions={suggestions.map((s) => ({
+            id: s.id,
+            text: s.text,
+            category: s.category,
+            tier: s.tier,
+            audience: s.audience,
+            priceTier: s.priceTier,
+            neighborhood: s.neighborhood,
+            building: s.building,
+            propertyType: s.propertyType,
+            origin: s.origin,
+            rationale: s.rationale,
+          }))}
+        />
       )}
 
       {prompts.length > 1 && (
@@ -210,6 +221,6 @@ export default async function PromptSetDetailPage({
           </ul>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }

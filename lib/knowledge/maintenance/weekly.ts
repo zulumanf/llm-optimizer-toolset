@@ -18,10 +18,11 @@ import {
   UNUSED_PAGE_DAYS,
   WEAK_EVIDENCE_MAX_SOURCES,
 } from "@/lib/knowledge/constants";
-import type { DetectorResult, Finding } from "@/lib/knowledge/maintenance/detectors";
-
-const scope = (projectId: string | null) =>
-  projectId ? sql`and project_id = ${projectId}` : sql``;
+import {
+  scope,
+  type DetectorResult,
+  type Finding,
+} from "@/lib/knowledge/maintenance/detectors";
 
 // ------------------------------------------------------- duplicate entities
 

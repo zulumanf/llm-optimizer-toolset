@@ -1,5 +1,13 @@
 # Target Gap Analysis — AI Visibility Operating System
 
+> **Point-in-time audit (2026-08-01) — do not treat as current state.**
+> At least seven gap rows below have since been closed (citations ledger &
+> source classification, campaigns, portal, task owners/due dates, persisted
+> intent tiers, scheduling, and the spec-088 website audit). Re-run the
+> audit before citing this document; the table count (108) is also stale
+> (~160 as of 2026-08-18).
+
+
 > Date: 2026-07-31 · Companion to `current-system-audit.md` (current
 > state, with evidence) and `implementation-roadmap.md` (sequencing).
 > Statuses: **Complete** · **Mostly complete** · **Partial** · **Stubbed**

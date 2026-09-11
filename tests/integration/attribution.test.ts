@@ -253,11 +253,88 @@ describe.skipIf(!TEST_URL)("attribution (integration)", () => {
     // Verdicts computed on read (identical mock data → within noise / insufficient)
     const view = await attribution.interventionView(created.data.interventionId);
     expect(view.verdicts.length).toBeGreaterThan(0);
-    expect(view.instrumentChanged).toBe(false);
     for (const verdict of view.verdicts) {
       // N=2 per side → insufficient for rate metrics; authority gets null
       expect(["insufficient", null]).toContain(verdict.verdict);
     }
+
+    // Graded comparability (spec 062): same instrument and versions, but a
+    // single baseline run caps the grade at medium — with the reason stated.
+    expect(view.comparability).toHaveLength(1);
+    expect(view.comparability[0]?.offsetLabel).toBe("+2w");
+    expect(view.comparability[0]?.grade).toBe("medium");
+    expect(view.comparability[0]?.reasons.join(" ")).toContain("single baseline run");
+
+    // Lifecycle (spec 062): scheduling made it retest_pending at creation;
+    // the completed post run advances it to retested via the heartbeat sync.
+    const [beforeSync] = await sql`
+      select status from interventions where id = ${created.data.interventionId}
+    `;
+    expect(beforeSync?.status).toBe("retest_pending");
+    const sync = await attribution.syncInterventionStatuses();
+    expect(sync.advanced).toBeGreaterThanOrEqual(1);
+    const [afterSync] = await sql`
+      select status from interventions where id = ${created.data.interventionId}
+    `;
+    expect(afterSync?.status).toBe("retested");
+    // Idempotent: a second sweep changes nothing.
+    const again = await attribution.syncInterventionStatuses();
+    expect(again.advanced).toBe(0);
+
+    // Terminal means terminal: no operator move leaves retested.
+    const blocked = await attribution.setInterventionStatus(user, {
+      interventionId: created.data.interventionId,
+      action: "block",
+      reason: "should be refused",
+    });
+    expect(blocked.ok).toBe(false);
+  });
+
+  it("lifecycle: block requires a reason, unblock resolves to observed state", async () => {
+    const { projectId, versionId } = await seedScoredRuns(1);
+    const created = await attribution.createIntervention(user, {
+      projectId,
+      title: "Blocked experiment",
+      shippedAt: today,
+      promptSetVersionId: versionId,
+      postOffsets: ["+6w"],
+    });
+    if (!created.ok) throw new Error(created.error.message);
+    const interventionId = created.data.interventionId;
+
+    const noReason = await attribution.setInterventionStatus(user, {
+      interventionId,
+      action: "block",
+      reason: "",
+    });
+    expect(noReason.ok).toBe(false);
+
+    const blocked = await attribution.setInterventionStatus(user, {
+      interventionId,
+      action: "block",
+      reason: "client rolled the page back",
+    });
+    expect(blocked.ok && blocked.data.status === "blocked").toBe(true);
+
+    // The sync never unblocks — that is a human move.
+    await attribution.syncInterventionStatuses();
+    const [still] = await sql`
+      select status, blocked_reason from interventions where id = ${interventionId}
+    `;
+    expect(still?.status).toBe("blocked");
+    expect(still?.blockedReason).toBe("client rolled the page back");
+
+    // Unblock resolves to what the run history says: a queued +6w job means
+    // retest_pending, and the blocked reason is cleared.
+    const unblocked = await attribution.setInterventionStatus(user, {
+      interventionId,
+      action: "unblock",
+    });
+    expect(unblocked.ok && unblocked.data.status === "retest_pending").toBe(true);
+    const [after] = await sql`
+      select blocked_reason from interventions where id = ${interventionId}
+    `;
+    expect(after?.blockedReason).toBeNull();
   });
 
   it("overlapping interventions on the same version are mutually confounded", async () => {

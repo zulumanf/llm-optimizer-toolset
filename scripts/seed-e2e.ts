@@ -128,7 +128,7 @@ async function main(): Promise<void> {
   const evidence = [
     { kind: "response", refId: response?.id as string, note: "e2e seed evidence" },
   ];
-  const suggested = unwrap(
+  unwrap(
     await tasksSvc.suggestTask(operator, {
       projectId: project.id,
       title: "E2E: publish neighborhood guide",
@@ -274,10 +274,164 @@ async function main(): Promise<void> {
     "publish audit"
   );
 
+  // Sense-check (spec 077): store one canned result AFTER publish so the
+  // panel renders concerns without any network call in e2e.
+  const { runSenseCheck } = await import("@/lib/prospects/sense-check");
+  const senseResult = await runSenseCheck(
+    operator,
+    { prospectId: prospect.prospectId },
+    async () => ({
+      text: JSON.stringify({
+        concerns: [
+          {
+            severity: "concern",
+            area: "overreach",
+            detail: "E2E seeded concern: headline overstates the table.",
+            quote: null,
+          },
+        ],
+        overallReadsFair: false,
+        confidence: 0.82,
+        confidenceNote: "E2E canned output.",
+      }),
+      tokensIn: 1,
+      tokensOut: 1,
+    })
+  );
+  if (!senseResult.ok) throw new Error(`sense-check seed: ${senseResult.error.message}`);
+
+  // Branded link (spec 076): publishAudit auto-mints it; the specs assert
+  // both the branded page and the copy control's preference for it.
+  const { auditLinkForProspect } = await import("@/lib/prospects/links");
+  const branded = await auditLinkForProspect(prospect.prospectId);
+  if (!branded) throw new Error("publish did not auto-mint a branded link");
+
+  // ------------------------------------------------- refresh queue (spec 075)
+  // A second prospect on its own prospect-kind market project: audit
+  // published from a manual run, then a scheduled run prepares exactly one
+  // pending refresh candidate for the queue page to render.
+  console.log("▸ seeding audit refresh candidate…");
+  const refreshSvc = await import("@/lib/prospects/refresh");
+  const harbor = unwrap(
+    await companySvc.upsertCompany(operator, { name: "Harbor Group" }),
+    "harbor company"
+  );
+  const marketProject = unwrap(
+    await projectSvc.createProject(operator, { name: "Prospect market: Manhattan" }),
+    "market project"
+  );
+  await sql`update projects set kind = 'prospect' where id = ${marketProject.id}`;
+  unwrap(
+    await claimsSvc.setSubjectCompany(operator, {
+      projectId: marketProject.id,
+      companyId: harbor.id,
+    }),
+    "market subject"
+  );
+  const marketSet = unwrap(
+    await setSvc.createPromptSet(operator, { projectId: marketProject.id, name: "Market set" }),
+    "market set"
+  );
+  for (const text of [
+    "best luxury team in manhattan?",
+    "which team should sell my tribeca loft?",
+  ]) {
+    unwrap(
+      await promptSvc.addPrompt(operator, {
+        setId: marketSet.id,
+        text,
+        category: "recommendation",
+      }),
+      "market prompt"
+    );
+  }
+  unwrap(await setSvc.freezePromptSet(operator, { id: marketSet.id }), "market freeze");
+  const [marketVersion] = await sql`
+    select id from prompt_set_versions where prompt_set_id = ${marketSet.id}
+  `;
+  const marketRun = unwrap(
+    await runSvc.startRun(operator, {
+      projectId: marketProject.id,
+      promptSetVersionId: marketVersion?.id as string,
+      providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }],
+      budgetUsd: 5,
+      label: "initial market benchmark",
+    }),
+    "market run"
+  );
+  await drainJobs();
+  const harborProspect = unwrap(
+    await prospectsSvc.createProspect(operator, {
+      launchId: launch.launchId,
+      businessName: "Harbor Group",
+      prospectType: "team",
+      companyId: harbor.id,
+      teamLeader: "Sam Harbor",
+    }),
+    "harbor prospect"
+  );
+  const harborLink = unwrap(
+    await prospectsSvc.linkBenchmark(operator, {
+      prospectId: harborProspect.prospectId,
+      runId: marketRun.id,
+    }),
+    "harbor benchmark"
+  );
+  unwrap(
+    await prospectsSvc.generateFindings(operator, { benchmarkId: harborLink.benchmarkId }),
+    "harbor findings"
+  );
+  const [harborFinding] = await sql`
+    select id from prospect_findings
+    where benchmark_id = ${harborLink.benchmarkId} and status = 'candidate'
+    order by rank_score desc nulls last limit 1
+  `;
+  unwrap(
+    await prospectsSvc.reviewFinding(operator, {
+      findingId: harborFinding?.id as string,
+      decision: "approved",
+      makePrimary: true,
+    }),
+    "harbor primary finding"
+  );
+  unwrap(
+    await prospectsSvc.publishAudit(operator, { prospectId: harborProspect.prospectId }),
+    "harbor audit"
+  );
+  const weeklyRun = unwrap(
+    await runSvc.startRun(
+      null,
+      {
+        projectId: marketProject.id,
+        promptSetVersionId: marketVersion?.id as string,
+        providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }],
+        budgetUsd: 5,
+        label: "weekly baseline",
+      },
+      "scheduled"
+    ),
+    "weekly run"
+  );
+  await drainJobs();
+  // The audit_refresh_v1 workflow may have prepared the candidate already
+  // (benchmark.completed delivery through the real engine — the seed drains
+  // jobs, so the automation runs for real here). Either path must end with
+  // exactly one pending candidate; the explicit call covers the case where
+  // delivery hasn't fired yet.
+  await refreshSvc.prepareAuditRefreshCandidates({ runId: weeklyRun.id });
+  const [pendingCard] = await sql`
+    select 1 from audit_refresh_candidates
+    where run_id = ${weeklyRun.id} and status = 'pending'
+  `;
+  if (!pendingCard) throw new Error("refresh seed: no pending candidate exists");
   const state = {
     clientProjectId: project.id,
     prospectId: prospect.prospectId,
     auditToken: audit.accessToken,
+    refreshProspectName: "Harbor Group",
+    auditSlug: branded.slug,
+    auditKey: branded.key,
+    reportSlug: (await sql`select report_slug from prospects where id = ${prospect.prospectId}`)[0]!.reportSlug as string,
     suggestedTaskTitle: "E2E: publish neighborhood guide",
     overdueTaskTitle: "E2E: fix entity record",
   };

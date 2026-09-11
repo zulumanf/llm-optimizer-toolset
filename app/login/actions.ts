@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { sql } from "@/db/client";
-import { getEnv } from "@/lib/env";
+import { getEnv, publicOrigin } from "@/lib/env";
 import { log } from "@/lib/logger";
 import { supabaseRouteClient } from "@/lib/supabase/server";
 
@@ -40,7 +40,9 @@ export async function requestMagicLink(formData: FormData): Promise<void> {
 
   if (known) {
     const supabase = await supabaseRouteClient();
-    const origin = (await headers()).get("origin") ?? "http://localhost:3000";
+    const origin = publicOrigin(
+      (await headers()).get("origin") ?? "http://localhost:3000"
+    );
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {

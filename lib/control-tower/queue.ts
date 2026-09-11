@@ -26,7 +26,9 @@ export type QueueSource =
   | "gap_finding"
   | "accuracy_finding"
   | "content_approval"
-  | "task_overdue";
+  | "task_overdue"
+  | "intervention_blocked"
+  | "engagement";
 
 export interface QueueItem {
   id: string;
@@ -58,6 +60,12 @@ const EFFORT_MINUTES: Record<QueueSource, number> = {
   accuracy_finding: 45,
   content_approval: 30,
   task_overdue: 30,
+  // Unblocking usually means a decision (reschedule, re-baseline, cancel),
+  // not a build — but a stalled experiment stalls the client's proof.
+  intervention_blocked: 20,
+  // A client-engagement gate (payment, approval, remeasurement, renewal) is a
+  // founder decision or a short admin act.
+  engagement: 20,
 };
 
 /** Risk exposure by exception kind — legal/privacy/publication weight. */
@@ -106,7 +114,7 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
   // One round-trip wave, not six (perf pass 2026-08-04): the sources are
   // independent reads, and the page's latency was their sum — measured
   // ~420ms warm before, dominated by serial query time.
-  const [exceptions, approvals, gaps, accuracy, content, overdueTasks, drift] =
+  const [exceptions, approvals, gaps, accuracy, content, overdueTasks, drift, blockedInterventions] =
     await Promise.all([
       sql`
         select e.id, e.project_id, e.kind, e.severity, e.summary, e.recommended_action,
@@ -170,6 +178,8 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
         join projects p on p.id = t.project_id
         where t.status in ('approved', 'in_progress')
           and t.due_date is not null and t.due_date < current_date
+          -- A blocked task waits on someone by design; it is not late (spec 131).
+          and t.blocked_reason is null
           ${projectFilter ? sql`and t.project_id = ${projectFilter}` : sql``}
         order by t.due_date asc
         limit ${limit}
@@ -181,6 +191,18 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
         from drift_signals d
         where d.status = 'open'
         order by d.detected_at desc
+        limit ${limit}
+      `,
+      // Blocked interventions (spec 062): a stalled retest is a stalled
+      // client proof — invisible until the lifecycle made it representable.
+      sql`
+        select i.id, i.project_id, i.title, i.blocked_reason,
+          i.status_changed_at, p.name as project_name
+        from interventions i
+        join projects p on p.id = i.project_id
+        where i.status = 'blocked' and i.archived_at is null
+          ${projectFilter ? sql`and i.project_id = ${projectFilter}` : sql``}
+        order by i.status_changed_at asc
         limit ${limit}
       `,
     ]);
@@ -385,6 +407,71 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
         effortMinutes: EFFORT_MINUTES.task_overdue,
       }),
     });
+  }
+
+  // 7. Blocked interventions — a stalled retest, invisible before spec 062 --
+  for (const row of blockedInterventions) {
+    const projectId = row.projectId as string;
+    items.push({
+      id: row.id as string,
+      source: "intervention_blocked",
+      kind: "intervention",
+      projectId,
+      projectName: row.projectName as string,
+      summary: `Blocked: "${row.title}" — ${row.blockedReason as string}`,
+      recommendedAction:
+        "Resolve the blocker and unblock, or cancel the measurement explicitly.",
+      severity: "high",
+      dueAt: null,
+      createdAt: row.statusChangedAt as Date,
+      href: `/projects/${projectId}/interventions/${row.id}`,
+      priority: computePriority({
+        severity: "high",
+        hoursUntilDue: null,
+        commercialValue: clientValue.get(projectId) ?? 0.3,
+        // A blocked retest holds up the verdict every downstream narrative
+        // depends on.
+        dependencyImpact: 0.7,
+        risk: 0.4,
+        effortMinutes: EFFORT_MINUTES.intervention_blocked,
+      }),
+    });
+  }
+
+  // 8. Client delivery (spec 131/132): the portfolio scan is the ONE source of
+  // client items — deterministic alerts ranked safety → client waiting on us →
+  // measurement → approvals/communication → routine. One batched read for the
+  // whole portfolio; no per-client queries here.
+  const { portfolioScan } = await import("@/lib/engagements/portfolio");
+  const scan = await portfolioScan(new Date(), { includeRecentlyClosed: true, cache: true });
+  const RANK_SEVERITY: Record<number, RiskLevel> = { 0: "critical", 1: "high", 2: "high", 3: "medium", 4: "low" };
+  for (const c of scan.clients) {
+    if (projectFilter && c.overview.engagement.projectId !== projectFilter) continue;
+    for (const a of c.alerts) {
+      const severity: RiskLevel = a.severity === "P0" ? "critical" : RANK_SEVERITY[a.rank] ?? "medium";
+      items.push({
+        id: `${c.overview.engagement.id}:${a.code}`,
+        source: "engagement",
+        kind: a.code.toLowerCase(),
+        projectId: c.overview.engagement.projectId,
+        projectName: c.clientName,
+        summary: a.message,
+        recommendedAction: a.nextAction,
+        severity,
+        dueAt: null,
+        createdAt: scan.scannedAt,
+        href: `/projects/${c.overview.engagement.projectId}/engagement`,
+        priority: computePriority({
+          severity,
+          hoursUntilDue: null,
+          commercialValue: clientValue.get(c.overview.engagement.projectId) ?? 0.8,
+          // A client waiting on us outranks routine internal work by construction.
+          dependencyImpact: a.rank === 0 ? 1 : a.rank === 1 ? 0.9 : a.rank === 2 ? 0.7 : a.rank === 3 ? 0.5 : 0.3,
+          risk: a.severity === "P0" ? 1 : 0.4,
+          effortMinutes: EFFORT_MINUTES.engagement,
+        }),
+      });
+    }
   }
 
   return items.sort((a, b) => b.priority.total - a.priority.total).slice(0, limit);

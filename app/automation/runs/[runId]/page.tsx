@@ -7,6 +7,7 @@
  * output of a test run; "here is exactly what it would have sent, and here is
  * where it stopped" is.
  */
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sql } from "@/db/client";
@@ -99,14 +100,18 @@ export default async function RunDetailPage({
   const pendingApprovals = approvals.filter((a) => a.decision === null);
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <div className="mb-1 flex flex-wrap items-baseline gap-2">
-        <h1 className="text-2xl font-semibold font-mono">{run.definitionKey}</h1>
-        <Badge variant="outline">v{run.workflowVersion}</Badge>
-        <StateBadge state={run.state} />
-        {run.mode === "test" ? <Badge variant="outline">test run</Badge> : null}
-      </div>
-      <p className="font-mono text-xs text-muted-foreground">{run.id}</p>
+    <PageShell>
+      <PageHeader
+        title={run.definitionKey}
+        badge={
+          <>
+            <Badge variant="outline">v{run.workflowVersion}</Badge>
+            <StateBadge state={run.state} />
+            {run.mode === "test" ? <Badge variant="outline">test run</Badge> : null}
+          </>
+        }
+        description={<span className="font-mono text-xs">{run.id}</span>}
+      />
 
       {run.mode === "test" ? (
         <div className="mt-3 rounded-lg border border-dashed p-3 text-sm">
@@ -120,7 +125,7 @@ export default async function RunDetailPage({
       ) : null}
 
       <div className="mt-4">
-        <AutomationNav current="runs" />
+        <AutomationNav />
       </div>
 
       <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -437,6 +442,6 @@ export default async function RunDetailPage({
           This workflow
         </Link>
       </p>
-    </div>
+    </PageShell>
   );
 }

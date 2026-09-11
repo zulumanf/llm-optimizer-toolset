@@ -5,6 +5,7 @@
  * Validation runs on render, so a template that would fail at 3am fails visibly
  * here instead.
  */
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { AUTOMATION_WORKFLOWS } from "@/lib/automation/workflows";
 import { validateAutomationDefinition } from "@/lib/automation/runtime";
@@ -45,15 +46,19 @@ export default async function AutomationWorkflowsPage() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <h1 className="text-2xl font-semibold">Workflow templates</h1>
-      <p className="mt-1 mb-4 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        title="Workflow templates"
+        description={
+          <>
         {AUTOMATION_WORKFLOWS.length} versioned definitions. A run points at the
         version it executed, so a finished run stays reproducible after the
         template changes.
-      </p>
+          </>
+        }
+      />
 
-      <AutomationNav current="workflows" />
+      <AutomationNav />
 
       {invalid.length > 0 ? (
         <div className="mb-6 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
@@ -186,6 +191,6 @@ export default async function AutomationWorkflowsPage() {
         human had to act on a node. Together they say whether the automation is
         actually helping — a run count on its own does not.
       </p>
-    </div>
+    </PageShell>
   );
 }

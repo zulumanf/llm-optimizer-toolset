@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
@@ -13,7 +14,26 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SuggestTasksButton } from "@/components/attribution/suggest-tasks-button";
+import {
+  InterventionStatusBadge,
+  InterventionStatusControls,
+} from "@/components/attribution/intervention-status";
+import type { InterventionStatus } from "@/lib/attribution/lifecycle";
+import type { ComparabilityGrade } from "@/lib/attribution/comparability";
 import { formatDate } from "@/lib/format";
+
+function comparabilityBadge(grade: ComparabilityGrade) {
+  switch (grade) {
+    case "high":
+      return <Badge>high comparability</Badge>;
+    case "medium":
+      return <Badge variant="outline" className="text-warning">medium comparability</Badge>;
+    case "low":
+      return <Badge variant="outline" className="text-warning">low comparability</Badge>;
+    case "not_comparable":
+      return <Badge variant="destructive">not comparable</Badge>;
+  }
+}
 
 function verdictBadge(verdict: string | null) {
   switch (verdict) {
@@ -65,52 +85,60 @@ export default async function InterventionPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link
-          href={`/projects/${projectId}/interventions`}
-          className="hover:text-foreground"
-        >
-          Interventions
-        </Link>
-        {" / "}{intervention.title as string}
-      </nav>
-
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{intervention.title as string}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        crumbs={[
+          {
+            label: "Interventions",
+            href: `/projects/${projectId}/interventions`,
+          },
+          { label: intervention.title as string },
+        ]}
+        title={intervention.title as string}
+        description={
+          <>
             shipped {intervention.shipped as string} · target{" "}
             {intervention.setName as string} v{intervention.version as number}
             {(intervention.urls as string[]).length > 0 &&
               ` · ${(intervention.urls as string[]).join(", ")}`}
-          </p>
-          {intervention.hypothesis != null && (
-            <p className="mt-1 text-sm italic text-muted-foreground">
-              Hypothesis: {intervention.hypothesis as string}
-            </p>
-          )}
-          <div className="mt-2 flex flex-wrap gap-2">
-            {intervention.baselineWeak && (
-              <Badge variant="outline" className="text-warning">
-                weak baseline — verdicts are indicative only
-              </Badge>
+            {intervention.hypothesis != null && (
+              <span className="mt-1 block italic">
+                Hypothesis: {intervention.hypothesis as string}
+              </span>
             )}
-            {view.instrumentChanged && (
-              <Badge variant="outline" className="text-warning">
-                instrument changed — provider config drifted between baseline and post
-              </Badge>
-            )}
-            {view.confoundedWith.map((other) => (
-              <Badge key={other.id} variant="destructive">
-                confounded with &ldquo;{other.title}&rdquo;
-              </Badge>
-            ))}
-          </div>
-        </div>
-        <SuggestTasksButton
+          </>
+        }
+        actions={
+          <SuggestTasksButton
+            interventionId={interventionId}
+            hasNotable={view.verdicts.some((v) => v.verdict === "notable")}
+          />
+        }
+      />
+
+      <div className="mb-4 -mt-2 flex flex-wrap items-center gap-2">
+        <InterventionStatusBadge
+          status={intervention.status as InterventionStatus}
+          blockedReason={intervention.blockedReason as string | null}
+        />
+        {intervention.status === "blocked" && (
+          <span className="text-sm text-destructive">
+            {intervention.blockedReason as string}
+          </span>
+        )}
+        {intervention.baselineWeak && (
+          <Badge variant="outline" className="text-warning">
+            weak baseline — verdicts are indicative only
+          </Badge>
+        )}
+        {view.confoundedWith.map((other) => (
+          <Badge key={other.id} variant="destructive">
+            confounded with &ldquo;{other.title}&rdquo;
+          </Badge>
+        ))}
+        <InterventionStatusControls
           interventionId={interventionId}
-          hasNotable={view.verdicts.some((v) => v.verdict === "notable")}
+          status={intervention.status as InterventionStatus}
         />
       </div>
 
@@ -167,6 +195,38 @@ export default async function InterventionPage({
         </div>
       </section>
 
+      {view.comparability.length > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">
+            Comparability{" "}
+            <span className="text-sm font-normal text-muted-foreground">
+              (instrument drift between baseline and each post run — graded, with
+              reasons)
+            </span>
+          </h2>
+          <ul className="space-y-2">
+            {view.comparability.map((c) => (
+              <li
+                key={c.runId}
+                className="flex flex-wrap items-baseline gap-2 rounded-md border p-3"
+              >
+                <Badge variant="secondary">post {c.offsetLabel ?? "run"}</Badge>
+                {comparabilityBadge(c.grade)}
+                {c.reasons.length > 0 ? (
+                  <span className="text-sm text-muted-foreground">
+                    {c.reasons.join(" · ")}
+                  </span>
+                ) : (
+                  <span className="text-sm text-muted-foreground">
+                    same instrument, same versions, two-run baseline
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section>
         <h2 className="mb-2 text-lg font-medium">
           Verdicts{" "}
@@ -212,6 +272,6 @@ export default async function InterventionPage({
           </div>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }

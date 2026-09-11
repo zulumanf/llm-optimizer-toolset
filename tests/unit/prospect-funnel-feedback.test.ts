@@ -105,11 +105,12 @@ describe("scoreOutcomeReport", () => {
 });
 
 describe("outreach channels", () => {
-  it("ships manual and mock; manual never transmits; unknown refused", () => {
-    expect(OUTREACH_SEND_CHANNELS.sort()).toEqual(["manual", "mock"]);
+  it("ships manual, mock, and gmail (spec 091); manual never transmits; unknown refused", () => {
+    expect(OUTREACH_SEND_CHANNELS.sort()).toEqual(["gmail", "manual", "mock"]);
     expect(getEmailChannel("manual").transmits).toBe(false);
     expect(getEmailChannel("mock").transmits).toBe(true);
-    expect(() => getEmailChannel("gmail")).toThrow(/Unknown outreach channel/);
+    expect(getEmailChannel("gmail").transmits).toBe(true);
+    expect(() => getEmailChannel("sendgrid")).toThrow(/Unknown outreach channel/);
   });
 
   it("opt-out helpers: footer carries the instruction AND the postal address (spec 052)", () => {

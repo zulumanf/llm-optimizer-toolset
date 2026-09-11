@@ -170,6 +170,9 @@ export const PACKET_TTL_HOURS = 24;
 /** Pages compiled concurrently in one build. Bounded because each one runs
  * several queries and the box also serves the app. */
 export const BUILD_CONCURRENCY = 4;
+/** NOT ENFORCED YET (cleanup audit 2026-08-18): the build planner does not
+ * read this — retries are bounded only by the job queue's JOB_MAX_ATTEMPTS.
+ * Wire it into compileAffected or delete it deliberately. */
 export const BUILD_MAX_ATTEMPTS = 3;
 
 /** Days of canonical change summarised by the `recent-changes` hot file. */

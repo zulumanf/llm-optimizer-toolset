@@ -24,12 +24,22 @@ import {
 interface Props {
   reportId: string;
   pendingReview: number;
+  /** QA preflight (spec 065): warnings publish only when acknowledged;
+   * blockers disable publish entirely. */
+  preflightWarnings: string[];
+  preflightBlockers: string[];
 }
 
-export function PublishControls({ reportId, pendingReview }: Props) {
+export function PublishControls({
+  reportId,
+  pendingReview,
+  preflightWarnings,
+  preflightBlockers,
+}: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [warningsAcknowledged, setWarningsAcknowledged] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const act = (
@@ -84,6 +94,35 @@ export function PublishControls({ reportId, pendingReview }: Props) {
               becomes immutable at the database level.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {preflightBlockers.length > 0 && (
+            <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
+              <p className="font-medium">QA preflight blocks publishing:</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                {preflightBlockers.map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {preflightWarnings.length > 0 && (
+            <div className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 p-3 text-sm">
+              <input
+                type="checkbox"
+                id="ack-preflight"
+                checked={warningsAcknowledged}
+                onChange={(e) => setWarningsAcknowledged(e.target.checked)}
+                className="mt-0.5 size-4"
+              />
+              <Label htmlFor="ack-preflight" className="font-normal">
+                I acknowledge {preflightWarnings.length} QA warning
+                {preflightWarnings.length === 1 ? "" : "s"} (recorded in the
+                audit log):
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {preflightWarnings.join(" · ")}
+                </span>
+              </Label>
+            </div>
+          )}
           {pendingReview > 0 && (
             <div className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 p-3 text-sm">
               <input
@@ -105,13 +144,19 @@ export function PublishControls({ reportId, pendingReview }: Props) {
               Cancel
             </Button>
             <Button
-              disabled={pending || (pendingReview > 0 && !acknowledged)}
+              disabled={
+                pending ||
+                preflightBlockers.length > 0 ||
+                (pendingReview > 0 && !acknowledged) ||
+                (preflightWarnings.length > 0 && !warningsAcknowledged)
+              }
               onClick={() =>
                 act(
                   () =>
                     publishReport({
                       reportId,
                       acknowledgePendingReviews: acknowledged,
+                      acknowledgeWarnings: warningsAcknowledged,
                     }),
                   "Published — the report is now immutable."
                 )

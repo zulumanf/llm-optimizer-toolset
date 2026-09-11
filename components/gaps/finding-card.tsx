@@ -23,8 +23,20 @@ interface Props {
     status: string;
     runLabel: string;
     createdAt: string;
+    /** Epistemics (spec 064) — null on pre-064 detector-v1 rows. */
+    classification: string | null;
+    confidence: number | null;
+    evidenceCount: number;
   };
 }
+
+/** Sentence-case label for the stored classification enum. */
+const CLASSIFICATION_LABELS: Record<string, string> = {
+  observation: "observation",
+  supported_finding: "supported finding",
+  working_hypothesis: "working hypothesis",
+  unknown: "unknown",
+};
 
 export function FindingCard({ finding }: Props) {
   const router = useRouter();
@@ -50,7 +62,25 @@ export function FindingCard({ finding }: Props) {
             <Badge variant="outline">{finding.promptCategory}</Badge>
           )}
           <Badge variant="secondary">score {finding.opportunityScore.toFixed(0)}</Badge>
+          {finding.classification ? (
+            <Badge variant="outline">
+              {CLASSIFICATION_LABELS[finding.classification] ?? finding.classification}
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-muted-foreground">
+              not classified
+            </Badge>
+          )}
+          {finding.confidence != null && (
+            <Badge variant="outline" className="tabular-nums">
+              confidence {finding.confidence.toFixed(1)}
+            </Badge>
+          )}
           <span className="ml-auto text-xs text-muted-foreground">
+            {finding.evidenceCount > 0 &&
+              `${finding.evidenceCount} evidence ${
+                finding.evidenceCount === 1 ? "ref" : "refs"
+              } · `}
             {finding.runLabel} · {finding.createdAt}
           </span>
         </div>

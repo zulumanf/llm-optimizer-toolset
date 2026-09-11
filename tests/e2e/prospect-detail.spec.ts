@@ -19,10 +19,18 @@ test("published audit shows copy, expire, and revoke controls", async ({ page })
   await page.goto(path);
   await expect(page.getByRole("button", { name: /copy link/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /expire link/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /revoke/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /revoke access/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^revoke$/i })).toBeVisible();
 });
 
-test("copy link puts the APP_URL-based audit link on the clipboard", async ({
+test("sense-check panel renders the stored concern (spec 077)", async ({ page }) => {
+  await page.goto(path);
+  await expect(page.getByText(/sense-check — a second read/i)).toBeVisible();
+  await expect(page.getByText("E2E seeded concern: headline overstates the table.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /re-run/i })).toBeVisible();
+});
+
+test("copy link prefers the branded audit URL (spec 076)", async ({
   page,
   context,
 }) => {
@@ -30,20 +38,30 @@ test("copy link puts the APP_URL-based audit link on the clipboard", async ({
   await page.goto(path);
   await page.getByRole("button", { name: /copy link/i }).click();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
-  expect(copied).toBe(`http://localhost:3100/audit/${state.auditToken}`);
+  // Spec 134: the copied link is the private-report invitation.
+  expect(copied).toBe(
+    `http://localhost:3100/report/${state.reportSlug}/${state.auditKey}`
+  );
 });
 
 test("generate-draft opens the recipient dialog when contacts exist, or generates directly", async ({
   page,
 }) => {
   await page.goto(path);
-  const generate = page.getByRole("button", { name: /generate reply-first draft/i });
+  // The button dropped "reply-first" when it learned the competitive-mismatch
+  // template (spec 124); with no seeded contacts there is exactly one.
+  const generate = page.getByRole("button", { name: /^generate draft$/i });
   await expect(generate).toBeVisible();
   await generate.click();
   // Seed has no contacts → the button generates directly and toasts.
   await expect(page.getByText(/draft v\d+ generated/i)).toBeVisible({ timeout: 15_000 });
   // The draft carries the audit link (plan 3.1) since APP_URL is set.
-  await expect(page.getByText(`http://localhost:3100/audit/${state.auditToken}`)).toBeVisible();
+  // Drafts embed the branded URL now (spec 076).
+  await expect(
+    page.getByText(
+      `http://localhost:3100/audit/${state.auditSlug}/${state.auditKey}`
+    )
+  ).toBeVisible();
 });
 
 test("editing a draft saves a new version through the gated pipeline (plan 3.2)", async ({

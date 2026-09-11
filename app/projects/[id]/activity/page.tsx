@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { History } from "lucide-react";
 import { getProject } from "@/db/projects";
@@ -39,26 +39,19 @@ export default async function ProjectActivityPage({
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <nav className="mb-3 text-sm text-muted-foreground">
-        <Link href="/projects" className="hover:text-foreground">Projects</Link>
-        {" / "}
-        <Link href={`/projects/${id}`} className="hover:text-foreground">
-          {project.name}
-        </Link>
-        {" / "}Activity
-      </nav>
-
-      <div className="mb-4">
-        <h1 className="text-2xl font-semibold">Activity</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+    <PageShell>
+      <PageHeader
+        crumbs={[{ label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${id}` }, { label: "Activity" }]}
+        title="Activity"
+        description={
+          <>
           Everything recorded for this client, newest first — the answer to
           &quot;what did we do in March?&quot; without reconstructing it from
           memory. Rows older than Aug 2026 were labeled retroactively; a few
           platform-level actions may be absent.
-        </p>
-      </div>
-
+          </>
+        }
+      />
       {rows.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-12 text-center">
           <History className="size-8 text-muted-foreground" />
@@ -99,6 +92,6 @@ export default async function ProjectActivityPage({
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

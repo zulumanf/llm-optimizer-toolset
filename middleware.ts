@@ -19,6 +19,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+<<<<<<< HEAD
 import { devAuthRefusalReason } from "@/lib/env";
 import { MARKETING_PREFIXES, marketingRewriteTarget } from "@/lib/marketing/constants";
 
@@ -34,6 +35,22 @@ const PUBLIC_PREFIXES = [
   "/audit",
   ...MARKETING_PREFIXES,
 ];
+=======
+import { devAuthRefusalReason, publicOrigin } from "@/lib/env";
+
+/** Paths reachable without a session. `/audit` is the prospect audit page —
+ * its own security is the high-entropy token (spec 032). */
+// `/api/open` is the email open-tracking pixel (spec 092): fetched by mail
+// clients and image proxies, never by a session — the auth redirect was
+// silently eating every open event (found live: zero opens ever recorded
+// while the endpoint 307'd to /login).
+// `/mcp`, `/healthz`, `/.well-known` are the remote MCP surface (spec 126):
+// bearer-token machine clients, never a browser session — without these the
+// auth redirect would 307 Grok's JSON-RPC to /login (the /api/open trap).
+// `/report` is the private-report surface (spec 134): invitation exchange
+// and session-gated clean URLs — its own security is the report session.
+const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/api/open", "/api/audit-signal", "/audit", "/report/", "/mcp", "/healthz", "/.well-known"];
+>>>>>>> origin/main
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   // Apex-host rewrite (spec 061): the marketing domain's `/` is the homepage;
@@ -84,7 +101,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const isPublic = PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix));
 
   if (!data.user && !isPublic) {
-    const login = new URL("/login", request.url);
+    const login = new URL("/login", publicOrigin(request.nextUrl.origin));
     if (path !== "/") login.searchParams.set("next", path);
     return NextResponse.redirect(login);
   }

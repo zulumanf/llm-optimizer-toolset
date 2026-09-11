@@ -108,6 +108,18 @@ export async function listActiveProjects(
   `;
 }
 
+/** The dogfood project (migration 084): we measure ourselves with the same
+ * pipeline, on a project every client/portfolio surface excludes by kind. */
+export async function getInternalProject(): Promise<Project | null> {
+  const rows = await sql<Project[]>`
+    select id, name, description, status, created_at, archived_at
+    from projects
+    where kind = 'internal' and status = 'active'
+    order by created_at asc limit 1
+  `;
+  return rows[0] ?? null;
+}
+
 export async function getProject(id: string): Promise<ProjectWithCounts | null> {
   const rows = await sql<ProjectWithCounts[]>`
     select p.id, p.name, p.description, p.status, p.created_at, p.archived_at,

@@ -1,140 +1,96 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "@/lib/auth";
-import { fail, type ActionResult } from "@/lib/actions/result";
+import { makeActionRunner } from "@/lib/actions/run";
+import type { ActionResult } from "@/lib/actions/result";
 import type { Project } from "@/db/projects";
 import * as service from "@/lib/projects/service";
 
-async function withUserAndRevalidate(
-  fn: (user: Awaited<ReturnType<typeof getCurrentUser>>) => Promise<ActionResult<Project>>
-): Promise<ActionResult<Project>> {
-  try {
-    const user = await getCurrentUser();
-    const result = await fn(user);
-    if (result.ok) {
-      revalidatePath("/projects");
-      revalidatePath(`/projects/${result.data.id}`);
-    }
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
-}
+/**
+ * Thin wrappers (docs/11). The project CRUD actions revalidate a
+ * result-derived path (the created/updated project's own page), which is
+ * why this file carried a private copy of the runner until the runner
+ * learned dynamic targets (cleanup 2026-08-18).
+ */
+const runProject = makeActionRunner("/projects", (data) => [
+  `/projects/${(data as Project).id}`,
+]);
+const runPortfolio = makeActionRunner("/projects", (data) => [
+  `/projects/${(data as { projectId: string }).projectId}/settings`,
+]);
+const runLayout = makeActionRunner(["/projects", "layout"]);
 
 export async function createProject(input: unknown): Promise<ActionResult<Project>> {
-  return withUserAndRevalidate((user) => service.createProject(user, input));
+  return runProject((user) => service.createProject(user, input));
 }
 
 export async function updateProject(input: unknown): Promise<ActionResult<Project>> {
-  return withUserAndRevalidate((user) => service.updateProject(user, input));
+  return runProject((user) => service.updateProject(user, input));
 }
 
 export async function archiveProject(input: unknown): Promise<ActionResult<Project>> {
-  return withUserAndRevalidate((user) => service.archiveProject(user, input));
+  return runProject((user) => service.archiveProject(user, input));
 }
 
 export async function unarchiveProject(input: unknown): Promise<ActionResult<Project>> {
-  return withUserAndRevalidate((user) => service.unarchiveProject(user, input));
+  return runProject((user) => service.unarchiveProject(user, input));
 }
 
 export async function updatePortfolioFields(
   input: unknown
 ): Promise<ActionResult<{ projectId: string }>> {
-  try {
-    const user = await getCurrentUser();
-    const result = await service.updatePortfolioFields(user, input);
-    if (result.ok) {
-      revalidatePath("/projects");
-      revalidatePath(`/projects/${result.data.projectId}/settings`);
-    }
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
+  return runPortfolio((user) => service.updatePortfolioFields(user, input));
 }
 
 export async function revokeClientPortalAccess(
   input: unknown
 ): Promise<ActionResult<{ revoked: boolean }>> {
-  try {
-    const user = await getCurrentUser();
+  return runLayout(async (user) => {
     const { revokeClientAccess } = await import("@/lib/portal/invite");
-    const result = await revokeClientAccess(user, input);
-    if (result.ok) revalidatePath("/projects", "layout");
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
+    return revokeClientAccess(user, input);
+  });
 }
 
 export async function setClientUserActive(
   input: unknown
 ): Promise<ActionResult<{ userId: string; active: boolean }>> {
-  try {
-    const user = await getCurrentUser();
+  return runLayout(async (user) => {
     const { setUserActive } = await import("@/lib/portal/invite");
-    const result = await setUserActive(user, input);
-    if (result.ok) revalidatePath("/projects", "layout");
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
+    return setUserActive(user, input);
+  });
 }
 
 export async function inviteClient(
   input: unknown
 ): Promise<ActionResult<{ userId: string; existing: boolean }>> {
-  try {
-    const user = await getCurrentUser();
+  return runLayout(async (user) => {
     const { inviteClientViewer } = await import("@/lib/portal/invite");
-    const result = await inviteClientViewer(user, input);
-    if (result.ok) revalidatePath("/projects", "layout");
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
+    return inviteClientViewer(user, input);
+  });
 }
 
 export async function updateBaselineSettings(
   input: unknown
 ): Promise<ActionResult<{ projectId: string }>> {
-  try {
-    const user = await getCurrentUser();
-    const result = await (
-      await import("@/lib/projects/baseline")
-    ).updateBaselineSettings(user, input);
-    if (result.ok) revalidatePath("/projects", "layout");
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
+  return runLayout(async (user) => {
+    const { updateBaselineSettings: update } = await import("@/lib/projects/baseline");
+    return update(user, input);
+  });
 }
 
 export async function proposeEntityRelationship(
   input: unknown
 ): Promise<ActionResult<{ relationshipId: string }>> {
-  try {
-    const user = await getCurrentUser();
+  return runLayout(async (user) => {
     const { proposeRelationship } = await import("@/lib/knowledge/entities/service");
-    const result = await proposeRelationship(user, input);
-    if (result.ok) revalidatePath("/projects", "layout");
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
+    return proposeRelationship(user, input);
+  });
 }
 
 export async function reviewEntityRelationship(
   input: unknown
 ): Promise<ActionResult<{ relationshipId: string; status: string }>> {
-  try {
-    const user = await getCurrentUser();
+  return runLayout(async (user) => {
     const { reviewRelationship } = await import("@/lib/knowledge/entities/service");
-    const result = await reviewRelationship(user, input);
-    if (result.ok) revalidatePath("/projects", "layout");
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
+    return reviewRelationship(user, input);
+  });
 }

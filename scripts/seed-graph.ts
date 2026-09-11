@@ -429,7 +429,7 @@ async function seedMeasurement(projectId: string, client: SeedClient): Promise<v
   console.log(`  benchmark workflow → ${state?.state}`);
 
   // A content asset waiting on a human, plus its approval-gated workflow.
-  const [asset] = await sql`
+  await sql`
     insert into content_assets (project_id, asset_type, title, status, created_by)
     values (${projectId}, 'comparison_page',
       ${`Comparing brokerages for relocating families — ${client.name}`},

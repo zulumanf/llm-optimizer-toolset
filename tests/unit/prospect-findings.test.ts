@@ -82,6 +82,28 @@ describe("generateFindingCandidates", () => {
     }
   });
 
+  it("v2 precision (spec 094): no asserted benchmark, no 'the team', counts as the unit", () => {
+    const candidates = generateFindingCandidates(baseInput());
+    for (const c of candidates) {
+      const text = `${c.title} ${c.explanation}`;
+      // The rank-predicts-visibility overreach the sense-check flagged on
+      // all 14 live audits.
+      expect(text).not.toMatch(/underrepresented relative to/i);
+      expect(text).not.toMatch(/weaker than .* documented market position/i);
+      // Entity-neutral language: the prospect may be an individual.
+      expect(text).not.toMatch(/\bthe team\b/i);
+    }
+    // Counts are the primary unit: 0.08 × 40 = "3 of 40", never "8%".
+    const gap = candidates.find((c) => c.kind === "authority_visibility_gap")!;
+    expect(gap.explanation).toContain("3 of 40");
+    const contrast = candidates.find((c) => c.kind === "competitor_contrast")!;
+    expect(contrast.explanation).toContain("recommended in 22");
+    expect(contrast.explanation).toContain("recommended in 3");
+    const absence = candidates.find((c) => c.kind === "absence")!;
+    expect(absence.explanation).toContain("4 of 40");
+    expect(absence.explanation).toContain("(10%)");
+  });
+
   it("is deterministic and ranked", () => {
     const a = generateFindingCandidates(baseInput());
     const b = generateFindingCandidates(baseInput());

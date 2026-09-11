@@ -332,7 +332,10 @@ export async function listAgreements(): Promise<AgreementRow[]> {
   return rows as unknown as AgreementRow[];
 }
 
-async function loadAgreementInputs(): Promise<AgreementInput[]> {
+/** Exported (simplify pass 2026-08-14): the prospects service's stage gate
+ * and send-time re-check each carried a verbatim copy of this mapping —
+ * three encodings of AgreementInput was two too many. */
+export async function loadAgreementInputs(): Promise<AgreementInput[]> {
   const rows = await listAgreements();
   return rows.map((row) => ({
     agreementId: row.id,

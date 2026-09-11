@@ -26,6 +26,7 @@ import {
   type OutreachClaim,
 } from "@/lib/outreach/sequences";
 import { runModeFor } from "@/lib/automation/testmode";
+import { prepareAuditRefreshCandidates } from "@/lib/prospects/refresh";
 import type { NodeHandler, NodeResult } from "@/lib/workflow/types";
 
 // ------------------------------------------------------------------ evidence
@@ -265,6 +266,41 @@ const buildProspectEvidence: NodeHandler = async (ctx): Promise<NodeResult> => {
         sampleSize === 0
           ? "No measurement observations available; any outreach claim must cite a public page directly."
           : `${sampleSize} measurement observation(s) available.`,
+    },
+  };
+};
+
+// -------------------------------------------------------------- audit refresh
+
+/**
+ * `dom.prepare_audit_refresh` — spec 075. Prepares refresh candidates for
+ * every published prospect audit fed by the run in the trigger payload.
+ * Preparation only: publishing stays behind `approveAuditRefresh`, a staff
+ * click in the refresh queue. Safe-stops (rather than failing) on runs the
+ * queue does not consume — manual runs, non-prospect projects.
+ */
+const prepareAuditRefresh: NodeHandler = async (ctx): Promise<NodeResult> => {
+  const runId = await resolveString(ctx, String(ctx.config.runIdPath ?? "payload.runId"));
+  if (!runId) {
+    return { outcome: "failed_terminal", error: "no runId in the trigger payload" };
+  }
+  const result = await prepareAuditRefreshCandidates({
+    runId,
+    force: ctx.config.force === true,
+  });
+  if (result.notApplicable) {
+    return {
+      outcome: "safe_stop",
+      reason: `no refresh candidates prepared: ${result.notApplicable}`,
+    };
+  }
+  return {
+    outcome: "succeeded",
+    output: {
+      runId: result.runId,
+      prepared: result.prepared,
+      needsAttention: result.needsAttention,
+      skipped: result.skipped,
     },
   };
 };
@@ -910,6 +946,7 @@ const hashMessage: NodeHandler = async (ctx): Promise<NodeResult> => {
 };
 
 export const domainNodes: Record<string, NodeHandler> = {
+  "dom.prepare_audit_refresh": prepareAuditRefresh,
   "dom.build_evidence_packet": buildPacket,
   "dom.build_prospect_evidence": buildProspectEvidence,
   "dom.start_outreach_sequence": startSequence,

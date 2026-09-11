@@ -1,45 +1,30 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { listWorkflowRuns } from "@/db/control-tower";
 import { WORKFLOW_TEMPLATES } from "@/lib/workflow/templates";
 import { validateGraph } from "@/lib/workflow/graph";
-import { Badge } from "@/components/ui/badge";
+import { StateBadge } from "@/components/automation/state-badge";
 
 export const dynamic = "force-dynamic";
 
-const STATE_VARIANT: Record<string, "default" | "destructive" | "outline" | "secondary"> = {
-  running: "default",
-  initializing: "default",
-  queued: "outline",
-  waiting_for_approval: "secondary",
-  waiting_for_dependency: "secondary",
-  waiting_for_external_system: "secondary",
-  completed: "outline",
-  partially_completed: "secondary",
-  failed: "destructive",
-  cancelled: "outline",
-  safely_stopped: "secondary",
-  timed_out: "destructive",
-};
 
 export default async function WorkflowsPage() {
   const runs = await listWorkflowRuns({ limit: 50 });
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="mb-1 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Workflows</h1>
-        <Link
-          href="/control-tower"
-          className="text-sm text-muted-foreground underline hover:text-foreground"
-        >
-          Control tower
-        </Link>
-      </div>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Every process is a versioned directed graph. A run points at the version
-        it executed, so a finished run stays reproducible even after the
-        template changes.
-      </p>
+    <PageShell>
+      <PageHeader
+        title="Workflows"
+        description="Every process is a versioned directed graph. A run points at the version it executed, so a finished run stays reproducible even after the template changes."
+        actions={
+          <Link
+            href="/control-tower"
+            className="text-sm text-muted-foreground underline hover:text-foreground"
+          >
+            Control tower
+          </Link>
+        }
+      />
 
       <section className="mb-8">
         <h2 className="mb-2 text-lg font-medium">Definitions</h2>
@@ -117,9 +102,7 @@ export default async function WorkflowsPage() {
                       {run.projectName ?? "—"}
                     </td>
                     <td className="p-2">
-                      <Badge variant={STATE_VARIANT[run.state] ?? "outline"}>
-                        {run.state.replace(/_/g, " ")}
-                      </Badge>
+                      <StateBadge state={run.state} />
                       {run.stopReason && (
                         <p className="mt-0.5 text-xs text-muted-foreground">{run.stopReason}</p>
                       )}
@@ -141,6 +124,6 @@ export default async function WorkflowsPage() {
           </div>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }

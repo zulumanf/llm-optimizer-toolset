@@ -1,3 +1,4 @@
+import { PageHeader, PageShell } from "@/components/layout/page";
 import Link from "next/link";
 import { CheckCircle2, AlertTriangle } from "lucide-react";
 import {
@@ -18,15 +19,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PriorityBreakdownDetails } from "@/components/control-tower/priority-breakdown";
 import { ResolveException } from "@/components/control-tower/resolve-exception";
 import { HealthComponents } from "@/components/control-tower/health-components";
+import { SEVERITY_VARIANT as SHARED_SEVERITY_VARIANT, type BadgeVariant } from "@/lib/ui/variants";
 
 export const dynamic = "force-dynamic";
 
-const SEVERITY_VARIANT = {
-  critical: "destructive",
-  high: "destructive",
-  medium: "default",
+// Registry values except low: this page has always rendered low-severity
+// items as outline (quieter than the shared secondary) — preserved.
+const SEVERITY_VARIANT: Record<string, BadgeVariant> = {
+  ...SHARED_SEVERITY_VARIANT,
   low: "outline",
-} as const;
+};
 
 const SOURCE_LABEL: Record<string, string> = {
   workflow_exception: "Exception",
@@ -83,21 +85,25 @@ export default async function ControlTowerPage() {
     ]);
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="mb-1 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Control tower</h1>
-        <Link
-          href="/workflows"
-          className="text-sm text-muted-foreground underline hover:text-foreground"
-        >
-          Workflow runs
-        </Link>
-      </div>
-      <p className="mb-6 text-sm text-muted-foreground">
-        One queue across every client, ordered by a formula you can read
-        ({PRIORITY_FORMULA_VERSION}). Nothing here is a number without its
-        components — click a score to see how it was built.
-      </p>
+    <PageShell>
+      <PageHeader
+        title="Control tower"
+        description={
+          <>
+            One queue across every client, ordered by a formula you can read
+            ({PRIORITY_FORMULA_VERSION}). Nothing here is a number without its
+            components — click a score to see how it was built.
+          </>
+        }
+        actions={
+          <Link
+            href="/workflows"
+            className="text-sm text-muted-foreground underline hover:text-foreground"
+          >
+            Workflow runs
+          </Link>
+        }
+      />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Tile
@@ -337,6 +343,6 @@ export default async function ControlTowerPage() {
           </div>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }
