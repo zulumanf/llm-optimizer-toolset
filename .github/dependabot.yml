@@ -9,6 +9,13 @@ updates:
     groups:
       all-dependencies:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+    # Majors (Next, TypeScript, Zod, Vitest, ESLint…) are migrations, not
+    # bumps: the 2026-09-02 grouped PR carried nine of them at once and could
+    # not be verified as one diff. They are taken deliberately, one at a time.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
