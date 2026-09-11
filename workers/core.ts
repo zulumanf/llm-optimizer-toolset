@@ -163,16 +163,20 @@ export const handlers: Record<
   deliver_events: async (payload) => {
     await deliverOneEvent(payload.eventId as string);
   },
-  // A safety net for events whose delivery job was lost, and the retry path for
-  // ones that failed. Idempotent consumption makes re-sweeping harmless.
+  // Sweep undelivered/failed events. NOTE: nothing in production enqueues
+  // this — the worker tick calls runEventDelivery directly every 10 minutes
+  // (lib/ops/tick.ts), which IS the safety net. This queue path exists for
+  // manual re-runs and the dispatch tests. Idempotent; re-sweeping harmless.
   sweep_event_delivery: async () => {
     const result = await runEventDelivery(100);
     if (result.deadLettered > 0) {
       log("warn", "worker.events_dead_lettered", { count: result.deadLettered });
     }
   },
-  // Fire due schedules and thresholds. Safe at any frequency: a fire key is the
-  // window's identity, so two dispatchers on the same slot produce one run.
+  // Fire due schedules and thresholds. Like sweep_event_delivery, production
+  // runs this inline from the tick — the queue path is for manual re-runs.
+  // Safe at any frequency: a fire key is the window's identity, so two
+  // dispatchers on the same slot produce one run.
   dispatch_triggers: async () => {
     await runTriggerDispatch();
   },

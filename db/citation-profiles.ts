@@ -1,4 +1,5 @@
 import { sql } from "@/db/client";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 export interface RecommendedCitationRow {
   companyId: string;
@@ -22,9 +23,7 @@ export async function recommendedCitationDomains(
     join response_citations c on c.response_id = r.id
     where r.run_id = ${runId}
       and m.recommended
-      and not exists (select 1 from mentions n
-        where n.response_id = m.response_id and n.company_id = m.company_id
-          and n.revision > m.revision)
+      and ${CURRENT_REVISION}
     group by m.company_id, c.domain
     order by m.company_id, citations desc, c.domain asc
   `;

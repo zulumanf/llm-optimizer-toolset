@@ -1,15 +1,14 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { sql } from "@/db/client";
+import { makeActionRunner } from "@/lib/actions/run";
 import {
   assertCanWrite,
   assertProjectAccess,
-  getCurrentUser,
   type CurrentUser,
 } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
-import { fail, type ActionResult } from "@/lib/actions/result";
+import { ok, type ActionResult } from "@/lib/actions/result";
 import {
   enqueueForRun,
   jobsForRun,
@@ -32,20 +31,18 @@ async function assertRunAccess(
   await assertProjectAccess(user, run.projectId as string);
 }
 
+const runWrite = makeActionRunner(["/projects", "layout"]);
+const runRead = makeActionRunner();
+
 export async function queueRunJob(input: {
   type: BackgroundJobType;
   runId: string;
 }): Promise<ActionResult<{ jobId: string; alreadyQueued: boolean }>> {
-  try {
-    const user = await getCurrentUser();
+  return runWrite(async (user) => {
     assertCanWrite(user); // enqueueing spends provider budget
     await assertRunAccess(user, input.runId);
-    const result = await enqueueForRun(input.type, input.runId);
-    if (result.ok) revalidatePath("/projects", "layout");
-    return result;
-  } catch (err) {
-    return fail(err);
-  }
+    return enqueueForRun(input.type, input.runId);
+  });
 }
 
 /** Polled by the client while a background job is in flight. */
@@ -53,12 +50,8 @@ export async function pollRunJobs(input: {
   runId: string;
   types: BackgroundJobType[];
 }): Promise<ActionResult<{ jobs: JobStatus[] }>> {
-  try {
-    const user = await getCurrentUser();
+  return runRead(async (user) => {
     await assertRunAccess(user, input.runId);
-    const jobs = await jobsForRun(input.runId, input.types);
-    return { ok: true, data: { jobs } };
-  } catch (err) {
-    return fail(err);
-  }
+    return ok({ jobs: await jobsForRun(input.runId, input.types) });
+  });
 }

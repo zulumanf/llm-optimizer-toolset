@@ -122,50 +122,6 @@ export async function upsertEntity(
   }
 }
 
-export async function addAlias(
-  user: CurrentUser,
-  raw: unknown
-): Promise<ActionResult<{ entityId: string; alias: string }>> {
-  const parsed = z
-    .object({
-      entityId: z.string().uuid(),
-      alias: z.string().trim().min(1).max(200),
-      sourceArtifactId: z.string().uuid().optional(),
-      confidence: z.number().min(0).max(1).default(1),
-    })
-    .safeParse(raw);
-  if (!parsed.success) {
-    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
-  }
-  const input = parsed.data;
-  try {
-    assertCanWrite(user);
-    await sql.begin(async (tx) => {
-      const [entity] = await tx`
-        select id from knowledge_entities where id = ${input.entityId} and status = 'active'
-      `;
-      if (!entity) throw new ClassifiedError("not_found", "Entity not found or not active.");
-      await addAliasRow(
-        tx,
-        input.entityId,
-        input.alias,
-        input.sourceArtifactId ?? null,
-        input.confidence
-      );
-      await writeAudit(tx, {
-        userId: user.id,
-        action: "knowledge.entity.alias",
-        entity: "knowledge_entity",
-        entityId: input.entityId,
-        detail: { alias: input.alias },
-      });
-    });
-    return ok({ entityId: input.entityId, alias: input.alias });
-  } catch (err) {
-    return fail(err);
-  }
-}
-
 async function addAliasRow(
   tx: Tx,
   entityId: string,
@@ -180,92 +136,6 @@ async function addAliasRow(
     values (${entityId}, ${alias}, ${normalized}, ${sourceArtifactId}, ${confidence})
     on conflict (entity_id, normalized_alias) do nothing
   `;
-}
-
-/**
- * Merge `sourceId` into `targetId`. Aliases move across; the source is marked
- * `merged` and keeps pointing at the target, so any claim that referenced it
- * still resolves. Nothing is deleted.
- */
-export async function mergeEntities(
-  user: CurrentUser,
-  raw: unknown
-): Promise<ActionResult<{ targetId: string; movedAliases: number }>> {
-  const parsed = z
-    .object({
-      sourceId: z.string().uuid(),
-      targetId: z.string().uuid(),
-      reason: z.string().trim().min(1, "A merge needs a reason.").max(500),
-    })
-    .safeParse(raw);
-  if (!parsed.success) {
-    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
-  }
-  const { sourceId, targetId, reason } = parsed.data;
-  if (sourceId === targetId) {
-    return fail(new ClassifiedError("validation", "An entity cannot be merged into itself."));
-  }
-
-  try {
-    assertCanWrite(user);
-    const result = await sql.begin(async (tx) => {
-      const rows = await tx`
-        select id, project_id, entity_type, status from knowledge_entities
-        where id in (${sourceId}, ${targetId}) for update
-      `;
-      const source = rows.find((r) => r.id === sourceId);
-      const target = rows.find((r) => r.id === targetId);
-      if (!source || !target) throw new ClassifiedError("not_found", "Entity not found.");
-      if (source.status !== "active") {
-        throw new ClassifiedError("conflict", `Source entity is ${source.status}.`);
-      }
-      // A cross-client merge would fuse two clients' knowledge into one node.
-      if (source.projectId !== target.projectId) {
-        throw new ClassifiedError(
-          "forbidden",
-          "Entities belonging to different clients cannot be merged."
-        );
-      }
-      if (source.entityType !== target.entityType) {
-        throw new ClassifiedError(
-          "conflict",
-          "Entities of different types cannot be merged; correct the type first."
-        );
-      }
-
-      const moved = await tx`
-        insert into entity_aliases (entity_id, alias, normalized_alias, source_artifact_id, confidence)
-        select ${targetId}, alias, normalized_alias, source_artifact_id, confidence
-        from entity_aliases where entity_id = ${sourceId}
-        on conflict (entity_id, normalized_alias) do nothing
-        returning id
-      `;
-      await tx`
-        update knowledge_entities
-        set status = 'merged', merged_into_id = ${targetId}, updated_at = now()
-        where id = ${sourceId}
-      `;
-      // Claims and normalizations follow the entity so nothing dangles.
-      await tx`
-        update claims set subject_entity_id = ${targetId} where subject_entity_id = ${sourceId}
-      `;
-      await tx`
-        update source_normalizations set normalized_entity_id = ${targetId}
-        where normalized_entity_id = ${sourceId}
-      `;
-      await writeAudit(tx, {
-        userId: user.id,
-        action: "knowledge.entity.merge",
-        entity: "knowledge_entity",
-        entityId: targetId,
-        detail: { sourceId, reason, movedAliases: moved.length },
-      });
-      return { targetId, movedAliases: moved.length };
-    });
-    return ok(result);
-  } catch (err) {
-    return fail(err);
-  }
 }
 
 // ------------------------------------------------------------------- reading
@@ -285,27 +155,6 @@ export async function listEntities(
       ${options.entityType ? sql`and entity_type = ${options.entityType}` : sql``}
     order by entity_type asc, canonical_name asc
   `;
-}
-
-export async function getEntity(entityId: string): Promise<KnowledgeEntity | null> {
-  const [row] = await sql<KnowledgeEntity[]>`
-    select ${COLUMNS} from knowledge_entities where id = ${entityId}
-  `;
-  return row ?? null;
-}
-
-export async function entityAliases(entityId: string): Promise<
-  { alias: string; confidence: number; sourceArtifactId: string | null }[]
-> {
-  const rows = await sql`
-    select alias, confidence, source_artifact_id from entity_aliases
-    where entity_id = ${entityId} order by confidence desc, alias asc
-  `;
-  return rows.map((row) => ({
-    alias: row.alias as string,
-    confidence: Number(row.confidence),
-    sourceArtifactId: (row.sourceArtifactId as string | null) ?? null,
-  }));
 }
 
 /**
@@ -344,20 +193,6 @@ export async function resolveEntityByName(args: {
 }
 
 /** Entities a page or packet depends on, following merges to the live node. */
-export async function resolveMerged(entityId: string): Promise<string> {
-  let current = entityId;
-  // Bounded: a merge chain longer than this is a data problem, not a loop.
-  for (let hops = 0; hops < 10; hops += 1) {
-    const [row] = await sql`
-      select merged_into_id from knowledge_entities where id = ${current}
-    `;
-    const next = (row?.mergedIntoId as string | null) ?? null;
-    if (!next) return current;
-    current = next;
-  }
-  return current;
-}
-
 // ----------------------------------------------------- relationships (056)
 
 export const RELATIONSHIP_TYPES = ["works_for", "brokerage", "affiliated_with"] as const;

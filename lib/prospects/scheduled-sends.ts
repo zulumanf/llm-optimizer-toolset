@@ -77,6 +77,59 @@ async function park(draft: ClaimedDraft, reason: string): Promise<void> {
   });
 }
 
+export interface OutboxRow {
+  draftId: string;
+  prospectId: string;
+  businessName: string;
+  subject: string | null;
+  scheduledSendAt: string | null;
+  scheduledByName: string | null;
+  attempts: number;
+  lastSendError: string | null;
+  /** A claim marker with no recorded outcome — a worker may be
+   * transmitting right now, or died mid-dispatch. Never auto-retried. */
+  inFlight: boolean;
+}
+
+/** The scheduled-send outbox, read-only (spec 102): what is queued to
+ * transmit (soonest first) and what parked with its reason. */
+export async function listScheduledOutbox(
+  limit = 20
+): Promise<{ scheduled: OutboxRow[]; parked: OutboxRow[]; omitted: number }> {
+  const capped = Math.min(Math.max(limit, 1), 50);
+  const rows = await sql`
+    select d.id as draft_id, d.prospect_id, p.business_name, d.subject,
+      d.scheduled_send_at, d.send_attempts, d.send_claimed_at,
+      d.last_send_error, u.name as scheduled_by_name,
+      count(*) over ()::int as total
+    from outreach_drafts d
+    join prospects p on p.id = d.prospect_id
+    left join users u on u.id = d.scheduled_by
+    where d.status = 'approved' and d.sent_recorded_at is null
+      and (d.scheduled_send_at is not null or d.last_send_error is not null)
+      and p.archived_at is null
+    order by d.scheduled_send_at asc nulls last
+    limit ${capped}
+  `;
+  const toOutbox = (r: Record<string, unknown>): OutboxRow => ({
+    draftId: r.draftId as string,
+    prospectId: r.prospectId as string,
+    businessName: r.businessName as string,
+    subject: (r.subject as string | null) ?? null,
+    scheduledSendAt: r.scheduledSendAt ? new Date(r.scheduledSendAt as string).toISOString() : null,
+    scheduledByName: (r.scheduledByName as string | null) ?? null,
+    attempts: Number(r.sendAttempts ?? 0),
+    lastSendError: (r.lastSendError as string | null) ?? null,
+    inFlight: r.sendClaimedAt != null,
+  });
+  const all = rows.map(toOutbox);
+  return {
+    scheduled: all.filter((r) => r.scheduledSendAt !== null),
+    parked: all.filter((r) => r.scheduledSendAt === null),
+    omitted: Math.max(0, Number(rows[0]?.total ?? 0) - rows.length),
+  };
+}
+
 export async function drainScheduledSends(limit = 5): Promise<ScheduledSendReport> {
   const report: ScheduledSendReport = { due: 0, sent: 0, retryable: 0, parked: 0 };
 
@@ -92,7 +145,10 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
       from outreach_drafts
       where status = 'approved' and sent_recorded_at is null
         and scheduled_send_at is not null and scheduled_send_at <= now()
-      order by scheduled_send_at asc
+      -- Send priority when the daily cap is tight: human replies to active
+      -- prospects (reply_to_id) → due Touch 2/3 (sequence_id) → new cold
+      -- Touch 1. Warm conversations are never crowded out by cold sends.
+      order by (reply_to_id is not null) desc, (sequence_id is not null) desc, scheduled_send_at asc
       limit ${limit}
       for update skip locked
     `;
@@ -168,6 +224,7 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
       draftId: draft.id,
       channel: "gmail",
       businessPurpose: draft.businessPurpose ?? "",
+      unattended: true,
     });
 
     if (result.ok) {

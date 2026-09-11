@@ -10,6 +10,7 @@ import { ClassifiedError } from "@/lib/errors";
 import { SCORING_VERSION } from "@/lib/constants";
 import { changeVerdict, type ProviderDelta } from "@/lib/reports/deltas";
 import { draftNarrative } from "@/lib/reports/narrative";
+import { CURRENT_REVISION } from "@/db/mentions";
 import {
   buildProgram,
   buildCategoryOwnership,
@@ -164,11 +165,7 @@ export async function buildSnapshot(
     join responses r on r.id = m.response_id
     join runs on runs.id = r.run_id
     where runs.id = ${current.id} and m.mentioned and m.excerpt is not null
-      and not exists (
-        select 1 from mentions newer
-        where newer.response_id = m.response_id
-          and newer.company_id = m.company_id and newer.revision > m.revision
-      )
+      and ${CURRENT_REVISION}
     order by m.company_id, m.response_id, m.revision desc
   `;
   const excerpts: SnapshotExcerpt[] = excerptRows
@@ -204,11 +201,7 @@ export async function buildSnapshot(
     select count(*)::int as n
     from mentions m join responses r on r.id = m.response_id
     where r.run_id = any(${runIds}) and m.needs_review
-      and not exists (
-        select 1 from mentions newer
-        where newer.response_id = m.response_id
-          and newer.company_id = m.company_id and newer.revision > m.revision
-      )
+      and ${CURRENT_REVISION}
   `;
 
   const [now] = await sql`select now() as ts`;

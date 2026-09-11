@@ -7,13 +7,11 @@
  * launchd agent that misfires twice on Monday morning must not double-start
  * a client's brief workflow.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 const SECRET = "test-cron-secret";
 
 function post(secret?: string): Request {
@@ -30,12 +28,13 @@ describe.skipIf(!TEST_URL)("weekly-cycle cron route (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     route = await import("@/app/api/cron/weekly-cycle/route");
     projectSvc = await import("@/lib/projects/service");
     const templates = await import("@/lib/workflow/templates");
 
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, { cwd: ROOT, stdio: "pipe" });
     await seedTestActors(sql);
     // The route starts weekly_brief_v1 per client — the definition must be
     // published exactly as the worker's bootstrap publishes it.

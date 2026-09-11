@@ -91,6 +91,21 @@ export const PROSPECT_STAGES = [
 /** Terminal / parked stages sit outside the ordered ladder. */
 export const PROSPECT_EXIT_STAGES = ["closed_lost", "waitlisted", "conflict_blocked"] as const;
 
+/** Stages in which an UNATTENDED (worker-dispatched) send must refuse: a
+ * reply or exit was recorded and no queued draft may transmit past it
+ * (spec 099). Human-initiated sends are not gated on this — the ladder
+ * legitimately sends the audit after a reply. */
+export const UNATTENDED_SEND_BLOCKED_STAGES = [
+  "replied",
+  "discovery_scheduled",
+  "discovery_completed",
+  "proposal_sent",
+  "negotiation",
+  "verbal_yes",
+  "contracted",
+  ...PROSPECT_EXIT_STAGES,
+] as const;
+
 export type ProspectStage =
   | (typeof PROSPECT_STAGES)[number]
   | (typeof PROSPECT_EXIT_STAGES)[number];
@@ -107,6 +122,16 @@ export const CONFLICT_GATE_STAGE = "outreach_ready" satisfies ProspectStage;
 /** Entering this stage or any later ladder stage means we contacted them —
  * forbidden for do-not-contact prospects. */
 export const CONTACT_GATE_STAGE = "contacted" satisfies ProspectStage;
+
+/** Stages before any outreach — an allowed send advances these to
+ * CONTACT_GATE_STAGE automatically (spec 098). */
+export const PRE_CONTACT_STAGES = [
+  "identified",
+  "researching",
+  "benchmarking",
+  "qualified",
+  "outreach_ready",
+] as const satisfies readonly ProspectStage[];
 
 export const CONFLICT_STATUSES = [
   "unchecked",
@@ -262,6 +287,118 @@ export type RecordingStatus = (typeof RECORDING_STATUSES)[number];
 export const FINDING_GENERATOR_VERSION = "prospect-findings-v2+deterministic";
 export const RECORDING_GENERATOR_VERSION = "recording-plan-v1+deterministic";
 export const OUTREACH_TEMPLATE_VERSION = "reply-first-email-v1";
+// Spec 124: the competitive-mismatch template. The version string IS the
+// template identity persisted on drafts (prompt_version) — bump it with any
+// copy change so analytics attribution survives edits.
+export const MISMATCH_TEMPLATE_VERSION = "competitive_mismatch_reply_v1";
+
+/** Prospect-readable labels per template version for analytics groupings. */
+/** Spec 127: follow-up touches over the frozen Touch 1 evidence. */
+// v2 (2026-09-04): reply-only copy, agent/team wording, no report claim
+// without a finished report, distinct-question count, no em/en dashes.
+export const FOLLOWUP_TEMPLATE_VERSIONS = {
+  t2NoEngagement: "competitive_mismatch_t2_no_engagement_v2",
+  t2Engaged: "competitive_mismatch_t2_engaged_v2",
+  t3Engaged: "competitive_mismatch_t3_engaged_v2",
+  t3NoEngagement: "competitive_mismatch_t3_no_engagement_v2",
+} as const;
+export type FollowupTemplateVersion =
+  (typeof FOLLOWUP_TEMPLATE_VERSIONS)[keyof typeof FOLLOWUP_TEMPLATE_VERSIONS];
+export const FOLLOWUP_TEMPLATE_VERSION_LIST: readonly string[] = Object.values(FOLLOWUP_TEMPLATE_VERSIONS);
+export const FOLLOWUP_EXPERIMENT_ID = "competitive_mismatch_bootstrap_test_001";
+/** Business days from the previous touch's actual send to the next touch. */
+export const FOLLOWUP_CADENCE_BUSINESS_DAYS = { 2: 3, 3: 4 } as const;
+export const FOLLOWUP_MAX_TOUCHES = 3;
+/** Recipient-local morning window: 09:00 + [3, 88] min → 09:03–10:28. */
+export const FOLLOWUP_SEND_WINDOW = { startHour: 9, minOffsetMinutes: 3, maxOffsetMinutes: 88 } as const;
+/** Branch is rendered no earlier than this before its slot. */
+export const FOLLOWUP_RENDER_LEAD_MINUTES = 30;
+/** Preflight refuses when the Gmail reply sync is older than this. */
+export const FOLLOWUP_REPLY_SYNC_MAX_AGE_MINUTES = 90;
+export const FOLLOWUP_SEVERAL_QUESTIONS_MIN = 3;
+export const FOLLOWUP_OOO_PAUSE_DAYS = 7;
+/** A cold sequence never sends past this many calendar days after the
+ * successful Touch 1: cap deferrals, holidays or OOO pauses must not
+ * produce a follow-up weeks later. After it: complete, no reply. */
+export const FOLLOWUP_MAX_SEQUENCE_AGE_DAYS = 21;
+/** Touch 3 (engaged) may add one frozen-evidence category line only when
+ * the competitor has at least this many recommendations in the category and
+ * the category holds more than this share of the recommendation gap. */
+export const FOLLOWUP_CATEGORY_LINE = { minCompetitor: 3, minGapShare: 0.5 } as const;
+/** Touch 2/3 bodies (before the signature) stay short: a note, not a newsletter. */
+export const FOLLOWUP_MAX_BODY_WORDS = 120;
+
+/** Spec 129: the threaded reply that delivers the private report after a
+ * positive reply. Version string IS the template identity on the draft. */
+export const REPORT_DELIVERY_TEMPLATE_VERSION = "mismatch_report_delivery_v1";
+/** Spec 130's ENGAGEMENT_OFFER moved to the versioned policy list in
+ * lib/pricing/policy.ts (spec 135): the one offer stated on a private report
+ * when, and only when, the prospect asked for pricing is the ACTIVE policy
+ * at publish time, frozen in the snapshot with its version. */
+/** Free-mail hosts never count as a prospect's owned website. */
+export const FREEMAIL_DOMAINS = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "aol.com", "me.com", "live.com", "msn.com"] as const;
+/** A positive reply that asked for a price (deterministic, same rule as the
+ * learning-log view's pricing_requested). */
+export const PRICING_REQUEST_RE = /\b(pric\w*|cost\w*|fees?|how much|rates?)\b/i;
+
+export const REPORT_HANDOFF = {
+  /** Both agents must reach this confidence for an unattended send. */
+  minAgentConfidence: 0.6,
+  /** Recipient-local hours inside which the report reply goes out promptly. */
+  sendWindow: { startHour: 7, endHour: 20, morningHour: 8 },
+  /** Prompt delay so a "yes" is not answered the same second (minutes). */
+  promptDelayMinutes: { min: 4, max: 12 },
+  /** Next-morning dispersion when the reply lands overnight (minutes). */
+  morningOffsetMinutes: { min: 0, max: 30 },
+  /** The one publish warning the automation may acknowledge, and why. */
+  autoAckWarningPrefix: "The benchmark run is incomplete",
+  autoAckReason: "Spec 129 private report; the mismatch counts use captured answers only.",
+  maxAttempts: 3,
+} as const;
+export const FOLLOWUP_MEANINGFUL_OPEN_GAP_MINUTES = 10;
+/** Mail-provider scanners fetch pixels/links within this window of a send. */
+export const MAIL_SCANNER_WINDOW_SECONDS = 600;
+export const REPLY_SYNC_LOOKBACK_DAYS = 30;
+
+export const OUTREACH_TEMPLATE_LABELS: Record<string, string> = {
+  [OUTREACH_TEMPLATE_VERSION]: "Reply-first audit email",
+  [MISMATCH_TEMPLATE_VERSION]: "Competitive mismatch",
+  [FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement]: "Mismatch T2 · no engagement",
+  [FOLLOWUP_TEMPLATE_VERSIONS.t2Engaged]: "Mismatch T2 · engaged",
+  [FOLLOWUP_TEMPLATE_VERSIONS.t3Engaged]: "Mismatch T3 · engaged",
+  [FOLLOWUP_TEMPLATE_VERSIONS.t3NoEngagement]: "Mismatch T3 · no engagement",
+};
+
+/**
+ * Competitive-mismatch eligibility thresholds (spec 124). Policy constants,
+ * not env config — the comparison must never be quietly weakened to make
+ * the template fire; loosening any of these is a reviewed diff.
+ */
+export const MISMATCH_THRESHOLDS = {
+  /** Competitor OpenAI recommendations must exceed the prospect's by ≥ this. */
+  minRecommendationGap: 2,
+  /** Competitor production must be ≤ this fraction of the prospect's. */
+  maxCompetitorProductionRatio: 0.9,
+  /** Hard maximum benchmark age for the template to fire at all. */
+  maxBenchmarkAgeDays: 14,
+} as const;
+
+/** Reply classifications (spec 124) — mirrors the prospect_replies CHECK. */
+export const REPLY_CLASSIFICATIONS = [
+  "positive_interest",
+  "question",
+  "objection",
+  "proof_request",
+  "referral",
+  "not_interested",
+  /** A post-offer rejection (price, DIY, timing). Objection flags ride
+   * alongside; the classification alone never suppresses. */
+  "decline",
+  "unsubscribe",
+  "out_of_office",
+  "unclear",
+] as const;
+export type ReplyClassification = (typeof REPLY_CLASSIFICATIONS)[number];
 
 /**
  * Wording the platform refuses to approve in prospect-facing text (spec 032,
@@ -337,12 +474,45 @@ export const SENDER_CREDENTIAL = process.env.SENDER_CREDENTIAL ?? null;
 // one week. Windows are deliberate constants, not config — changing them
 // is a policy decision that belongs in a diff.
 export const RECONTACT_PERSON_WINDOW_DAYS = 30;
+/** Per MARKET (launch) since spec 120 — the office-intrusion risk the cap
+ * guards against is local; a national brand's teams in different metros
+ * share only the name. Matching is on the normalized brokerage name. */
 export const BROKERAGE_SEND_CAP_30D = 3;
+
+/** Brokerage-name normalization (spec 120): naming variants must land in
+ * the same cap bucket. Cut everything from the first comma, then a trailing
+ * corporate-suffix token. The SAME patterns run in SQL (regexp_replace) and
+ * in TS so the two sides can never disagree. */
+export const BROKERAGE_CUT_COMMA = ",.*$";
+export const BROKERAGE_CUT_SUFFIX = "\\s+(inc|llc)\\.?$";
+export function normalizeBrokerage(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(new RegExp(BROKERAGE_CUT_COMMA), "")
+    .replace(new RegExp(BROKERAGE_CUT_SUFFIX), "")
+    .trim();
+}
 
 // Gmail transmission (spec 091). The cap is ours, far below Gmail's own
 // limits — a warming sender address, and a policy constant like the ones
 // above: raising it is a diff, not a config edit.
 export const GMAIL_DAILY_SEND_CAP = 25;
+
+/** The PUBLIC website shown in the outgoing signature/footer. Outbound
+ * email must never show the app subdomain — the operator console is not
+ * the company's public face (cohort 001 pre-send directive, 2026-08-31). */
+export const OUTREACH_PUBLIC_WEBSITE = "www.RecommendedFirst.com";
+export const OUTREACH_FORBIDDEN_FOOTER_HOST = "app.recommendedfirst.com";
+
+/** SQL regex (case-insensitive) that counts as "the body contains a link" —
+ * the Arm A / Arm B discriminator (spec 122). Matches scheme'd URLs and the
+ * naked branded domain some drafts use. */
+export const OUTREACH_LINK_PATTERN = "(https?://|recommendedfirst\\.com)";
+/** The operator's daily send commitment (spec 119) — the input scoreboard
+ * target, deliberately under the transport cap so follow-ups never compete
+ * with the quota for headroom. A policy constant like the cap above. */
+export const DAILY_SEND_QUOTA = 15;
 /** How far ahead a human may schedule an approved draft's transmission. */
 export const SCHEDULED_SEND_MAX_DAYS_AHEAD = 30;
 /** Transport-failure retries before a scheduled send parks as blocked. */
@@ -351,3 +521,40 @@ export const SCHEDULED_SEND_MAX_ATTEMPTS = 3;
  * mid-dispatch. Such a draft is never auto-retried — the mail may have
  * left — it parks for a human to verify in the Gmail Sent folder. */
 export const SCHEDULED_SEND_STALE_CLAIM_MINUTES = 15;
+
+/**
+ * Acquisition control panel (Analyze tab). Deterministic thresholds — the
+ * status label, the bottleneck call and the sample gates derive from these
+ * and nothing else. Loosening any of them is a reviewed diff.
+ */
+/** Names of QA fixture markets/launches/projects (scripts/spec131-prod-smoke.ts). */
+export const QA_FIXTURE_NAME_PREFIX = "QA131";
+/** Strategic decision sample: mature, clean, qualified Touch 1 recipients. */
+export const DECISION_SAMPLE_TARGET = 100;
+export const ACQUISITION_SAMPLE = {
+  /** Delivered Touch 1 recipients before a status other than INSUFFICIENT DATA. */
+  statusMin: 30,
+  /** Downstream funnel stages (report, conversation) below this read INSUFFICIENT SAMPLE. */
+  funnelMin: 5,
+  /** ICP cuts and market rows below this read SMALL SAMPLE. */
+  cutMin: 10,
+  /** Positive replies before an ICP hypothesis may move past POSSIBLE. */
+  positiveForSupport: 5,
+} as const;
+/** Positive-reply rate bands over delivered Touch 1 recipients. */
+export const POSITIVE_RATE_BANDS = { promising: 0.02, watch: 0.01 } as const;
+/** Bounce share of unique Touch 1 recipients that flags deliverability. */
+export const BOUNCE_ALERT_RATE = 0.05;
+/** Runway planning horizon and the floor under which supply is the bottleneck. */
+export const RUNWAY_PLANNING_BUSINESS_DAYS = 5;
+export const LOW_RUNWAY_DAYS = 3;
+/** Sends kept back from the trailing cap when estimating daily Touch 1 capacity. */
+export const SEND_CAP_HEADROOM = 1;
+/** A delivered Touch 1 is "mature" once its T2/T3 window plus a reply window has passed. */
+export const MATURE_AFTER_BUSINESS_DAYS = 9;
+/** Reports viewed by fewer than this share of recipients flag report consumption. */
+export const REPORT_VIEW_ALERT_RATE = 0.4;
+
+/** Audit views inside this window after publish are the operator's own
+ * publish-QA loads (publish → open → check), not prospect engagement. */
+export const AUDIT_VIEW_PUBLISH_QA_WINDOW_MINUTES = 5;

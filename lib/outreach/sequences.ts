@@ -14,7 +14,6 @@ import { sql, type TransactionSql } from "@/db/client";
 import { ClassifiedError } from "@/lib/errors";
 import { normalizeEmail } from "@/lib/connectors/mapping";
 import { checkSuppression, suppress } from "@/lib/outreach/suppression";
-import { publishEvent } from "@/lib/events/bus";
 import { log } from "@/lib/logger";
 
 /**
@@ -271,18 +270,6 @@ export async function markMessageSent(
   `;
 }
 
-export async function markMessageFailed(
-  tx: Tx,
-  args: { messageId: string; error: string; suppressed?: boolean }
-): Promise<void> {
-  await tx`
-    update outreach_messages set
-      status = ${args.suppressed ? "suppressed" : "failed"},
-      error = ${args.error.slice(0, 500)}
-    where id = ${args.messageId}
-  `;
-}
-
 /**
  * Stop a sequence permanently. Idempotent: stopping an already-stopped sequence
  * is a no-op rather than an error, because a reply and a bounce can arrive
@@ -375,15 +362,6 @@ export async function applyInboundSignal(
   return { stopped: result.stopped };
 }
 
-export async function dueSequences(limit = 50): Promise<OutreachSequence[]> {
-  const rows = await sql`
-    select * from outreach_sequences
-    where status = 'active' and next_send_at is not null and next_send_at <= now()
-    order by next_send_at asc limit ${limit}
-  `;
-  return rows.map(toSequence);
-}
-
 export async function messagesFor(sequenceId: string): Promise<OutreachMessage[]> {
   const rows = await sql`
     select * from outreach_messages where sequence_id = ${sequenceId} order by step asc
@@ -405,20 +383,3 @@ export async function messagesFor(sequenceId: string): Promise<OutreachMessage[]
 }
 
 /** Publish the domain event a stop implies, so downstream work can react. */
-export async function publishSequenceStopped(
-  tx: Tx,
-  args: { sequence: OutreachSequence; reason: SequenceStopReason }
-): Promise<void> {
-  if (args.reason !== "booked" && args.reason !== "replied") return;
-  if (!args.sequence.projectId) return;
-  await publishEvent(tx, {
-    type: "opportunity.created",
-    projectId: args.sequence.projectId,
-    source: "workflow",
-    payload: {
-      opportunityId: args.sequence.subjectRef,
-      stage: args.reason === "booked" ? "meeting_booked" : "replied",
-    },
-    dedupeKey: `outreach:${args.sequence.id}:${args.reason}`,
-  });
-}

@@ -27,7 +27,8 @@ export type QueueSource =
   | "accuracy_finding"
   | "content_approval"
   | "task_overdue"
-  | "intervention_blocked";
+  | "intervention_blocked"
+  | "engagement";
 
 export interface QueueItem {
   id: string;
@@ -62,6 +63,9 @@ const EFFORT_MINUTES: Record<QueueSource, number> = {
   // Unblocking usually means a decision (reschedule, re-baseline, cancel),
   // not a build — but a stalled experiment stalls the client's proof.
   intervention_blocked: 20,
+  // A client-engagement gate (payment, approval, remeasurement, renewal) is a
+  // founder decision or a short admin act.
+  engagement: 20,
 };
 
 /** Risk exposure by exception kind — legal/privacy/publication weight. */
@@ -174,6 +178,8 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
         join projects p on p.id = t.project_id
         where t.status in ('approved', 'in_progress')
           and t.due_date is not null and t.due_date < current_date
+          -- A blocked task waits on someone by design; it is not late (spec 131).
+          and t.blocked_reason is null
           ${projectFilter ? sql`and t.project_id = ${projectFilter}` : sql``}
         order by t.due_date asc
         limit ${limit}
@@ -430,6 +436,42 @@ export async function actionRequiredQueue(options: QueueOptions = {}): Promise<Q
         effortMinutes: EFFORT_MINUTES.intervention_blocked,
       }),
     });
+  }
+
+  // 8. Client delivery (spec 131/132): the portfolio scan is the ONE source of
+  // client items — deterministic alerts ranked safety → client waiting on us →
+  // measurement → approvals/communication → routine. One batched read for the
+  // whole portfolio; no per-client queries here.
+  const { portfolioScan } = await import("@/lib/engagements/portfolio");
+  const scan = await portfolioScan(new Date(), { includeRecentlyClosed: true, cache: true });
+  const RANK_SEVERITY: Record<number, RiskLevel> = { 0: "critical", 1: "high", 2: "high", 3: "medium", 4: "low" };
+  for (const c of scan.clients) {
+    if (projectFilter && c.overview.engagement.projectId !== projectFilter) continue;
+    for (const a of c.alerts) {
+      const severity: RiskLevel = a.severity === "P0" ? "critical" : RANK_SEVERITY[a.rank] ?? "medium";
+      items.push({
+        id: `${c.overview.engagement.id}:${a.code}`,
+        source: "engagement",
+        kind: a.code.toLowerCase(),
+        projectId: c.overview.engagement.projectId,
+        projectName: c.clientName,
+        summary: a.message,
+        recommendedAction: a.nextAction,
+        severity,
+        dueAt: null,
+        createdAt: scan.scannedAt,
+        href: `/projects/${c.overview.engagement.projectId}/engagement`,
+        priority: computePriority({
+          severity,
+          hoursUntilDue: null,
+          commercialValue: clientValue.get(c.overview.engagement.projectId) ?? 0.8,
+          // A client waiting on us outranks routine internal work by construction.
+          dependencyImpact: a.rank === 0 ? 1 : a.rank === 1 ? 0.9 : a.rank === 2 ? 0.7 : a.rank === 3 ? 0.5 : 0.3,
+          risk: a.severity === "P0" ? 1 : 0.4,
+          effortMinutes: EFFORT_MINUTES.engagement,
+        }),
+      });
+    }
   }
 
   return items.sort((a, b) => b.priority.total - a.priority.total).slice(0, limit);

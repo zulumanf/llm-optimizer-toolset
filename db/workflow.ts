@@ -10,7 +10,6 @@
  */
 import { sql, type TransactionSql } from "@/db/client";
 import type {
-  EdgeCondition,
   NodeDefinition,
   NodeRun,
   NodeState,
@@ -147,31 +146,6 @@ export async function versionSpec(
   return row ? { spec: row.spec as WorkflowDefinition, version: row.version as number } : null;
 }
 
-export async function nodeIdsForVersion(
-  tx: Tx,
-  versionId: string
-): Promise<Map<string, string>> {
-  const rows = await tx`
-    select id, node_key from workflow_nodes where version_id = ${versionId}
-  `;
-  return new Map(rows.map((r) => [r.nodeKey as string, r.id as string]));
-}
-
-export async function edgesForVersion(
-  versionId: string
-): Promise<{ from: string; to: string; condition: EdgeCondition | null; required: boolean }[]> {
-  const rows = await sql`
-    select from_node_key, to_node_key, condition, required
-    from workflow_edges where version_id = ${versionId}
-  `;
-  return rows.map((r) => ({
-    from: r.fromNodeKey as string,
-    to: r.toNodeKey as string,
-    condition: (r.condition as EdgeCondition | null) ?? null,
-    required: r.required as boolean,
-  }));
-}
-
 // ---------------------------------------------------------------- runs
 
 function toRun(row: Record<string, unknown>): WorkflowRun {
@@ -241,18 +215,6 @@ export async function getRun(runId: string): Promise<WorkflowRun | null> {
 }
 
 /** Lock the run row for the duration of a tick — one tick per run at a time. */
-export async function lockRun(tx: TransactionSql, runId: string): Promise<WorkflowRun | null> {
-  const [row] = await tx`
-    select r.*, d.key as definition_key, v.version as workflow_version
-    from workflow_runs r
-    join workflow_versions v on v.id = r.version_id
-    join workflow_definitions d on d.id = v.definition_id
-    where r.id = ${runId}
-    for update of r
-  `;
-  return row ? toRun(row) : null;
-}
-
 export async function setRunState(
   tx: Tx,
   args: {
@@ -661,43 +623,7 @@ export async function decideApproval(
     : null;
 }
 
-export async function pendingApproval(
-  nodeRunId: string
-): Promise<{ id: string; decision: string | null; decidedBy: string | null } | null> {
-  const [row] = await sql`
-    select id, decision, decided_by from workflow_approvals where node_run_id = ${nodeRunId}
-  `;
-  return row
-    ? {
-        id: row.id as string,
-        decision: (row.decision as string | null) ?? null,
-        decidedBy: (row.decidedBy as string | null) ?? null,
-      }
-    : null;
-}
-
 // ------------------------------------------------------- gates & helpers
-
-export async function recordGateResult(
-  tx: Tx,
-  args: {
-    runId: string;
-    nodeRunId: string | null;
-    gateType: string;
-    gateVersion: string;
-    outcome: "pass" | "fail" | "insufficient_evidence";
-    checks: unknown;
-  }
-): Promise<void> {
-  await tx`
-    insert into quality_gate_results (
-      workflow_run_id, node_run_id, gate_type, gate_version, outcome, checks
-    ) values (
-      ${args.runId}, ${args.nodeRunId}, ${args.gateType}, ${args.gateVersion},
-      ${args.outcome}, ${tx.json(args.checks as never)}
-    )
-  `;
-}
 
 export async function nodeDefinitionsFor(
   versionId: string

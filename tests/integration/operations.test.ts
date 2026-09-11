@@ -2,14 +2,12 @@
  * Integration tests for the agency operations feed (docs/17 A3): the daily
  * "what needs me" queue across every client.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const user: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000901",
@@ -26,14 +24,12 @@ describe.skipIf(!TEST_URL)("operations feed (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     operations = await import("@/db/operations");
     onboarding = await import("@/lib/verticals/onboarding");
     projectSvc = await import("@/lib/projects/service");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 

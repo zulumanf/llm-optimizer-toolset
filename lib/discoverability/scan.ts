@@ -11,6 +11,7 @@ import { getSubjectCompany } from "@/db/companies";
 import type { SafeFetchDeps } from "@/lib/security/safe-fetch";
 import { safeFetch } from "@/lib/security/safe-fetch";
 import {
+  CRAWL_DELAY_MS,
   CRAWLER_USER_AGENT,
   scoreUrlForAudit,
   shouldSkipUrl,
@@ -30,8 +31,6 @@ import {
   SCAN_VERSION,
 } from "@/lib/discoverability/constants";
 import { log } from "@/lib/logger";
-
-const CRAWL_DELAY_MS = 1_200;
 
 export interface TechnicalScanPayload {
   projectId: string;

@@ -22,6 +22,8 @@ async function expectNoHorizontalScroll(page: Page): Promise<void> {
 const SURFACES = [
   "/",
   "/prospects",
+  "/prospects/dashboard",
+  "/prospects/dashboard?view=analyze",
   "/prospects/refresh-queue",
   "/notifications",
 ];

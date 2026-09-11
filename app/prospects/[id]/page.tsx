@@ -30,6 +30,7 @@ import {
   ExpireAuditButton,
   PublishAuditButton,
   RevokeAuditButton,
+  RevokeReportAccessButton,
 } from "@/components/prospects/audit-actions";
 import {
   ApproveDraftButton,
@@ -37,12 +38,16 @@ import {
   EditDraftButton,
   GenerateDraftButton,
   OpenInMailButton,
+  RecordReplyButton,
   RecordSentButton,
   ScheduleSendButton,
   SendViaGmailButton,
   type DraftContactOption,
 } from "@/components/prospects/draft-actions";
-import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
+import { MismatchPanel } from "@/components/prospects/mismatch-panel";
+import { FollowupSequenceCard } from "@/components/prospects/followup-sequence";
+import { competitiveMismatchReview } from "@/lib/prospects/mismatch";
+import { auditUrl, reportInvitationUrl } from "@/lib/prospects/urls";
 import { auditLinkForProspect } from "@/lib/prospects/links";
 import { latestSenseCheckForProspect } from "@/lib/prospects/sense-check";
 import { SenseCheckPanel } from "@/components/prospects/sense-check-panel";
@@ -88,6 +93,8 @@ import {
 import { listExhibits } from "@/lib/prospects/exhibits";
 import { FRESHNESS_WINDOWS_DAYS, staleness } from "@/lib/prospects/constants";
 import { CONFIDENCE_REVIEW_THRESHOLD } from "@/lib/constants";
+import { prospectIntent, prospectTimeline } from "@/lib/prospects/dashboard";
+import { AuditEngagementSection } from "@/components/prospects/audit-engagement";
 
 const rate = (v: number | null): string =>
   v === null ? "not measured" : `${Math.round(v * 100)}%`;
@@ -145,9 +152,14 @@ export default async function ProspectDetailPage({
   const enrichmentProposals = await listEnrichmentProposals(id);
   // Branded share link (spec 076) — preferred over the raw token URL.
   const brandedLink = await auditLinkForProspect(id);
-  const brandedUrl = brandedLink
-    ? brandedAuditUrl(brandedLink.slug, brandedLink.key)
-    : null;
+  // Behavioral summary + evidence timeline (spec 098) — derived on read.
+  const [intent, timeline] = await Promise.all([prospectIntent(id), prospectTimeline(id)]);
+  // Spec 134: the copied link is the invitation — one click lands on the
+  // clean /report/<slug> URL with the credential gone from the address bar.
+  const brandedUrl =
+    brandedLink && prospect.reportSlug
+      ? reportInvitationUrl(prospect.reportSlug, brandedLink.key)
+      : null;
   const signalLabel = new Map(gapView.signals.map((s) => [s.id, s.label]));
   const suggestion = prospect.companyId ? null : await suggestCompanyForProspect(id);
   const [diagnosis, buyingSignals, exhibits] = await Promise.all([
@@ -162,6 +174,9 @@ export default async function ProspectDetailPage({
   const runs = prospect.companyId ? await linkableRuns(prospect.companyId) : [];
   const publishedAudit = audits.find((a) => a.status === "published");
   const primaryFinding = findings.find((f) => f.isPrimary && f.status === "approved");
+  // Competitive mismatch (spec 124) — derived on read; the panel shows the
+  // premise (or why it fails) before the operator approves anything.
+  const mismatchReview = primaryFinding ? await competitiveMismatchReview(id) : null;
 
   // The page tells the operator what to do next — one step at a time.
   const nextStep = !prospect.companyId
@@ -884,6 +899,7 @@ export default async function ProspectDetailPage({
                       <>
                         <CopyAuditLink url={brandedUrl ?? auditUrl(a.accessToken)} />
                         <ExpireAuditButton auditId={a.id} />
+                        <RevokeReportAccessButton prospectId={id} />
                         <RevokeAuditButton auditId={a.id} />
                       </>
                     )}
@@ -891,6 +907,8 @@ export default async function ProspectDetailPage({
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">
                   {a.viewCount} external view{a.viewCount === 1 ? "" : "s"}
+                  {` · ${a.externalSessionCount} authorized external session${a.externalSessionCount === 1 ? "" : "s"}`}
+                  {a.firstExternalAccessAt ? ` · first external access ${new Date(a.firstExternalAccessAt).toLocaleString()}` : ""}
                   {a.firstViewedAt
                     ? ` · first ${new Date(a.firstViewedAt).toLocaleString()} · last ${new Date(
                         a.lastViewedAt as unknown as string
@@ -911,10 +929,24 @@ export default async function ProspectDetailPage({
         description="Drafted from the approved story. Nothing sends itself — you send it from your own mailbox, and the do-not-contact and suppression checks run before anything is recorded."
         actions={
           primaryFinding ? (
-            <GenerateDraftButton prospectId={id} contacts={draftContacts} />
+            <div className="flex items-center gap-2">
+              <RecordReplyButton prospectId={id} contacts={draftContacts} />
+              <GenerateDraftButton
+                prospectId={id}
+                contacts={draftContacts}
+                mismatchCandidates={
+                  mismatchReview?.evaluation.eligibleCandidates.map((c) => ({
+                    companyId: c.companyId,
+                    label: c.displayName,
+                  })) ?? []
+                }
+              />
+            </div>
           ) : undefined
         }
       >
+        <MismatchPanel review={mismatchReview} />
+        <FollowupSequenceCard prospectId={id} />
         {drafts.length === 0 ? (
           <EmptyState message="No email yet. Approve a story first — the draft is written from it, nothing else." />
         ) : (
@@ -1037,6 +1069,8 @@ export default async function ProspectDetailPage({
           </ul>
         )}
       </Section>
+
+      {intent && <AuditEngagementSection intent={intent} timeline={timeline} />}
 
       <Section title="Stage history">
         {history.length === 0 ? (

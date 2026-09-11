@@ -566,6 +566,14 @@ export interface InterventionView {
   confoundedWith: { id: string; title: string }[];
   /** Latest live-verification result per shipped URL (spec 051). */
   urlChecks: import("@/lib/attribution/verify-urls").UrlCheck[];
+  /** The subject's model-agreement read (spec 066) on the latest completed
+   * post run (spec 067) — whether the post-retest state is consistent
+   * across assistants. Null until a post run completes. */
+  postRunAgreement: {
+    offsetLabel: string | null;
+    label: import("@/lib/competitors/agreement").AgreementLabel;
+    summary: string;
+  } | null;
 }
 
 /** Verdicts + flags, computed on read for the self company (never stored). */
@@ -662,5 +670,31 @@ export async function interventionView(
   const { latestUrlChecks } = await import("@/lib/attribution/verify-urls");
   const urlChecks = await latestUrlChecks(interventionId);
 
-  return { verdicts, comparability, confoundedWith, urlChecks };
+  // Post-run agreement (spec 067): the subject's spec-066 read on the
+  // latest completed post run — one loader call, derived on read.
+  let postRunAgreement: InterventionView["postRunAgreement"] = null;
+  const [latestPost] = await sql`
+    select r.id, ir.offset_label from intervention_runs ir
+    join runs r on r.id = ir.run_id
+    where ir.intervention_id = ${interventionId} and ir.role = 'post'
+      and r.status in ('completed', 'partial')
+    order by r.started_at desc limit 1
+  `;
+  if (latestPost) {
+    const { modelAgreementForProject } = await import("@/lib/competitors/agreement");
+    const agreement = await modelAgreementForProject(
+      intervention.projectId as string,
+      latestPost.id as string
+    );
+    const selfRow = agreement.rows.find((r) => r.isSelf);
+    if (selfRow) {
+      postRunAgreement = {
+        offsetLabel: (latestPost.offsetLabel as string | null) ?? null,
+        label: selfRow.label,
+        summary: selfRow.summary,
+      };
+    }
+  }
+
+  return { verdicts, comparability, confoundedWith, urlChecks, postRunAgreement };
 }

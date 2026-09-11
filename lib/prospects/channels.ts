@@ -13,6 +13,7 @@
 import { ClassifiedError } from "@/lib/errors";
 import { mockProviderAllowed } from "@/lib/ai/registry";
 import { executeCapability } from "@/lib/connectors/execute";
+import { OUTREACH_PUBLIC_WEBSITE } from "@/lib/prospects/constants";
 
 export interface OutboundEmail {
   recipientEmail: string | null;
@@ -21,6 +22,10 @@ export interface OutboundEmail {
   /** Optional HTML rendering of `body` (spec 092: open-tracking pixel).
    * Mechanical rendering only — the approved artifact is the plain text. */
   htmlBody?: string | null;
+  /** Spec 127: reply into an existing Gmail thread. */
+  threadId?: string | null;
+  inReplyTo?: string | null;
+  references?: string | null;
 }
 
 export interface EmailChannel {
@@ -28,7 +33,9 @@ export interface EmailChannel {
   /** True when the channel actually transmits (and thus needs a recipient
    * address and an opt-out path in the body). */
   readonly transmits: boolean;
-  dispatch(message: OutboundEmail): Promise<{ providerMessageId: string | null }>;
+  dispatch(
+    message: OutboundEmail
+  ): Promise<{ providerMessageId: string | null; providerThreadId?: string | null }>;
 }
 
 const manualChannel: EmailChannel = {
@@ -48,7 +55,12 @@ const mockChannel: EmailChannel = {
     if (!message.recipientEmail) {
       throw new ClassifiedError("validation", "The mock channel requires a recipient email.");
     }
-    return { providerMessageId: `mock-${message.recipientEmail}` };
+    // Like Gmail, a reply stays in its thread and a fresh send opens one —
+    // the ledger learns a thread id either way (follow-up threading tests).
+    return {
+      providerMessageId: `mock-${message.recipientEmail}`,
+      providerThreadId: message.threadId ?? `mock-thread-${message.recipientEmail}`,
+    };
   },
 };
 
@@ -71,7 +83,7 @@ const gmailChannel: EmailChannel = {
     if (!message.subject || message.subject.trim().length === 0) {
       throw new ClassifiedError("validation", "The gmail channel requires a subject line.");
     }
-    const result = await executeCapability<{ messageId: string }>({
+    const result = await executeCapability<{ messageId: string; threadId: string | null }>({
       capability: "email.send_approved_message",
       projectId: null,
       input: {
@@ -79,6 +91,9 @@ const gmailChannel: EmailChannel = {
         subject: message.subject,
         body: message.body,
         ...(message.htmlBody ? { htmlBody: message.htmlBody } : {}),
+        ...(message.threadId ? { threadId: message.threadId } : {}),
+        ...(message.inReplyTo ? { inReplyTo: message.inReplyTo } : {}),
+        ...(message.references ? { references: message.references } : {}),
       },
       mode: "live",
       provider: "gmail",
@@ -107,7 +122,10 @@ const gmailChannel: EmailChannel = {
     // carried no id — throwing here would roll back the ledger row for a
     // message that actually left. Null id = "sent, id not returned".
     const messageId = result.data?.messageId;
-    return { providerMessageId: messageId && messageId.length > 0 ? messageId : null };
+    return {
+      providerMessageId: messageId && messageId.length > 0 ? messageId : null,
+      providerThreadId: result.data?.threadId ?? null,
+    };
   },
 };
 
@@ -148,6 +166,7 @@ export function optOutFooter(identity: {
 }): string {
   return (
     `\n\n—\n${identity.senderName} · ${identity.companyName}\n` +
+    `${OUTREACH_PUBLIC_WEBSITE}\n` +
     `${identity.postalAddress}\n` +
     `If you'd rather not hear from us, reply "unsubscribe" and we will not contact you again.`
   );

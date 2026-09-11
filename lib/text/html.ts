@@ -14,10 +14,23 @@ export function escapeHtml(value: string): string {
  * HTML part is a mechanical rendering of the approved plain text — it must
  * never carry content of its own (spec 092: body_hash stays on the text).
  */
-export function plainTextToTrackedHtml(body: string, pixelUrl: string | null): string {
-  const escaped = escapeHtml(body).replace(/\r?\n/g, "<br>\n");
+export function plainTextToTrackedHtml(
+  body: string,
+  pixelUrl: string | null,
+  /** URLs to render as labeled anchors (spec 134: the private-report
+   * invitation reads "Private report for <business>"); the plain-text part
+   * keeps the full, functional URL. */
+  links: ReadonlyArray<{ url: string; label: string }> = []
+): string {
+  let escaped = escapeHtml(body).replace(/\r?\n/g, "<br>\n");
+  for (const l of links) {
+    const href = escapeHtml(l.url);
+    escaped = escaped.split(href).join(`<a href="${href}">${escapeHtml(l.label)}</a>`);
+  }
+  // Never style the pixel hidden — several clients skip loading hidden
+  // images, suppressing real opens; a 1×1 transparent GIF is invisible anyway.
   const pixel = pixelUrl
-    ? `\n<img src="${escapeHtml(pixelUrl)}" width="1" height="1" alt="" style="display:none">`
+    ? `\n<img src="${escapeHtml(pixelUrl)}" width="1" height="1" alt="">`
     : "";
   return `<div style="font-family:inherit;white-space:normal">${escaped}</div>${pixel}`;
 }

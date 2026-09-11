@@ -1,5 +1,5 @@
 /**
- * Prompt coverage by segment (spec 063, coverage-v1). Turns "how visible are
+ * Prompt coverage by segment (spec 063; v2 since spec 087). Turns "how visible are
  * we?" into "in WHICH questions are we present?" — per category, intent band,
  * audience, and price tier, using the attributes frozen into the version.
  *
@@ -153,6 +153,8 @@ export async function runCoverage(runId: string): Promise<CoverageRow[] | null> 
     where res.run_id = ${runId}
       and res.error is null
       and m.company_id = ${subject.id}
+      -- current-revision predicate: keep in sync with db/mentions.ts
+      -- CURRENT_REVISION (inlined here so this module's db imports stay lazy)
       and not exists (
         select 1 from mentions newer
         where newer.response_id = m.response_id

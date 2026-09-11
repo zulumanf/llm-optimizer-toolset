@@ -44,10 +44,18 @@ import {
   type ProspectType,
   RECONTACT_PERSON_WINDOW_DAYS,
   BROKERAGE_SEND_CAP_30D,
+  BROKERAGE_CUT_COMMA,
+  BROKERAGE_CUT_SUFFIX,
+  normalizeBrokerage,
   GMAIL_DAILY_SEND_CAP,
   SCHEDULED_SEND_MAX_DAYS_AHEAD,
+  UNATTENDED_SEND_BLOCKED_STAGES,
+  CONTACT_GATE_STAGE,
+  PRE_CONTACT_STAGES,
+  REPLY_CLASSIFICATIONS,
+  type ReplyClassification,
 } from "@/lib/prospects/constants";
-import { validateTransition } from "@/lib/prospects/stages";
+import { atOrPast, validateTransition } from "@/lib/prospects/stages";
 import {
   generateFindingCandidates,
   type BenchmarkEntityMetrics,
@@ -65,10 +73,23 @@ import {
 
   type RunSummary,
 } from "@/lib/prospects/benchmark";
-import { generateReplyFirstEmail } from "@/lib/prospects/outreach";
+import {
+  generateCompetitiveMismatchEmail,
+  generateReplyFirstEmail,
+} from "@/lib/prospects/outreach";
+import {
+  buildEvidenceSnapshot,
+  competitiveMismatchReview,
+  type MismatchEvidenceSnapshot,
+} from "@/lib/prospects/mismatch";
+import {
+  classifyReplyText,
+  CONVERSATION_CLASSIFICATIONS,
+  REPLY_CLASSIFIER_VERSION,
+} from "@/lib/prospects/reply-classify";
 import { generateRecordingPlan as buildRecordingPlan } from "@/lib/prospects/recording";
 import { parseProspectImport, type ImportRow } from "@/lib/prospects/import";
-import { checkSuppression } from "@/lib/outreach/suppression";
+import { checkSuppression, suppress } from "@/lib/outreach/suppression";
 // removed-unused: authorityGapForRun
 import {} from "@/lib/prospects/gap";
 import { resolveProspectCompany } from "@/lib/prospects/resolve";
@@ -93,6 +114,8 @@ import { checkNoMockResponses } from "@/lib/qa/preflight";
 import {} from "@/lib/prospects/audit-evidence";
 import { auditUrl, brandedAuditUrl, openPixelUrl } from "@/lib/prospects/urls";
 import { plainTextToTrackedHtml } from "@/lib/text/html";
+import { invitationLinkLabels } from "@/lib/prospects/report-access";
+import { recordQuoteFromSend } from "@/lib/pricing/quotes";
 import {
   auditLinkForProspect,
 } from "@/lib/prospects/links";
@@ -1526,6 +1549,9 @@ export async function createOutreachDraft(
       body: z.string().trim().min(1).max(10000).optional(),
       tone: z.string().trim().max(120).optional(),
       cta: z.string().trim().max(500).optional(),
+      /** Spec 124: operator's pick among ELIGIBLE mismatch candidates.
+       * Never a way to force an unvalidated comparison. */
+      competitorCompanyId: z.string().uuid().optional(),
     })
     .safeParse(raw);
   if (!parsed.success) {
@@ -1556,6 +1582,7 @@ export async function createOutreachDraft(
       let cta = input.cta ?? null;
       let generatedBy: "system" | "operator" = "operator";
       let promptVersion: string | null = null;
+      let evidenceSnapshot: MismatchEvidenceSnapshot | null = null;
 
       if (!body) {
         const [benchmark] = await tx`
@@ -1591,33 +1618,64 @@ export async function createOutreachDraft(
             "No sender identity is configured — an admin must set the legal sender (name, company, postal address) before outreach drafts can be generated."
           );
         }
-        const generated = generateReplyFirstEmail({
-          prospectName: prospect.businessName,
-          teamLeader: prospect.teamLeader,
-          marketName: draftMarketName,
-          findingTitle: finding.title,
-          findingExplanation: finding.explanation,
-          providers: run?.providers ?? [],
-          sampleSize: run?.responseCount ?? 0,
-          // Branded link preferred (spec 076): the first readable thing in
-          // the emailed URL is the prospect's own name. Legacy token URL is
-          // the fallback for prospects minted before the feature.
-          auditUrl: publishedAudit
-            ? await (async () => {
-                const link = await auditLinkForProspect(input.prospectId, tx);
-                return (
-                  (link ? brandedAuditUrl(link.slug, link.key) : null) ??
-                  auditUrl(publishedAudit.accessToken as string)
-                );
-              })()
-            : null,
+        // Spec 124: the competitive-mismatch template is preferred whenever
+        // the comparison is clean; anything less fails closed into the
+        // reply-first template. The comparison is never weakened to fire.
+        const review = await competitiveMismatchReview(input.prospectId, {
+          contactId: input.contactId ?? null,
+          db: tx,
         });
-        subject = generated.subject;
-        body = generated.body + optOutFooter(draftIdentity);
-        tone = generated.tone;
-        cta = generated.cta;
-        generatedBy = "system";
-        promptVersion = generated.promptVersion;
+        const chosenCompetitor = review?.evaluation.eligible
+          ? input.competitorCompanyId
+            ? (review.evaluation.eligibleCandidates.find(
+                (c) => c.companyId === input.competitorCompanyId
+              ) ?? null)
+            : review.evaluation.selected
+          : null;
+        if (input.competitorCompanyId && !chosenCompetitor) {
+          throw new ClassifiedError(
+            "validation",
+            "That competitor is not an eligible mismatch candidate for this prospect — only validated candidates can be used."
+          );
+        }
+        if (review && chosenCompetitor) {
+          const generated = generateCompetitiveMismatchEmail(review, chosenCompetitor);
+          subject = generated.subject;
+          body = generated.body + optOutFooter(draftIdentity);
+          tone = generated.tone;
+          cta = generated.cta;
+          generatedBy = "system";
+          promptVersion = generated.promptVersion;
+          evidenceSnapshot = buildEvidenceSnapshot(review, chosenCompetitor);
+        } else {
+          const generated = generateReplyFirstEmail({
+            prospectName: prospect.businessName,
+            teamLeader: prospect.teamLeader,
+            marketName: draftMarketName,
+            findingTitle: finding.title,
+            findingExplanation: finding.explanation,
+            providers: run?.providers ?? [],
+            sampleSize: run?.responseCount ?? 0,
+            // Branded link preferred (spec 076): the first readable thing in
+            // the emailed URL is the prospect's own name. Legacy token URL is
+            // the fallback for prospects minted before the feature.
+            auditUrl: publishedAudit
+              ? await (async () => {
+                  const link = await auditLinkForProspect(input.prospectId, tx);
+                  return (
+                    (link ? brandedAuditUrl(link.slug, link.key) : null) ??
+                    auditUrl(publishedAudit.accessToken as string)
+                  );
+                })()
+              : null,
+          });
+          subject = generated.subject;
+          body = generated.body + optOutFooter(draftIdentity);
+          tone = generated.tone;
+          cta = generated.cta;
+          generatedBy = "system";
+          promptVersion = generated.promptVersion;
+        }
       }
 
       const [latest] = await tx`
@@ -1629,11 +1687,14 @@ export async function createOutreachDraft(
       const [row] = await tx`
         insert into outreach_drafts
           (prospect_id, finding_id, channel, contact_id, version, parent_id,
-           subject, body, tone, cta, generated_by, prompt_version, created_by)
+           subject, body, tone, cta, generated_by, prompt_version,
+           evidence_snapshot, created_by)
         values (${input.prospectId}, ${finding.id}, ${input.channel},
           ${input.contactId ?? null}, ${version},
           ${latest?.id ?? null}, ${subject}, ${body}, ${tone}, ${cta},
-          ${generatedBy}, ${promptVersion}, ${user.id})
+          ${generatedBy}, ${promptVersion},
+          ${evidenceSnapshot ? tx.json(evidenceSnapshot as never) : null},
+          ${user.id})
         returning id
       `;
       await writeAudit(tx, {
@@ -1653,6 +1714,145 @@ export async function createOutreachDraft(
       return { draftId: row?.id as string, version };
     });
     return ok(result);
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Record what a reply actually said (spec 124). The inbox is still read by
+ * a human (or an ops script) — this is the first structured record of the
+ * reply itself. Insert-only ledger; classification is deterministic
+ * (lib/prospects/reply-classify.ts) unless the operator overrides, and the
+ * classifier version is stored either way. A conversation reply advances
+ * the prospect to `replied` through the one existing transition path;
+ * autoresponders and unsubscribes never do. An unsubscribe writes the
+ * opt-out suppression entry in the same transaction.
+ */
+export async function recordProspectReply(
+  user: CurrentUser,
+  raw: unknown
+): Promise<ActionResult<{ replyId: string; classification: ReplyClassification; stageAdvanced: boolean }>> {
+  const parsed = z
+    .object({
+      prospectId: z.string().uuid(),
+      contactId: z.string().uuid().optional(),
+      sendId: z.string().uuid().optional(),
+      bodyText: z.string().trim().min(1).max(20000),
+      receivedAt: z.coerce.date().optional(),
+      classification: z.enum(REPLY_CLASSIFICATIONS).optional(),
+      /** Spec 127: set by Gmail ingestion; unique, so a re-sync is a no-op. */
+      gmailMessageId: z.string().min(1).max(200).optional(),
+    })
+    .safeParse(raw);
+  if (!parsed.success) {
+    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  }
+  const input = parsed.data;
+  try {
+    assertCanWrite(user);
+    const result = await sql.begin(async (tx) => {
+      const prospect = await lockProspect(tx, input.prospectId);
+      if (input.gmailMessageId) {
+        const [dup] = await tx`
+          select id, classification from prospect_replies where gmail_message_id = ${input.gmailMessageId}
+        `;
+        if (dup) {
+          return { replyId: dup.id as string, classification: dup.classification as ReplyClassification, stage: prospect.stage };
+        }
+      }
+      let contactEmail: string | null = null;
+      if (input.contactId) {
+        const [contact] = await tx`
+          select email from prospect_contacts
+          where id = ${input.contactId} and prospect_id = ${input.prospectId}
+        `;
+        if (!contact) {
+          throw new ClassifiedError("validation", "Contact not found on this prospect.");
+        }
+        contactEmail = (contact.email as string | null) ?? null;
+      }
+      if (input.sendId) {
+        const [send] = await tx`
+          select id from prospect_outreach_sends
+          where id = ${input.sendId} and prospect_id = ${input.prospectId}
+        `;
+        if (!send) {
+          throw new ClassifiedError("validation", "Send not found on this prospect.");
+        }
+      }
+      const classification: ReplyClassification =
+        input.classification ?? classifyReplyText(input.bodyText);
+      const { replyObjections } = await import("@/lib/prospects/reply-classify");
+      const objections = replyObjections(input.bodyText);
+      const [row] = await tx`
+        insert into prospect_replies
+          (prospect_id, contact_id, send_id, body_text, received_at,
+           classification, classifier_version, recorded_by, gmail_message_id)
+        values (${input.prospectId}, ${input.contactId ?? null},
+          ${input.sendId ?? null}, ${input.bodyText},
+          ${input.receivedAt ?? new Date()}, ${classification},
+          ${REPLY_CLASSIFIER_VERSION}, ${user.id}, ${input.gmailMessageId ?? null})
+        returning id
+      `;
+      if (classification === "unsubscribe") {
+        const email = contactEmail ?? prospect.email;
+        if (email) {
+          await suppress(tx, {
+            scope: "email",
+            value: email,
+            reason: "opt_out",
+            detail: "Reply classified as unsubscribe (spec 124).",
+            projectId: null,
+            userId: user.id,
+          });
+        }
+      }
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "prospect.reply_record",
+        entity: "prospect",
+        entityId: input.prospectId,
+        detail: { replyId: row?.id, classification, sendId: input.sendId ?? null },
+      });
+      await logActivity(
+        tx,
+        input.prospectId,
+        "reply_recorded",
+        { classification, objections },
+        user.id
+      );
+      // A genuine positive reply is owned the moment it exists — whichever
+      // path recorded it, sequence or not (operating review 2026-09-07).
+      if (classification === "positive_interest") {
+        const { assignPositiveReplyOwner } = await import("@/lib/prospects/positive-replies");
+        await assignPositiveReplyOwner(tx, {
+          prospectId: input.prospectId, replyId: row?.id as string,
+          receivedAt: input.receivedAt ?? new Date(), actorId: user.id, objections,
+        });
+      }
+      return { replyId: row?.id as string, classification, stage: prospect.stage };
+    });
+    // A real conversation advances the stage through the one existing
+    // transition path — outside the tx so a gate refusal (e.g. conflict)
+    // never rolls back the recorded reply, which is a fact either way.
+    let stageAdvanced = false;
+    if (
+      CONVERSATION_CLASSIFICATIONS.includes(result.classification) &&
+      !atOrPast(result.stage as ProspectStage, "replied")
+    ) {
+      const moved = await transitionStage(user, {
+        prospectId: input.prospectId,
+        toStage: "replied",
+        reason: `Reply recorded (${result.classification}).`,
+      });
+      stageAdvanced = moved.ok;
+    }
+    return ok({
+      replyId: result.replyId,
+      classification: result.classification,
+      stageAdvanced,
+    });
   } catch (err) {
     return fail(err);
   }
@@ -1743,6 +1943,16 @@ export async function approveOutreachDraft(
         throw new ClassifiedError(
           "validation",
           `The draft contains prohibited wording ("${banned}") — remove it before approval.`
+        );
+      }
+      // Deterministic QA gate (spec 116): machine-checkable defects refuse
+      // approval with the full list, while a human is still looking.
+      const { qaDraft } = await import("@/lib/prospects/draft-qa");
+      const qaIssues = await qaDraft(draft.id as string);
+      if (qaIssues.length > 0) {
+        throw new ClassifiedError(
+          "validation",
+          `Draft QA failed: ${qaIssues.map((i) => `[${i.check}] ${i.detail}`).join(" ")}`
         );
       }
       // Superseding also clears any pending schedule (spec 091): the worker
@@ -2008,6 +2218,9 @@ export async function sendProspectDraft(
       draftId: z.string().uuid(),
       channel: z.string().min(1),
       businessPurpose: z.string().trim().min(10).max(1000),
+      /** True when a worker, not a human, is dispatching (scheduled send).
+       * Adds the conversation-state gate: no transmit after a recorded reply. */
+      unattended: z.boolean().optional(),
     })
     .safeParse(raw);
   if (!parsed.success) {
@@ -2022,9 +2235,21 @@ export async function sendProspectDraft(
   try {
     assertCanWrite(user);
     const channel = getEmailChannel(input.channel); // throws for guarded mock
+    // Spec 127: a follow-up touch re-verifies its sequence right before it
+    // leaves — replies (local + live Gmail threads), bounces, DNC, sync
+    // freshness, evidence, unchanged engagement. Runs BEFORE the gate
+    // transaction takes its row locks: its bookkeeping (recording a found
+    // reply, stopping the sequence) writes through other connections.
+    let preflight: import("@/lib/prospects/followups").PreflightResult | null = null;
+    const [pre] = await sql`select sequence_id from outreach_drafts where id = ${input.draftId}`;
+    if (pre?.sequenceId) {
+      const { followupPreflight } = await import("@/lib/prospects/followups");
+      preflight = await followupPreflight(input.draftId, new Date(), { excludeDraftId: input.draftId });
+    }
     const result = await sql.begin(async (tx) => {
       const [draft] = await tx`
-        select id, prospect_id, contact_id, subject, body, status, sent_recorded_at
+        select id, prospect_id, contact_id, subject, body, status, sent_recorded_at,
+          sequence_id, touch_number, reply_to_id
         from outreach_drafts where id = ${input.draftId} for update
       `;
       if (!draft) throw new ClassifiedError("not_found", "Draft not found.");
@@ -2068,6 +2293,49 @@ export async function sendProspectDraft(
       );
       check("contact_do_not_contact", contactBlocked === null, contactBlocked ?? "clear");
 
+      // Spec 099: a queued draft must never transmit past a recorded reply
+      // or exit. Human sends stay free (the ladder sends the audit after a
+      // reply); the worker is not a human.
+      const stageBlocksUnattended = (
+        UNATTENDED_SEND_BLOCKED_STAGES as readonly ProspectStage[]
+      ).includes(prospect.stage);
+      // Spec 128: a human-composed reply to a specific recorded reply may be
+      // scheduled — it continues the conversation the prospect started, not
+      // a sequence past it. The draft names the reply it answers.
+      const scheduledReply = Boolean(draft.replyToId);
+      check(
+        "conversation_state",
+        !(input.unattended && stageBlocksUnattended && !scheduledReply),
+        input.unattended
+          ? scheduledReply
+            ? `scheduled human reply to recorded reply ${String(draft.replyToId).slice(0, 8)} — stage "${prospect.stage}" is expected`
+            : stageBlocksUnattended
+              ? `Prospect stage is "${prospect.stage}" — an unattended send would continue a sequence past a recorded reply or exit.`
+              : `stage "${prospect.stage}" allows unattended outreach`
+          : "human-initiated send — not gated on stage"
+      );
+
+      let threading: { threadId: string | null; inReplyTo: string | null; references: string | null } = {
+        threadId: null,
+        inReplyTo: null,
+        references: null,
+      };
+      if (draft.sequenceId) {
+        check(
+          "followup_preflight",
+          preflight?.ok ?? false,
+          preflight?.detail ?? "follow-up preflight did not run — failing closed."
+        );
+        if (preflight?.ok) threading = preflight.threading;
+      } else if (draft.replyToId && channel.transmits) {
+        // Reply drafts land in the prospect's own thread; when Gmail cannot
+        // resolve it the send refuses rather than starting a new thread.
+        const { threadingForReply } = await import("@/lib/prospects/reply-threading");
+        const t = await threadingForReply(draft.replyToId as string);
+        check("reply_threading", t !== null, t ? `replying in Gmail thread ${t.threadId}` : "could not resolve the reply's Gmail thread — refusing to start a new one.");
+        if (t) threading = t;
+      }
+
       if ((email || phone) && !prospect.doNotContact && contactBlocked === null) {
         const suppression = await checkSuppression({ email, phone, projectId: null });
         check(
@@ -2107,19 +2375,24 @@ export async function sendProspectDraft(
       // row was already locked above, so re-selecting it was pure waste.
       const brokerage = prospect.brokerageAffiliation?.trim();
       if (brokerage) {
+        // Spec 120: scoped to this prospect's market (launch), matched on
+        // the normalized name so suffix variants share one cap bucket.
         const [{ n } = { n: 0 }] = await tx`
-          select count(*)::int as n from prospect_outreach_sends s
+          select count(distinct s.prospect_id)::int as n from prospect_outreach_sends s
           join prospects p on p.id = s.prospect_id
           where s.allowed
-            and lower(trim(p.brokerage_affiliation)) = ${brokerage.toLowerCase()}
+            and s.prospect_id != ${draft.prospectId}
+            and p.launch_id = ${prospect.launchId}
+            and trim(regexp_replace(regexp_replace(lower(trim(p.brokerage_affiliation)),
+                  ${BROKERAGE_CUT_COMMA}, ''), ${BROKERAGE_CUT_SUFFIX}, '')) = ${normalizeBrokerage(brokerage)}
             and s.sent_at > now() - interval '30 days'
         `;
         check(
           "recontact_brokerage",
           Number(n) < BROKERAGE_SEND_CAP_30D,
           Number(n) < BROKERAGE_SEND_CAP_30D
-            ? `${n} of ${BROKERAGE_SEND_CAP_30D} brokerage sends used this month`
-            : `${brokerage} already received ${n} sends in 30 days — the cap is ${BROKERAGE_SEND_CAP_30D}.`
+            ? `${n} of ${BROKERAGE_SEND_CAP_30D} brokerage sends used this month in this market`
+            : `${brokerage} already received ${n} sends in this market in 30 days — the cap is ${BROKERAGE_SEND_CAP_30D}.`
         );
       } else {
         check("recontact_brokerage", true, "no brokerage affiliation recorded");
@@ -2137,11 +2410,19 @@ export async function sendProspectDraft(
           from market_launches where id = ${prospect.launchId}
         `;
         if (launch) {
-          const detection = await detectLaunchConflicts(tx, {
-            marketId: launch.marketId as string,
-            serviceCategory: (launch.serviceCategory as string) ?? null,
-            priceSegment: (launch.priceSegment as string) ?? null,
-          });
+          // Spec 131: the client's own prospect record (promoted to the project
+          // that holds the agreement) is exempt — replying to our client is not
+          // selling against them.
+          const [own] = await tx`select promoted_project_id from prospects where id = ${prospect.id}`;
+          const detection = await detectLaunchConflicts(
+            tx,
+            {
+              marketId: launch.marketId as string,
+              serviceCategory: (launch.serviceCategory as string) ?? null,
+              priceSegment: (launch.priceSegment as string) ?? null,
+            },
+            { exceptProjectId: (own?.promotedProjectId as string | null) ?? null }
+          );
           check(
             "territory_conflict",
             detection.worstVerdict === "clear",
@@ -2217,6 +2498,48 @@ export async function sendProspectDraft(
         banned ? `Contains prohibited wording ("${banned}").` : "clean"
       );
 
+      // Entity resolution gate (operating review 2026-09-07): any email that
+      // states competitive recommendation counts — Touch 1, follow-ups,
+      // corrections, report deliveries, or a rewrite whose ancestor carries
+      // the frozen evidence — transmits only when BOTH entities are verified.
+      // Fails closed with ENTITY_RESOLUTION_UNVERIFIED; nothing is inferred.
+      {
+        const [ev] = await tx`
+          with recursive chain as (
+            select id, parent_id, evidence_snapshot, 0 as depth from outreach_drafts where id = ${draft.id}
+            union all
+            select p.id, p.parent_id, p.evidence_snapshot, c.depth + 1 from chain c join outreach_drafts p on p.id = c.parent_id
+            where c.evidence_snapshot is null and c.depth < 10
+          )
+          select evidence_snapshot from chain where evidence_snapshot is not null order by depth asc limit 1
+        `;
+        const snap = (ev?.evidenceSnapshot as { prospect?: { companyId?: string; prospectId?: string | null; name?: string }; competitor?: { companyId?: string; prospectId?: string | null; name?: string } } | null) ?? null;
+        if (snap?.prospect?.companyId && snap.competitor?.companyId) {
+          const { countClaimEntityGate } = await import("@/lib/prospects/entity-aliases");
+          const g = await countClaimEntityGate({
+            prospect: { companyId: snap.prospect.companyId, prospectId: snap.prospect.prospectId ?? null, name: snap.prospect.name ?? "" },
+            competitor: { companyId: snap.competitor.companyId, prospectId: snap.competitor.prospectId ?? null, name: snap.competitor.name ?? "" },
+          });
+          check("entity_resolution_verified", g.passed, g.detail);
+        } else {
+          check("entity_resolution_verified", true, "no competitive count claim in this draft");
+        }
+      }
+      // Deterministic QA re-check at dispatch (spec 116): a draft approved
+      // against one audit state must not transmit stale or inconsistent
+      // numbers after a republish. Aggregated as one ledgered verdict.
+      {
+        const { qaDraft } = await import("@/lib/prospects/draft-qa");
+        const qaIssues = await qaDraft(draft.id as string);
+        check(
+          "draft_qa",
+          qaIssues.length === 0,
+          qaIssues.length === 0
+            ? "all deterministic draft checks pass"
+            : qaIssues.map((i) => `[${i.check}] ${i.detail}`).join(" ")
+        );
+      }
+
       // body_hash stays on the PLAIN text — the human-approved artifact.
       // The HTML part (spec 092) is a mechanical rendering of that text
       // plus the open-tracking pixel; it carries no content of its own.
@@ -2227,17 +2550,18 @@ export async function sendProspectDraft(
 
       const writeLedger = async (
         providerMessageId: string | null,
-        openToken: string | null
+        openToken: string | null,
+        gmailThreadId: string | null = null
       ): Promise<string> => {
         const [row] = await tx`
           insert into prospect_outreach_sends
             (draft_id, prospect_id, channel, recipient_email, body_hash,
              business_purpose, gate_verdict, allowed, provider_message_id,
-             sent_by, open_token)
+             sent_by, open_token, gmail_thread_id)
           values (${draft.id}, ${draft.prospectId}, ${channel.id}, ${email ?? null},
             ${bodyHash}, ${input.businessPurpose},
             ${tx.json({ version: SEND_GATE_VERSION, checks } as never)},
-            ${allowed}, ${providerMessageId}, ${user.id}, ${openToken})
+            ${allowed}, ${providerMessageId}, ${user.id}, ${openToken}, ${gmailThreadId})
           returning id
         `;
         return row?.id as string;
@@ -2266,7 +2590,15 @@ export async function sendProspectDraft(
         const pixel = openPixelUrl(token);
         if (pixel) {
           openToken = token;
-          htmlBody = plainTextToTrackedHtml(body, pixel);
+          // Spec 134: a private-report invitation in the body reads as
+          // "Private report for <business>" in the HTML part; the text part
+          // keeps the full URL. Cold T1/T2/T3 bodies carry no invitation
+          // and render exactly as before.
+          htmlBody = plainTextToTrackedHtml(
+            body,
+            pixel,
+            invitationLinkLabels(body, prospect.businessName as string)
+          );
         }
       }
 
@@ -2278,13 +2610,46 @@ export async function sendProspectDraft(
         subject: (draft.subject as string) ?? null,
         body,
         htmlBody,
+        ...threading,
       });
-      const sendId = await writeLedger(dispatched.providerMessageId, openToken);
+      const sendId = await writeLedger(
+        dispatched.providerMessageId,
+        openToken,
+        dispatched.providerThreadId ?? null
+      );
+      if (draft.sequenceId) {
+        const { advanceSequenceAfterSend } = await import("@/lib/prospects/followups");
+        await advanceSequenceAfterSend(
+          tx,
+          { sequenceId: draft.sequenceId as string, touchNumber: Number(draft.touchNumber) },
+          sendId,
+          new Date()
+        );
+      }
 
       await tx`
         update outreach_drafts set sent_recorded_at = now(), sent_recorded_by = ${user.id}
         where id = ${draft.id}
       `;
+      // A transmitted send is a machine-observable fact: the recorded stage
+      // follows the ledger instead of waiting for a hand edit (spec 098 —
+      // 12 contacted prospects sat at "identified" for a day). Only the
+      // pre-contact stages move; later stages are the operator's.
+      const [stageRow] = await tx`
+        select stage from prospects where id = ${draft.prospectId}
+      `;
+      const currentStage = stageRow?.stage as ProspectStage | undefined;
+      if (currentStage && (PRE_CONTACT_STAGES as readonly string[]).includes(currentStage)) {
+        await tx`
+          update prospects set stage = ${CONTACT_GATE_STAGE}, updated_at = now()
+          where id = ${draft.prospectId}
+        `;
+        await tx`
+          insert into prospect_stage_history (prospect_id, from_stage, to_stage, reason, changed_by)
+          values (${draft.prospectId}, ${currentStage}, ${CONTACT_GATE_STAGE},
+            ${"Advanced automatically: allowed send recorded in the ledger"}, ${user.id})
+        `;
+      }
       await writeAudit(tx, {
         userId: user.id,
         action: "prospect.draft_sent",
@@ -2299,6 +2664,12 @@ export async function sendProspectDraft(
         { draftId: draft.id, channel: channel.id },
         user.id
       );
+      // Spec 135: a sent body that states a policy's offer IS a quote —
+      // recorded with the policy version, never inferred later from copy.
+      await recordQuoteFromSend(tx, {
+        prospectId: draft.prospectId as string, draftId: draft.id as string, sendId, channel: channel.id,
+        body, sentAt: new Date(), userId: user.id,
+      });
       return { sendId, providerMessageId: dispatched.providerMessageId };
     });
     if ("refused" in result) {

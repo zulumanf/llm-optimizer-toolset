@@ -1,4 +1,5 @@
 import { sql } from "@/db/client";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 /**
  * Market-level citation aggregation (spec 086): the raw rows behind "which
@@ -116,9 +117,7 @@ export async function marketDomainMentions(
     where r.run_id in (select id from runs where project_id = any(${projectIds}))
       and r.error is null
       and rc.domain = any(${domains})
-      and not exists (select 1 from mentions n
-        where n.response_id = m.response_id and n.company_id = m.company_id
-          and n.revision > m.revision)
+      and ${CURRENT_REVISION}
     group by rc.domain, m.company_id, c.name
     having count(distinct m.response_id) filter (where m.mentioned) > 0
     order by rc.domain asc, recommendations desc, mentions desc, company_name asc

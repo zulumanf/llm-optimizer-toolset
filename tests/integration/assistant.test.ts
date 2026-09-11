@@ -3,16 +3,14 @@
  * tool loop over real MCP observer tools with an injected fake caller (no
  * network), conversation persistence, and the security boundaries.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import type { AgentCaller } from "@/lib/ai/agent";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 import { unwrap } from "../helpers/result";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const operator: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000401",
@@ -50,13 +48,11 @@ describe.skipIf(!TEST_URL)("workspace assistant (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     assistant = await import("@/lib/assistant/service");
     projectSvc = await import("@/lib/projects/service");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 
@@ -150,6 +146,103 @@ describe.skipIf(!TEST_URL)("workspace assistant (integration)", () => {
     );
     expect(reply.toolCalls.length).toBe(assistant.MAX_TOOL_CALLS);
     expect(reply.reply).toContain("lookup limit");
+  });
+
+  it("sends only the last HISTORY_LIMIT messages, chronological, new user message last", async () => {
+    const [conv] = await sql`
+      insert into assistant_conversations (user_id, title)
+      values (${operator.id}, 'long thread') returning id
+    `;
+    const conversationId = conv!.id as string;
+    // 30 alternating messages, oldest first — msg-01 … msg-30.
+    for (let i = 1; i <= 30; i += 1) {
+      await sql`
+        insert into assistant_messages (conversation_id, role, content, created_at)
+        values (${conversationId}, ${i % 2 === 1 ? "user" : "assistant"},
+          ${"msg-" + String(i).padStart(2, "0")},
+          now() - make_interval(mins => ${60 - i}))
+      `;
+    }
+    let captured = "";
+    const capturing: AgentCaller = async (args) => {
+      captured = args.user;
+      return {
+        text: JSON.stringify({ action: "answer", answer: "ok" }),
+        tokensIn: 1,
+        tokensOut: 1,
+      };
+    };
+    unwrap(
+      await assistant.askAssistant(
+        operator,
+        { conversationId, message: "the newest question", pathname: "/" },
+        capturing
+      )
+    );
+    // Window: exactly the last 20 stored messages plus the new user turn.
+    const entries = captured.split("\n\n");
+    expect(entries.length).toBe(assistant.HISTORY_LIMIT + 1);
+    expect(captured).toContain("msg-11");
+    expect(captured).toContain("msg-30");
+    expect(captured).not.toContain("msg-10");
+    expect(captured).not.toContain("msg-01");
+    // Chronological, oldest of the window first.
+    expect(entries[0]).toBe("USER: msg-11");
+    expect(captured.indexOf("msg-11")).toBeLessThan(captured.indexOf("msg-12"));
+    expect(captured.indexOf("msg-29")).toBeLessThan(captured.indexOf("msg-30"));
+    // The new user message rides last.
+    expect(entries[entries.length - 1]).toBe("USER: the newest question");
+  });
+
+  it("attributes the turn to the current prompt version in the llm ledger", async () => {
+    const { ASSISTANT_PROMPT_VERSION } = await import("@/lib/assistant/prompt");
+    unwrap(
+      await assistant.askAssistant(
+        operator,
+        { message: "version check", pathname: "/" },
+        scripted([{ action: "answer", answer: "ok" }])
+      )
+    );
+    const [row] = await sql`
+      select agent_version from llm_calls order by called_at desc limit 1
+    `;
+    expect(row?.agentVersion).toBe(ASSISTANT_PROMPT_VERSION);
+    expect(row?.agentVersion).toBe("workspace-assistant-v4");
+  });
+
+  it("persists the turn when the agent loop throws after tool calls — the thread stays the record", async () => {
+    let calls = 0;
+    const failing: AgentCaller = async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          text: JSON.stringify({ action: "tool", tool: "list_projects", input: {} }),
+          tokensIn: 100,
+          tokensOut: 20,
+        };
+      }
+      throw new Error("provider melted down");
+    };
+    const result = await assistant.askAssistant(
+      operator,
+      { message: "doomed turn", pathname: "/" },
+      failing
+    );
+    // The failure still surfaces to the caller…
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain("provider melted down");
+    // …but the turn was recorded first: user + assistant rows with the
+    // executed tool log, and the conversation's activity clock bumped.
+    const [conv] = await sql`
+      select id, last_message_at from assistant_conversations where title = 'doomed turn'
+    `;
+    expect(conv).toBeDefined();
+    expect(conv?.lastMessageAt).not.toBeNull();
+    const messages = await assistant.getConversationMessages(operator, conv!.id as string);
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(messages[0]?.content).toBe("doomed turn");
+    expect(messages[1]?.content).toContain("provider melted down");
+    expect(messages[1]?.toolCalls?.[0]).toMatchObject({ tool: "list_projects", ok: true });
   });
 
   it("enforces the boundaries: staff-only, own conversations only, insert-only messages", async () => {

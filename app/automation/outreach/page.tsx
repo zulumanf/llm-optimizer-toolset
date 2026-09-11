@@ -68,7 +68,7 @@ export default async function OutreachPage() {
         }
       />
 
-      <AutomationNav current="outreach" />
+      <AutomationNav />
 
       <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card>

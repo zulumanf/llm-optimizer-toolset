@@ -7,14 +7,12 @@
  * credential cannot be moved between connections. Asserting those with mocks
  * would prove nothing.
  */
-import { execSync } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 const OPERATOR = "00000000-0000-4000-8000-000000009001";
 const TEST_KEY = Buffer.alloc(32, 11).toString("base64");
 
@@ -73,6 +71,9 @@ describe.skipIf(!TEST_URL)("automation layer (integration)", () => {
   beforeAll(async () => {
     process.env.AUTOMATION_CREDENTIAL_KEY = TEST_KEY;
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     events = await import("@/lib/events/bus");
     eventStore = await import("@/db/events");
     triggers = await import("@/lib/triggers/service");
@@ -90,8 +91,6 @@ describe.skipIf(!TEST_URL)("automation layer (integration)", () => {
     testmode = await import("@/lib/automation/testmode");
     envelope = await import("@/lib/security/envelope");
 
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, { cwd: ROOT, stdio: "pipe" });
     await seedTestActors(sql);
   });
 

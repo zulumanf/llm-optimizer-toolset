@@ -4,16 +4,14 @@
  * findings → approval → audit page + token → outreach draft → recording plan
  * → pipeline with exclusivity gating → history/activities/immutability.
  */
-import { execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 import { unwrap } from "../helpers/result";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const operator: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000401",
@@ -52,6 +50,9 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     projectSvc = await import("@/lib/projects/service");
     setSvc = await import("@/lib/prompts/set-service");
     promptSvc = await import("@/lib/prompts/prompt-service");
@@ -65,11 +66,6 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     exclusivity = await import("@/lib/exclusivity/service");
     svc = await import("@/lib/prospects/service");
     mock = await import("@/lib/ai/mock");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
     // seedTestActors gives every fixture admin; role gates in these tests
     // come from the CurrentUser literals above, but the client role must be
@@ -392,8 +388,24 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
     unwrap(await svc.revokeAudit(operator, { auditId: liveAuditId, reason: "content superseded" }));
     expect(await svc.getAuditByToken(accessToken)).toBeNull();
 
-    // Draft: generated from the approved finding, versioned, approved, sent
-    const draft = unwrap(await svc.createOutreachDraft(operator, { prospectId, channel: "email" }));
+    // Draft: generated from the approved finding, versioned, approved, sent.
+    // The spec-116 QA gate refuses approval without a bound contact that has
+    // an email, so bind one before drafting.
+    const draftContact = unwrap(
+      await svc.addContact(operator, {
+        prospectId,
+        name: "Ana Rivera",
+        email: "ana@riverateam.com",
+        isPrimary: true,
+      })
+    );
+    const draft = unwrap(
+      await svc.createOutreachDraft(operator, {
+        prospectId,
+        channel: "email",
+        contactId: draftContact.contactId,
+      })
+    );
     expect(draft.version).toBe(1);
     const [draftRow] = await sql`
       select body, generated_by from outreach_drafts where id = ${draft.draftId}

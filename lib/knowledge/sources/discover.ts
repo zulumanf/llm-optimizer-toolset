@@ -34,6 +34,8 @@ import {
   SOURCE_FETCH_TIMEOUT_MS,
 } from "@/lib/knowledge/constants";
 import { safeFetch } from "@/lib/security/safe-fetch";
+import { discoverSitemaps } from "@/lib/discoverability/sitemap";
+import { extractLinks, extractTitle, visibleText } from "@/lib/html";
 
 /**
  * How we identify ourselves. Named after the platform, not after whichever
@@ -51,7 +53,7 @@ export const CRAWLER_USER_AGENT =
  * goodwill we are trying to earn. A visibility audit is never so urgent that it
  * justifies hammering the site it is auditing.
  */
-const CRAWL_DELAY_MS = 1_200;
+export const CRAWL_DELAY_MS = 1_200;
 
 /** How much to slow down after a 429, and the ceiling on that. */
 const BACKOFF_MULTIPLIER = 2;
@@ -206,67 +208,20 @@ async function fetchPolitely(
   return { html: "", status: 429, delayMs };
 }
 
-/** Visible text length, for spotting JS-rendered pages. */
-function visibleTextLength(html: string): number {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim().length;
+/** Same-host outlinks (lib/html), canonicalized and deduped for the queue. */
+function crawlLinks(html: string, baseUrl: string, host: string): string[] {
+  return [
+    ...new Set(
+      extractLinks(html, baseUrl, { host }).map((url) => normalizeUrl(url))
+    ),
+  ];
 }
 
-function extractTitle(html: string): string | null {
-  return html.match(/<title[^>]*>([^<]{1,200})<\/title>/i)?.[1]?.trim() ?? null;
-}
-
-function extractLinks(html: string, baseUrl: string, host: string): string[] {
-  const out = new Set<string>();
-  for (const match of html.matchAll(/<a\b[^>]*href=["']([^"'#]+)["']/gi)) {
-    const href = match[1]!;
-    if (href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:")) {
-      continue;
-    }
-    try {
-      const resolved = new URL(href, baseUrl);
-      // Same host only: following off-site links turns a client audit into a
-      // crawl of the open web.
-      if (resolved.host !== host) continue;
-      resolved.hash = "";
-      out.add(normalizeUrl(resolved.toString()));
-    } catch {
-      // A malformed href is the page's problem, not a reason to stop.
-    }
-  }
-  return [...out];
-}
-
+/** Sitemap URLs via the one sitemap parser (lib/discoverability/sitemap),
+ * flattened to the string list the crawl queue expects. */
 async function readSitemap(origin: string): Promise<string[]> {
-  const candidates = [`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`];
-  const urls = new Set<string>();
-
-  for (const candidate of candidates) {
-    try {
-      const { html, status } = await fetchText(candidate);
-      if (status !== 200 || !html.includes("<loc>")) continue;
-
-      const locs = [...html.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1]!.trim());
-      // A sitemap index points at more sitemaps; follow one level, not a tree.
-      const nested = locs.filter((loc) => /sitemap.*\.xml$/i.test(loc)).slice(0, 5);
-      for (const loc of locs.filter((l) => !/sitemap.*\.xml$/i.test(l))) urls.add(loc);
-
-      for (const child of nested) {
-        const inner = await fetchText(child);
-        for (const match of inner.html.matchAll(/<loc>([^<]+)<\/loc>/gi)) {
-          urls.add(match[1]!.trim());
-        }
-      }
-      if (urls.size > 0) break;
-    } catch {
-      // No sitemap is normal; the crawl fallback handles it.
-    }
-  }
-  return [...urls];
+  const report = await discoverSitemaps(origin, []);
+  return [...new Set(report.entries.map((entry) => entry.url))];
 }
 
 const discoverSchema = z.object({
@@ -355,7 +310,7 @@ export async function discoverSite(raw: unknown): Promise<ActionResult<Discovery
         continue;
       }
 
-      const textLength = visibleTextLength(html);
+      const textLength = visibleText(html).length;
       results.push({
         url: next.url,
         kind,
@@ -367,7 +322,7 @@ export async function discoverSite(raw: unknown): Promise<ActionResult<Discovery
       });
 
       if (next.depth < maxDepth) {
-        for (const link of extractLinks(html, next.url, host)) {
+        for (const link of crawlLinks(html, next.url, host)) {
           if (!seen.has(link) && !shouldSkipUrl(link)) {
             queue.push({ url: link, depth: next.depth + 1, source: "crawl" });
           }

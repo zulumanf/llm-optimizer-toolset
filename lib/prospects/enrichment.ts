@@ -520,3 +520,83 @@ export async function listEnrichmentProposals(
     createdAt: r.createdAt as Date,
   }));
 }
+
+// ------------------------------------------------------------ contact supply queue
+
+export type ContactStatus = "verified_email" | "unverified_email" | "no_email";
+export type ContactVerificationStatus = "verified_on_page" | "publicly_sourced" | "ai_inferred_unverified" | "none";
+
+export interface ContactSupplyRow {
+  prospectId: string;
+  businessName: string;
+  market: string | null;
+  prospectType: string | null;
+  priority: number;
+  contactStatus: ContactStatus;
+  source: string | null;
+  verificationStatus: ContactVerificationStatus;
+  pendingProposals: number;
+  failedProposals: number;
+  nextAction: string;
+}
+
+/** ONE honest queue over the existing tables (operating review 2026-09-07).
+ * Live identified prospects without a sendable contact, ordered by the
+ * qualification score the system already computes. An AI-inferred email is
+ * never sendable until a literal/authoritative verification exists — that
+ * is the `contact-verify` step, not a new subsystem. */
+export async function contactSupplyQueue(limit = 200): Promise<ContactSupplyRow[]> {
+  const rows = await sql`
+    select p.id, p.business_name, p.prospect_type, m.name as market,
+      coalesce(p.qualification_override, p.qualification_score, 0)::int as priority,
+      (select c.provenance from prospect_contacts c where c.prospect_id = p.id and c.archived_at is null and c.email is not null and not c.do_not_contact
+        order by (c.provenance = 'manual') desc, (c.provenance = 'publicly_sourced') desc, c.created_at desc limit 1) as best_provenance,
+      (select c.provenance from prospect_contacts c where c.prospect_id = p.id and c.archived_at is null order by c.created_at desc limit 1) as any_provenance,
+      (select count(*)::int from enrichment_proposals e where e.prospect_id = p.id and e.kind = 'contact_email' and e.status = 'pending') as pending,
+      (select count(*)::int from enrichment_proposals e where e.prospect_id = p.id and e.kind = 'contact_email' and e.status = 'failed') as failed,
+      exists (select 1 from prospect_activities a where a.prospect_id = p.id and a.kind = 'contact_verified') as verified_on_page
+    from prospects p
+    left join market_launches l on l.id = p.launch_id left join markets m on m.id = l.market_id
+    where p.archived_at is null and not p.do_not_contact and p.stage = 'identified'
+      and p.business_name not like 'QA131%'
+      and not exists (select 1 from prospect_contacts c where c.prospect_id = p.id and c.archived_at is null and c.email is not null
+        and not c.do_not_contact and c.provenance in ('publicly_sourced', 'manual'))
+    order by priority desc, p.created_at asc
+    limit ${limit}
+  `;
+  return rows.map((r) => {
+    const best = (r.bestProvenance as string | null) ?? null;
+    const contactStatus: ContactStatus = best === null ? "no_email" : best === "ai_inferred" ? "unverified_email" : "verified_email";
+    const verificationStatus: ContactVerificationStatus = r.verifiedOnPage ? "verified_on_page" : best === "publicly_sourced" || best === "manual" ? "publicly_sourced" : best === "ai_inferred" ? "ai_inferred_unverified" : "none";
+    const nextAction =
+      contactStatus === "unverified_email" ? "Verify the inferred address literally on an authoritative page (contact-verify) before it can be used."
+      : Number(r.pending) > 0 ? "Review the pending contact proposal; approve only with a page citation."
+      : "Source a named contact from the team's own site or brokerage profile; record provenance.";
+    return {
+      prospectId: r.id as string,
+      businessName: r.businessName as string,
+      market: (r.market as string | null) ?? null,
+      prospectType: (r.prospectType as string | null) ?? null,
+      priority: Number(r.priority),
+      contactStatus,
+      source: (r.anyProvenance as string | null) ?? null,
+      verificationStatus,
+      pendingProposals: Number(r.pending),
+      failedProposals: Number(r.failed),
+      nextAction,
+    };
+  });
+}
+
+/** Retire stale failed contact proposals with an explicit reason. They
+ * become `rejected` (the schema's terminal state) and keep their payload;
+ * nothing is deleted. Returns the number retired. */
+export async function retireStaleFailedProposals(user: CurrentUser, olderThanDays: number, reason: string): Promise<number> {
+  const rows = await sql`
+    update enrichment_proposals set status = 'rejected', decided_by = ${user.id}, decided_at = now(),
+      error = left(coalesce(error, '') || ' | retired: ' || ${reason}, 2000)
+    where status = 'failed' and created_at < now() - ${olderThanDays} * interval '1 day'
+    returning id
+  `;
+  return rows.length;
+}

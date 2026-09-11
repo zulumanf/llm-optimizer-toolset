@@ -6,6 +6,7 @@
  * `findProhibitedPhrase` is the guard both here (by construction) and at
  * approval (by validation).
  */
+import { logSampleConfidence } from "@/lib/confidence";
 import {
   FINDING_GENERATOR_VERSION,
   MIN_RESPONSES_FOR_FINDINGS,
@@ -82,10 +83,10 @@ const pct = (v: number): string => {
 const countOf = (rate: number, sampleSize: number): number =>
   Math.round(rate * sampleSize);
 
-/** Sample-size confidence: 0 at the minimum, ~0.9 by n=50, capped. */
+/** Sample-size confidence: 0 below the floor, then the shared log curve. */
 function sampleConfidence(n: number): number {
   if (n < MIN_RESPONSES_FOR_FINDINGS) return 0;
-  return Math.min(0.95, 0.4 + Math.log10(n) * 0.32);
+  return logSampleConfidence(n);
 }
 
 function strongSignals(signals: AuthoritySignalInput[]): AuthoritySignalInput[] {
@@ -192,14 +193,22 @@ export function generateFindingCandidates(input: GeneratorInput): FindingCandida
     p.mentionRate < 0.2 &&
     input.prospectAbsentResponseIds.length > 0
   ) {
+    // Count-exact title (sense-check 2026-08-24): "absent from most" both
+    // understates 0-of-N (that is ALL) and overstates a nonzero count — the
+    // title must say exactly what was counted.
+    const mentionCount = countOf(p.mentionRate, p.sampleSize);
     out.push({
       kind: "absence",
-      title: `${input.prospectName} is absent from most monitored AI responses`,
+      title:
+        mentionCount === 0
+          ? `${input.prospectName} is absent from all ${p.sampleSize} monitored AI answers`
+          : `${input.prospectName} appears in ${mentionCount} of ${p.sampleSize} monitored AI answers`,
       explanation:
-        `${input.prospectName} was mentioned in ` +
-        `${countOf(p.mentionRate, p.sampleSize)} of ${p.sampleSize} monitored ` +
-        `responses (${pct(p.mentionRate)}) — absent from the remaining ` +
-        `${p.sampleSize - countOf(p.mentionRate, p.sampleSize)}.`,
+        mentionCount === 0
+          ? `${input.prospectName} was not mentioned in any of the ${p.sampleSize} monitored responses.`
+          : `${input.prospectName} was mentioned in ${mentionCount} of ${p.sampleSize} monitored ` +
+            `responses (${pct(p.mentionRate)}) — absent from the remaining ` +
+            `${p.sampleSize - mentionCount}.`,
       metrics: { mention_rate: p.mentionRate, sample_size: p.sampleSize },
       signalIds: [],
       responseIds: input.prospectAbsentResponseIds,

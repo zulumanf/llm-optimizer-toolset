@@ -85,7 +85,10 @@ export async function eraseProspectContactPii(
 }
 
 /** Same contract for the prospect row's own contact fields. The business
- * name stays — a team's name is commercial identity, not personal data. */
+ * name stays — a team's name is commercial identity, not personal data.
+ * NO PRODUCTION CALLER YET (cleanup audit 2026-08-18): an erasure request
+ * currently requires an operator to invoke this from a script. Wiring a
+ * UI/admin path is an open product decision — do not delete. */
 export async function eraseProspectAccountPii(
   user: CurrentUser,
   raw: unknown

@@ -2,14 +2,12 @@
  * Integration tests for spec 007 — interventions, scheduled post runs,
  * verdicts, confounds, and the evidence-backed task state machine.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const user: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000201",
@@ -35,6 +33,9 @@ describe.skipIf(!TEST_URL)("attribution (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     projectSvc = await import("@/lib/projects/service");
     setSvc = await import("@/lib/prompts/set-service");
     promptSvc = await import("@/lib/prompts/prompt-service");
@@ -47,11 +48,6 @@ describe.skipIf(!TEST_URL)("attribution (integration)", () => {
     attribution = await import("@/lib/attribution/service");
     tasks = await import("@/lib/tasks/service");
     mock = await import("@/lib/ai/mock");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 
@@ -264,6 +260,20 @@ describe.skipIf(!TEST_URL)("attribution (integration)", () => {
     expect(view.comparability[0]?.offsetLabel).toBe("+2w");
     expect(view.comparability[0]?.grade).toBe("medium");
     expect(view.comparability[0]?.reasons.join(" ")).toContain("single baseline run");
+
+    // Retest context (spec 067): the subject's model-agreement read on the
+    // completed post run travels with the verdicts. One mock provider with
+    // N=2 → the honest insufficient label, never a one-model consensus.
+    expect(view.postRunAgreement).not.toBeNull();
+    expect(view.postRunAgreement?.offsetLabel).toBe("+2w");
+    expect(view.postRunAgreement?.label).toBe("insufficient");
+    expect(view.postRunAgreement?.summary).toContain("at least two providers");
+    // Aggregate-insufficient verdicts carry no per-provider read (N=2 per
+    // side is below every threshold) — empty, never fabricated movement.
+    for (const verdict of view.verdicts) {
+      expect(verdict.providers).toEqual([]);
+      expect(verdict.providerSummary).toBeNull();
+    }
 
     // Lifecycle (spec 062): scheduling made it retest_pending at creation;
     // the completed post run advances it to retested via the heartbeat sync.

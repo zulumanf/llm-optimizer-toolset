@@ -2,14 +2,12 @@
  * Integration tests for spec 003 — the full run pipeline through the real
  * queue against the mock provider (docs/09: E2E never spends tokens).
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const user: CurrentUser = {
   id: "00000000-0000-4000-8000-0000000000dd",
@@ -31,6 +29,9 @@ describe.skipIf(!TEST_URL)("experiment runs (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     projectSvc = await import("@/lib/projects/service");
     setSvc = await import("@/lib/prompts/set-service");
     promptSvc = await import("@/lib/prompts/prompt-service");
@@ -39,11 +40,6 @@ describe.skipIf(!TEST_URL)("experiment runs (integration)", () => {
     jobs = await import("@/db/jobs");
     runsDb = await import("@/db/runs");
     mock = await import("@/lib/ai/mock");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 

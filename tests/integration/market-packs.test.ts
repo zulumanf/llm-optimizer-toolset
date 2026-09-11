@@ -3,15 +3,13 @@
  * markets tree (idempotency, alias merge, containment, cycle guard) and
  * prompt generation into a real prompt set with lineage.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 import { unwrap } from "../helpers/result";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const operator: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000401",
@@ -24,24 +22,20 @@ describe.skipIf(!TEST_URL)("market packs (integration)", () => {
   let sql: (typeof import("@/db/client"))["sql"];
   let install: typeof import("@/lib/markets/install");
   let generate: typeof import("@/lib/markets/generate");
-  let packs: typeof import("@/lib/markets/packs");
   let detect: typeof import("@/lib/exclusivity/detect");
   let projectSvc: typeof import("@/lib/projects/service");
   let setSvc: typeof import("@/lib/prompts/set-service");
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     install = await import("@/lib/markets/install");
     generate = await import("@/lib/markets/generate");
-    packs = await import("@/lib/markets/packs");
     detect = await import("@/lib/exclusivity/detect");
     projectSvc = await import("@/lib/projects/service");
     setSvc = await import("@/lib/prompts/set-service");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 

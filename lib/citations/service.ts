@@ -22,6 +22,7 @@ import { safeFetch } from "@/lib/security/safe-fetch";
 import { scanAliases } from "@/lib/parsing/prepass";
 import { createIntervention } from "@/lib/attribution/service";
 import { log } from "@/lib/logger";
+import { CURRENT_REVISION } from "@/db/mentions";
 import {
   computeAcvs,
   canTransition,
@@ -121,9 +122,7 @@ async function gatherProjectCitationData(
         join mentions m on m.response_id = r.id and m.recommended
         where runs.project_id = ${projectId}
           and runs.status in ('completed', 'partial') and r.provider != 'mock'
-          and not exists (select 1 from mentions n
-            where n.response_id = m.response_id and n.company_id = m.company_id
-              and n.revision > m.revision)
+          and ${CURRENT_REVISION}
         group by c.domain
       `,
       // Presence is page-scoped: present anywhere = present; absent means

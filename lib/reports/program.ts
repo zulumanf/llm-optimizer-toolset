@@ -13,6 +13,7 @@ import type {
   SnapshotCategoryOwnership,
 } from "@/lib/reports/types";
 import { interventionVerdictSummaries } from "@/lib/attribution/service";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 export async function buildProgram(args: {
   projectId: string;
@@ -142,9 +143,7 @@ export async function buildCategoryOwnership(args: {
       m.mentioned, m.recommended
     from responses r
     left join mentions m on m.response_id = r.id and m.mentioned
-      and not exists (select 1 from mentions n
-        where n.response_id = m.response_id and n.company_id = m.company_id
-          and n.revision > m.revision)
+      and ${CURRENT_REVISION}
     left join companies c on c.id = m.company_id
     where r.run_id = ${args.runId} and r.error is null
   `;

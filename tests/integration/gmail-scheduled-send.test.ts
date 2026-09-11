@@ -439,6 +439,40 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     if (!refused.ok) expect(refused.error.kind).toBe("conflict");
   });
 
+  it("spec 102: the outbox shows a draft as scheduled, in-flight, then parked with its reason", async () => {
+    const { draftId } = await seedApprovedDraft();
+    const sendAt = new Date(Date.now() + 60 * 60 * 1000);
+    unwrap(
+      await svc.scheduleDraftSend(operator, {
+        draftId,
+        sendAt: sendAt.toISOString(),
+        businessPurpose: PURPOSE,
+      })
+    );
+    let row = (await drain.listScheduledOutbox()).scheduled.find((r) => r.draftId === draftId);
+    expect(row).toBeDefined();
+    expect(new Date(row!.scheduledSendAt!).getTime()).toBe(sendAt.getTime());
+    expect(row!.businessName).toBe("Rivera Team");
+    expect(row!.inFlight).toBe(false);
+
+    // An unresolved claim marks the row in-flight while still scheduled.
+    await sql`update outreach_drafts set send_claimed_at = now() where id = ${draftId}`;
+    row = (await drain.listScheduledOutbox()).scheduled.find((r) => r.draftId === draftId);
+    expect(row!.inFlight).toBe(true);
+
+    // Parked the way the drain parks: schedule and claim cleared, reason kept.
+    await sql`
+      update outreach_drafts set scheduled_send_at = null, send_claimed_at = null,
+        last_send_error = 'Gate refused: recipient suppressed.'
+      where id = ${draftId}
+    `;
+    const outbox = await drain.listScheduledOutbox();
+    expect(outbox.scheduled.find((r) => r.draftId === draftId)).toBeUndefined();
+    const parked = outbox.parked.find((r) => r.draftId === draftId);
+    expect(parked!.lastSendError).toContain("suppressed");
+    expect(parked!.inFlight).toBe(false);
+  });
+
   it("drain: transmits a due approved draft through the full gate and clears its claim", async () => {
     const { draftId } = await seedApprovedDraft();
     executeCapability.mockResolvedValue(sendOk);
@@ -492,6 +526,33 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
       select id from prospect_outreach_sends where draft_id = ${draftId} and not allowed
     `;
     expect(refusal).toBeDefined();
+  });
+
+  it("spec 099: a reply recorded after approval parks the scheduled draft — an unattended send never continues past a reply", async () => {
+    const { prospectId, draftId } = await seedApprovedDraft();
+    executeCapability.mockResolvedValue(sendOk);
+    await scheduleAndBackdate(draftId);
+    await sql`update prospects set stage = 'replied' where id = ${prospectId}`;
+
+    const report = await drain.drainScheduledSends();
+    expect(report).toMatchObject({ due: 1, sent: 0, parked: 1 });
+    expect(executeCapability).not.toHaveBeenCalled();
+
+    const [draft] = await sql`
+      select sent_recorded_at, scheduled_send_at, last_send_error from outreach_drafts where id = ${draftId}
+    `;
+    expect(draft?.sentRecordedAt).toBeNull();
+    expect(draft?.scheduledSendAt).toBeNull();
+    expect(draft?.lastSendError).toMatch(/recorded reply/i);
+    const [refusal] = await sql`
+      select gate_verdict from prospect_outreach_sends where draft_id = ${draftId} and not allowed
+    `;
+    expect(refusal).toBeDefined();
+
+    // A human-initiated send on the same prospect is NOT stage-gated: the
+    // ladder sends the audit after a reply.
+    const human = await svc.sendProspectDraft(operator, { draftId, channel: "gmail", businessPurpose: PURPOSE });
+    expect(human.ok).toBe(true);
   });
 
   it("drain: clean transport failures retry, then park at the attempt cap", async () => {
@@ -652,13 +713,16 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     // supersedes the old one and clears its schedule.
     await scheduleAndBackdate(draftId);
     const [draft] = await sql`
-      select prospect_id, contact_id, body from outreach_drafts where id = ${draftId}
+      select prospect_id, contact_id, subject, body from outreach_drafts where id = ${draftId}
     `;
     const newVersion = unwrap(
       await svc.createOutreachDraft(operator, {
         prospectId: draft?.prospectId as string,
         channel: "email",
         contactId: draft?.contactId as string,
+        // An operator-supplied body leaves subject empty unless passed —
+        // and the spec-116 QA gate refuses approval without one.
+        subject: draft?.subject as string,
         body: `${draft?.body as string}\n\nP.S. updated`,
       })
     );

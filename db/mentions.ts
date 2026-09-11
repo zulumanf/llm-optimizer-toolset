@@ -35,13 +35,19 @@ const COLUMNS = sql`m.id, m.response_id, m.company_id, m.revision, m.mentioned,
   m.parser_version, m.confidence, m.needs_review, m.reviewed_by, m.reviewed_at,
   m.created_at`;
 
-/** Current revision = highest revision per (response, company). */
-const CURRENT = sql`not exists (
+/**
+ * Current revision = highest revision per (response, company), for queries
+ * whose mentions alias is `m`. Exported (cleanup 2026-08-18): the audit
+ * found 26 hand-copied variants of this predicate across 21 files — one
+ * fragment, embedded everywhere the alias allows.
+ */
+export const CURRENT_REVISION = sql`not exists (
   select 1 from mentions newer
   where newer.response_id = m.response_id
     and newer.company_id = m.company_id
     and newer.revision > m.revision
 )`;
+const CURRENT = CURRENT_REVISION;
 
 export async function listReviewQueue(projectId: string): Promise<ReviewQueueItem[]> {
   return sql<ReviewQueueItem[]>`

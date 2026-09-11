@@ -59,6 +59,10 @@ alter table prompts drop column audience;
 drop table market_pack_installs;
 drop trigger markets_no_cycle on markets;
 drop function markets_no_cycle();
+-- Widened kinds fall back to 'custom' (hierarchy intact) rather than
+-- violating the narrowed CHECK on real data.
+update markets set kind = 'custom'
+  where kind in ('country', 'state', 'metro', 'county', 'zip');
 alter table markets drop constraint markets_kind_check;
 alter table markets add constraint markets_kind_check check (kind in (
   'city', 'borough', 'neighborhood', 'region', 'custom'

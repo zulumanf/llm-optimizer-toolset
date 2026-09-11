@@ -12,6 +12,7 @@ import { getSubjectCompany } from "@/db/companies";
 import { listCompetitorsIncludingArchived } from "@/db/competitors";
 import { latestScoredRunId } from "@/db/dashboard";
 import type { FrozenPrompt } from "@/lib/prompts/types";
+import { CURRENT_REVISION } from "@/db/mentions";
 
 export const HEAD_TO_HEAD_VERSION = "head-to-head-v1";
 
@@ -159,9 +160,7 @@ async function loadRun(runId: string): Promise<{
     from mentions m
     join responses r on r.id = m.response_id
     where r.run_id = ${runId}
-      and not exists (select 1 from mentions n
-        where n.response_id = m.response_id and n.company_id = m.company_id
-          and n.revision > m.revision)
+      and ${CURRENT_REVISION}
   `;
   return {
     responses,

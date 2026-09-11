@@ -19,10 +19,12 @@ export interface PackVariable {
 
 /**
  * Intent tiers from the agency blueprint: 1 = narrow high-intent (closest to
- * a buying decision), 4 = broad category. Tiers drive nothing automatically —
- * they tell the operator what a prompt is for. Persisted on prompts and in
- * frozen snapshots (migration 030) so reports CAN segment by commercial
- * value; no report does yet.
+ * a buying decision), 4 = broad category. Persisted on prompts and in frozen
+ * snapshots (migration 030). Tiers now DRIVE behavior — changing one changes
+ * numbers on prospect-facing surfaces: lib/scoring/intent.ts weights them
+ * into commercial-intent scores, lib/prospects/diagnose.ts gates high-intent
+ * diagnoses on tier 1–2, and lib/prospects/benchmark.ts segments frozen runs
+ * by tier.
  */
 export type IntentTier = 1 | 2 | 3 | 4;
 

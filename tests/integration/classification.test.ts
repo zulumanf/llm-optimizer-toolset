@@ -2,11 +2,10 @@
  * Integration tests for spec 004 — parse → review gate → score pipeline
  * against real Postgres with the mock provider.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 // Simulates an LLM classifier outage for the provenance test below. Harmless
 // to every other test in this file: they run keyless, so the LLM path is
@@ -18,7 +17,6 @@ vi.mock("@/lib/parsing/classify-llm", () => ({
 }));
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const admin: CurrentUser = {
   id: "00000000-0000-4000-8000-0000000000ee",
@@ -45,6 +43,9 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     projectSvc = await import("@/lib/projects/service");
     setSvc = await import("@/lib/prompts/set-service");
     promptSvc = await import("@/lib/prompts/prompt-service");
@@ -57,11 +58,6 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
     scoring = await import("@/lib/scoring/compute");
     mentionsDb = await import("@/db/mentions");
     mock = await import("@/lib/ai/mock");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 

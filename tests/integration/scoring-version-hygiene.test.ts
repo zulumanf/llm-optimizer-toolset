@@ -6,13 +6,11 @@
  * quietly mixes v1.0 and v1.1 numbers: the exact cross-version comparison
  * lib/constants.ts forbids.
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { SCORING_VERSION } from "@/lib/constants";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 const OLD_VERSION = "v1.0";
 
 describe.skipIf(!TEST_URL)("scoring-version hygiene (integration)", () => {
@@ -26,11 +24,12 @@ describe.skipIf(!TEST_URL)("scoring-version hygiene (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     dashboard = await import("@/db/dashboard");
     competitors = await import("@/db/competitors");
 
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, { cwd: ROOT, stdio: "pipe" });
   });
 
   beforeEach(async () => {

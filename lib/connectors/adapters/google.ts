@@ -292,9 +292,13 @@ function encodeMessage(args: {
   htmlBody?: string;
   replyTo?: string;
   unsubscribeUrl?: string;
+  inReplyTo?: string;
+  references?: string;
 }): string {
   const headers = [`To: ${args.to}`, `From: ${args.from}`, `Subject: ${args.subject}`];
   if (args.replyTo) headers.push(`Reply-To: ${args.replyTo}`);
+  if (args.inReplyTo) headers.push(`In-Reply-To: ${args.inReplyTo}`);
+  if (args.references) headers.push(`References: ${args.references}`);
   // A one-click unsubscribe header is a compliance field, not a nicety.
   if (args.unsubscribeUrl) {
     headers.push(`List-Unsubscribe: <${args.unsubscribeUrl}>`);
@@ -332,6 +336,91 @@ function decodeBody(part: { data?: string } | undefined): string {
   return Buffer.from(part.data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
 }
 
+interface RawGmailPart {
+  mimeType?: string;
+  body?: { data?: string };
+  parts?: RawGmailPart[];
+}
+interface RawGmailMessage {
+  id?: string;
+  threadId?: string;
+  internalDate?: string;
+  labelIds?: string[];
+  payload?: RawGmailPart & { headers?: { name?: string; value?: string }[] };
+}
+export interface ParsedGmailMessage {
+  id: string;
+  threadId: string | null;
+  /** RFC 5322 Message-ID header — what In-Reply-To/References must cite. */
+  messageId: string | null;
+  from: string;
+  to: string;
+  subject: string;
+  date: string | null;
+  labelIds: string[];
+  body: string;
+}
+
+function firstPartOf(part: RawGmailPart | undefined, mimeType: string): RawGmailPart | undefined {
+  if (!part) return undefined;
+  if (part.mimeType === mimeType && part.body?.data) return part;
+  for (const p of part.parts ?? []) {
+    const found = firstPartOf(p, mimeType);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** Plain text of an HTML-only message (spec 130): a reply sent from a
+ * client that emits no text/plain part must still yield its words, not an
+ * empty body that ingestion replaces with the subject line. */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|tr|h[1-6]|blockquote)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+/** Body text of a message: the first text/plain part, else the first
+ * text/html part stripped to text, else the top-level body. */
+export function gmailBodyText(payload: RawGmailPart | undefined): string {
+  const plain = firstPartOf(payload, "text/plain");
+  if (plain) return decodeBody(plain.body);
+  const html = firstPartOf(payload, "text/html");
+  if (html) return htmlToText(decodeBody(html.body));
+  const top = decodeBody(payload?.body);
+  return payload?.mimeType === "text/html" ? htmlToText(top) : top;
+}
+
+function parseGmailMessage(message: RawGmailMessage): ParsedGmailMessage {
+  const headers = new Map(
+    (message.payload?.headers ?? []).map((h) => [(h.name ?? "").toLowerCase(), h.value ?? ""])
+  );
+  return {
+    id: message.id ?? "",
+    threadId: message.threadId ?? null,
+    messageId: headers.get("message-id") ?? null,
+    from: headers.get("from") ?? "",
+    to: headers.get("to") ?? "",
+    subject: headers.get("subject") ?? "",
+    date: message.internalDate ? new Date(Number(message.internalDate)).toISOString() : null,
+    labelIds: message.labelIds ?? [],
+    body: gmailBodyText(message.payload),
+  };
+}
+
 export const gmailConnector = buildAdapter({
   id: "gmail",
   provider: "gmail",
@@ -355,43 +444,48 @@ export const gmailConnector = buildAdapter({
       const response = await ctx.http({
         url: `${GMAIL_BASE}/users/${encodeURIComponent(config.userId)}/threads/${encodeURIComponent(threadId)}?format=full`,
         headers: bearer(ctx),
+        // Message bodies are base64url; without this the redactor replaces
+        // them with "[redacted]" (found live 2026-09-03, spec 127).
+        rawSecrets: true,
       });
       const { data } = expectOk(response, (raw) => {
-        const envelope = raw as
-          | {
-              messages?: {
-                id?: string;
-                internalDate?: string;
-                payload?: {
-                  headers?: { name?: string; value?: string }[];
-                  body?: { data?: string };
-                  parts?: { mimeType?: string; body?: { data?: string } }[];
-                };
-              }[];
-            }
-          | null;
-        const messages = (envelope?.messages ?? []).map((message) => {
-          const headers = new Map(
-            (message.payload?.headers ?? []).map((h) => [
-              (h.name ?? "").toLowerCase(),
-              h.value ?? "",
-            ])
-          );
-          const textPart = message.payload?.parts?.find((p) => p.mimeType === "text/plain");
-          return {
-            id: message.id ?? "",
-            from: headers.get("from") ?? "",
-            to: headers.get("to") ?? "",
-            subject: headers.get("subject") ?? "",
-            date: message.internalDate
-              ? new Date(Number(message.internalDate)).toISOString()
-              : null,
-            body: decodeBody(textPart?.body ?? message.payload?.body),
-          };
-        });
+        const envelope = raw as { messages?: RawGmailMessage[] } | null;
+        const messages = (envelope?.messages ?? []).map(parseGmailMessage);
         return { data: { threadId, messages }, rowsRead: messages.length };
       });
       return { data, rowsRead: (data as { messages: unknown[] }).messages.length };
+    },
+    // Spec 127: inbox search for reply ingestion and pre-dispatch checks.
+    // Lists ids for a Gmail query, then fetches each message in full.
+    "email.search_messages": async (input, ctx) => {
+      const config = gmailConfig.parse(ctx.config);
+      const q = requireString(input, "q", "email.search_messages");
+      const max = typeof input.maxResults === "number" ? Math.min(input.maxResults, 100) : 50;
+      const list = await ctx.http({
+        url: `${GMAIL_BASE}/users/${encodeURIComponent(config.userId)}/messages?q=${encodeURIComponent(q)}&maxResults=${max}`,
+        headers: bearer(ctx),
+      });
+      const { data: ids } = expectOk(list, (raw) => {
+        const envelope = raw as { messages?: { id?: string }[] } | null;
+        return {
+          data: (envelope?.messages ?? []).map((m) => m.id ?? "").filter((id) => id.length > 0),
+          rowsRead: 0,
+        };
+      });
+      const messages: ParsedGmailMessage[] = [];
+      for (const id of ids as string[]) {
+        const res = await ctx.http({
+          url: `${GMAIL_BASE}/users/${encodeURIComponent(config.userId)}/messages/${encodeURIComponent(id)}?format=full`,
+          headers: bearer(ctx),
+          rawSecrets: true,
+        });
+        const { data } = expectOk(res, (raw) => ({
+          data: parseGmailMessage(raw as RawGmailMessage),
+          rowsRead: 1,
+        }));
+        messages.push(data as ParsedGmailMessage);
+      }
+      return { data: { q, messages }, rowsRead: messages.length };
     },
 
     "email.create_draft": async (input, ctx) => {
@@ -463,6 +557,7 @@ export const gmailConnector = buildAdapter({
       const subject = requireString(input, "subject", "email.send_approved_message");
       const body = requireString(input, "body", "email.send_approved_message");
       const from = config.sendAsAddress ?? requireString(input, "from", "email.send_approved_message");
+      const threadId = typeof input.threadId === "string" && input.threadId ? input.threadId : null;
       const response = await ctx.http({
         url: `${GMAIL_BASE}/users/${encodeURIComponent(config.userId)}/messages/send`,
         method: "POST",
@@ -476,7 +571,10 @@ export const gmailConnector = buildAdapter({
             htmlBody: typeof input.htmlBody === "string" ? input.htmlBody : undefined,
             unsubscribeUrl:
               typeof input.unsubscribeUrl === "string" ? input.unsubscribeUrl : undefined,
+            inReplyTo: typeof input.inReplyTo === "string" ? input.inReplyTo : undefined,
+            references: typeof input.references === "string" ? input.references : undefined,
           }),
+          ...(threadId ? { threadId } : {}),
         },
       });
       const { data } = expectOk(response, (raw) => {

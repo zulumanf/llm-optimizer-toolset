@@ -14,6 +14,7 @@ import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 import { extractUrls } from "@/lib/parsing/prepass";
 import { extractCitations } from "@/lib/ai/citations";
+import { CURRENT_REVISION } from "@/db/mentions";
 import {
   computeProviderMetrics,
   authorityScore,
@@ -51,12 +52,7 @@ export async function computeScores(runId: string): Promise<void> {
       join responses r on r.id = m.response_id
       where r.run_id = ${runId} and m.needs_review
         and m.created_at < now() - make_interval(hours => ${REVIEW_TIMEOUT_HOURS})
-        and not exists (
-          select 1 from mentions newer
-          where newer.response_id = m.response_id
-            and newer.company_id = m.company_id
-            and newer.revision > m.revision
-        )
+        and ${CURRENT_REVISION}
     `;
     const staleIds = new Set(stale.map((r) => r.responseId as string));
     const freshPending = pending - staleIds.size;

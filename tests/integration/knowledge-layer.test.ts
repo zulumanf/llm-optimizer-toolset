@@ -6,14 +6,12 @@
  * incremental rebuild → context packet, plus the client-isolation tests that
  * matter most (this is the layer where cross-client leakage would happen).
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const user: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000901",
@@ -59,6 +57,9 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     projectSvc = await import("@/lib/projects/service");
     claimSvc = await import("@/lib/claims/service");
     ingest = await import("@/lib/knowledge/sources/ingest");
@@ -73,11 +74,6 @@ describe.skipIf(!TEST_URL)("knowledge compilation layer (integration)", () => {
     templates = await import("@/lib/knowledge/context/templates");
     experiment = await import("@/lib/knowledge/context/experiment");
 
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
     await templates.syncPacketTemplates();
   }, 180_000);

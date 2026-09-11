@@ -2,15 +2,13 @@
  * Integration tests for spec 010 — brief→draft→verify→approve→publish with a
  * fake agent caller (no network, docs/09: tests never spend tokens).
  */
-import { execSync } from "node:child_process";
-import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import type { AgentCaller } from "@/lib/ai/agent";
 import { seedTestActors } from "../helpers/actors";
+import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-const ROOT = join(__dirname, "..", "..");
 
 const user: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000501",
@@ -30,17 +28,15 @@ describe.skipIf(!TEST_URL)("content engine (integration)", () => {
 
   beforeAll(async () => {
     ({ sql } = await import("@/db/client"));
+    // File-level clean slate: the shared schema is built once per
+    // vitest run, so residue from earlier suites must be cleared here.
+    await truncateAll(sql);
     projectSvc = await import("@/lib/projects/service");
     companySvc = await import("@/lib/companies/service");
     claimsSvc = await import("@/lib/claims/service");
     setSvc = await import("@/lib/prompts/set-service");
     promptSvc = await import("@/lib/prompts/prompt-service");
     content = await import("@/lib/content/service");
-    await sql.unsafe("drop schema public cascade; create schema public;");
-    execSync(`npx tsx scripts/migrate.ts up --db "${TEST_URL}"`, {
-      cwd: ROOT,
-      stdio: "pipe",
-    });
     await seedTestActors(sql);
   });
 

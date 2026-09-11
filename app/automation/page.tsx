@@ -80,7 +80,7 @@ export default async function AutomationDashboardPage() {
         description="Triggers start work, the graph executes it, gates hold anything consequential, and every failure becomes a visible exception. Nothing here sends, publishes, or invoices without a recorded decision."
       />
 
-      <AutomationNav current="overview" />
+      <AutomationNav />
 
       {!keyReady ? (
         <div className="mb-6 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-4">

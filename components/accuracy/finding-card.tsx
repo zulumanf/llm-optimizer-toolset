@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { setFindingStatus, createCorrectionTask } from "@/app/accuracy/actions";
+import { SEVERITY_VARIANT } from "@/lib/ui/variants";
 
 interface Props {
   finding: {
@@ -26,11 +27,6 @@ interface Props {
   };
 }
 
-const SEVERITY_VARIANT: Record<string, "destructive" | "default" | "secondary"> = {
-  high: "destructive",
-  medium: "default",
-  low: "secondary",
-};
 
 export function AccuracyFindingCard({ finding }: Props) {
   const router = useRouter();

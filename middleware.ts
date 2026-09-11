@@ -20,12 +20,34 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { devAuthRefusalReason, publicOrigin } from "@/lib/env";
+import { MARKETING_PREFIXES, marketingRewriteTarget } from "@/lib/marketing/constants";
 
 /** Paths reachable without a session. `/audit` is the prospect audit page —
- * its own security is the high-entropy token (spec 032). */
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/audit"];
+ * its own security is the high-entropy token (spec 032). Marketing pages
+ * (spec 061) are the public site: anonymous by design, no client data. */
+// `/api/open` is the email open-tracking pixel (spec 092): fetched by mail
+// clients and image proxies, never by a session — the auth redirect was
+// silently eating every open event (found live: zero opens ever recorded
+// while the endpoint 307'd to /login).
+// `/mcp`, `/healthz`, `/.well-known` are the remote MCP surface (spec 126):
+// bearer-token machine clients, never a browser session — without these the
+// auth redirect would 307 Grok's JSON-RPC to /login (the /api/open trap).
+// `/report` is the private-report surface (spec 134): invitation exchange
+// and session-gated clean URLs — its own security is the report session.
+const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/api/open", "/api/audit-signal", "/audit", "/report/", "/mcp", "/healthz", "/.well-known", ...MARKETING_PREFIXES];
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
+  // Apex-host rewrite (spec 061): the marketing domain's `/` is the homepage;
+  // the app host's `/` stays the operator dashboard. Before auth on purpose —
+  // the rewritten path is public either way.
+  const rewriteTo = marketingRewriteTarget(
+    request.headers.get("host"),
+    request.nextUrl.pathname
+  );
+  if (rewriteTo) {
+    return NextResponse.rewrite(new URL(rewriteTo, request.url));
+  }
+
   if (process.env.AUTH_MODE !== "supabase") {
     const refusal = devAuthRefusalReason();
     if (refusal) return new NextResponse(refusal, { status: 503 });
