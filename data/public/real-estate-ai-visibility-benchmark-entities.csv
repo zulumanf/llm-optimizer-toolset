@@ -1,0 +1,1037 @@
+benchmark_id,market,provider,model_label,capture_date,run_id,entity_label,recommended_in_answers,mentioned_in_answers,valid_answers
+RF-001,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-07-30,af764e98-863d-4043-aee8-432691869c8a,E01,9,9,40
+RF-001,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-07-30,af764e98-863d-4043-aee8-432691869c8a,E02,4,4,40
+RF-001,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-07-30,af764e98-863d-4043-aee8-432691869c8a,E03,3,3,40
+RF-002,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-07-30,3a18fb7f-dee7-4cd5-8ae9-7647321b8813,E01,1,1,12
+RF-002,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-07-30,3a18fb7f-dee7-4cd5-8ae9-7647321b8813,E02,1,1,12
+RF-002,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-07-30,3a18fb7f-dee7-4cd5-8ae9-7647321b8813,E03,1,1,12
+RF-003,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-07-30,6442205e-7930-429b-aac9-66e7a155c8e5,E01,5,5,40
+RF-003,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-07-30,6442205e-7930-429b-aac9-66e7a155c8e5,E02,1,1,40
+RF-003,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-07-30,6442205e-7930-429b-aac9-66e7a155c8e5,E03,1,1,40
+RF-003,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-07-30,6442205e-7930-429b-aac9-66e7a155c8e5,E04,1,1,40
+RF-003,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-07-30,6442205e-7930-429b-aac9-66e7a155c8e5,E05,1,1,40
+RF-004,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-07-30,46e9e380-cc64-4309-8596-79b263eef36e,E01,1,1,15
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E01,29,29,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E02,23,23,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E03,16,16,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E04,13,13,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E05,12,12,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E06,10,10,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E07,10,10,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E08,10,10,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E09,8,8,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E10,7,7,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E11,7,7,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E12,6,6,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E13,5,5,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E14,5,5,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E15,4,4,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E16,4,4,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E17,4,4,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E18,3,3,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E19,3,3,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E20,2,2,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E21,1,1,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E22,1,1,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E23,1,1,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E24,1,1,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E25,1,1,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E26,1,1,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E27,1,1,64
+RF-005,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,cedf73a5-167f-4bbb-a4b4-d6fb8244964a,E28,1,1,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E01,27,27,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E02,26,26,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E03,11,11,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E04,10,10,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E05,10,10,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E06,9,9,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E07,9,9,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E08,8,8,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E09,7,7,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E10,7,7,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E11,6,6,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E12,5,5,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E13,5,5,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E14,5,5,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E15,5,5,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E16,4,4,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E17,4,4,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E18,2,2,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E19,2,2,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E20,1,1,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E21,1,1,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E22,1,1,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E23,1,1,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E24,1,1,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E25,1,1,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E26,1,1,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E27,1,1,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E28,1,1,64
+RF-006,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-15,9da9fe9d-343f-4d0d-8f37-ac7db681050a,E29,1,1,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E01,28,28,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E02,23,23,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E03,10,10,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E04,9,9,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E05,9,9,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E06,8,8,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E07,6,6,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E08,6,6,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E09,6,6,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E10,4,4,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E11,3,3,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E12,3,3,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E13,3,3,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E14,3,3,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E15,3,3,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E16,3,3,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E17,3,3,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E18,3,3,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E19,3,3,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E20,3,3,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E21,2,2,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E22,2,2,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E23,2,2,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E24,1,1,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E25,1,1,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E26,1,1,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E27,1,1,64
+RF-007,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,ef14a12c-f97a-423e-8828-4b2baac604de,E28,1,1,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E01,26,26,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E02,25,25,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E03,12,12,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E04,12,12,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E05,10,10,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E06,7,7,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E07,7,7,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E08,6,6,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E09,6,6,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E10,6,6,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E11,5,5,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E12,5,5,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E13,4,4,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E14,4,4,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E15,3,3,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E16,3,3,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E17,2,2,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E18,2,2,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E19,2,2,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E20,2,2,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E21,2,2,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E22,1,1,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E23,1,1,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E24,1,1,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E25,1,1,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E26,1,1,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E27,1,1,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E28,1,1,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E29,1,1,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E30,1,1,64
+RF-008,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E31,1,1,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E01,22,22,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E02,21,21,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E03,15,15,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E04,6,6,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E05,4,4,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E06,4,4,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E07,4,4,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E08,3,3,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E09,2,2,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E10,2,2,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E11,2,2,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E12,1,1,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E13,1,1,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E14,1,1,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E15,1,1,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E16,1,1,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E17,1,1,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E18,1,1,64
+RF-009,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-17,a00feb79-1a94-432d-949a-16195ddc5142,E19,1,1,64
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E01,16,16,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E02,9,9,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E03,8,8,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E04,8,8,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E05,7,7,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E06,7,7,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E07,4,4,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E08,3,3,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E09,1,1,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E10,1,1,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E11,1,1,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E12,1,1,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E13,1,1,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E14,1,1,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E15,1,1,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E16,1,1,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E17,1,1,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E18,1,1,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E19,1,1,104
+RF-010,Wilmington,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E20,1,1,104
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E01,25,25,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E02,12,12,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E03,11,11,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E04,7,7,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E05,7,7,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E06,5,5,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E07,4,4,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E08,4,4,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E09,3,3,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E10,3,3,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E11,2,2,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E12,2,2,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E13,1,1,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E14,1,1,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E15,1,1,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E16,1,1,102
+RF-011,Wilmington,perplexity,"Perplexity (sonar, API)",2026-08-20,2557818a-90bf-4a40-8e8e-41322ebc642f,E17,1,1,102
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E01,42,42,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E02,26,26,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E03,23,23,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E04,22,22,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E05,19,19,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E06,14,14,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E07,13,13,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E08,11,11,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E09,8,8,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E10,6,6,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E11,2,2,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E12,1,1,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E13,1,1,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E14,1,1,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E15,1,1,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E16,1,1,256
+RF-012,"Wilmington, DE",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E17,1,1,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E01,54,54,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E02,19,19,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E03,16,16,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E04,14,14,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E05,11,11,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E06,9,9,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E07,8,8,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E08,8,8,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E09,8,8,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E10,7,7,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E11,7,7,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E12,5,5,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E13,5,5,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E14,4,4,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E15,3,3,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E16,3,3,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E17,3,3,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E18,1,1,256
+RF-013,"Wilmington, DE",perplexity,"Perplexity (sonar, API)",2026-08-25,66af5cdb-d8cb-48a5-9646-7b961ee3328e,E19,1,1,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E01,34,34,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E02,25,25,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E03,15,15,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E04,15,15,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E05,12,12,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E06,12,12,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E07,9,9,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E08,9,9,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E09,8,8,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E10,6,6,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E11,5,5,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E12,3,3,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E13,2,2,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E14,2,2,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E15,2,2,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E16,1,1,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E17,1,1,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E18,1,1,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E19,1,1,256
+RF-014,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E20,1,1,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E01,40,40,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E02,38,38,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E03,32,32,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E04,30,30,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E05,25,25,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E06,14,14,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E07,10,10,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E08,10,10,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E09,9,9,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E10,3,3,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E11,3,3,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E12,3,3,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E13,2,2,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E14,2,2,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E15,2,2,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E16,1,1,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E17,1,1,256
+RF-015,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-25,965834e3-5563-41b8-8896-efa669210aa0,E18,1,1,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E01,39,39,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E02,37,37,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E03,29,29,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E04,23,23,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E05,12,12,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E06,11,11,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E07,10,10,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E08,6,6,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E09,6,6,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E10,5,5,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E11,4,4,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E12,4,4,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E13,3,3,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E14,2,2,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E15,2,2,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E16,2,2,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E17,1,1,256
+RF-016,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E18,1,1,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E01,48,48,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E02,18,18,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E03,16,16,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E04,15,15,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E05,13,13,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E06,13,13,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E07,10,10,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E08,10,10,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E09,9,9,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E10,8,8,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E11,6,6,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E12,6,6,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E13,5,5,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E14,2,2,256
+RF-017,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-25,56d332e8-89a0-4f45-86a9-754e21beefe9,E15,1,1,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E01,15,15,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E02,10,10,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E03,9,9,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E04,6,6,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E05,6,6,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E06,6,6,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E07,5,5,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E08,4,4,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E09,3,3,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E10,2,2,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E11,1,1,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E12,1,1,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E13,1,1,256
+RF-018,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E14,1,1,256
+RF-019,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E01,38,38,256
+RF-019,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E02,28,28,256
+RF-019,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E03,24,24,256
+RF-019,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E04,19,19,256
+RF-019,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E05,9,9,256
+RF-019,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E06,6,6,256
+RF-019,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E07,5,5,256
+RF-019,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E08,5,5,256
+RF-019,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E09,4,4,256
+RF-019,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E10,3,3,256
+RF-019,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E11,1,1,256
+RF-019,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-25,40719c6d-e64c-4759-b992-af8b2bb2e1bc,E12,1,1,256
+RF-020,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E01,13,13,256
+RF-020,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E02,10,10,256
+RF-020,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E03,10,10,256
+RF-020,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E04,8,8,256
+RF-020,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E05,7,7,256
+RF-020,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E06,6,6,256
+RF-020,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E07,6,6,256
+RF-020,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E08,5,5,256
+RF-020,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E09,4,4,256
+RF-020,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E10,3,3,256
+RF-020,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E11,2,2,256
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E01,39,39,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E02,23,23,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E03,18,18,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E04,17,17,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E05,16,16,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E06,16,16,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E07,14,14,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E08,11,11,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E09,7,7,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E10,7,7,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E11,6,6,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E12,4,4,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E13,3,3,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E14,1,1,255
+RF-021,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-25,38617a0c-3e5f-4a6f-b82c-08db9afcdd5b,E15,1,1,255
+RF-022,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E01,17,17,256
+RF-022,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E02,14,14,256
+RF-022,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E03,14,14,256
+RF-022,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E04,12,12,256
+RF-022,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E05,7,7,256
+RF-022,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E06,7,7,256
+RF-022,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E07,6,6,256
+RF-022,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E08,4,4,256
+RF-022,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E09,4,4,256
+RF-022,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E10,3,3,256
+RF-022,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E11,3,3,256
+RF-022,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E12,1,1,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E01,40,40,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E02,26,26,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E03,20,20,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E04,17,17,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E05,17,17,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E06,16,16,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E07,15,15,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E08,12,12,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E09,8,8,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E10,8,8,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E11,7,7,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E12,6,6,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E13,6,6,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E14,1,1,256
+RF-023,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,6bc980f0-ef78-4cd6-bef5-6495bb027bab,E15,1,1,256
+RF-024,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E01,30,30,256
+RF-024,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E02,12,12,256
+RF-024,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E03,6,6,256
+RF-024,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E04,6,6,256
+RF-024,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E05,5,5,256
+RF-024,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E06,5,5,256
+RF-024,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E07,4,4,256
+RF-024,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E08,4,4,256
+RF-024,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E09,2,2,256
+RF-024,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E10,2,2,256
+RF-024,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E11,2,2,256
+RF-024,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E12,1,1,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E01,37,37,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E02,33,33,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E03,26,26,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E04,16,16,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E05,4,4,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E06,3,3,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E07,3,3,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E08,2,2,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E09,2,2,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E10,2,2,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E11,1,1,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E12,1,1,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E13,1,1,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E14,1,1,256
+RF-025,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-26,9ee8f5f6-2a32-4d79-96b9-a7f2c004113c,E15,1,1,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E01,32,32,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E02,27,27,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E03,20,20,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E04,18,18,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E05,17,17,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E06,15,15,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E07,12,12,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E08,10,10,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E09,8,8,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E10,6,6,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E11,5,5,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E12,2,2,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E13,1,1,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E14,1,1,256
+RF-026,Charleston,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E15,1,1,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E01,37,37,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E02,25,25,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E03,21,21,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E04,19,19,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E05,16,16,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E06,14,14,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E07,12,12,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E08,11,11,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E09,9,9,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E10,9,9,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E11,5,5,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E12,4,4,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E13,4,4,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E14,3,3,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E15,2,2,256
+RF-027,Charleston,perplexity,"Perplexity (sonar, API)",2026-08-26,9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1,E16,1,1,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E01,43,43,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E02,27,27,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E03,21,21,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E04,20,20,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E05,14,14,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E06,11,11,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E07,8,8,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E08,7,7,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E09,7,7,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E10,5,5,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E11,3,3,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E12,2,2,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E13,2,2,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E14,2,2,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E15,1,1,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E16,1,1,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E17,1,1,256
+RF-028,Savannah,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E18,1,1,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E01,59,59,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E02,31,31,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E03,20,20,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E04,19,19,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E05,18,18,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E06,17,17,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E07,16,16,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E08,13,13,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E09,9,9,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E10,8,8,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E11,4,4,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E12,3,3,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E13,1,1,256
+RF-029,Savannah,perplexity,"Perplexity (sonar, API)",2026-08-26,ed0528f2-6576-45a4-9b92-4c38aec3ecf5,E14,1,1,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E01,17,17,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E02,17,17,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E03,13,13,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E04,11,11,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E05,10,10,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E06,10,10,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E07,9,9,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E08,7,7,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E09,6,6,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E10,4,4,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E11,2,2,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E12,2,2,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E13,1,1,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E14,1,1,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E15,1,1,256
+RF-030,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E16,1,1,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E01,46,46,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E02,27,27,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E03,22,22,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E04,18,18,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E05,17,17,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E06,15,15,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E07,15,15,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E08,14,14,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E09,12,12,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E10,11,11,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E11,11,11,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E12,10,10,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E13,8,8,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E14,1,1,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E15,1,1,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E16,1,1,256
+RF-031,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-26,2daa6246-4cb4-4fab-b209-02729aa5a4cc,E17,1,1,256
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E01,12,12,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E02,8,8,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E03,7,7,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E04,5,5,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E05,5,5,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E06,4,4,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E07,2,2,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E08,1,1,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E09,1,1,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E10,1,1,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E11,1,1,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E12,1,1,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E13,1,1,162
+RF-032,Annapolis,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E14,1,1,162
+RF-033,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E01,33,33,160
+RF-033,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E02,20,20,160
+RF-033,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E03,20,20,160
+RF-033,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E04,19,19,160
+RF-033,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E05,5,5,160
+RF-033,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E06,4,4,160
+RF-033,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E07,2,2,160
+RF-033,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E08,2,2,160
+RF-033,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E09,1,1,160
+RF-033,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E10,1,1,160
+RF-033,Annapolis,perplexity,"Perplexity (sonar, API)",2026-08-27,c15cd6dc-5a30-49d6-a237-ad02cd40ffc6,E11,1,1,160
+RF-034,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E01,12,12,163
+RF-034,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E02,9,9,163
+RF-034,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E03,8,8,163
+RF-034,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E04,8,8,163
+RF-034,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E05,6,6,163
+RF-034,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E06,5,5,163
+RF-034,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E07,4,4,163
+RF-034,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E08,3,3,163
+RF-034,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E09,3,3,163
+RF-034,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E10,2,2,163
+RF-034,Princeton,openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E11,1,1,163
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E01,24,24,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E02,21,21,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E03,16,16,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E04,15,15,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E05,13,13,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E06,12,12,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E07,11,11,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E08,10,10,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E09,10,10,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E10,9,9,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E11,8,8,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E12,3,3,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E13,3,3,164
+RF-035,Princeton,perplexity,"Perplexity (sonar, API)",2026-08-27,ba50927a-dc07-4bdf-9ccc-c4b4689a2f74,E14,1,1,164
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E01,25,25,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E02,20,20,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E03,9,9,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E04,8,8,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E05,8,8,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E06,8,8,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E07,7,7,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E08,7,7,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E09,6,6,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E10,6,6,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E11,5,5,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E12,5,5,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E13,4,4,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E14,4,4,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E15,4,4,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E16,3,3,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E17,3,3,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E18,3,3,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E19,3,3,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E20,3,3,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E21,2,2,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E22,2,2,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E23,1,1,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E24,1,1,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E25,1,1,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E26,1,1,64
+RF-036,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E27,1,1,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E01,22,22,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E02,20,20,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E03,11,11,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E04,8,8,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E05,7,7,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E06,6,6,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E07,6,6,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E08,4,4,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E09,4,4,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E10,4,4,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E11,3,3,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E12,3,3,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E13,3,3,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E14,3,3,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E15,3,3,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E16,3,3,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E17,2,2,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E18,2,2,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E19,2,2,64
+RF-037,"Jersey City, NJ",perplexity,"Perplexity (sonar, API)",2026-08-31,99af19b4-3fff-4a05-b3a0-80135e5f588b,E20,1,1,64
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E01,31,31,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E02,17,17,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E03,17,17,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E04,16,16,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E05,12,12,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E06,11,11,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E07,6,6,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E08,6,6,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E09,5,5,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E10,5,5,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E11,4,4,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E12,4,4,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E13,3,3,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E14,3,3,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E15,3,3,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E16,2,2,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E17,1,1,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E18,1,1,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E19,1,1,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E20,1,1,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E21,1,1,256
+RF-038,"Greenville, SC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E22,1,1,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E01,24,24,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E02,9,9,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E03,8,8,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E04,8,8,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E05,7,7,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E06,6,6,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E07,5,5,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E08,4,4,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E09,4,4,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E10,4,4,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E11,4,4,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E12,2,2,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E13,2,2,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E14,2,2,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E15,2,2,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E16,1,1,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E17,1,1,256
+RF-039,"Greenville, SC",perplexity,"Perplexity (sonar, API)",2026-08-31,234722e6-0f09-46a2-b9f0-fdb8531ca6a7,E18,1,1,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E01,26,26,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E02,14,14,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E03,11,11,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E04,6,6,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E05,6,6,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E06,5,5,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E07,5,5,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E08,5,5,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E09,4,4,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E10,4,4,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E11,3,3,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E12,2,2,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E13,2,2,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E14,1,1,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E15,1,1,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E16,1,1,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E17,1,1,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E18,1,1,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E19,1,1,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E20,1,1,256
+RF-040,"Virginia Beach, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E21,1,1,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E01,15,15,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E02,12,12,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E03,10,10,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E04,9,9,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E05,9,9,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E06,8,8,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E07,8,8,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E08,6,6,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E09,5,5,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E10,4,4,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E11,2,2,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E12,1,1,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E13,1,1,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E14,1,1,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E15,1,1,256
+RF-041,"Virginia Beach, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,7faf71c8-2462-4e44-817d-84fe8f026b48,E16,1,1,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E01,17,17,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E02,14,14,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E03,10,10,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E04,10,10,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E05,9,9,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E06,8,8,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E07,8,8,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E08,6,6,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E09,5,5,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E10,4,4,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E11,4,4,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E12,2,2,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E13,2,2,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E14,2,2,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E15,2,2,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E16,1,1,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E17,1,1,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E18,1,1,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E19,1,1,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E20,1,1,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E21,1,1,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E22,1,1,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E23,1,1,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E24,1,1,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E25,1,1,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E26,1,1,256
+RF-042,"St. Louis, MO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E27,1,1,256
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E01,22,22,243
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E02,15,15,243
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E03,8,8,243
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E04,8,8,243
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E05,7,7,243
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E06,4,4,243
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E07,4,4,243
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E08,3,3,243
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E09,3,3,243
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E10,2,2,243
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E11,2,2,243
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E12,2,2,243
+RF-043,"St. Louis, MO",perplexity,"Perplexity (sonar, API)",2026-08-31,2011797b-ae5e-40c8-8813-7b25cdbe08ba,E13,1,1,243
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E01,23,23,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E02,20,20,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E03,12,12,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E04,10,10,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E05,8,8,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E06,6,6,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E07,4,4,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E08,4,4,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E09,3,3,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E10,3,3,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E11,3,3,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E12,3,3,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E13,3,3,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E14,3,3,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E15,2,2,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E16,2,2,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E17,2,2,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E18,2,2,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E19,1,1,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E20,1,1,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E21,1,1,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E22,1,1,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E23,1,1,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E24,1,1,256
+RF-044,"Indianapolis, IN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E25,1,1,256
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E01,32,32,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E02,17,17,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E03,15,15,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E04,12,12,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E05,11,11,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E06,9,9,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E07,8,8,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E08,8,8,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E09,8,8,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E10,7,7,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E11,7,7,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E12,6,6,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E13,6,6,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E14,5,5,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E15,5,5,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E16,3,3,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E17,3,3,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E18,1,1,242
+RF-045,"Indianapolis, IN",perplexity,"Perplexity (sonar, API)",2026-08-31,f1327957-2764-42a4-96e1-a8b382a2d502,E19,1,1,242
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E01,90,90,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E02,72,72,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E03,41,41,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E04,37,37,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E05,34,34,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E06,29,29,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E07,26,26,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E08,18,18,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E09,10,10,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E10,8,8,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E11,7,7,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E12,6,6,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E13,5,5,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E14,4,4,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E15,3,3,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E16,2,2,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E17,2,2,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E18,2,2,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E19,2,2,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E20,1,1,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E21,1,1,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E22,1,1,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E23,1,1,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E24,1,1,255
+RF-046,"Colorado Springs, CO",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E25,1,1,255
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E01,18,18,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E02,15,15,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E03,13,13,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E04,12,12,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E05,9,9,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E06,9,9,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E07,9,9,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E08,9,9,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E09,9,9,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E10,5,5,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E11,5,5,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E12,4,4,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E13,3,3,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E14,3,3,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E15,3,3,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E16,3,3,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E17,2,2,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E18,2,2,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E19,2,2,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E20,1,1,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E21,1,1,239
+RF-047,"Colorado Springs, CO",perplexity,"Perplexity (sonar, API)",2026-08-31,67f14bf1-a4ed-4291-a91e-35ea17ea76b9,E22,1,1,239
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E01,51,51,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E02,43,43,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E03,35,35,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E04,25,25,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E05,16,16,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E06,14,14,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E07,10,10,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E08,9,9,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E09,8,8,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E10,5,5,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E11,3,3,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E12,3,3,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E13,3,3,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E14,3,3,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E15,3,3,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E16,2,2,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E17,2,2,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E18,2,2,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E19,2,2,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E20,2,2,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E21,2,2,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E22,2,2,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E23,2,2,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E24,1,1,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E25,1,1,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E26,1,1,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E27,1,1,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E28,1,1,256
+RF-048,"Reno, NV",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E29,1,1,256
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E01,52,52,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E02,32,32,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E03,18,18,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E04,17,17,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E05,15,15,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E06,14,14,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E07,13,13,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E08,12,12,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E09,9,9,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E10,5,5,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E11,4,4,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E12,4,4,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E13,3,3,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E14,3,3,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E15,3,3,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E16,2,2,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E17,1,1,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E18,1,1,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E19,1,1,237
+RF-049,"Reno, NV",perplexity,"Perplexity (sonar, API)",2026-08-31,ac9992c0-52c1-4dd4-b61b-ac669c24dd38,E20,1,1,237
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E01,26,26,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E02,14,14,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E03,12,12,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E04,10,10,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E05,10,10,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E06,9,9,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E07,7,7,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E08,7,7,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E09,6,6,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E10,5,5,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E11,4,4,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E12,4,4,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E13,3,3,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E14,3,3,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E15,2,2,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E16,2,2,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E17,1,1,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E18,1,1,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E19,1,1,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E20,1,1,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E21,1,1,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E22,1,1,256
+RF-050,"Raleigh, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E23,1,1,256
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E01,28,28,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E02,27,27,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E03,17,17,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E04,11,11,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E05,9,9,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E06,9,9,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E07,8,8,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E08,7,7,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E09,6,6,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E10,6,6,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E11,5,5,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E12,3,3,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E13,3,3,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E14,3,3,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E15,2,2,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E16,2,2,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E17,1,1,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E18,1,1,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E19,1,1,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E20,1,1,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E21,1,1,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E22,1,1,245
+RF-051,"Raleigh, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,e2674bfc-d6f9-4f94-9e00-e7224e86100b,E23,1,1,245
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E01,34,34,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E02,27,27,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E03,26,26,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E04,22,22,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E05,15,15,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E06,15,15,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E07,9,9,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E08,8,8,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E09,4,4,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E10,4,4,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E11,4,4,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E12,2,2,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E13,1,1,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E14,1,1,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E15,1,1,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E16,1,1,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E17,1,1,251
+RF-052,"Wilmington, NC",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E18,1,1,251
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E01,44,44,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E02,28,28,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E03,16,16,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E04,13,13,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E05,10,10,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E06,8,8,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E07,8,8,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E08,8,8,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E09,7,7,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E10,7,7,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E11,6,6,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E12,5,5,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E13,4,4,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E14,4,4,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E15,4,4,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E16,3,3,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E17,2,2,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E18,2,2,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E19,1,1,245
+RF-053,"Wilmington, NC",perplexity,"Perplexity (sonar, API)",2026-08-31,62db6814-0f8a-4ce8-b9df-d50d8d85b30c,E20,1,1,245
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E01,41,41,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E02,26,26,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E03,23,23,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E04,21,21,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E05,14,14,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E06,6,6,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E07,4,4,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E08,3,3,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E09,3,3,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E10,3,3,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E11,2,2,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E12,2,2,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E13,2,2,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E14,1,1,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E15,1,1,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E16,1,1,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E17,1,1,256
+RF-054,"Richmond, VA",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E18,1,1,256
+RF-055,"Richmond, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E01,35,35,79
+RF-055,"Richmond, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E02,20,20,79
+RF-055,"Richmond, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E03,18,18,79
+RF-055,"Richmond, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E04,11,11,79
+RF-055,"Richmond, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E05,10,10,79
+RF-055,"Richmond, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E06,5,5,79
+RF-055,"Richmond, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E07,4,4,79
+RF-055,"Richmond, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E08,2,2,79
+RF-055,"Richmond, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E09,1,1,79
+RF-055,"Richmond, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E10,1,1,79
+RF-055,"Richmond, VA",perplexity,"Perplexity (sonar, API)",2026-08-31,0cced258-25be-4955-b75c-100439e3f917,E11,1,1,79
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E01,18,18,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E02,13,13,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E03,6,6,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E04,6,6,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E05,4,4,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E06,2,2,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E07,2,2,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E08,2,2,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E09,2,2,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E10,2,2,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E11,2,2,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E12,1,1,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E13,1,1,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E14,1,1,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E15,1,1,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E16,1,1,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E17,1,1,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E18,1,1,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E19,1,1,256
+RF-056,"Knoxville, TN",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E20,1,1,256
+RF-057,"Knoxville, TN",perplexity,"Perplexity (sonar, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E01,12,12,61
+RF-057,"Knoxville, TN",perplexity,"Perplexity (sonar, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E02,4,4,61
+RF-057,"Knoxville, TN",perplexity,"Perplexity (sonar, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E03,3,3,61
+RF-057,"Knoxville, TN",perplexity,"Perplexity (sonar, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E04,2,2,61
+RF-057,"Knoxville, TN",perplexity,"Perplexity (sonar, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E05,2,2,61
+RF-057,"Knoxville, TN",perplexity,"Perplexity (sonar, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E06,2,2,61
+RF-057,"Knoxville, TN",perplexity,"Perplexity (sonar, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E07,1,1,61
+RF-057,"Knoxville, TN",perplexity,"Perplexity (sonar, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E08,1,1,61
+RF-057,"Knoxville, TN",perplexity,"Perplexity (sonar, API)",2026-08-31,15a85452-dfdf-4539-9c98-25072536f3da,E09,1,1,61
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E01,51,51,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E02,38,38,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E03,29,29,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E04,26,26,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E05,16,16,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E06,11,11,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E07,8,8,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E08,6,6,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E09,6,6,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E10,5,5,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E11,3,3,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E12,2,2,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E13,2,2,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E14,2,2,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E15,2,2,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E16,2,2,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E17,2,2,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E18,2,2,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E19,1,1,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E20,1,1,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E21,1,1,256
+RF-058,"Grand Rapids, MI",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-08-31,68ed325d-f0e9-4a76-8c3b-3887a249a8ea,E22,1,1,256
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E01,25,25,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E02,17,17,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E03,9,9,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E04,9,9,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E05,9,9,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E06,8,8,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E07,8,8,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E08,8,8,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E09,8,8,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E10,7,7,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E11,7,7,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E12,6,6,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E13,6,6,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E14,5,5,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E15,4,4,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E16,3,3,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E17,2,2,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E18,2,2,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E19,1,1,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E20,1,1,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E21,1,1,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E22,1,1,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E23,1,1,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E24,1,1,64
+RF-059,"Jersey City, NJ",openai,"the OpenAI model (gpt-5.4-mini, web search, API)",2026-09-07,77660048-3546-4d07-9007-db96b6d3fb53,E25,1,1,64
