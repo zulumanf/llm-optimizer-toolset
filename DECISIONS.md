@@ -3295,3 +3295,54 @@ never a discount, pilot, beta or founding price.
 - **Two lanes, one recheck.** The video lane's binding check calls `fulfillmentSendRecheck`; the recheck asks the video lane for releasability; a re-entrancy guard makes the inner call manifest-only.
 - **The adversarial reviewer needs an assertion bar, or it never converges.** Asked to "find a reason", it produced a new reason each round on a long report (the change/re-test structure, hedged hypotheses, the founder's own note, a quoted saved answer). Calibration v3/v4 is policy: only assertions block (stated cause, promised outcome, consumer generalization); quoted saved answers are evidence. The deterministic `lintReportAssertions` carries the same policy in code with a regression fixture. After the template fixes, revision aa4c56cc passed v4 with no founder acceptance.
 - **Pre-production review (2026-09-11).** Generation key unchanged: the manifest hash already carries the evidence hash, the fact-manifest version and the correction id, and the handoff is the unique index's other column; the effective versions are now an explicit `CURRENT_GENERATION_VERSIONS` argument so a test proves each participates. Worker image gains ffmpeg + system Chromium + fonts (`VIDEO_CHROMIUM_PATH`), with `scripts/video-runtime-check.ts` as the in-container checklist and `scripts/video-walkthrough-review.ts` as the human review step (duration, size, codec/bitrate, preview frames — no OCR). The first real shadow render is reviewed by a person before any release.
+- **2026-09-11 — Video hardening: the manifest's entity set is the video's entity set.** The video contract accepts only the canonical `team | individual` (what `prospectEntityType` can return and `compileFactManifest` can hold); anything else fails `entity_unknown` in the video's deterministic QA. A brokerage is deliberately NOT special-cased in the video — adding it is a manifest-level change shared by email, report and video, never a video-only grammar table.
+- **2026-09-11 — Deliverability gates release, not creation.** The canonical MP4 is created and QA'd wherever the worker runs, but `videoReleaseRecheck` refuses (`DISTRIBUTION_NOT_DELIVERABLE`) unless the distribution adapter says a prospect can reach it from this deployment. `local_storage` needs `VIDEO_LOCAL_STORAGE_SERVABLE=true` in production because the worker's disk is ephemeral and unreachable by the web app (no Railway volume, `var/` git-ignored). Chosen over a fake report embed: the email's "quick walkthrough" sentence must never point at nothing.
+- **2026-09-11 — Pronunciation aliases live on the voice profile.** Whole-word spoken-form overrides change only the string sent to TTS; displayed names, captions and the script hash keep canonical spelling. The table is versioned and rides the voice version so a changed alias is a new generation; provider alignment is discarded when spoken ≠ canonical rather than mis-timing captions.
+- **2026-09-11 — Script v2 over v1 before any real render.** "came in at {display}" replaces "closed {display}" because production displays already end in "closed". Since no artifact was ever generated, the bump costs nothing and the generation key proves template changes are new generations.
+
+## 2026-09-11 — Touch 1 cohort construction (t1-cohort-002): canonical policy, one gap, four decisions
+
+**Canonical Touch 1 policy, as discovered in production code (not re-derived):**
+spec 124 `evaluateMismatch` + `MISMATCH_THRESHOLDS` (gap ≥ 2, competitor
+production ≤ 0.9× prospect, benchmark ≤ 14 days, same year/metric/entity
+level, OpenAI-only denominator); spec 136 `verifyEvidenceRelease`
+(entity/alias/relationship, production record, frozen run, provider,
+completeness, denominator, primary=shadow counts, verified zero, no pending
+correction); spec 052 exclusivity (live active/reserved scopes +
+`conflict_status`); spec 062 suppression; spec 042 contact provenance;
+spec 098 first-touch stages; spec 120 per-market brokerage cap
+(`BROKERAGE_SEND_CAP_30D`); person recontact window. The cohort layer
+(`lib/prospects/t1-cohort.ts`) delegates every hard gate to these and adds
+NO new threshold.
+
+**Policy gap (reported, not filled):** no reserved-market / Tier-1 /
+proof-building registry exists in code or the DB. Market eligibility in
+production is exclusivity + launch status only. NYC is excluded by explicit
+founder directive via `PROTECTED_MARKET_NAMES` (that single directive, not an
+invented list). A market-tier registry is a future spec.
+
+**Decisions:**
+1. Cohort membership is persisted as append-only `audit_log` rows
+   (`outreach.t1_cohort_member`, keyed by `cohortId:prospectId`) plus a
+   local JSON snapshot — reusing the immutable audit ledger rather than a
+   new table. Reruns add nothing when facts are unchanged.
+2. A role/shared inbox (`info@`, `team@`, `agent@`, …) is never a Touch 1
+   recipient (`isGenericEmail`), even when publicly sourced. Fail closed:
+   `ONLY_GENERIC_EMAIL` is a contact bottleneck, not a send.
+3. Priority bands A+/A/B/HOLD are ranking only, built from preserved raw
+   features (canonical `mismatchStrength`, competitor distinct-question
+   breadth, decision-maker directness, provenanced buyer signals). No
+   composite score; UNKNOWN buyer signals never exclude; zero vs one-plus
+   recommendation presence is tracked, never gated.
+4. The per-market brokerage cap defers qualified prospects (with the date
+   the window frees) instead of dropping or re-grading them; the send gate
+   would refuse them anyway.
+
+**Supply actions taken under existing workflows:** spec 130
+`applyVerifiedAliases` for RealTrends-derived team-lead aliases (18
+companies); five RealTrends-verified companies in benchmarked markets added
+as prospects and linked to their market run; eight decision-maker emails
+recorded only after the literal address was found on an official page by the
+deterministic fetch (`emailOnPage`), three page-confirmed buying signals.
+Result: 14 send-ready (4 frozen, 10 cap-deferred) — far under the 75 target;
+the gates were not loosened.

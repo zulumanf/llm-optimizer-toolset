@@ -42,6 +42,9 @@ async function main(): Promise<void> {
   await check("intro asset loads", async () => {
     const asset = FOUNDER_INTRO_ASSETS[ACTIVE_FOUNDER_INTRO_VERSION]!;
     const p = join(VIDEO_ASSET_ROOT, asset.file);
+    // CI runs this inside the freshly built image, where the recording is
+    // not (and must not be) baked in; the deployed worker still requires it.
+    if (!existsSync(p) && process.env.VIDEO_RUNTIME_CHECK_REQUIRE_INTRO === "false") return `${asset.version} not present (not required by this run)`;
     if (!existsSync(p)) throw new Error(`${asset.version} missing at ${p}`);
     const probe = execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", p]).toString().trim();
     return `${asset.version}: ${probe} s`;

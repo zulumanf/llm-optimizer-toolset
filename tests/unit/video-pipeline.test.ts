@@ -4,19 +4,19 @@
  * artifact QA (25–29, 31), versioning identity (37–40), state machine,
  * failure classes, distribution labels (46–49).
  */
-import { mkdtempSync, readdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ClassifiedError } from "@/lib/errors";
 import { compileVideoWalkthrough, type VideoScene } from "@/lib/prospects/video-walkthrough-contract";
-import { canVideoTransition, classifyVideoFailure, videoGenerationKey, VIDEO_TRANSITIONS, resolveVideoConfig, CURRENT_GENERATION_VERSIONS } from "@/lib/prospects/video-walkthrough";
+import { canVideoTransition, classifyVideoFailure, introProbeIssue, resolveIntroAsset, videoGenerationKey, VIDEO_TRANSITIONS, resolveVideoConfig, CURRENT_GENERATION_VERSIONS } from "@/lib/prospects/video-walkthrough";
 import { qaVideoArtifact } from "@/lib/video/artifact-qa";
 import { buildCaptions, captionsScriptHash } from "@/lib/video/captions";
 import { VIDEO_DURATION, VIDEO_FORMAT } from "@/lib/video/constants";
 import { distributionAdapter } from "@/lib/video/distribution";
 import { fitFontSize, FIT, renderSceneHtml, sceneLayoutIssues } from "@/lib/video/scenes";
-import { elevenLabsProvider, mockTtsProvider, narrationCacheKey, pcmToWav, synthesizeCached, ttsFailureClass, wavDurationMs } from "@/lib/video/tts";
+import { elevenLabsProvider, mockTtsProvider, narrationCacheKey, pcmToWav, spokenForm, synthesizeCached, ttsFailureClass, wavDurationMs } from "@/lib/video/tts";
 import { MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
 import type { MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
 import { manifestFor } from "../fixtures/fact-manifest";
@@ -175,5 +175,49 @@ describe("versioning identity, state machine, failure classes, distribution (37�
     expect(resolveVideoConfig({ VIDEO_TTS_PROVIDER: "mock", VIDEO_ALLOW_FIXTURE_INTRO: "true" })).toMatchObject({ ttsProvider: "mock", introAssetVersion: "founder-intro-fixture" });
     expect(resolveVideoConfig({ VIDEO_TTS_PROVIDER: "mock", VIDEO_ALLOW_FIXTURE_INTRO: "true", NODE_ENV: "production" })).toMatchObject({ ttsProvider: "elevenlabs", introAssetVersion: "founder-intro-v1" });
     expect(resolveVideoConfig({ VIDEO_WALKTHROUGH_MODE: "canary", VIDEO_WALKTHROUGH_KILL_SWITCH: "true" })).toMatchObject({ mode: "CANARY", killSwitch: true });
+  });
+});
+
+describe("spec 138 hardening: pronunciation (29), intro registry (38/39), deliverability", () => {
+  it("29: an alias changes only what the provider hears; canonical text stays for display and captions; the alias table is part of the voice version", async () => {
+    const root = mkdtempSync(join(tmpdir(), "video-tts-alias-"));
+    const heard: string[] = [];
+    const provider = mockTtsProvider({ onCall: (t) => heard.push(t) });
+    const aliased = { ...voice, pronunciation: { version: "pronunciation-test", aliases: { Kirsch: "Keersh" } } };
+    const text = "Laura, Kirsch Team came in at $56.9M closed.";
+    expect(spokenForm(text, aliased.pronunciation.aliases)).toBe("Laura, Keersh Team came in at $56.9M closed.");
+    expect(spokenForm("Kirschner Group", aliased.pronunciation.aliases)).toBe("Kirschner Group");
+    expect(spokenForm(text, {})).toBe(text);
+    const key = narrationCacheKey({ scriptHash: "s", voiceVersion: aliased.version, segmentIndex: 0, text, pronunciationVersion: aliased.pronunciation.version });
+    const n = await synthesizeCached(provider, root, "narration", { key, text, voice: aliased, voiceId: "v" });
+    expect(heard).toEqual(["Laura, Keersh Team came in at $56.9M closed."]);
+    expect(n.spokenDiffers).toBe(true);
+    expect(n.alignment).toBeNull(); // alignment indexes the spoken string; captions fall back to proportional timing
+    const again = await synthesizeCached(provider, root, "narration", { key, text, voice: aliased, voiceId: "v" });
+    expect(again.cached).toBe(true);
+    expect(heard).toHaveLength(1);
+    expect(narrationCacheKey({ scriptHash: "s", voiceVersion: "v1", segmentIndex: 0, text, pronunciationVersion: "p1" })).not.toBe(narrationCacheKey({ scriptHash: "s", voiceVersion: "v1", segmentIndex: 0, text, pronunciationVersion: "p2" }));
+    expect(narrationCacheKey({ scriptHash: "s", voiceVersion: "v1", segmentIndex: 0, text })).toBe(narrationCacheKey({ scriptHash: "s", voiceVersion: "v1", segmentIndex: 0, text }));
+  });
+  it("38/39: in production a real intro without a registered checksum, or the fixture intro, is refused before any spend; a clip outside the intro bounds is refused too", async () => {
+    const root = mkdtempSync(join(tmpdir(), "video-assets-"));
+    mkdirSync(join(root, "founder-intro"), { recursive: true });
+    writeFileSync(join(root, "founder-intro", "founder-intro-v1.mp4"), "clip");
+    writeFileSync(join(root, "founder-intro", "founder-intro-fixture.mp4"), "clip");
+    expect(await resolveIntroAsset("founder-intro-v1", root, { production: true })).toMatchObject({ ok: false, reason: expect.stringContaining("FOUNDER_INTRO_UNREGISTERED_CHECKSUM") });
+    expect(await resolveIntroAsset("founder-intro-fixture", root, { production: true })).toMatchObject({ ok: false, reason: "FOUNDER_INTRO_FIXTURE_IN_PRODUCTION" });
+    expect(await resolveIntroAsset("founder-intro-fixture", root)).toMatchObject({ ok: true });
+    expect(await resolveIntroAsset("founder-intro-v1", join(root, "nope"))).toMatchObject({ ok: false, reason: expect.stringContaining("FOUNDER_INTRO_MISSING") });
+    expect(await resolveIntroAsset("founder-intro-v9", root)).toMatchObject({ ok: false, reason: expect.stringContaining("FOUNDER_INTRO_UNKNOWN") });
+    expect(introProbeIssue({ durationMs: 6_000, width: 1920, height: 1080, fps: 30, hasVideo: true, hasAudio: true, container: "mp4" })).toBeNull();
+    expect(introProbeIssue({ durationMs: 0, width: null, height: null, fps: null, hasVideo: false, hasAudio: false, container: null })).toBe("no video stream");
+    expect(introProbeIssue({ durationMs: 45_000, width: 1920, height: 1080, fps: 30, hasVideo: true, hasAudio: true, container: "mp4" })).toContain("outside");
+  });
+  it("release: local storage is deliverable outside production, and in production only when the operator asserts a servable durable volume", () => {
+    const local = distributionAdapter("local_storage");
+    expect(local.deliverable({}).ok).toBe(true);
+    expect(local.deliverable({ NODE_ENV: "production" })).toMatchObject({ ok: false, detail: expect.stringContaining("VIDEO_LOCAL_STORAGE_SERVABLE") });
+    expect(local.deliverable({ NODE_ENV: "production", VIDEO_LOCAL_STORAGE_SERVABLE: "true" }).ok).toBe(true);
+    expect(distributionAdapter("unlisted_youtube").deliverable({ YOUTUBE_OAUTH_REFRESH_TOKEN: "x" }).ok).toBe(false);
   });
 });

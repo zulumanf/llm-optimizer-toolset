@@ -5,7 +5,7 @@
  * versions, and a superseded manifest invalidates a pending video.
  */
 import { describe, expect, it } from "vitest";
-import { assertVideoMatchesManifest, assertVideoScriptReleasable, compileVideoWalkthrough, narrationSegments, videoArtifactStale, VIDEO_MAX_EXAMPLES, type VideoWalkthroughInput } from "@/lib/prospects/video-walkthrough-contract";
+import { assertVideoMatchesManifest, assertVideoScriptReleasable, compileVideoWalkthrough, displayedSceneText, narrationSegments, videoArtifactStale, VIDEO_MAX_EXAMPLES, type VideoWalkthroughInput } from "@/lib/prospects/video-walkthrough-contract";
 import { MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
 import type { MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
 import { manifestFor } from "../fixtures/fact-manifest";
@@ -111,5 +111,44 @@ describe("spec 138 script compiler + deterministic script QA (matrix 8–19)", (
     const c = compileVideoWalkthrough({ ...input, manifest: zero });
     expect(c.script[3]!.text).toContain("your team was not recommended in any of them");
     expect(assertVideoScriptReleasable(c, { ...input, manifest: zero })).toEqual([]);
+  });
+});
+
+describe("spec 138 hardening: entity fail-closed, script v2, zero case on screen (matrix 7, 11, 14)", () => {
+  it("7: an entity type outside the canonical set blocks with entity_unknown and is never narrated as a team", () => {
+    const tampered = { ...manifest, facts: { ...manifest.facts, FACT_PROSPECT_ENTITY_TYPE: { ...manifest.facts.FACT_PROSPECT_ENTITY_TYPE, value: "brokerage", display: "brokerage" } } } as typeof manifest;
+    const bad = { ...input, manifest: tampered, prospect: { ...input.prospect, entityType: "brokerage" as never } };
+    const compiled = compileVideoWalkthrough(bad);
+    const checks = assertVideoScriptReleasable(compiled, bad).map((i) => i.check);
+    expect(checks).toContain("entity_unknown");
+    expect(compiled.script.map((l) => l.text).join(" ")).not.toContain("your team");
+    const nulled = { ...manifest, facts: { ...manifest.facts, FACT_PROSPECT_ENTITY_TYPE: { ...manifest.facts.FACT_PROSPECT_ENTITY_TYPE, value: null, display: "" } } } as typeof manifest;
+    const missing = { ...input, manifest: nulled };
+    expect(assertVideoScriptReleasable(compileVideoWalkthrough(missing), missing).map((i) => i.check)).toContain("entity_unknown");
+  });
+  it("11: an input entity disagreeing with the manifest blocks (entity_mismatch); the manifest, not the caller, decides", () => {
+    const bad = { ...input, prospect: { ...input.prospect, entityType: "individual" as const } };
+    expect(assertVideoScriptReleasable(compileVideoWalkthrough(bad), bad).map((i) => i.check)).toContain("entity_mismatch");
+  });
+  it("script v2: the production line never repeats the display's own verb ('closed $X closed')", () => {
+    const compiled = compileVideoWalkthrough(input);
+    expect(compiled.scriptTemplateVersion).toBe("video-script-v2");
+    expect(compiled.script[2]!.text).toBe("On the 2025 record for closed volume, your team came in at $56.9M closed, and Harbor View Group came in at $24.9M closed.");
+    expect(compiled.script.map((l) => l.text).join(" ")).not.toMatch(/closed \$[\d.]+[MK]? closed/);
+    const you = { ...input, manifest: manifestFor(snapshot, "individual", { exampleIds: ["r1", "r2"], firstActionId: "priority-1:abc" }), prospect: { ...input.prospect, entityType: "individual" as const } };
+    expect(compileVideoWalkthrough(you).script[2]!.text).toContain("you came in at $56.9M closed");
+  });
+  it("14: a zero prospect count shows no multiple on screen; an infinite multiple smuggled into a scene or the narration is caught", () => {
+    const zero = manifestFor({ ...snapshot, prospect: { ...snapshot.prospect, recommendationCount: 0 } }, "team", { exampleIds: ["r1", "r2"], firstActionId: "priority-1:abc" });
+    const zi = { ...input, manifest: zero, evidencePackageId: zero.evidenceHash };
+    const compiled = compileVideoWalkthrough(zi);
+    expect(assertVideoScriptReleasable(compiled, zi)).toEqual([]);
+    const rec = compiled.scenes.find((s) => s.kind === "RecommendationComparisonScene");
+    expect(rec && rec.kind === "RecommendationComparisonScene" ? rec.recommendationMultiple : "?").toBe("");
+    expect(displayedSceneText(compiled)).not.toMatch(/∞|infinit/i);
+    const smuggled = { ...compiled, scenes: compiled.scenes.map((s) => (s.kind === "RecommendationComparisonScene" ? { ...s, recommendationMultiple: "∞x as often" } : s)) };
+    expect(assertVideoScriptReleasable(smuggled, zi).map((i) => i.check)).toContain("banned_zero_case_on_screen");
+    const spoken = { ...compiled, script: compiled.script.map((l, i) => (i === 3 ? { ...l, text: `${l.text} That is infinitely more often.` } : l)) };
+    expect(assertVideoScriptReleasable(spoken, zi).map((i) => i.check)).toContain("banned_zero_case");
   });
 });

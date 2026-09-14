@@ -54,6 +54,7 @@ const envSchema = z
     VIDEO_DISTRIBUTION: z.string().optional(),
     VIDEO_TTS_PROVIDER: z.string().optional(),
     VIDEO_ALLOW_FIXTURE_INTRO: z.string().optional(),
+    VIDEO_LOCAL_STORAGE_SERVABLE: z.string().optional(),
     ELEVENLABS_API_KEY: z.string().optional(),
     ELEVENLABS_VOICE_ID: z.string().optional(),
     // MCP server actor (spec 033) — required only by `npm run mcp`.
