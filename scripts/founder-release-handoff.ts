@@ -28,6 +28,8 @@ async function main(): Promise<void> {
     from prospect_report_handoffs x join prospects p on p.id = x.prospect_id join prospect_replies r on r.id = x.reply_id
     left join prospect_contacts c on c.id = r.contact_id where x.id = ${handoffId}`;
   const cfg = lane.resolveLaneConfig();
+  const policy = lane.effectiveReleasePolicy(cfg, h.releasePolicyOverride);
+  const videoRequired = policy === "report_and_video";
   const video = await vw.videoForHandoff(handoffId);
   const videoCheck = await vw.videoReleaseRecheck(handoffId, process.env, { handoffStatuses: ["qa_passed", "release_ready", "scheduled"] });
   const [draft] = h.draftId ? await sql`select id, status, subject, body, send_intent_key, scheduled_send_at, sent_recorded_at, reply_to_id from outreach_drafts where id = ${h.draftId}` : [];
@@ -43,18 +45,18 @@ async function main(): Promise<void> {
     ["REPORT_FACTS_MATCH_MANIFEST + EMAIL_FACTS_MATCH_MANIFEST", qaMap.manifest_assertion === true, String(qaMap.manifest_assertion)],
     ["REPORT_DETERMINISTIC_QA", qaMap.deterministic === true, String(qaMap.deterministic)],
     ["REPORT_SEMANTIC_QA", qaMap.release_review === true, String(qaMap.release_review)],
-    ["VIDEO_SCRIPT_QA", qaMap.video_script_qa === true, String(qaMap.video_script_qa)],
-    ["VIDEO_SEMANTIC_QA", qaMap.video_semantic_review === true, String(qaMap.video_semantic_review)],
-    ["VIDEO_ARTIFACT_QA", qaMap.video_artifact_qa === true, String(qaMap.video_artifact_qa)],
-    ["VIDEO_RELEASE_READY", videoCheck.passed, videoCheck.detail],
-    ["SAME_MANIFEST_REPORT_VIDEO", Boolean(video && h.manifestId && video.manifestId === h.manifestId), `${video?.manifestId?.slice(0, 8) ?? "none"} vs ${h.manifestId?.slice(0, 8) ?? "none"}`],
+    ["VIDEO_SCRIPT_QA", !videoRequired || qaMap.video_script_qa === true, videoRequired ? String(qaMap.video_script_qa) : "not required (report_only)"],
+    ["VIDEO_SEMANTIC_QA", !videoRequired || qaMap.video_semantic_review === true, videoRequired ? String(qaMap.video_semantic_review) : "not required (report_only)"],
+    ["VIDEO_ARTIFACT_QA", !videoRequired || qaMap.video_artifact_qa === true, videoRequired ? String(qaMap.video_artifact_qa) : "not required (report_only)"],
+    ["VIDEO_RELEASE_READY", !videoRequired || videoCheck.passed, videoRequired ? videoCheck.detail : "not required (report_only)"],
+    ["SAME_MANIFEST_REPORT_VIDEO", !videoRequired || Boolean(video && h.manifestId && video.manifestId === h.manifestId), videoRequired ? `${video?.manifestId?.slice(0, 8) ?? "none"} vs ${h.manifestId?.slice(0, 8) ?? "none"}` : "not required (report_only)"],
     ["NO_PENDING_CORRECTION + MANIFEST_CURRENT (send recheck)", recheck.passed, recheck.detail],
     ["NO_SUPPRESSION", !sup.suppressed && !p?.doNotContact, sup.reason ?? "clear"],
-    ["EMAIL_IS_VIDEO_VARIANT", videoVariant, draft ? `draft ${(draft.id as string).slice(0, 8)} ${draft.status as string}` : "no draft"],
+    ["EMAIL_VARIANT_MATCHES_POLICY", videoRequired ? videoVariant : !videoVariant, draft ? `draft ${(draft.id as string).slice(0, 8)} ${draft.status as string} (${videoVariant ? "video" : "report-only"} variant, policy ${policy})` : "no draft"],
     ["EMAIL_THREADED_REPLY", Boolean(draft?.replyToId && p?.gmailThreadId), `thread ${(p?.gmailThreadId as string | null) ?? "none"}`],
     ["SEND_NOT_ALREADY_EXECUTED", !draft?.sentRecordedAt && Number(priorSends?.n ?? 0) === 0, `prior threaded sends: ${priorSends?.n ?? 0}`],
     ["HANDOFF_RELEASABLE", h.status === "release_ready", `${h.status} (${h.autoVerdict ?? "-"})`],
-    ["RELEASE_POLICY", cfg.releasePolicy === "report_and_video", `${cfg.releasePolicy} / mode ${cfg.mode}`],
+    ["RELEASE_POLICY", true, `${policy}${h.releasePolicyOverride ? " (per-handoff exception)" : ""} / global ${cfg.releasePolicy} / mode ${cfg.mode}`],
   ];
   for (const [name, ok, detail] of gates) console.log(`${ok ? "PASS " : "BLOCK"} ${name}: ${detail}`);
   console.log(`recipient=${email ?? "?"} business=${p?.businessName as string} subject=${(draft?.subject as string | undefined) ?? "?"} manifest=${h.manifestId?.slice(0, 8)} report=${h.auditId?.slice(0, 8)} video=${video?.id.slice(0, 8) ?? "none"} (${video?.stage ?? "-"})`);

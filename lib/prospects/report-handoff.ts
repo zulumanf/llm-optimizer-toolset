@@ -29,7 +29,7 @@ import {
 import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
 import { compileFactManifest, evidenceHashOf, assertReportMatchesManifest, assertTextNumbersManifested, validatedSummarySentence, type CompiledSentence, type FactManifest } from "@/lib/prospects/fact-manifest";
 import { evidenceSnapshotForDraft, releaseGateDetail, verifyEvidenceRelease, type EvidenceReleaseVerdict } from "@/lib/prospects/evidence-release";
-import { assertTransition, releaseDecision, resolveLaneConfig, reviewOverrideFor, sendIntentKey, sendMessageIdFor, senderDomainOf, videoReleasableFor, HANDOFF_STATUSES, type HandoffStatus, type LaneConfig } from "@/lib/prospects/fulfillment-lane";
+import { assertTransition, effectiveReleasePolicy, releaseDecision, resolveLaneConfig, reviewOverrideFor, sendIntentKey, sendMessageIdFor, senderDomainOf, videoReleasableFor, HANDOFF_STATUSES, type HandoffStatus, type LaneConfig } from "@/lib/prospects/fulfillment-lane";
 import { classifyForAutonomy, type AutonomyClass } from "@/lib/prospects/reply-preprocess";
 import { checkSuppression } from "@/lib/outreach/suppression";
 import {
@@ -90,6 +90,8 @@ export interface ReportHandoff {
   autonomyClass: AutonomyClass | null;
   autonomyReason: string | null;
   autoVerdict: "would_send" | "transmit" | "escalated" | "held" | "blocked" | null;
+  /** Founder-recorded per-handoff release policy exception (migration 114). */
+  releasePolicyOverride: string | null;
   manifestId: string | null;
   updatedAt: Date;
 }
@@ -110,6 +112,7 @@ function toHandoff(r: Record<string, unknown>): ReportHandoff {
     autonomyClass: (r.autonomyClass as AutonomyClass | null) ?? null,
     autonomyReason: (r.autonomyReason as string | null) ?? null,
     autoVerdict: (r.autoVerdict as ReportHandoff["autoVerdict"]) ?? null,
+    releasePolicyOverride: (r.releasePolicyOverride as string | null) ?? null,
     manifestId: (r.manifestId as string | null) ?? null,
     updatedAt: new Date((r.updatedAt as Date | string) ?? Date.now()),
   };
@@ -786,7 +789,8 @@ async function advanceClaimed(h: ReportHandoff, now: Date, opts: { caller?: Agen
   if (ctx.seq.id) await applySequenceSignals(ctx.seq.id, now);
   // Attempts count WORK (preparation) ticks only; a held or scheduled
   // handoff is observed, not retried, and never times out on its own.
-  if (WORK_STATUSES.has(h.status)) {
+  const heldForVideo = h.status === "qa_passed" && /^WAITING_FOR_VIDEO/.test(h.reason ?? "");
+  if (WORK_STATUSES.has(h.status) && !heldForVideo) {
     if (h.attempts >= REPORT_HANDOFF.maxAttempts) return note(h, "needs_review", `ARTIFACT_GENERATION_FAILED: ${h.attempts} attempts without completing`, actor.id);
     await tickAttempt(h.id, null);
   }
@@ -840,7 +844,7 @@ async function advanceClaimed(h: ReportHandoff, now: Date, opts: { caller?: Agen
       return note(h, "needs_review", `RELEASE_BLOCKED: ARTIFACT_ASSERTION_FAILED ${reportIssues.map((i) => `[${i.check}] ${i.detail}`).join(" ")}`, actor.id, { manifestId, releaseVerdict: v.verdict });
     }
     // The walkthrough sentence exists only when a releasable video does.
-    const videoNow = await videoReleasableFor(h.id);
+    const videoNow = effectiveReleasePolicy(cfg, h.releasePolicyOverride) === "report_and_video" ? await videoReleasableFor(h.id) : { releasable: false };
     const staged = await stageEmail(h, ctx, actor, { manifest: v.manifest, manifestId, audit, serialized, videoIncluded: videoNow.releasable, caller: opts.caller });
     if (!staged.ok) return note(h, "needs_review", staged.reason, actor.id, { manifestId, draftId: staged.draftId ?? undefined, releaseVerdict: v.verdict });
     const draftId = staged.draftId;
@@ -864,7 +868,7 @@ async function advanceClaimed(h: ReportHandoff, now: Date, opts: { caller?: Agen
   // walkthrough is releasable; then the email is re-staged as the video
   // variant (new draft revision, old one superseded) and re-reviewed. A
   // releasable video never transmits by itself: the lane mode still decides.
-  if (h.status === "qa_passed" && cfg.releasePolicy === "report_and_video") {
+  if (h.status === "qa_passed" && effectiveReleasePolicy(cfg, h.releasePolicyOverride) === "report_and_video") {
     const held = await holdOrRestageForVideo(h, ctx, actor, cfg, audit, opts.caller);
     if (held.hold) return held.handoff;
     h = held.handoff;
@@ -888,7 +892,7 @@ async function advanceClaimed(h: ReportHandoff, now: Date, opts: { caller?: Agen
     const [handSent] = await sql`select sent_recorded_at from outreach_drafts where id = ${draftId}`;
     if (handSent?.sentRecordedAt) h = await transition(h, "scheduled", { reason: "sent outside the lane's schedule (founder / dispatcher); following the ledger" });
   }
-  if (h.status === "release_ready" && cfg.releasePolicy === "report_and_video") {
+  if (h.status === "release_ready" && effectiveReleasePolicy(cfg, h.releasePolicyOverride) === "report_and_video") {
     const vr = await videoReleasableFor(h.id);
     if (!vr.releasable) {
       h = await transition(h, "qa_passed", { reason: `WAITING_FOR_VIDEO: ${vr.detail}`, autoVerdict: "held" });
@@ -1123,7 +1127,7 @@ async function fulfillmentSendRecheckCore(db: TransactionSql | typeof sql, draft
   let reason = !compiled.ok ? `manifest no longer compiles: ${compiled.reason}` : compiled.manifest.manifestHash !== (h.manifestHash as string) ? `fact manifest changed since preparation (${(h.manifestHash as string).slice(0, 12)} → ${compiled.manifest.manifestHash.slice(0, 12)})` : null;
   // Spec 139: under report_and_video no email leaves without a releasable
   // video walkthrough, and the email must be the variant that names it.
-  if (!reason && opts.includeVideo && resolveLaneConfig().releasePolicy === "report_and_video") {
+  if (!reason && opts.includeVideo && effectiveReleasePolicy(resolveLaneConfig(), (h.releasePolicyOverride as string | null) ?? null) === "report_and_video") {
     const vr = await videoReleasableFor(h.id as string);
     const [d] = await db`select send_intent_key from outreach_drafts where id = ${draftId}`;
     const videoKey = sendIntentKey({ prospectId: h.prospectId as string, replyId: h.replyId as string, manifestHash: h.manifestHash as string, messageType: "positive_reply_report_delivery", templateVersion: REPORT_DELIVERY_TEMPLATE_VERSION, variant: DELIVERY_VARIANTS.reportAndVideo });
