@@ -561,6 +561,26 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect((await rh.handoffForProspect(prospectId))!.status).toBe("needs_review");
   });
 
+  it("identical content is never re-reviewed: a passed ledger verdict stands, a changed artifact is reviewed afresh", async () => {
+    lane("NARROW_AUTONOMOUS");
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    const h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.status).toBe("scheduled");
+    // Re-QA over the same report + email: the model is not asked again.
+    await sql`update outreach_drafts set scheduled_send_at = null where id = ${h.draftId}`;
+    await sql`update prospect_report_handoffs set status = 'needs_review', reason = 'RE_QA' where id = ${h.id}`;
+    const { reactivateHandoff } = await import("@/lib/prospects/fulfillment-lane");
+    await reactivateHandoff(admin, h.id, "re-run QA over identical content");
+    let asked = 0;
+    const counting: AgentCaller = async (...a) => { asked += 1; return blockingCaller(...a); };
+    await rh.processReportHandoffs(NOON, { caller: counting });
+    expect(asked).toBe(0);
+    expect((await rh.handoffForProspect(prospectId))!.status).toBe("scheduled");
+    const [run] = await sql`select agent_version from prospect_report_qa_runs where handoff_id = ${h.id} and kind = 'release_review' order by created_at desc limit 1`;
+    expect(run!.agentVersion).toMatch(/^ledger:/);
+  });
+
   it("24: the same Gmail reply ingested twice — sequentially and concurrently — yields one reply row, one handoff, one draft", async () => {
     lane("NARROW_AUTONOMOUS");
     const a = unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Yes", gmailMessageId: "gm-dup", receivedAt: new Date("2026-09-03T20:00:00Z") }));
