@@ -49,6 +49,45 @@ export const CURRENT_REVISION = sql`not exists (
 )`;
 const CURRENT = CURRENT_REVISION;
 
+/**
+ * Public precedence (spec 141, lib/parsing/precedence.ts): the row `m` is the
+ * highest VERIFIED revision of its (response, company) pair. Verified =
+ * a human-reviewed row (reviewed_by set: human > machine), an explicit
+ * verification_status 'verified', or a legacy classifier row
+ * (mention-parser-v2+llm) with confidence >= 0.7 and no review flag.
+ * Heuristic rows never qualify. Use only together with PUBLIC_BLOCKED_PAIR.
+ */
+const VERIFIED_ROW = sql`(
+  x.verification_status = 'verified'
+  or x.reviewed_by is not null
+  or (x.verification_status is null and not x.needs_review
+      and x.parser_version = 'mention-parser-v2+llm' and x.confidence >= 0.7)
+)`;
+export const PUBLIC_REVISION = sql`(
+  (m.verification_status = 'verified'
+   or m.reviewed_by is not null
+   or (m.verification_status is null and not m.needs_review
+       and m.parser_version = 'mention-parser-v2+llm' and m.confidence >= 0.7))
+  and not exists (
+    select 1 from mentions x
+    where x.response_id = m.response_id and x.company_id = m.company_id
+      and x.revision > m.revision and ${VERIFIED_ROW}
+  )
+)`;
+
+/** A pair is blocked when a needs-manual-review row is newer than every
+ * verified row (or no verified row exists). Correlates on `m`. */
+export const PUBLIC_BLOCKED_PAIR = sql`(
+  (m.reviewed_by is null and (m.verification_status = 'needs_manual_review'
+   or (m.verification_status is null and (m.needs_review
+       or (m.parser_version in ('mention-parser-v2+llm', 'mention-parser-v3+adjudication') and m.confidence < 0.7)))))
+  and not exists (
+    select 1 from mentions x
+    where x.response_id = m.response_id and x.company_id = m.company_id
+      and x.revision > m.revision and ${VERIFIED_ROW}
+  )
+)`;
+
 export async function listReviewQueue(projectId: string): Promise<ReviewQueueItem[]> {
   return sql<ReviewQueueItem[]>`
     select ${COLUMNS}, c.name as company_name, r.run_id, runs.label as run_label,

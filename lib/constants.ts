@@ -20,6 +20,10 @@ export const SET_DESCRIPTION_MAX = 500;
  * is recorded per row — resolve with lib/parsing/version.ts. */
 export const PARSER_VERSION_HEURISTIC = "mention-parser-v1+heuristic";
 export const PARSER_VERSION_LLM = "mention-parser-v2+llm";
+/** Revision-3 adjudication rows (spec 141): a fresh classifier judgment on
+ * pairs where the LLM and heuristic parsers disagreed, with an explicit
+ * verification status. */
+export const PARSER_VERSION_ADJUDICATION = "mention-parser-v3+adjudication";
 /** Classification is a narrow judgment on every observation — the mini
  * snapshot keeps per-run cost sane (spec 013). */
 export const CLASSIFIER_MODEL = "gpt-5.4-mini-2026-03-17";
