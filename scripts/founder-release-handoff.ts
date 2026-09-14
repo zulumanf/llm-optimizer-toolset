@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const { checkSuppression } = await import("@/lib/outreach/suppression");
   const h = await rh.getReportHandoff(handoffId);
   if (!h) throw new Error("handoff not found");
-  const [p] = await sql`select p.business_name, p.do_not_contact, p.email as prospect_email, c.email as contact_email, r.gmail_message_id, r.gmail_thread_id
+  const [p] = await sql`select p.business_name, p.do_not_contact, p.email as prospect_email, c.email as contact_email, r.gmail_message_id
     from prospect_report_handoffs x join prospects p on p.id = x.prospect_id join prospect_replies r on r.id = x.reply_id
     left join prospect_contacts c on c.id = r.contact_id where x.id = ${handoffId}`;
   const cfg = lane.resolveLaneConfig();
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
     ["NO_PENDING_CORRECTION + MANIFEST_CURRENT (send recheck)", recheck.passed, recheck.detail],
     ["NO_SUPPRESSION", !sup.suppressed && !p?.doNotContact, sup.reason ?? "clear"],
     ["EMAIL_VARIANT_MATCHES_POLICY", videoRequired ? videoVariant : !videoVariant, draft ? `draft ${(draft.id as string).slice(0, 8)} ${draft.status as string} (${videoVariant ? "video" : "report-only"} variant, policy ${policy})` : "no draft"],
-    ["EMAIL_THREADED_REPLY", Boolean(draft?.replyToId && p?.gmailThreadId), `thread ${(p?.gmailThreadId as string | null) ?? "none"}`],
+    ["EMAIL_THREADED_REPLY", Boolean(draft?.replyToId && p?.gmailMessageId), `answers Gmail message ${(p?.gmailMessageId as string | null) ?? "none"} (reply_to set: ${Boolean(draft?.replyToId)})`],
     ["SEND_NOT_ALREADY_EXECUTED", !draft?.sentRecordedAt && Number(priorSends?.n ?? 0) === 0, `prior threaded sends: ${priorSends?.n ?? 0}`],
     ["HANDOFF_RELEASABLE", h.status === "release_ready", `${h.status} (${h.autoVerdict ?? "-"})`],
     ["RELEASE_POLICY", true, `${policy}${h.releasePolicyOverride ? " (per-handoff exception)" : ""} / global ${cfg.releasePolicy} / mode ${cfg.mode}`],
