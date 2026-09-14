@@ -54,6 +54,8 @@ export const FOUNDER_INTRO_ASSETS: Record<string, FounderIntroAsset> = {
   },
 };
 export const ACTIVE_FOUNDER_INTRO_VERSION = "founder-intro-v1";
+/** A recorded intro outside these bounds is the wrong file, not a style choice. */
+export const FOUNDER_INTRO_DURATION = { minMs: 2_000, maxMs: 20_000 } as const;
 /** Fixture intro (title card, synthetic audio) for local smoke runs only. */
 export const FIXTURE_FOUNDER_INTRO_VERSION = "founder-intro-fixture";
 
@@ -64,9 +66,18 @@ export interface VoiceProfile {
   voiceIdEnv: string;
   modelId: string;
   settings: { stability: number; similarityBoost: number; style: number };
+  /** Spoken-form aliases (see PRONUNCIATION): part of the voice profile, so
+   * a changed alias table is a new voice version → a new generation. */
+  pronunciation?: PronunciationTable;
 }
+/** Whole-word spoken-form overrides applied ONLY to the text sent to the
+ * TTS provider. Displayed text, captions and the script hash keep the
+ * canonical spelling. Empty until a real render shows a name that needs it;
+ * every addition bumps the version. */
+export interface PronunciationTable { version: string; aliases: Readonly<Record<string, string>> }
+export const PRONUNCIATION_V1: PronunciationTable = { version: "pronunciation-v1", aliases: {} };
 export const VOICE_PROFILES: Record<string, VoiceProfile> = {
-  "francisco-v1": { version: "francisco-v1", provider: "elevenlabs", voiceIdEnv: "ELEVENLABS_VOICE_ID", modelId: "eleven_multilingual_v2", settings: { stability: 0.55, similarityBoost: 0.8, style: 0.1 } },
+  "francisco-v1": { version: "francisco-v1", provider: "elevenlabs", voiceIdEnv: "ELEVENLABS_VOICE_ID", modelId: "eleven_multilingual_v2", settings: { stability: 0.55, similarityBoost: 0.8, style: 0.1 }, pronunciation: PRONUNCIATION_V1 },
 };
 export const ACTIVE_VOICE_VERSION = "francisco-v1";
 /** Rough list price used only to flag unexpectedly expensive narration. */

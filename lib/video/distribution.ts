@@ -14,6 +14,11 @@ export interface DistributionAdapter {
   kind: VideoDistributionKind;
   visibility: DistributionVisibility;
   configured(env: Record<string, string | undefined>): boolean;
+  /** Can a prospect actually reach what `publish` produced from THIS
+   * deployment? Local storage on a worker without a shared, durable volume
+   * is a canonical artifact the web app cannot serve — release fails closed
+   * until the operator asserts otherwise. */
+  deliverable(env: Record<string, string | undefined>): { ok: boolean; detail: string };
   publish(a: { artifactId: string; storageKey: string; sha256: string; path: string }, env: Record<string, string | undefined>): Promise<DistributionResult>;
 }
 
@@ -21,6 +26,10 @@ export const localStorageDistribution: DistributionAdapter = {
   kind: "local_storage",
   visibility: "ACCESS_GATED",
   configured: () => true,
+  deliverable: (env) =>
+    env.NODE_ENV !== "production" || env.VIDEO_LOCAL_STORAGE_SERVABLE === "true"
+      ? { ok: true, detail: env.NODE_ENV === "production" ? "VIDEO_LOCAL_STORAGE_SERVABLE asserted by the operator" : "non-production" }
+      : { ok: false, detail: "local_storage on this deployment is worker-local and ephemeral; set VIDEO_LOCAL_STORAGE_SERVABLE=true only once the evidence root is a shared durable volume the web app serves" },
   async publish(a) {
     return { kind: "local_storage", visibility: "ACCESS_GATED", reference: a.storageKey, url: null };
   },
@@ -30,6 +39,7 @@ export const unlistedYouTubeDistribution: DistributionAdapter = {
   kind: "unlisted_youtube",
   visibility: "SHAREABLE_BY_LINK",
   configured: (env) => Boolean(env.YOUTUBE_OAUTH_REFRESH_TOKEN && env.YOUTUBE_OAUTH_CLIENT_ID && env.YOUTUBE_OAUTH_CLIENT_SECRET),
+  deliverable: () => ({ ok: false, detail: "unlisted YouTube upload is not implemented" }),
   async publish() {
     throw new ClassifiedError("validation", "Unlisted YouTube upload is not implemented; canonical MP4 remains valid.");
   },

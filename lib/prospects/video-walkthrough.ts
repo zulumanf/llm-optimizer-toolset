@@ -28,6 +28,7 @@ import { sha256Of } from "@/lib/storage/content-addressed";
 import type { AuditMismatchBlock } from "@/lib/prospects/audit-mismatch";
 import { REPORT_HANDOFF } from "@/lib/prospects/constants";
 import type { FactManifest } from "@/lib/prospects/fact-manifest";
+import type { ProspectEntityType } from "@/lib/prospects/followup-templates";
 import { fulfillmentSendRecheck } from "@/lib/prospects/report-handoff";
 import { logActivity } from "@/lib/prospects/shared";
 import {
@@ -39,7 +40,7 @@ import { qaVideoArtifact } from "@/lib/video/artifact-qa";
 import { buildCaptions, captionsScriptHash } from "@/lib/video/captions";
 import {
   ACTIVE_FOUNDER_INTRO_VERSION, ACTIVE_VOICE_VERSION, DEFAULT_VIDEO_DISTRIBUTION, DEFAULT_VIDEO_MODE, FIXTURE_FOUNDER_INTRO_VERSION,
-  FOUNDER_INTRO_ASSETS, SCENE_PADDING, VIDEO_ARTIFACT_KIND, VIDEO_ASSET_ROOT, VIDEO_AUDIO_STORAGE_PREFIX, VIDEO_DISTRIBUTION_KINDS,
+  FOUNDER_INTRO_ASSETS, FOUNDER_INTRO_DURATION, SCENE_PADDING, VIDEO_ARTIFACT_KIND, VIDEO_ASSET_ROOT, VIDEO_AUDIO_STORAGE_PREFIX, VIDEO_DISTRIBUTION_KINDS,
   VIDEO_FORMAT, VIDEO_JOB_TYPE, VIDEO_MAX_ATTEMPTS, VIDEO_MODES, VIDEO_SCRIPT_ARTIFACT_KIND, VIDEO_STORAGE_PREFIX, VIDEO_TEMPLATE_VERSION,
   VOICE_PROFILES, type FounderIntroAsset, type VideoDistributionKind, type VideoMode,
 } from "@/lib/video/constants";
@@ -147,7 +148,7 @@ export interface VideoArtifactMeta {
   reason: string | null;
   failureClass: VideoFailureClass | null;
   narration?: { provider: string; model: string; totalCharacters: number; estCostUsd: number; cachedSegments: number; segments: { index: number; sceneIndex: number; key: string; sha256: string; durationMs: number; characters: number }[] };
-  render?: { renderMs: number; reusedCanonical: boolean; sha256: string; sizeBytes: number; durationMs: number; width: number | null; height: number | null; fps: number | null; videoCodec: string | null; audioCodec: string | null; bitrateKbps: number | null; storageKey: string; evidenceArtifactId: string; captionsStorageKey: string; captionsHash: string; captionsEvidenceArtifactId: string; workerId: string | null };
+  render?: { renderMs: number; reusedCanonical: boolean; sha256: string; sizeBytes: number; durationMs: number; width: number | null; height: number | null; fps: number | null; videoCodec: string | null; audioCodec: string | null; bitrateKbps: number | null; storageKey: string; evidenceArtifactId: string; captionsStorageKey: string; captionsHash: string; captionsEvidenceArtifactId: string; workerId: string | null; introDurationMs?: number; stills?: { sceneIndex: number; kind: string; storageKey: string }[] };
   qa?: { script?: { passed: boolean; issues: unknown[] }; semantic?: { passed: boolean; detail: string; agentVersion: string; model: string }; artifact?: { passed: boolean; failures: string[] } };
   distribution?: { kind: string; visibility: string; reference: string; url: string | null; publishedAt: string };
   timestamps: { queuedAt: string; renderedAt?: string; publishedAt?: string; releaseReadyAt?: string; deliveredAt?: string };
@@ -220,7 +221,9 @@ function inputFrom(a: Omit<PrepareVideoArgs, "actorId">, cfg: Pick<VideoConfig, 
   const first = a.block.priorities[0] ?? null;
   const intro = FOUNDER_INTRO_ASSETS[cfg.introAssetVersion] ?? fixtureIntroAsset();
   return {
-    prospect: { name: m.facts.FACT_PROSPECT_NAME.display, firstName: a.firstName, entityType: m.facts.FACT_PROSPECT_ENTITY_TYPE.value as "individual" | "team" },
+    // The manifest's entity type, verbatim; `assertVideoScriptReleasable`
+    // fails closed on anything outside the canonical set.
+    prospect: { name: m.facts.FACT_PROSPECT_NAME.display, firstName: a.firstName, entityType: m.facts.FACT_PROSPECT_ENTITY_TYPE.value as ProspectEntityType },
     market: m.facts.FACT_MARKET.display,
     evidencePackageId: m.evidenceHash, factManifestId: a.manifestId, manifest: m,
     approvedExamples: approvedExamplesFromBlock(a.block, a.approved.exampleIds),
@@ -377,9 +380,18 @@ export async function processVideoWalkthroughJob(artifactId: string, deps: Video
       await setStage(row.id, [stage], "review_required", { reason: `VIDEO_SCRIPT_QA_FAIL: ${issues.map((i) => `[${i.check}] ${i.detail}`).join(" ")}`, failureClass: "REVIEW_REQUIRED" });
       return getVideoArtifact(artifactId);
     }
-    const intro = await resolveIntroAsset(cfg.introAssetVersion, deps.assetRoot ?? VIDEO_ASSET_ROOT);
+    const intro = await resolveIntroAsset(cfg.introAssetVersion, deps.assetRoot ?? VIDEO_ASSET_ROOT, { production: env.NODE_ENV === "production" });
     if (!intro.ok) {
       await setStage(row.id, [stage], "review_required", { reason: `REVIEW_REQUIRED: ${intro.reason}`, failureClass: "REVIEW_REQUIRED" });
+      return getVideoArtifact(artifactId);
+    }
+    // The recorded clip is probed BEFORE the reviewer, TTS or a render can
+    // cost anything: no readable intro, no spend.
+    const renderDeps = deps.render ?? realRenderDeps();
+    const introProbe = await renderDeps.probe.probe(intro.path);
+    const introBad = introProbeIssue(introProbe);
+    if (introBad) {
+      await setStage(row.id, [stage], "review_required", { reason: `REVIEW_REQUIRED: FOUNDER_INTRO_UNREADABLE: ${introBad}`, failureClass: "REVIEW_REQUIRED" });
       return getVideoArtifact(artifactId);
     }
     const voice = VOICE_PROFILES[cfg.voiceVersion];
@@ -407,7 +419,7 @@ export async function processVideoWalkthroughJob(artifactId: string, deps: Video
     const segments = narrationSegments(ctx.compiled);
     const narration: NarrationFile[] = [];
     for (const s of segments) {
-      const key = narrationCacheKey({ scriptHash: ctx.compiled.scriptHash, voiceVersion: cfg.voiceVersion, segmentIndex: s.index, text: s.text });
+      const key = narrationCacheKey({ scriptHash: ctx.compiled.scriptHash, voiceVersion: cfg.voiceVersion, segmentIndex: s.index, text: s.text, pronunciationVersion: voice.pronunciation?.version });
       narration.push(await synthesizeCached(provider, EVIDENCE_ROOT, VIDEO_AUDIO_STORAGE_PREFIX, { key, text: s.text, voice: { ...voice, provider: provider.name === "mock" ? "mock" : voice.provider }, voiceId }));
     }
     const narrationMeta: NonNullable<VideoArtifactMeta["narration"]> = {
@@ -421,8 +433,7 @@ export async function processVideoWalkthroughJob(artifactId: string, deps: Video
     const bind2 = await checkBinding(row);
     if (!bind2.ok) { await park(row, stage, bind2); return getVideoArtifact(artifactId); }
     await setStage(row.id, [stage], "rendering", { narration: narrationMeta }); stage = "rendering";
-    const renderDeps = deps.render ?? realRenderDeps();
-    const plan = buildRenderPlan(ctx.compiled, segments, narration, intro.path, await renderDeps.probe.probe(intro.path));
+    const plan = buildRenderPlan(ctx.compiled, segments, narration, intro.path, introProbe);
     const storageKey = `${VIDEO_STORAGE_PREFIX}/${row.handoffId}/${row.generationKey}.mp4`;
     const captions = buildCaptions(plan.captionSegments, ctx.compiled.scriptHash);
     const rendered = await renderOrReuse(renderDeps, plan.scenes, storageKey, row, deps.workerId ?? null);
@@ -432,6 +443,7 @@ export async function processVideoWalkthroughJob(artifactId: string, deps: Video
       width: rendered.probe.width, height: rendered.probe.height, fps: rendered.probe.fps, videoCodec: rendered.probe.videoCodec ?? null, audioCodec: rendered.probe.audioCodec ?? null, bitrateKbps: rendered.probe.bitrateKbps ?? null,
       storageKey, evidenceArtifactId: rendered.evidenceArtifactId,
       captionsStorageKey: storageKey.replace(/\.mp4$/, ".vtt"), captionsHash: captions.captionsHash, captionsEvidenceArtifactId: captionsStore.artifactId, workerId: deps.workerId ?? null,
+      introDurationMs: introProbe.durationMs, stills: rendered.stills,
     };
 
     // Artifact QA over the probe + structured inputs (no OCR).
@@ -461,7 +473,8 @@ export async function processVideoWalkthroughJob(artifactId: string, deps: Video
     const renderedAt = (await getVideoArtifact(artifactId))?.meta.timestamps.renderedAt ?? publishedAt;
     await setStage(row.id, [stage], "published", { distribution: { ...dist, publishedAt }, timestamps: { ...row.meta.timestamps, renderedAt, publishedAt } }); stage = "published";
     await setStage(row.id, [stage], "release_ready", { timestamps: { ...row.meta.timestamps, renderedAt, publishedAt, releaseReadyAt: publishedAt } }, "ready");
-    log("info", "video_walkthrough.release_ready", { artifactId: row.id, handoffId: row.handoffId, durationMs: rendered.probe.durationMs, ttsMs, renderMs: rendered.renderMs, totalMs: Date.now() - started, estCostUsd: narrationMeta.estCostUsd, mode: cfg.mode });
+    const deliverable = adapter.deliverable(env);
+    log("info", "video_walkthrough.release_ready", { artifactId: row.id, handoffId: row.handoffId, durationMs: rendered.probe.durationMs, ttsMs, renderMs: rendered.renderMs, totalMs: Date.now() - started, estCostUsd: narrationMeta.estCostUsd, mode: cfg.mode, deliverable: deliverable.ok, deliverableDetail: deliverable.detail });
     await sql.begin(async (tx) => { await logActivity(tx, row.prospectId, "video_walkthrough_ready", { artifactId: row.id, mode: cfg.mode, durationMs: rendered.probe.durationMs }, null); });
     return getVideoArtifact(artifactId);
   } catch (err) {
@@ -495,9 +508,15 @@ async function compileContext(row: VideoArtifactRow): Promise<{ input: VideoWalk
   return { input, compiled: compileVideoWalkthrough(input) };
 }
 
-async function resolveIntroAsset(version: string, root: string): Promise<{ ok: true; path: string; asset: FounderIntroAsset } | { ok: false; reason: string }> {
+/** The recorded founder intro for a version: present, and — in production —
+ * byte-identical to the registry. A real asset whose checksum was never
+ * registered is refused in production: the registry, not the disk, says
+ * which recording a customer hears. */
+export async function resolveIntroAsset(version: string, root: string, opts: { production?: boolean } = {}): Promise<{ ok: true; path: string; asset: FounderIntroAsset } | { ok: false; reason: string }> {
   const asset = version === FIXTURE_FOUNDER_INTRO_VERSION ? fixtureIntroAsset() : FOUNDER_INTRO_ASSETS[version];
   if (!asset) return { ok: false, reason: `FOUNDER_INTRO_UNKNOWN: ${version}` };
+  if (opts.production && version === FIXTURE_FOUNDER_INTRO_VERSION) return { ok: false, reason: "FOUNDER_INTRO_FIXTURE_IN_PRODUCTION" };
+  if (opts.production && !asset.sha256) return { ok: false, reason: `FOUNDER_INTRO_UNREGISTERED_CHECKSUM: ${asset.version} has no sha256 in the registry` };
   const path = join(root, asset.file);
   if (!existsSync(path)) return { ok: false, reason: `FOUNDER_INTRO_MISSING: ${asset.version} not present on this worker` };
   if (asset.sha256) {
@@ -507,7 +526,15 @@ async function resolveIntroAsset(version: string, root: string): Promise<{ ok: t
   return { ok: true, path, asset };
 }
 
-function buildRenderPlan(compiled: CompiledVideo, segments: { index: number; sceneIndex: number; text: string }[], narration: NarrationFile[], introPath: string, introProbe: ProbeResult) {
+/** Why a probed intro clip cannot be used (null = usable). */
+export function introProbeIssue(p: ProbeResult): string | null {
+  if (!p.hasVideo) return "no video stream";
+  if (p.durationMs < FOUNDER_INTRO_DURATION.minMs || p.durationMs > FOUNDER_INTRO_DURATION.maxMs) return `${(p.durationMs / 1000).toFixed(1)} s is outside ${FOUNDER_INTRO_DURATION.minMs / 1000}–${FOUNDER_INTRO_DURATION.maxMs / 1000} s`;
+  return null;
+}
+
+function buildRenderPlan(
+compiled: CompiledVideo, segments: { index: number; sceneIndex: number; text: string }[], narration: NarrationFile[], introPath: string, introProbe: ProbeResult) {
   const bySceneIndex = new Map<number, { seg: (typeof segments)[number]; file: NarrationFile }>();
   segments.forEach((s, i) => bySceneIndex.set(s.sceneIndex, { seg: s, file: narration[i]! }));
   const missingAssets: string[] = [];
@@ -539,19 +566,44 @@ function buildRenderPlan(compiled: CompiledVideo, segments: { index: number; sce
 async function renderOrReuse(deps: RenderDeps, scenes: PlannedScene[], storageKey: string, row: VideoArtifactRow, workerId: string | null) {
   const { artifactPath } = await import("@/lib/evidence/storage");
   const canonicalPath = artifactPath(storageKey);
-  const [existingRow] = await sql`select id, sha256 from evidence_artifacts where storage_key = ${storageKey}`;
-  if (existingRow && existsSync(canonicalPath)) {
+  const stillPrefix = storageKey.replace(/\.mp4$/, "");
+  const note = `handoff ${row.handoffId} generation ${row.generationKey.slice(0, 12)} worker ${workerId ?? "?"}`;
+  if (existsSync(canonicalPath)) {
+    // Canonical bytes already on disk — a retry after a crash between render
+    // and ledger write, or a second worker. The FILE is the truth: adopt it,
+    // and let storeArtifact insert the missing row (same bytes → same row;
+    // a row holding a different checksum is a conflict for a human).
     const bytes = await readFile(canonicalPath);
     const probe = await deps.probe.probe(canonicalPath);
-    return { path: canonicalPath, sha256: sha256Of(bytes), storedSha256: existingRow.sha256 as string, sizeBytes: bytes.length, probe, renderMs: 0, overflow: [] as string[], reused: true, evidenceArtifactId: existingRow.id as string };
+    const stored = await storeArtifact({ kind: "video", storageKey, mimeType: "video/mp4", bytes, captureMethod: "video-walkthrough-render", note: `${note} (reconciled from disk)`, reuseExisting: true });
+    const existingStills = await sql`select storage_key from evidence_artifacts where storage_key like ${`${stillPrefix}/scene-%`} order by storage_key`;
+    const stills = existingStills.map((s) => { const m = /scene-(\d+)-([A-Za-z]+)\.png$/.exec(s.storageKey as string); return { sceneIndex: Number(m?.[1] ?? -1), kind: m?.[2] ?? "?", storageKey: s.storageKey as string }; });
+    return { path: canonicalPath, sha256: sha256Of(bytes), storedSha256: stored.sha256, sizeBytes: bytes.length, probe, renderMs: 0, overflow: [] as string[], reused: true, evidenceArtifactId: stored.artifactId, stills };
   }
   const workDir = join(tmpdir(), "video-walkthrough", row.id, String(row.meta.attempts + 1));
   await mkdir(workDir, { recursive: true });
   const outPath = join(workDir, "walkthrough.mp4");
   const r = await renderVideo(deps, { scenes, width: VIDEO_FORMAT.width, height: VIDEO_FORMAT.height, fps: VIDEO_FORMAT.fps }, outPath, workDir);
   const bytes = await readFile(outPath);
-  const stored = await storeArtifact({ kind: "video", storageKey, mimeType: "video/mp4", bytes, captureMethod: "video-walkthrough-render", note: `handoff ${row.handoffId} generation ${row.generationKey.slice(0, 12)} worker ${workerId ?? "?"}`, reuseExisting: true });
-  return { path: canonicalPath, sha256: r.sha256, storedSha256: stored.sha256, sizeBytes: r.sizeBytes, probe: r.probe, renderMs: r.renderMs, overflow: r.overflow, reused: false, evidenceArtifactId: stored.artifactId };
+  const stored = await storeArtifact({ kind: "video", storageKey, mimeType: "video/mp4", bytes, captureMethod: "video-walkthrough-render", note, reuseExisting: true });
+  // The exact rasterized frame of every still scene, kept next to the MP4
+  // so an operator reviews what was composed (no OCR, no vision model).
+  const stills: { sceneIndex: number; kind: string; storageKey: string }[] = [];
+  for (const s of scenes) {
+    if (!s.html) continue;
+    const png = join(workDir, `scene-${String(s.index).padStart(2, "0")}.png`);
+    if (!existsSync(png)) continue;
+    const key = `${stillPrefix}/scene-${String(s.index).padStart(2, "0")}-${s.kind}.png`;
+    try {
+      await storeArtifact({ kind: "screenshot", storageKey: key, mimeType: "image/png", bytes: await readFile(png), captureMethod: "video-walkthrough-still", note: `scene ${s.index} ${s.kind}`, reuseExisting: true });
+      stills.push({ sceneIndex: s.index, kind: s.kind, storageKey: key });
+    } catch (err) {
+      // A still is a review aid, never canonical: a byte-different frame from
+      // another worker's attempt is logged, not fatal.
+      log("warn", "video_walkthrough.still_not_stored", { artifactId: row.id, sceneIndex: s.index, error: err instanceof Error ? err.message : "unknown" });
+    }
+  }
+  return { path: canonicalPath, sha256: r.sha256, storedSha256: stored.sha256, sizeBytes: r.sizeBytes, probe: r.probe, renderMs: r.renderMs, overflow: r.overflow, reused: false, evidenceArtifactId: stored.artifactId, stills };
 }
 
 async function runVideoSemanticReview(row: VideoArtifactRow, compiled: CompiledVideo, caller?: AgentCaller): Promise<{ passed: boolean; unavailable: boolean; detail: string; meta: { passed: boolean; detail: string; agentVersion: string; model: string } }> {
@@ -587,6 +639,11 @@ export async function videoReleaseRecheck(handoffId: string, env: Record<string,
   if (row.status === "stale" || row.stage === "stale") return fail("video artifact is stale");
   if (row.stage !== "release_ready" || row.status !== "ready") return fail(`video is ${row.stage}/${row.status}`);
   if (row.meta.timestamps.deliveredAt) return fail("video already delivered");
+  // A canonical MP4 the prospect cannot reach from this deployment is not
+  // releasable: the email would promise a walkthrough with nowhere to play.
+  const distKind = (row.meta.distribution?.kind as VideoDistributionKind | undefined) ?? cfg.distribution;
+  const deliverable = distributionAdapter(distKind).deliverable(env);
+  if (!deliverable.ok) return fail(`DISTRIBUTION_NOT_DELIVERABLE (${distKind}): ${deliverable.detail}`);
   const bind = await checkBinding(row);
   if (!bind.ok) {
     if (bind.klass === "STALE") await markVideoStale(row.id, bind.reason);

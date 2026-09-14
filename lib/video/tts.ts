@@ -126,11 +126,22 @@ export function mockTtsProvider(opts: { msPerChar?: number; fail?: () => Error |
   };
 }
 
-export function narrationCacheKey(i: { scriptHash: string; voiceVersion: string; segmentIndex: number; text: string }): string {
-  return createHash("sha256").update([i.scriptHash, i.voiceVersion, String(i.segmentIndex), i.text].join("\n")).digest("hex");
+export function narrationCacheKey(i: { scriptHash: string; voiceVersion: string; segmentIndex: number; text: string; pronunciationVersion?: string }): string {
+  return createHash("sha256").update([i.scriptHash, i.voiceVersion, String(i.segmentIndex), i.text, ...(i.pronunciationVersion ? [i.pronunciationVersion] : [])].join("\n")).digest("hex");
 }
 
-export interface NarrationFile { key: string; wavPath: string; durationMs: number; characters: number; alignment: CharAlignment | null; provider: string; model: string; cached: boolean; sha256: string; estCostUsd: number }
+/** The text the provider hears: canonical text with whole-word aliases
+ * substituted (longest alias first, deterministic). Never used for display. */
+export function spokenForm(text: string, aliases: Readonly<Record<string, string>>): string {
+  let out = text;
+  for (const from of Object.keys(aliases).sort((a, b) => b.length - a.length || a.localeCompare(b))) {
+    const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "gu"), aliases[from]!);
+  }
+  return out;
+}
+
+export interface NarrationFile { key: string; wavPath: string; durationMs: number; characters: number; alignment: CharAlignment | null; provider: string; model: string; cached: boolean; sha256: string; estCostUsd: number; spokenDiffers?: boolean }
 
 /** Synthesize once per cache key: an existing WAV + sidecar is reused
  * (worker crashed after the provider charged us; a second worker; a retry). */
@@ -138,6 +149,11 @@ export async function synthesizeCached(
   provider: TtsProvider, root: string, prefix: string,
   seg: { key: string; text: string; voice: VoiceProfile; voiceId: string }
 ): Promise<NarrationFile> {
+  // Aliases change what is spoken, never what is displayed or captioned.
+  // Character alignment from the provider indexes the SPOKEN string, so it
+  // is dropped when the two differ (captions fall back to proportional timing).
+  const spoken = spokenForm(seg.text, seg.voice.pronunciation?.aliases ?? {});
+  const spokenDiffers = spoken !== seg.text;
   const wavKey = `${prefix}/${seg.key}.wav`;
   const metaKey = `${prefix}/${seg.key}.json`;
   const { resolveStoragePath } = await import("@/lib/storage/content-addressed");
@@ -147,11 +163,11 @@ export async function synthesizeCached(
     const meta = JSON.parse(await readFile(metaPath, "utf8")) as Omit<NarrationFile, "cached" | "wavPath" | "key">;
     return { ...meta, key: seg.key, wavPath, cached: true };
   }
-  const r = await provider.synthesize({ text: seg.text, voice: seg.voice, voiceId: seg.voiceId });
+  const r = await provider.synthesize({ text: spoken, voice: seg.voice, voiceId: seg.voiceId });
   const wav = pcmToWav(r.pcm, r.sampleRate);
   const w = await writeImmutable(root, wavKey, wav);
   const estCostUsd = r.provider === "elevenlabs" ? (r.characters / 1000) * ELEVENLABS_EST_USD_PER_1K_CHARS : 0;
-  const meta = { durationMs: r.durationMs, characters: r.characters, alignment: r.alignment, provider: r.provider, model: r.model, sha256: w.sha256, estCostUsd };
+  const meta = { durationMs: r.durationMs, characters: r.characters, alignment: spokenDiffers ? null : r.alignment, provider: r.provider, model: r.model, sha256: w.sha256, estCostUsd, spokenDiffers };
   await writeImmutable(root, metaKey, Buffer.from(JSON.stringify(meta)));
   return { ...meta, key: seg.key, wavPath: w.path, cached: w.alreadyExisted };
 }

@@ -16,6 +16,9 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/docker.yml"
+      - "lib/video/**"
+      - "scripts/video-runtime-check.ts"
+      - "scripts/video-walkthrough-smoke.ts"
   pull_request:
     paths:
       - "Dockerfile"
@@ -24,6 +27,9 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/docker.yml"
+      - "lib/video/**"
+      - "scripts/video-runtime-check.ts"
+      - "scripts/video-walkthrough-smoke.ts"
 
 concurrency:
   group: docker-${{ github.ref }}
@@ -39,3 +45,10 @@ jobs:
         run: docker build -t avos-web .
       - name: Build worker image
         run: docker build -f Dockerfile.worker -t avos-worker .
+      # Spec 138 runtime smoke INSIDE the worker image: ffmpeg/ffprobe resolve,
+      # Chromium launches with real fonts, mock narration decodes, a fixture
+      # walkthrough renders to a QA-passing MP4 through the immutable store.
+      # No database, no provider spend, no prospect. The recorded founder
+      # intro is a deploy-time asset, not an image input, so it is not required here.
+      - name: Video runtime smoke (worker image)
+        run: docker run --rm -e VIDEO_RUNTIME_CHECK_REQUIRE_INTRO=false -e VIDEO_TTS_PROVIDER=mock avos-worker npx tsx scripts/video-runtime-check.ts

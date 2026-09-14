@@ -20,10 +20,18 @@ import {
   type FactManifest,
   type ManifestAssertionIssue,
 } from "@/lib/prospects/fact-manifest";
-import { prospectReference } from "@/lib/prospects/followup-templates";
+import { prospectReference, type ProspectEntityType } from "@/lib/prospects/followup-templates";
 
 export const VIDEO_CONTRACT_VERSION = "video-walkthrough-contract-v1";
-export const VIDEO_SCRIPT_TEMPLATE_VERSION = "video-script-v1";
+/** v2 (2026-09-11): production line reads "came in at <display>" — the
+ * volume display already carries "closed", so v1 narrated "closed $X closed". */
+export const VIDEO_SCRIPT_TEMPLATE_VERSION = "video-script-v2";
+/** The ONLY entity types the canonical manifest can hold (the RealTrends
+ * record's entity_type, resolved upstream in `prospectEntityType`). Anything
+ * else — including a brokerage until the manifest learns it — fails closed
+ * here with `entity_unknown`; the video never resolves an entity itself. */
+export const VIDEO_ENTITY_TYPES: readonly ProspectEntityType[] = ["team", "individual"];
+
 /** Approved examples the ONE template narrates (the rest stay in the report). */
 export const VIDEO_MAX_EXAMPLES = 2;
 
@@ -42,7 +50,7 @@ export interface ApprovedExample { id: string; question: string; quote: string }
 export interface ApprovedFirstAction { id: string; title: string; body: string }
 
 export interface VideoWalkthroughInput {
-  prospect: { name: string; firstName: string; entityType: "individual" | "team" };
+  prospect: { name: string; firstName: string; entityType: ProspectEntityType };
   market: string;
   evidencePackageId: string;
   factManifestId: string;
@@ -139,7 +147,7 @@ export function compileVideoWalkthrough(i: VideoWalkthroughInput): CompiledVideo
   const script: ScriptLine[] = [
     line(0, i.introTranscript ?? "", [], [], "recorded"),
     line(1, `${i.prospect.firstName}, here is what stood out in the ${disp(m, "FACT_MARKET")} results.`, ["FACT_MARKET"]),
-    line(2, `On the ${disp(m, "FACT_PRODUCTION_YEAR")} record for ${disp(m, "FACT_PRODUCTION_METRIC")}, ${ref} closed ${disp(m, "FACT_PROSPECT_VOLUME")}. ${disp(m, "FACT_COMPETITOR_NAME")} closed ${disp(m, "FACT_COMPETITOR_VOLUME")}.`,
+    line(2, `On the ${disp(m, "FACT_PRODUCTION_YEAR")} record for ${disp(m, "FACT_PRODUCTION_METRIC")}, ${ref} came in at ${disp(m, "FACT_PROSPECT_VOLUME")}, and ${disp(m, "FACT_COMPETITOR_NAME")} came in at ${disp(m, "FACT_COMPETITOR_VOLUME")}.`,
       ["FACT_PRODUCTION_YEAR", "FACT_PRODUCTION_METRIC", "FACT_PROSPECT_VOLUME", "FACT_COMPETITOR_NAME", "FACT_COMPETITOR_VOLUME"]),
     line(3, `But when we put the same ${disp(m, "FACT_DENOMINATOR")} questions to ${disp(m, "FACT_PROVIDER")}, ${prospectCount}, and ${disp(m, "FACT_COMPETITOR_NAME")} was recommended ${disp(m, "FACT_COMPETITOR_RECOMMENDATIONS")} times.`,
       ["FACT_DENOMINATOR", "FACT_PROVIDER", "FACT_PROSPECT_RECOMMENDATIONS", "FACT_COMPETITOR_NAME", "FACT_COMPETITOR_RECOMMENDATIONS"]),
@@ -211,7 +219,16 @@ export const VIDEO_BANNED_PATTERNS: { code: string; re: RegExp }[] = [
   { code: "consumer_chatgpt", re: /\bChatGPT (?:recommends|says|thinks|prefers|picks)\b/i },
   { code: "internal_term", re: /\bmanifest\b|\bhandoff\b|\bshadow mode\b|\bcanary\b|\bbenchmark run\b|\bqa\b|\bsuppress/i },
   { code: "unresolved_placeholder", re: /\{[a-z_]+\}|\bundefined\b|\bnull\b|\bNaN\b/i },
+  /** A zero prospect count must never surface as an infinite multiple. */
+  { code: "zero_case", re: /∞|\binfinit(?:y|e|ely)\b|\bInfinityx\b/i },
 ];
+
+/** Scene props a viewer sees (ids and asset versions are bindings, not text). */
+export function displayedSceneText(v: CompiledVideo): string {
+  return v.scenes
+    .flatMap((s) => Object.entries(s).filter(([k, val]) => typeof val === "string" && k !== "kind" && !/Id$/.test(k) && k !== "introAssetVersion").map(([, val]) => val as string))
+    .join("\n");
+}
 
 /** Deterministic script QA before any model reads it: placeholders resolved,
  * identities present, denominator stated, figures manifested, approvals
@@ -223,9 +240,17 @@ export function assertVideoScriptReleasable(v: CompiledVideo, input: VideoWalkth
   const text = narrated.map((l) => l.text).join("\n");
   const required: FactId[] = ["FACT_PROSPECT_NAME", "FACT_MARKET", "FACT_PROSPECT_VOLUME", "FACT_COMPETITOR_NAME", "FACT_COMPETITOR_VOLUME", "FACT_PRODUCTION_YEAR", "FACT_DENOMINATOR", "FACT_PROVIDER"];
   for (const id of required) if (!m.facts[id].display.trim()) issues.push({ check: "missing_fact_display", detail: `${id} has no display value` });
+  // Entity identity is the manifest's, and only the canonical set renders:
+  // an unknown type never becomes "your team" by default.
+  const manifestEntity = m.facts.FACT_PROSPECT_ENTITY_TYPE.value;
+  if (!(VIDEO_ENTITY_TYPES as readonly unknown[]).includes(manifestEntity)) issues.push({ check: "entity_unknown", detail: `manifest entity type ${JSON.stringify(manifestEntity)} is not one of ${VIDEO_ENTITY_TYPES.join("/")}` });
+  else if (input.prospect.entityType !== manifestEntity) issues.push({ check: "entity_mismatch", detail: `input says ${input.prospect.entityType}; the manifest says ${String(manifestEntity)}` });
+  const sceneText = displayedSceneText(v);
   for (const { code, re } of VIDEO_BANNED_PATTERNS) {
     const hit = text.match(re);
     if (hit) issues.push({ check: `banned_${code}`, detail: `"${hit[0]}"` });
+    const onScreen = sceneText.match(re);
+    if (onScreen) issues.push({ check: `banned_${code}_on_screen`, detail: `"${onScreen[0]}"` });
   }
   const has = (needle: string): boolean => text.includes(needle);
   if (!has(input.prospect.firstName)) issues.push({ check: "prospect_missing", detail: "first name absent from the narration" });

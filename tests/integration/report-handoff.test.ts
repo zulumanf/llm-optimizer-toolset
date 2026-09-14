@@ -807,7 +807,11 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
       expect(done.meta.distribution).toMatchObject({ kind: "local_storage", visibility: "ACCESS_GATED" });
       expect(JSON.stringify(done.meta)).not.toMatch(/xi-api-key|ELEVENLABS_API_KEY/);
       const files = await sql`select kind, mime_type from evidence_artifacts where storage_key like ${`video-walkthrough/${h.id}/%`} order by kind`;
-      expect(files.map((f) => `${f.kind}:${f.mimeType}`)).toEqual(["export_file:text/vtt", "video:video/mp4"]);
+      expect(files.filter((f) => f.kind !== "screenshot").map((f) => `${f.kind}:${f.mimeType}`)).toEqual(["export_file:text/vtt", "video:video/mp4"]);
+      // Hardening: the exact still of every narrated scene is kept for operator review (never OCR'd).
+      expect(files.filter((f) => f.kind === "screenshot").length).toBe(done.meta.narration!.segments.length);
+      expect(done.meta.render!.stills!.map((s) => s.kind)).toContain("RecommendationComparisonScene");
+      expect(done.meta.render!.introDurationMs).toBeGreaterThan(0);
       const qa = await sql`select kind, passed from prospect_report_qa_runs where handoff_id = ${h.id} and kind like 'video_%' order by kind`;
       expect(qa.map((q) => `${q.kind}=${q.passed}`)).toEqual(["video_artifact_qa=true", "video_script_qa=true", "video_semantic_review=true"]);
       expect(await vw.videoReleaseRecheck(h.id)).toMatchObject({ passed: true, stage: "release_ready" });
@@ -815,7 +819,7 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
       expect(await vw.videoStatusForHandoff(h.id)).toBe("release-ready, held (SHADOW)");
       const rec = (await vw.reconstructVideoWalkthrough(v.id))!;
       expect((rec.qaRuns as unknown[]).length).toBe(3);
-      expect((rec.files as unknown[]).length).toBe(2);
+      expect((rec.files as unknown[]).length).toBe(2 + done.meta.render!.stills!.length);
       expect((rec.jobs as unknown[]).length).toBe(1);
       // The email that goes out never marks the video as sent (V1 does not carry it).
       unwrap(await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "manual", businessPurpose: "Deliver the report he asked for" }));

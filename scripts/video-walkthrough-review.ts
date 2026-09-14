@@ -20,7 +20,7 @@ async function resolveTarget(arg: string): Promise<{ path: string; label: string
   const row = await getVideoArtifact(arg);
   if (!row?.meta.render) throw new Error(`artifact ${arg} has no render`);
   const rec = await reconstructVideoWalkthrough(arg);
-  return { path: artifactPath(row.meta.render.storageKey), label: `artifact ${row.id} (stage ${row.stage}, status ${row.status})`, meta: { stage: row.stage, status: row.status, reason: row.meta.reason, versions: { intro: row.meta.introAssetVersion, voice: row.meta.voiceVersion, script: row.meta.scriptTemplateVersion, template: row.meta.videoTemplateVersion }, narration: row.meta.narration ? { provider: row.meta.narration.provider, characters: row.meta.narration.totalCharacters, estCostUsd: row.meta.narration.estCostUsd } : null, qa: row.meta.qa, qaRuns: rec?.qaRuns ?? null } };
+  return { path: artifactPath(row.meta.render.storageKey), label: `artifact ${row.id} (stage ${row.stage}, status ${row.status})`, meta: { stage: row.stage, status: row.status, reason: row.meta.reason, versions: { intro: row.meta.introAssetVersion, voice: row.meta.voiceVersion, script: row.meta.scriptTemplateVersion, template: row.meta.videoTemplateVersion }, narration: row.meta.narration ? { provider: row.meta.narration.provider, characters: row.meta.narration.totalCharacters, estCostUsd: row.meta.narration.estCostUsd } : null, qa: row.meta.qa, stills: row.meta.render.stills ?? null, introDurationMs: row.meta.render.introDurationMs ?? null, qaRuns: rec?.qaRuns ?? null } };
 }
 
 async function main(): Promise<void> {
