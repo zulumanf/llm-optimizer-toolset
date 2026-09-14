@@ -28,6 +28,13 @@ export type ReleasePolicy = (typeof RELEASE_POLICIES)[number];
  * releasable video walkthrough unless the policy explicitly says report_only. */
 export const DEFAULT_RELEASE_POLICY: ReleasePolicy = "report_and_video";
 
+/** A founder-recorded, audited per-handoff exception wins over the global
+ * policy (e.g. one prospect gets the report without a walkthrough). It
+ * never widens autonomy: the lane mode still decides transmission. */
+export function effectiveReleasePolicy(cfg: Pick<LaneConfig, "releasePolicy">, override: string | null | undefined): ReleasePolicy {
+  return override && (RELEASE_POLICIES as readonly string[]).includes(override) ? (override as ReleasePolicy) : cfg.releasePolicy;
+}
+
 export interface LaneConfig {
   mode: LaneMode;
   canaryPercent: number;

@@ -101,3 +101,17 @@ describe("operator view", () => {
     expect(held.nextAction).toMatch(/SHADOW/);
   });
 });
+
+describe("per-handoff release policy exception (migration 114)", () => {
+  it("a recorded report_only override wins over the global report_and_video policy; anything else falls back to the global policy; autonomy is untouched", async () => {
+    const { effectiveReleasePolicy, resolveLaneConfig } = await import("@/lib/prospects/fulfillment-lane");
+    const cfg = resolveLaneConfig({});
+    expect(cfg.releasePolicy).toBe("report_and_video");
+    expect(effectiveReleasePolicy(cfg, "report_only")).toBe("report_only");
+    expect(effectiveReleasePolicy(cfg, "report_and_video")).toBe("report_and_video");
+    expect(effectiveReleasePolicy(cfg, null)).toBe("report_and_video");
+    expect(effectiveReleasePolicy(cfg, "anything")).toBe("report_and_video");
+    expect(effectiveReleasePolicy(resolveLaneConfig({ FULFILLMENT_RELEASE_POLICY: "report_only" }), null)).toBe("report_only");
+    expect(cfg.mode).toBe("SHADOW");
+  });
+});
