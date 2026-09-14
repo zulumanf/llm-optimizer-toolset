@@ -9,6 +9,9 @@ import Link from "next/link";
 import { Newsreader } from "next/font/google";
 import { AuditDemo } from "@/components/marketing/audit-demo";
 import { RequestForm } from "@/components/marketing/request-form";
+import { JsonLd } from "@/components/marketing/json-ld";
+import { FAQ, HOME_FAQ_COUNT } from "@/lib/marketing/faq";
+import { breadcrumbLd, faqLd, marketingMetadata } from "@/lib/marketing/seo";
 import {
   Section,
   SectionHeading,
@@ -27,11 +30,7 @@ const serif = Newsreader({
   style: ["normal", "italic"],
 });
 
-export const metadata: Metadata = {
-  title: "AI Recommendation Intelligence for Real Estate | Recommended First",
-  description:
-    "We measure how ChatGPT, Gemini, Claude and Perplexity represent and recommend real estate agents and teams, diagnose competitive visibility gaps, and engineer evidence-backed improvements.",
-};
+export const metadata: Metadata = marketingMetadata("/home");
 
 const RECOMMENDATION_MOMENTS = [
   "Who are the best luxury real estate agents in Tribeca?",
@@ -81,48 +80,11 @@ const INTERVENTION_AREAS = [
   },
 ];
 
-const FAQ: { q: string; a: string }[] = [
-  {
-    q: "Can you guarantee that ChatGPT will recommend us?",
-    a: "No. AI outputs are probabilistic, models change frequently, and we do not control their recommendation systems. We improve measurable inputs and representation, then track whether observable outcomes change.",
-  },
-  {
-    q: "How is this different from SEO?",
-    a: "SEO focuses on the discoverability and ranking of webpages. AI visibility examines whether AI systems understand and surface the brand itself across recommendation-oriented questions. The disciplines overlap, but the measurement problem is different.",
-  },
-  {
-    q: "How do you know what influences an AI answer?",
-    a: "We distinguish between what we can directly observe and what we infer. We capture model outputs, citations, sources, competitive patterns, and entity information. When causation cannot be established, we label conclusions as hypotheses rather than facts.",
-  },
-  {
-    q: "What platforms do you measure?",
-    a: "Our framework evaluates leading AI answer and recommendation platforms. Coverage for a given engagement is determined by relevance to your market and technical feasibility, and is stated in the measurement plan before testing begins.",
-  },
-  {
-    q: "How long does this take?",
-    a: "Measurement can begin immediately after onboarding. Underlying signals and recommendation outcomes move on different timelines, so we track leading indicators as well as recommendation results rather than promising a fixed deadline.",
-  },
-  {
-    q: "Is this just content creation?",
-    a: "No. Content may be one intervention, but the system also covers entity clarity, third-party authority, citations, structured information, technical accessibility, and topical associations, depending on what the diagnosis actually shows.",
-  },
-  {
-    q: "Do we need to replace our SEO agency?",
-    a: "Usually not. Strong SEO, PR, and content work supports AI visibility. Our job is to identify the additional recommendation-specific gaps and coordinate with existing partners where useful.",
-  },
-  {
-    q: "What access do you need?",
-    a: "It depends on the engagement. We minimize required permissions and define exactly what is needed during onboarding.",
-  },
-  {
-    q: "What happens if our AI visibility is already strong?",
-    a: "Then the audit should show that. We would rather tell you there is no meaningful problem than manufacture one.",
-  },
-];
 
 export default function MarketingHomePage() {
   return (
     <div>
+      <JsonLd data={[breadcrumbLd("/home"), faqLd(FAQ.slice(0, HOME_FAQ_COUNT))]} />
       {/* 02 — hero */}
       <Section>
         <div className="max-w-3xl">
@@ -133,8 +95,8 @@ export default function MarketingHomePage() {
             Your competitors are being recommended by AI. Are you?
           </h1>
           <p className="mt-4 max-w-[65ch] text-sm leading-relaxed text-muted-foreground sm:text-lg sm:leading-relaxed">
-            We measure how ChatGPT, Gemini, Claude, Perplexity and other AI
-            systems represent and recommend real estate agents and teams,
+            We measure how AI search systems (today: the OpenAI model through its
+            web-search API, and Perplexity) represent and recommend real estate agents and teams,
             identify why competitors are winning, and engineer the signals that
             can improve your visibility.
           </p>
@@ -795,7 +757,7 @@ export default function MarketingHomePage() {
       <Section bordered id="faq">
         <SectionHeading title="Questions a skeptical operator should ask." serifClass={serif.className} />
         <div className="mt-6 max-w-3xl divide-y border-y">
-          {FAQ.map((item) => (
+          {FAQ.slice(0, HOME_FAQ_COUNT).map((item) => (
             <details key={item.q} className="group py-4">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-sm text-sm font-medium transition-colors hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
                 {item.q}
