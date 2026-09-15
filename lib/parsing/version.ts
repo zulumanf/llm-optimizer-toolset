@@ -3,7 +3,7 @@
  * version that ACTUALLY ran on each row, so a mixed heuristic/LLM history
  * stays legible in the evidence portal (docs/03 revision model).
  */
-import { PARSER_VERSION_HEURISTIC, PARSER_VERSION_LLM } from "@/lib/constants";
+import { PARSER_VERSION_HEURISTIC, PARSER_VERSION_LLM, PARSER_VERSION_ADJUDICATION } from "@/lib/constants";
 
 /** LLM classification requires a provider key; without one the pipeline
  * degrades to heuristic v1 rather than failing (docs/12 graceful
@@ -28,4 +28,5 @@ export function activeParserVersion(): string {
 export const KNOWN_PARSER_VERSIONS: string[] = [
   PARSER_VERSION_HEURISTIC,
   PARSER_VERSION_LLM,
+  PARSER_VERSION_ADJUDICATION,
 ];

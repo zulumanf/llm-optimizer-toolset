@@ -19,6 +19,8 @@ export const SPEND_ALERT_SHARE = 0.9;
 
 export interface HealthReport {
   ok: boolean;
+  /** Commit the running process was built from (BUILD_COMMIT / RAILWAY_GIT_COMMIT_SHA). */
+  version?: string | null;
   db: boolean;
   worker: {
     alive: boolean;
@@ -37,6 +39,7 @@ export interface HealthReport {
 export async function healthReport(): Promise<HealthReport> {
   const report: HealthReport = {
     ok: false,
+
     db: false,
     worker: { alive: false, lastSeenAt: null, workerId: null },
     queue: { queued: 0, oldestQueuedMinutes: null, overdue: 0 },
@@ -79,18 +82,33 @@ export async function healthReport(): Promise<HealthReport> {
     return report;
   }
   report.ok = report.db && report.worker.alive;
+  report.version = runningVersion();
   return report;
 }
 
 /** The worker's pulse. Called every poll cycle; an upsert is cheap. */
+export interface WorkerIdentity {
+  /** Commit the running image was built from (BUILD_COMMIT / RAILWAY_GIT_COMMIT_SHA), or null when unknown. */
+  version: string | null;
+  /** Job types this worker can execute — deployment QA reads it from the row. */
+  handlers: string[];
+}
+
 export async function beatHeartbeat(
   workerId: string,
-  jobsProcessed: number
+  jobsProcessed: number,
+  identity: WorkerIdentity = { version: null, handlers: [] }
 ): Promise<void> {
   await sql`
-    insert into worker_heartbeats (worker_id, last_seen_at, jobs_processed)
-    values (${workerId}, now(), ${jobsProcessed})
+    insert into worker_heartbeats (worker_id, last_seen_at, jobs_processed, version, handlers)
+    values (${workerId}, now(), ${jobsProcessed}, ${identity.version}, ${identity.handlers})
     on conflict (worker_id) do update
-      set last_seen_at = now(), jobs_processed = ${jobsProcessed}
+      set last_seen_at = now(), jobs_processed = ${jobsProcessed},
+          version = ${identity.version}, handlers = ${identity.handlers}
   `;
+}
+
+/** Commit identity of this process, from the deploy-time variable. */
+export function runningVersion(): string | null {
+  return process.env.BUILD_COMMIT ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? null;
 }

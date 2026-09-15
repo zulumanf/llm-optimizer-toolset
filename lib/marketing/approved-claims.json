@@ -1,0 +1,724 @@
+{
+ "$schema": "./approved-claims.schema.json",
+ "version": 1,
+ "updated": "2026-09-14",
+ "rules": [
+  "Every public number on recommendedfirst.com must resolve to a claim here with status 'approved'.",
+  "A claim is approved only after scripts/marketing-claims-verify.ts --check passes and a person has read the underlying evidence.",
+  "Numbers are counts of captured answers with their denominator; never rates without denominators, never projections, never third-party statistics without a URL and date.",
+  "No prospect, agent, team or client is named. Domains of national portals and directories may be named.",
+  "Provider labels: 'the OpenAI model' / 'OpenAI (gpt-5.4-mini, web search, API)' and 'Perplexity (sonar, API)'. Never 'ChatGPT' for an API capture.",
+  "prohibitedWording lists phrases that must not appear next to the claim on any public surface."
+ ],
+ "instruments": {
+  "openai": {
+   "model": "gpt-5.4-mini-2026-03-17",
+   "search": "web_search tool (Responses API)",
+   "sampling": "provider default",
+   "surface": "API, not the consumer ChatGPT app"
+  },
+  "perplexity": {
+   "model": "sonar",
+   "search": "built-in",
+   "sampling": "provider default",
+   "surface": "API"
+  },
+  "parser": "mention-parser-v2+llm (classifier gpt-5.4-mini-2026-03-17, verifier on low confidence, human review below 0.7)",
+  "citations": "extracted from immutable raw_payload: OpenAI url_citation annotations; Perplexity citations[] and search_results[]"
+ },
+ "claims": [
+  {
+   "id": "jc-2026-08-31-summary",
+   "status": "approved",
+   "claim": "Jersey City benchmark of 2026-08-31: 16 recommendation prompts, asked 4 times each of two search-enabled assistants, produced 128 captured answers, all 128 valid; 102 answers named at least one recommended agent or team; 33 distinct entities were recommended; 1,166 distinct answer-domain citation pairs across 82 domains.",
+   "source": "runs.id 99af19b4-3fff-4a05-b3a0-80135e5f588b (label 'Weekly baseline 2026-08-31', project 'Prospect benchmark: Properties by Southern \u2014 Jersey City'); tables responses, mentions, response_citations; scripts/marketing-claims-verify.ts run_summary",
+   "benchmarkDate": "2026-08-31",
+   "denominator": "128 valid answers (16 prompts x 4 repetitions x 2 providers); 0 errored, 0 refusals",
+   "publicWording": "In our 2026-08-31 Jersey City benchmark, 102 of 128 captured answers named at least one specific agent or team as a recommendation. 33 different entities were recommended across those answers.",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend",
+    "most buyers use AI",
+    "X% of buyers"
+   ],
+   "anonymization": "Market-level aggregate only. No prospect, team or agent name is published; no per-entity counts.",
+   "lastVerified": "2026-09-14",
+   "values": {
+    "answers": 128,
+    "captured": 128,
+    "answersWithRecommendation": 102,
+    "entitiesRecommended": 33,
+    "answerDomainPairs": 1166,
+    "domains": 82,
+    "prompts": 16,
+    "blockedPairs": 7
+   },
+   "verification": {
+    "query": "run_summary",
+    "runId": "99af19b4-3fff-4a05-b3a0-80135e5f588b"
+   },
+   "updateHistory": [
+    {
+     "date": "2026-09-14",
+     "note": "Recount after mention-classification revisions (current-revision rule): answersWithRecommendation 102\u219287; entitiesRecommended 33\u219229"
+    },
+    {
+     "date": "2026-09-14",
+     "note": "Revision-3 public-precedence recount (verified classifications only; heuristic re-parse rows excluded): answersWithRecommendation 87\u2192102; entitiesRecommended 29\u219233"
+    }
+   ],
+   "market": "Jersey City, NJ",
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  },
+  {
+   "id": "jc-2026-08-31-by-provider",
+   "status": "approved",
+   "claim": "Per provider in the same benchmark: OpenAI (gpt-5.4-mini-2026-03-17 with web search, API) 64 answers, 62 carried at least one citation, 27 distinct entities recommended, most-recommended entity in 25 of 64; Perplexity (sonar, API) 64 answers, 64 with citations, 20 entities, most-recommended in 22 of 64.",
+   "source": "same run; scripts/marketing-claims-verify.ts run_by_provider (canonical eligibility: valid cells, non-holdout prompts, current revision, echo-excluded)",
+   "benchmarkDate": "2026-08-31",
+   "denominator": "64 valid answers per provider",
+   "publicWording": "The OpenAI model recommended 27 different entities across 64 answers; the single most-recommended entity appeared in 25 of 64. Perplexity recommended 20 different entities across 64 answers; its most-recommended entity appeared in 22 of 64.",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend",
+    "ChatGPT recommended",
+    "the top agent in Jersey City is"
+   ],
+   "anonymization": "The most-recommended entity is not named.",
+   "lastVerified": "2026-09-14",
+   "values": {
+    "openai_answers": 64,
+    "openai_answersWithCitation": 62,
+    "openai_entitiesRecommended": 27,
+    "openai_topEntityRecommendations": 25,
+    "perplexity_answers": 64,
+    "perplexity_answersWithCitation": 64,
+    "perplexity_entitiesRecommended": 20,
+    "perplexity_topEntityRecommendations": 22,
+    "openai_answersWithRecommendation": 49,
+    "perplexity_answersWithRecommendation": 53,
+    "openai_blockedPairs": 4,
+    "perplexity_blockedPairs": 3
+   },
+   "verification": {
+    "query": "run_by_provider",
+    "runId": "99af19b4-3fff-4a05-b3a0-80135e5f588b"
+   },
+   "updateHistory": [
+    {
+     "date": "2026-09-14",
+     "note": "Recount after mention-classification revisions (current-revision rule): openai_entitiesRecommended 27\u219220; openai_topEntityRecommendations 25\u219214; perplexity_entitiesRecommended 20\u219218; perplexity_topEntityRecommendations 22\u219217"
+    },
+    {
+     "date": "2026-09-14",
+     "note": "Revision-3 public-precedence recount (verified classifications only; heuristic re-parse rows excluded): openai_entitiesRecommended 20\u219227; openai_topEntityRecommendations 14\u219225; perplexity_entitiesRecommended 18\u219220; perplexity_topEntityRecommendations 17\u219222; openai_answersWithRecommendation 46\u219249; perplexity_answersWithRecommendation 41\u219253"
+    }
+   ],
+   "market": "Jersey City, NJ",
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  },
+  {
+   "id": "jc-2026-08-31-top-domains",
+   "status": "approved",
+   "claim": "Most-cited domains in the Jersey City benchmark, counted as distinct answer-domain pairs (an answer citing a domain three times counts once): zillow.com 103, realtor.com 88, compass.com 61, homes.com 58, agentpronto.com 51, fastexpert.com 48, reddit.com 44, expertise.com 30, listwithclever.com 28, homelight.com 27.",
+   "source": "same run; response_citations; run_top_domains limit 14. Public table omits prospect-owned domains (jerseycitylifehomes.com, thejillbiggsgroup.com, sutherlingroup.com) ; hobokenpainter.com (40 pairs) verified live 2026-09-14 (HTTP 301 \u2192 www, blog listicles 'luxury-realtors' and 'best-realtors-for-sellers-in-hudson-bergen-counties-nj'): a painting contractor's blog, classified 'other', kept in the public table as an off-topic third-party source.",
+   "benchmarkDate": "2026-08-31",
+   "denominator": "1,166 distinct answer-domain pairs across 128 answers",
+   "publicWording": "The domains cited most often were national listing portals and agent directories; the table lists each domain with the number of answers citing it, out of 128.",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend",
+    "AI trusts Zillow",
+    "get listed on Zillow to be recommended"
+   ],
+   "anonymization": "Domains owned by individual agents or teams in the sample are excluded from the public table and described as 'agent- or team-owned websites'. hobokenpainter.com is a business blog, not an agent domain, and is shown.",
+   "lastVerified": "2026-09-13",
+   "values": {
+    "domain:zillow.com": 103,
+    "domain:realtor.com": 88,
+    "domain:compass.com": 61,
+    "domain:homes.com": 58,
+    "domain:agentpronto.com": 51,
+    "domain:fastexpert.com": 48,
+    "domain:reddit.com": 44,
+    "domain:hobokenpainter.com": 40,
+    "domain:jerseycitylifehomes.com": 36,
+    "domain:thejillbiggsgroup.com": 31,
+    "domain:expertise.com": 30,
+    "domain:sutherlingroup.com": 30,
+    "domain:listwithclever.com": 28,
+    "domain:homelight.com": 27
+   },
+   "verification": {
+    "query": "run_top_domains",
+    "runId": "99af19b4-3fff-4a05-b3a0-80135e5f588b",
+    "limit": 14
+   },
+   "publicExclude": [
+    "jerseycitylifehomes.com",
+    "thejillbiggsgroup.com",
+    "sutherlingroup.com"
+   ],
+   "market": "Jersey City, NJ",
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  },
+  {
+   "id": "corpus-aggregate",
+   "status": "approved",
+   "claim": "Across all real-estate market benchmarks captured 2026-07-30 to 2026-09-07 (34 runs, 17 market projects, two search-enabled assistants via API): OpenAI 6,290 valid answers, 2,124 named at least one recommended entity, 5,901 carried at least one citation; Perplexity 5,216 valid answers, 2,130 with a recommendation, 5,216 with a citation. 87,887 distinct answer-domain citation pairs across 3,661 domains.",
+   "source": "runs where status in (completed, partial), label not QA, project not 'Parva Core', completed_at <= 2026-09-07; providers openai, perplexity; scripts/marketing-claims-verify.ts corpus_aggregate",
+   "benchmarkDate": "2026-07-30 to 2026-09-07",
+   "denominator": "6,290 OpenAI answers; 5,216 Perplexity answers (valid, non-refused, captured through 2026-09-07)",
+   "publicWording": "Across 34 benchmark runs in 17 U.S. real-estate markets (July 30 to September 7, 2026), the OpenAI model named at least one specific agent or team in 2,124 of 6,290 answers (34%); Perplexity did so in 2,130 of 5,216 answers (41%).",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend",
+    "nationally representative",
+    "X% of AI searches",
+    "industry-wide"
+   ],
+   "anonymization": "Aggregate only; markets are named, entities are not.",
+   "lastVerified": "2026-09-14",
+   "values": {
+    "openai_answers": 6290,
+    "openai_answersWithRecommendation": 2124,
+    "openai_answersWithCitation": 5901,
+    "openai_runs": 34,
+    "openai_projects": 17,
+    "perplexity_answers": 5216,
+    "perplexity_answersWithRecommendation": 2130,
+    "perplexity_answersWithCitation": 5216,
+    "perplexity_runs": 25,
+    "perplexity_projects": 15,
+    "answerDomainPairs": 87887,
+    "domains": 3661,
+    "projects": 17,
+    "runs": 34
+   },
+   "verification": {
+    "query": "corpus_aggregate",
+    "through": "2026-09-07"
+   },
+   "updateHistory": [
+    {
+     "date": "2026-09-14",
+     "note": "Recount after mention-classification revisions (current-revision rule): openai_answersWithRecommendation 2124\u21922036; perplexity_answersWithRecommendation 2130\u21922050"
+    },
+    {
+     "date": "2026-09-14",
+     "note": "Revision-3 public-precedence recount (verified classifications only; heuristic re-parse rows excluded): openai_answersWithRecommendation 2036\u21922123; perplexity_answersWithRecommendation 2050\u21922128"
+    },
+    {
+     "date": "2026-09-14",
+     "note": "Revision-3 public-precedence recount (verified classifications only; heuristic re-parse rows excluded): openai_answersWithRecommendation 2123\u21922124; perplexity_answersWithRecommendation 2128\u21922130"
+    }
+   ],
+   "market": "17 U.S. markets (see corpus-aggregate)",
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  },
+  {
+   "id": "corpus-top-domains",
+   "status": "approved",
+   "claim": "Top 20 cited domains across the same corpus, as distinct answer-domain pairs with per-provider split.",
+   "source": "scripts/marketing-claims-verify.ts corpus_top_domains limit 20 (same run filter as corpus-aggregate)",
+   "benchmarkDate": "2026-07-30 to 2026-09-07",
+   "denominator": "87,887 distinct answer-domain pairs; 6,290 OpenAI answers and 5,216 Perplexity answers",
+   "publicWording": "zillow.com was cited in 8,748 answers, realtor.com in 7,268 and homes.com in 5,145. The full top-20 table shows the OpenAI and Perplexity split for each domain.",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend",
+    "the sources AI trusts most",
+    "get cited by"
+   ],
+   "anonymization": "Domains are public websites; no individual agent domains appear in the top 20.",
+   "lastVerified": "2026-09-13",
+   "values": {
+    "domain:zillow.com": 8748,
+    "domain:zillow.com:openai": 4051,
+    "domain:zillow.com:perplexity": 4697,
+    "domain:realtor.com": 7268,
+    "domain:realtor.com:openai": 3523,
+    "domain:realtor.com:perplexity": 3745,
+    "domain:homes.com": 5145,
+    "domain:homes.com:openai": 795,
+    "domain:homes.com:perplexity": 4350,
+    "domain:redfin.com": 3112,
+    "domain:redfin.com:openai": 467,
+    "domain:redfin.com:perplexity": 2645,
+    "domain:compass.com": 3070,
+    "domain:compass.com:openai": 458,
+    "domain:compass.com:perplexity": 2612,
+    "domain:homelight.com": 2247,
+    "domain:homelight.com:openai": 200,
+    "domain:homelight.com:perplexity": 2047,
+    "domain:fastexpert.com": 2183,
+    "domain:fastexpert.com:openai": 40,
+    "domain:fastexpert.com:perplexity": 2143,
+    "domain:effectiveagents.com": 1419,
+    "domain:effectiveagents.com:openai": 199,
+    "domain:effectiveagents.com:perplexity": 1220,
+    "domain:agentpronto.com": 1384,
+    "domain:agentpronto.com:openai": 90,
+    "domain:agentpronto.com:perplexity": 1294,
+    "domain:linkedin.com": 1247,
+    "domain:linkedin.com:openai": 1,
+    "domain:linkedin.com:perplexity": 1246,
+    "domain:trulia.com": 1121,
+    "domain:trulia.com:openai": 4,
+    "domain:trulia.com:perplexity": 1117,
+    "domain:century21.com": 1057,
+    "domain:century21.com:openai": 2,
+    "domain:century21.com:perplexity": 1055,
+    "domain:yelp.com": 857,
+    "domain:yelp.com:openai": 0,
+    "domain:yelp.com:perplexity": 857,
+    "domain:ratemyagent.com": 804,
+    "domain:ratemyagent.com:openai": 51,
+    "domain:ratemyagent.com:perplexity": 753,
+    "domain:coldwellbankerhomes.com": 763,
+    "domain:coldwellbankerhomes.com:openai": 37,
+    "domain:coldwellbankerhomes.com:perplexity": 726,
+    "domain:har.com": 730,
+    "domain:har.com:openai": 14,
+    "domain:har.com:perplexity": 716,
+    "domain:bankrate.com": 725,
+    "domain:bankrate.com:openai": 0,
+    "domain:bankrate.com:perplexity": 725,
+    "domain:coldwellbanker.com": 701,
+    "domain:coldwellbanker.com:openai": 20,
+    "domain:coldwellbanker.com:perplexity": 681,
+    "domain:reddit.com": 638,
+    "domain:reddit.com:openai": 18,
+    "domain:reddit.com:perplexity": 620,
+    "domain:expertise.com": 568,
+    "domain:expertise.com:openai": 70,
+    "domain:expertise.com:perplexity": 498
+   },
+   "verification": {
+    "query": "corpus_top_domains",
+    "limit": 20,
+    "through": "2026-09-07"
+   },
+   "market": "17 U.S. markets (see corpus-aggregate)",
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  },
+  {
+   "id": "greenville-2026-08-31-contrast",
+   "status": "pending_verification",
+   "claim": "Greenville, SC benchmark 2026-08-31 (64 prompts x 4 repetitions per provider): the team with the highest 2025 RealTrends closed volume among the 25 sampled teams with a record ($147.5M) was recommended in 0 of 256 OpenAI answers and 0 of 256 Perplexity answers; a team with $33.0M (22% of that volume) was recommended in 17 of 256 OpenAI answers.",
+   "source": "runs.id 234722e6-0f09-46a2-b9f0-fdb8531ca6a7; providerRecommendationCounts (canonical); realtrends_records (licensed 2026 RealTrends Verified download, production_year 2025); scripts/marketing-claims-verify.ts production_contrast",
+   "benchmarkDate": "2026-08-31",
+   "denominator": "256 valid OpenAI answers; 256 valid Perplexity answers",
+   "publicWording": "In our August 2026 Greenville, SC benchmark, the highest-volume team in our sample (by 2025 RealTrends closed volume, 25 teams with a record) was recommended in 0 of 256 answers from the OpenAI model, while a team with about a fifth of its volume was recommended in 17 of 256.",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend",
+    "top-5 Greenville team",
+    "lost listings",
+    "AI prefers smaller teams",
+    "ChatGPT ignores"
+   ],
+   "anonymization": "Both teams anonymized. Blocked until (a) the zero count passes the spec-136 release checks ALIAS_SET_VERIFIED and ZERO_COUNT_VERIFIED for the subject entity, and (b) a person confirms RealTrends licence terms allow citing the volume figure publicly. Neither team is a client; no consent exists for naming.",
+   "lastVerified": "2026-09-13",
+   "values": {
+    "openai_answers": 256,
+    "openai_subject_recommended": 0,
+    "openai_rival_recommended": 17,
+    "perplexity_answers": 256,
+    "perplexity_subject_recommended": 0,
+    "perplexity_rival_recommended": 0,
+    "subject_volume_usd": 147484458,
+    "subject_production_year": 2025,
+    "rival_volume_usd": 33030728,
+    "rival_production_year": 2025,
+    "nTeamsWithRecord": 25,
+    "teamsAboveSubject": 0
+   },
+   "verification": {
+    "query": "production_contrast",
+    "runId": "234722e6-0f09-46a2-b9f0-fdb8531ca6a7",
+    "subjectCompany": "Spaulding Group",
+    "rivalCompany": "The Haro Group"
+   },
+   "market": "Greenville, SC",
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  },
+  {
+   "id": "mkt-charleston",
+   "status": "approved",
+   "claim": "Charleston, SC market benchmark 2026-08-26: 64 prompts x 4 repetitions per provider = 256 valid answers per provider; distinct entities recommended and most-recommended entity count per provider as listed in values.",
+   "source": "runs.id 9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1; scripts/marketing-claims-verify.ts run_by_provider (canonical eligibility)",
+   "benchmarkDate": "2026-08-26",
+   "denominator": "256 valid answers per provider",
+   "publicWording": "Charleston, SC: see the market statistics table (entities recommended and most-recommended entity count, out of 256 answers per assistant).",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend",
+    "the leading team in Charleston, SC"
+   ],
+   "anonymization": "Market named; no entity named.",
+   "lastVerified": "2026-09-13",
+   "values": {
+    "openai_answers": 256,
+    "openai_answersWithCitation": 253,
+    "openai_entitiesRecommended": 15,
+    "openai_topEntityRecommendations": 32,
+    "perplexity_answers": 256,
+    "perplexity_answersWithCitation": 256,
+    "perplexity_entitiesRecommended": 16,
+    "perplexity_topEntityRecommendations": 37,
+    "openai_answersWithRecommendation": 125,
+    "perplexity_answersWithRecommendation": 110,
+    "openai_blockedPairs": 0,
+    "perplexity_blockedPairs": 0
+   },
+   "verification": {
+    "query": "run_by_provider",
+    "runId": "9c1a14c6-2a52-46fb-bff8-3343dfc8ffe1"
+   },
+   "market": "Charleston, SC",
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  },
+  {
+   "id": "mkt-greenville",
+   "status": "approved",
+   "claim": "Greenville, SC market benchmark 2026-08-31: 64 prompts x 4 repetitions per provider = 256 valid answers per provider; distinct entities recommended and most-recommended entity count per provider as listed in values.",
+   "source": "runs.id 234722e6-0f09-46a2-b9f0-fdb8531ca6a7; scripts/marketing-claims-verify.ts run_by_provider (canonical eligibility)",
+   "benchmarkDate": "2026-08-31",
+   "denominator": "256 valid answers per provider",
+   "publicWording": "Greenville, SC: see the market statistics table (entities recommended and most-recommended entity count, out of 256 answers per assistant).",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend",
+    "the leading team in Greenville, SC"
+   ],
+   "anonymization": "Market named; no entity named.",
+   "lastVerified": "2026-09-13",
+   "values": {
+    "openai_answers": 256,
+    "openai_answersWithCitation": 220,
+    "openai_entitiesRecommended": 22,
+    "openai_topEntityRecommendations": 31,
+    "perplexity_answers": 256,
+    "perplexity_answersWithCitation": 256,
+    "perplexity_entitiesRecommended": 18,
+    "perplexity_topEntityRecommendations": 24,
+    "openai_answersWithRecommendation": 82,
+    "perplexity_answersWithRecommendation": 66,
+    "openai_blockedPairs": 0,
+    "perplexity_blockedPairs": 0
+   },
+   "verification": {
+    "query": "run_by_provider",
+    "runId": "234722e6-0f09-46a2-b9f0-fdb8531ca6a7"
+   },
+   "market": "Greenville, SC",
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  },
+  {
+   "id": "mkt-virginia-beach",
+   "status": "approved",
+   "claim": "Virginia Beach, VA market benchmark 2026-08-31: 64 prompts x 4 repetitions per provider = 256 valid answers per provider; distinct entities recommended and most-recommended entity count per provider as listed in values.",
+   "source": "runs.id 7faf71c8-2462-4e44-817d-84fe8f026b48; scripts/marketing-claims-verify.ts run_by_provider (canonical eligibility)",
+   "benchmarkDate": "2026-08-31",
+   "denominator": "256 valid answers per provider",
+   "publicWording": "Virginia Beach, VA: see the market statistics table (entities recommended and most-recommended entity count, out of 256 answers per assistant).",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend",
+    "the leading team in Virginia Beach, VA"
+   ],
+   "anonymization": "Market named; no entity named.",
+   "lastVerified": "2026-09-13",
+   "values": {
+    "openai_answers": 256,
+    "openai_answersWithCitation": 222,
+    "openai_entitiesRecommended": 21,
+    "openai_topEntityRecommendations": 26,
+    "perplexity_answers": 256,
+    "perplexity_answersWithCitation": 256,
+    "perplexity_entitiesRecommended": 16,
+    "perplexity_topEntityRecommendations": 15,
+    "openai_answersWithRecommendation": 62,
+    "perplexity_answersWithRecommendation": 65,
+    "openai_blockedPairs": 0,
+    "perplexity_blockedPairs": 0
+   },
+   "verification": {
+    "query": "run_by_provider",
+    "runId": "7faf71c8-2462-4e44-817d-84fe8f026b48"
+   },
+   "market": "Virginia Beach, VA",
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  },
+  {
+   "id": "mkt-wilmington-de",
+   "status": "approved",
+   "claim": "Wilmington, DE market benchmark 2026-08-25: 64 prompts x 4 repetitions per provider = 256 valid answers per provider; distinct entities recommended and most-recommended entity count per provider as listed in values.",
+   "source": "runs.id 66af5cdb-d8cb-48a5-9646-7b961ee3328e; scripts/marketing-claims-verify.ts run_by_provider (canonical eligibility)",
+   "benchmarkDate": "2026-08-25",
+   "denominator": "256 valid answers per provider",
+   "publicWording": "Wilmington, DE: see the market statistics table (entities recommended and most-recommended entity count, out of 256 answers per assistant).",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend",
+    "the leading team in Wilmington, DE"
+   ],
+   "anonymization": "Market named; no entity named.",
+   "lastVerified": "2026-09-14",
+   "values": {
+    "openai_answers": 256,
+    "openai_answersWithCitation": 250,
+    "openai_entitiesRecommended": 17,
+    "openai_topEntityRecommendations": 42,
+    "perplexity_answers": 256,
+    "perplexity_answersWithCitation": 256,
+    "perplexity_entitiesRecommended": 19,
+    "perplexity_topEntityRecommendations": 54,
+    "openai_answersWithRecommendation": 81,
+    "perplexity_answersWithRecommendation": 102,
+    "openai_blockedPairs": 12,
+    "perplexity_blockedPairs": 13
+   },
+   "verification": {
+    "query": "run_by_provider",
+    "runId": "66af5cdb-d8cb-48a5-9646-7b961ee3328e"
+   },
+   "market": "Wilmington, DE",
+   "updateHistory": [
+    {
+     "date": "2026-09-14",
+     "note": "Recount after mention-classification revisions (current-revision rule): openai_entitiesRecommended 17\u219211; openai_topEntityRecommendations 42\u219228; perplexity_entitiesRecommended 19\u219218; perplexity_topEntityRecommendations 54\u219227"
+    },
+    {
+     "date": "2026-09-14",
+     "note": "Revision-3 public-precedence recount (verified classifications only; heuristic re-parse rows excluded): openai_entitiesRecommended 11\u219217; openai_topEntityRecommendations 28\u219241; perplexity_entitiesRecommended 18\u219219; perplexity_topEntityRecommendations 27\u219254; openai_answersWithRecommendation 76\u219280; perplexity_answersWithRecommendation 67\u2192101"
+    },
+    {
+     "date": "2026-09-14",
+     "note": "Revision-3 public-precedence recount (verified classifications only; heuristic re-parse rows excluded): openai_blockedPairs 1\u21925; perplexity_blockedPairs 1\u21922"
+    },
+    {
+     "date": "2026-09-14",
+     "note": "Revision-3 public-precedence recount (verified classifications only; heuristic re-parse rows excluded): openai_topEntityRecommendations 41\u219242; openai_answersWithRecommendation 80\u219281; perplexity_answersWithRecommendation 101\u2192102; openai_blockedPairs 5\u219212; perplexity_blockedPairs 2\u219213"
+    }
+   ],
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  },
+  {
+   "id": "mkt-savannah",
+   "status": "approved",
+   "claim": "Savannah, GA market benchmark 2026-08-26: 64 prompts x 4 repetitions per provider = 256 valid answers per provider; distinct entities recommended and most-recommended entity count per provider as listed in values.",
+   "source": "runs.id ed0528f2-6576-45a4-9b92-4c38aec3ecf5; scripts/marketing-claims-verify.ts run_by_provider (canonical eligibility)",
+   "benchmarkDate": "2026-08-26",
+   "denominator": "256 valid answers per provider",
+   "publicWording": "Savannah, GA: see the market statistics table (entities recommended and most-recommended entity count, out of 256 answers per assistant).",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend",
+    "the leading team in Savannah, GA"
+   ],
+   "anonymization": "Market named; no entity named.",
+   "lastVerified": "2026-09-13",
+   "values": {
+    "openai_answers": 256,
+    "openai_answersWithCitation": 244,
+    "openai_entitiesRecommended": 18,
+    "openai_topEntityRecommendations": 43,
+    "perplexity_answers": 256,
+    "perplexity_answersWithCitation": 256,
+    "perplexity_entitiesRecommended": 14,
+    "perplexity_topEntityRecommendations": 59,
+    "openai_answersWithRecommendation": 76,
+    "perplexity_answersWithRecommendation": 125,
+    "openai_blockedPairs": 2,
+    "perplexity_blockedPairs": 0
+   },
+   "verification": {
+    "query": "run_by_provider",
+    "runId": "ed0528f2-6576-45a4-9b92-4c38aec3ecf5"
+   },
+   "market": "Savannah, GA",
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  },
+  {
+   "id": "corpus-source-classes",
+   "status": "approved",
+   "claim": "Source-class distribution of answer-domain citation pairs across the corpus, using the platform's stored source_type label per domain; domains without a label are counted as 'other'.",
+   "source": "sources.source_type (source-classifier-v1/v2) joined to response_citations; scripts/marketing-claims-verify.ts corpus_source_classes",
+   "benchmarkDate": "2026-07-30 to 2026-09-07",
+   "denominator": "87,887 distinct answer-domain pairs",
+   "publicWording": "Most cited domains carry no class label yet; portals are a small share of domains but a large share of citations. The table gives pairs and domains per class.",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend",
+    "AI prefers portals"
+   ],
+   "anonymization": "Class-level only.",
+   "lastVerified": "2026-09-14",
+   "values": {
+    "class:other:pairs": 53854,
+    "class:other:domains": 3582,
+    "class:portal:pairs": 25662,
+    "class:portal:domains": 10,
+    "class:brokerage:pairs": 4583,
+    "class:brokerage:domains": 24,
+    "class:social:pairs": 1885,
+    "class:social:domains": 2,
+    "class:review:pairs": 865,
+    "class:review:domains": 2,
+    "class:directory:pairs": 451,
+    "class:directory:domains": 2,
+    "class:industry_ranking:pairs": 309,
+    "class:industry_ranking:domains": 1,
+    "class:government:pairs": 125,
+    "class:government:domains": 31,
+    "class:local_press:pairs": 89,
+    "class:local_press:domains": 3,
+    "class:news:pairs": 64,
+    "class:news:domains": 4
+   },
+   "verification": {
+    "query": "corpus_source_classes",
+    "through": "2026-09-07"
+   },
+   "market": "17 U.S. markets (see corpus-aggregate)",
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  },
+  {
+   "id": "corpus-prompt-categories",
+   "status": "approved",
+   "claim": "Prompt-category coverage of the corpus: frozen prompts per category across the runs in the window.",
+   "source": "prompt_set_versions.frozen_prompts[].category; scripts/marketing-claims-verify.ts corpus_prompt_categories",
+   "benchmarkDate": "2026-07-30 to 2026-09-07",
+   "denominator": "frozen prompts across corpus runs (each run counts its own frozen set)",
+   "publicWording": "Almost every question in the corpus is a recommendation-intent question; comparison, problem, branded and how-to questions are a small minority. Rates on this site therefore describe recommendation-intent questions.",
+   "prohibitedWording": [
+    "caused",
+    "because of this",
+    "lost revenue",
+    "costing you",
+    "guaranteed",
+    "ranking",
+    "#1",
+    "market share",
+    "lead flow",
+    "will recommend"
+   ],
+   "anonymization": "None needed.",
+   "lastVerified": "2026-09-14",
+   "values": {
+    "category:recommendation:prompts": 1780,
+    "category:recommendation:runs": 37,
+    "category:problem:prompts": 39,
+    "category:problem:runs": 5,
+    "category:branded:prompts": 4,
+    "category:branded:runs": 1
+   },
+   "verification": {
+    "query": "corpus_prompt_categories",
+    "through": "2026-09-07"
+   },
+   "market": "17 U.S. markets (see corpus-aggregate)",
+   "instrument": "the OpenAI model (gpt-5.4-mini, web search, API); Perplexity (sonar, API)"
+  }
+ ],
+ "classificationPrecedence": "public counts use the highest VERIFIED revision per (response, company): explicit verification_status='verified', or legacy mention-parser-v2+llm rows with confidence >= 0.7 and no review flag; heuristic rows never count; a pair whose newest row needs manual review blocks every claim over its run (lib/parsing/precedence.ts)",
+ "datasetVersion": "1.0.1"
+}

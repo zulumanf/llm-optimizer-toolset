@@ -15,6 +15,10 @@ describe("isMarketingPath", () => {
     expect(isMarketingPath("/methodology")).toBe(true);
     expect(isMarketingPath("/sample-audit")).toBe(true);
     expect(isMarketingPath("/home/anything")).toBe(true);
+    expect(isMarketingPath("/research/jersey-city-ai-visibility-report")).toBe(true);
+    expect(isMarketingPath("/citation-intelligence")).toBe(true);
+    expect(isMarketingPath("/faq")).toBe(true);
+    expect(isMarketingPath("/about")).toBe(true);
   });
 
   it("does not match the workspace, near-miss prefixes, or the root", () => {
@@ -22,6 +26,8 @@ describe("isMarketingPath", () => {
     expect(isMarketingPath("/projects")).toBe(false);
     expect(isMarketingPath("/homework")).toBe(false);
     expect(isMarketingPath("/audit/token")).toBe(false);
+    expect(isMarketingPath("/researcher")).toBe(false);
+    expect(isMarketingPath("/about-us")).toBe(false);
   });
 });
 

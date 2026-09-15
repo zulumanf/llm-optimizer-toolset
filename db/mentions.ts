@@ -1,5 +1,5 @@
 import { sql } from "@/db/client";
-import type { Sentiment } from "@/lib/constants";
+import { PARSER_VERSION_ADJUDICATION, PARSER_VERSION_LLM, type Sentiment } from "@/lib/constants";
 
 export interface Mention {
   id: string;
@@ -36,8 +36,10 @@ const COLUMNS = sql`m.id, m.response_id, m.company_id, m.revision, m.mentioned,
   m.created_at`;
 
 /**
- * Current revision = highest revision per (response, company), for queries
- * whose mentions alias is `m`. Exported (cleanup 2026-08-18): the audit
+ * Current (authoritative) revision per (response, company), for queries
+ * whose mentions alias is `m`: the highest revision among classifier-class
+ * rows (LLM v2, adjudication v3, or human-reviewed) when any exists, else
+ * the highest revision overall. Exported (cleanup 2026-08-18): the audit
  * found 26 hand-copied variants of this predicate across 21 files — one
  * fragment, embedded everywhere the alias allows.
  */
@@ -45,9 +47,59 @@ export const CURRENT_REVISION = sql`not exists (
   select 1 from mentions newer
   where newer.response_id = m.response_id
     and newer.company_id = m.company_id
-    and newer.revision > m.revision
+    and (
+      -- Class outranks order (pipeline hardening 2026-09-14, mirrors
+      -- authoritativeRevision in lib/parsing/precedence.ts): a classifier or
+      -- human judgment is never superseded by a heuristic row, whatever its
+      -- revision number — a provider outage cannot demote evidence.
+      ((newer.parser_version in (${PARSER_VERSION_LLM}, ${PARSER_VERSION_ADJUDICATION}) or newer.reviewed_by is not null)
+        and not (m.parser_version in (${PARSER_VERSION_LLM}, ${PARSER_VERSION_ADJUDICATION}) or m.reviewed_by is not null))
+      -- Within a class, the newer revision wins.
+      or (newer.revision > m.revision
+        and ((newer.parser_version in (${PARSER_VERSION_LLM}, ${PARSER_VERSION_ADJUDICATION}) or newer.reviewed_by is not null)
+          or not (m.parser_version in (${PARSER_VERSION_LLM}, ${PARSER_VERSION_ADJUDICATION}) or m.reviewed_by is not null)))
+    )
 )`;
 const CURRENT = CURRENT_REVISION;
+
+/**
+ * Public precedence (spec 141, lib/parsing/precedence.ts): the row `m` is the
+ * highest VERIFIED revision of its (response, company) pair. Verified =
+ * a human-reviewed row (reviewed_by set: human > machine), an explicit
+ * verification_status 'verified', or a legacy classifier row
+ * (mention-parser-v2+llm) with confidence >= 0.7 and no review flag.
+ * Heuristic rows never qualify. Use only together with PUBLIC_BLOCKED_PAIR.
+ */
+const VERIFIED_ROW = sql`(
+  x.verification_status = 'verified'
+  or x.reviewed_by is not null
+  or (x.verification_status is null and not x.needs_review
+      and x.parser_version = 'mention-parser-v2+llm' and x.confidence >= 0.7)
+)`;
+export const PUBLIC_REVISION = sql`(
+  (m.verification_status = 'verified'
+   or m.reviewed_by is not null
+   or (m.verification_status is null and not m.needs_review
+       and m.parser_version = 'mention-parser-v2+llm' and m.confidence >= 0.7))
+  and not exists (
+    select 1 from mentions x
+    where x.response_id = m.response_id and x.company_id = m.company_id
+      and x.revision > m.revision and ${VERIFIED_ROW}
+  )
+)`;
+
+/** A pair is blocked when a needs-manual-review row is newer than every
+ * verified row (or no verified row exists). Correlates on `m`. */
+export const PUBLIC_BLOCKED_PAIR = sql`(
+  (m.reviewed_by is null and (m.verification_status = 'needs_manual_review'
+   or (m.verification_status is null and (m.needs_review
+       or (m.parser_version in ('mention-parser-v2+llm', 'mention-parser-v3+adjudication') and m.confidence < 0.7)))))
+  and not exists (
+    select 1 from mentions x
+    where x.response_id = m.response_id and x.company_id = m.company_id
+      and x.revision > m.revision and ${VERIFIED_ROW}
+  )
+)`;
 
 export async function listReviewQueue(projectId: string): Promise<ReviewQueueItem[]> {
   return sql<ReviewQueueItem[]>`

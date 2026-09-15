@@ -6,6 +6,8 @@
  * Real audits are produced per prospect and delivered privately.
  */
 import type { Metadata } from "next";
+import { JsonLd } from "@/components/marketing/json-ld";
+import { breadcrumbLd, marketingMetadata } from "@/lib/marketing/seo";
 import Link from "next/link";
 import { Newsreader } from "next/font/google";
 import {
@@ -23,11 +25,7 @@ const serif = Newsreader({
   style: ["normal", "italic"],
 });
 
-export const metadata: Metadata = {
-  title: "Sample AI Visibility Audit | Recommended First",
-  description:
-    "An example of our AI visibility audit: recommendation share, prompt-level results, competitor analysis, source coverage, and prioritized actions, with every conclusion classified by confidence.",
-};
+export const metadata: Metadata = marketingMetadata("/sample-audit");
 
 const CONTENTS = [
   ["#summary", "Executive summary"],
@@ -113,6 +111,7 @@ function SectionBlock({
 export default function SampleAuditPage() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-16">
+      <JsonLd data={breadcrumbLd("/sample-audit")} />
       <Eyebrow>Sample audit</Eyebrow>
       <h1
         className={`${serif.className} mt-3 text-balance text-2xl font-medium tracking-tight sm:text-4xl`}

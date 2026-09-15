@@ -79,7 +79,7 @@ export function AuditDemo() {
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Measurement window
           </p>
-          <p className="mt-1 text-sm text-muted-foreground">Illustrative example</p>
+          <p className="mt-1 text-sm text-muted-foreground">Illustrative example — not a production benchmark. Columns are fictional; production benchmarks use the OpenAI model (gpt-5.4-mini, web search, API) and Perplexity (sonar, API).</p>
         </div>
       </div>
 

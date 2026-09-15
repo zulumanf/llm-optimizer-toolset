@@ -20,7 +20,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { devAuthRefusalReason, publicOrigin } from "@/lib/env";
-import { MARKETING_PREFIXES, marketingRewriteTarget } from "@/lib/marketing/constants";
+import { MARKETING_PREFIXES, MARKETING_PUBLIC_FILES, marketingRewriteTarget } from "@/lib/marketing/constants";
 
 /** Paths reachable without a session. `/audit` is the prospect audit page —
  * its own security is the high-entropy token (spec 032). Marketing pages
@@ -34,7 +34,7 @@ import { MARKETING_PREFIXES, marketingRewriteTarget } from "@/lib/marketing/cons
 // auth redirect would 307 Grok's JSON-RPC to /login (the /api/open trap).
 // `/report` is the private-report surface (spec 134): invitation exchange
 // and session-gated clean URLs — its own security is the report session.
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/api/open", "/api/audit-signal", "/audit", "/report/", "/mcp", "/healthz", "/.well-known", ...MARKETING_PREFIXES];
+const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/api/open", "/api/audit-signal", "/audit", "/report/", "/mcp", "/healthz", "/.well-known", ...MARKETING_PREFIXES, ...MARKETING_PUBLIC_FILES];
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   // Apex-host rewrite (spec 061): the marketing domain's `/` is the homepage;

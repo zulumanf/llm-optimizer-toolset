@@ -1141,6 +1141,21 @@ export async function linkBenchmark(
           "That run contains mock-provider responses and cannot back a prospect benchmark."
         );
       }
+      // Canonical geography (hardening 2026-09-14): a market-level project's
+      // run may only back prospects of that market. Fail closed on mismatch.
+      const [geo] = await tx`
+        select p.market_id as project_market_id, l.market_id as launch_market_id
+        from runs r join projects p on p.id = r.project_id
+        left join prospects pr on pr.id = ${input.prospectId}
+        left join market_launches l on l.id = pr.launch_id
+        where r.id = ${input.runId}
+      `;
+      if (geo?.projectMarketId && geo.projectMarketId !== geo.launchMarketId) {
+        throw new ClassifiedError(
+          "validation",
+          "BENCHMARK_MARKET_MISMATCH: that run belongs to a benchmark project bound to a different market than this prospect's launch — a cross-market binding can never be evidence."
+        );
+      }
       const [row] = await tx`
         insert into prospect_benchmarks (prospect_id, run_id, company_id, note, created_by)
         values (${input.prospectId}, ${input.runId}, ${prospect.companyId},

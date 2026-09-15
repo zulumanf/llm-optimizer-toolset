@@ -27,6 +27,7 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
   let companySvc: typeof import("@/lib/companies/service");
   let competitorSvc: typeof import("@/lib/competitors/service");
   let parsing: typeof import("@/lib/parsing/service");
+  let backfill: typeof import("@/lib/parsing/backfill");
   let scoring: typeof import("@/lib/scoring/compute");
   let competitorsDb: typeof import("@/db/competitors");
   let mock: typeof import("@/lib/ai/mock");
@@ -45,6 +46,7 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
     companySvc = await import("@/lib/companies/service");
     competitorSvc = await import("@/lib/competitors/service");
     parsing = await import("@/lib/parsing/service");
+    backfill = await import("@/lib/parsing/backfill");
     scoring = await import("@/lib/scoring/compute");
     competitorsDb = await import("@/db/competitors");
     mock = await import("@/lib/ai/mock");
@@ -54,7 +56,7 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
   beforeEach(async () => {
     await sql.unsafe(
       `truncate audit_log, jobs, brand_candidates, competitors, scores, sources,
-       response_parses, mentions, companies, responses, runs,
+       response_parses, run_company_parses, company_backfills, mentions, companies, responses, runs,
        prompt_set_versions, prompts, prompt_sets, projects cascade`
     );
     mock.resetMockProvider();
@@ -70,9 +72,11 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
       if (!job) return;
       if (job.type === "execute_run") await execute.executeRun(job.payload.runId as string);
       else if (job.type === "parse_response")
-        await parsing.parseResponse(job.payload.responseId as string);
+        await parsing.parseResponse(job.payload.responseId as string, { reparse: job.payload.reparse === true });
       else if (job.type === "compute_scores")
         await scoring.computeScores(job.payload.runId as string);
+      else if (job.type === "backfill_company")
+        await backfill.runCompanyBackfill(job.payload as unknown as import("@/lib/parsing/backfill").BackfillPayload);
       await jobs.completeJob(job.id);
     }
   }
@@ -168,13 +172,24 @@ describe.skipIf(!TEST_URL)("competitors (integration)", () => {
     });
     expect(added.ok).toBe(true);
     if (added.ok) expect(added.data.backfilledRuns).toBe(1);
+    // Hardening 2026-09-14: the attach enqueues ONE company-scoped job, never
+    // a parse_response per answer, and the semantic ledger is untouched.
+    const ledgerBefore = await sql`select count(*)::int as n from response_parses`;
+    const queued = await sql`select type, count(*)::int as n from jobs where status = 'queued' group by type`;
+    expect(queued).toEqual([{ type: "backfill_company", n: 1 }]);
     await drainJobs();
+    const ledgerAfter = await sql`select count(*)::int as n from response_parses`;
+    expect(ledgerAfter[0]?.n).toBe(ledgerBefore[0]?.n);
 
     const acmeMentions = await sql`
       select count(*)::int as n from mentions
       where company_id = ${acme.data.id} and mentioned
     `;
     expect(acmeMentions[0]?.n).toBe(2); // both responses, retroactively
+    const [ledger] = await sql`select status, runs_touched, classifier_calls, mentions_inserted from company_backfills`;
+    expect(ledger?.status).toBe("completed");
+    expect(ledger?.runsTouched).toBe(1);
+    expect(ledger?.mentionsInserted).toBe(2);
     const acmeScores = await sql`
       select count(*)::int as n from scores where company_id = ${acme.data.id}
     `;

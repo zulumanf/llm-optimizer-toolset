@@ -8,7 +8,7 @@
  * bootstrap, and the stale-lease sweep.
  */
 // Must be the first import — later imports read env at module load
-import { beatHeartbeat } from "@/lib/ops/health";
+import { beatHeartbeat, runningVersion } from "@/lib/ops/health";
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { reclaimStaleJobs } from "@/db/jobs";
@@ -21,7 +21,7 @@ import { bootstrapWorkflows } from "@/lib/workflow/templates";
 // definitions on top of spec 018's three (specs/native-automation-and-connector-layer).
 import { ensureAutomationReady } from "@/lib/automation/dispatch";
 import { runAutomationTick, runWeeklyKick, tickDue } from "@/lib/ops/tick";
-import { dispatchOnce } from "@/workers/core";
+import { dispatchOnce, handlers } from "@/workers/core";
 import { log } from "@/lib/logger";
 
 const WORKER_ID = `worker-${randomUUID().slice(0, 8)}`;
@@ -37,7 +37,9 @@ const HEALTH_INTERVAL_MS = 24 * 60 * 60_000;
 let shuttingDown = false;
 
 async function main(): Promise<void> {
-  log("info", "worker.start", { workerId: WORKER_ID });
+  const identity = { version: runningVersion(), handlers: Object.keys(handlers).sort() };
+  log("info", "worker.start", { workerId: WORKER_ID, ...identity });
+  await beatHeartbeat(WORKER_ID, 0, identity);
   // Publish workflow definitions before claiming any job: a tick that finds
   // no published version cannot do anything useful.
   await bootstrapWorkflows();
@@ -78,7 +80,7 @@ async function main(): Promise<void> {
     // The pulse (spec 059): every cycle, working or idle — a dead worker
     // was invisible, and everything asynchronous depends on this loop.
     try {
-      await beatHeartbeat(WORKER_ID, jobsProcessed);
+      await beatHeartbeat(WORKER_ID, jobsProcessed, identity);
     } catch (err) {
       log("error", "worker.heartbeat_failed", {
         error: err instanceof Error ? err.message : "unknown",

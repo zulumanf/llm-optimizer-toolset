@@ -12,9 +12,10 @@ import { CheckVisibilityCta } from "@/components/marketing/ui";
 
 const LINKS = [
   { href: "/methodology", label: "Methodology" },
+  { href: "/research", label: "Research" },
+  { href: "/citation-intelligence", label: "Citations" },
   { href: "/sample-audit", label: "Sample audit" },
-  { href: "/home#system", label: "How it works" },
-  { href: "/home#faq", label: "FAQ" },
+  { href: "/faq", label: "FAQ" },
 ];
 
 export function MarketingNav() {

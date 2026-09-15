@@ -44,3 +44,17 @@ export function emailOnPage(url: string, email: string): boolean {
   }
   return htmlStatesEmail(html, email);
 }
+
+/** Rendered-page verification (supply engine 2026-09-14): the same literal
+ * rule applied to the DOM a public page produces after its scripts run.
+ * Used only after a plain fetch returned a JS shell; the source type is
+ * recorded as `rendered_page` so provenance stays honest. */
+export async function emailOnRenderedPage(url: string, email: string): Promise<boolean> {
+  try {
+    const { renderPageHtml } = await import("@/lib/prospects/contact-render");
+    const { html } = await renderPageHtml(url);
+    return htmlStatesEmail(html, email);
+  } catch {
+    return false;
+  }
+}

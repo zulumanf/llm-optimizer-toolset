@@ -12,14 +12,22 @@ import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage, duplicateNameConflict } from "@/lib/service-helpers";
 import { upsertCompany } from "@/lib/companies/service";
-import { enqueueParseJobs } from "@/lib/parsing/service";
+import { BACKFILL_RUN_LIMIT, enqueueCompanyBackfill } from "@/lib/parsing/backfill";
 
-export const BACKFILL_RUN_LIMIT = 12;
+export { BACKFILL_RUN_LIMIT };
 
 const addSchema = z.object({
   projectId: z.string().uuid(),
   companyId: z.string().uuid(),
   tier: z.enum(["primary", "secondary"]),
+  /** Enqueue ONE company-scoped backfill job so the project's recent runs
+   * (≤ BACKFILL_RUN_LIMIT) resolve the new company (default). Nothing is
+   * deleted or re-classified: only answers that name the company are judged,
+   * existing classifier judgments are reused, and a duplicate request for
+   * the same (project, company) is deduplicated against the queue. Callers
+   * that want to defer (e.g. the classifier provider is blocked) pass false
+   * and call enqueueCompanyBackfill later. */
+  backfill: z.boolean().default(true),
 });
 
 export async function addCompetitor(
@@ -31,7 +39,7 @@ export async function addCompetitor(
   if (!parsed.success) {
     return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
   }
-  const { projectId, companyId, tier } = parsed.data;
+  const { projectId, companyId, tier, backfill } = parsed.data;
   try {
     const competitorId = await sql.begin(async (tx) => {
       const [company] = await tx`
@@ -61,8 +69,8 @@ export async function addCompetitor(
       });
       return row?.id as string;
     });
-    const backfilledRuns = await backfillProject(projectId);
-    return ok({ competitorId, backfilledRuns });
+    const queued = backfill ? await enqueueCompanyBackfill(projectId, companyId, "competitor_attach") : null;
+    return ok({ competitorId, backfilledRuns: queued?.estimate.runs ?? 0, backfillJobId: queued?.jobId ?? null });
   } catch (err) {
     return fail(
       duplicateNameConflict(err, "This company is already tracked in this project.")
@@ -212,24 +220,4 @@ export async function dismissBrandCandidate(
   } catch (err) {
     return fail(err);
   }
-}
-
-/**
- * Re-parse the project's most recent runs so a newly tracked company gets
- * mentions from existing raw data. Bounded to BACKFILL_RUN_LIMIT (spec 005).
- * Clearing the ledger re-runs the parser; classification appends revisions
- * and retractions per the docs/03 revision model.
- */
-async function backfillProject(projectId: string): Promise<number> {
-  const runs = await sql`
-    select id from runs
-    where project_id = ${projectId} and status in ('completed', 'partial')
-    order by started_at desc
-    limit ${BACKFILL_RUN_LIMIT}
-  `;
-  for (const run of runs) {
-    await sql`delete from response_parses where run_id = ${run.id}`;
-    await enqueueParseJobs(run.id as string);
-  }
-  return runs.length;
 }
