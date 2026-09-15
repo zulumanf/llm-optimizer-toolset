@@ -324,6 +324,21 @@ describe.skipIf(!TEST_URL)("parse/backfill hardening (integration)", () => {
     expect(await countRows("prospect_benchmarks", `run_id = '${runId}'`)).toBe(1);
   });
 
+  it("enqueueParseJobs is idempotent against the queue: a second enqueue for the same run adds no duplicate parse jobs", async () => {
+    const { runId } = await seedProjectWithRun();
+    await sql`delete from response_parses where run_id = ${runId}`; // simulate an explicit refresh that needs re-parsing
+    const first = await parsing.enqueueParseJobs(runId, { reparse: true });
+    const second = await parsing.enqueueParseJobs(runId, { reparse: true });
+    expect(first).toBe(2);
+    expect(second).toBe(0);
+    const [dupes] = await sql`
+      select count(*)::int as n from (
+        select payload->>'responseId' as rid, count(*) as c from jobs
+        where type = 'parse_response' and status = 'queued' group by 1 having count(*) > 1
+      ) d`;
+    expect(dupes?.n).toBe(0);
+  });
+
   it("emits no customer communication", async () => {
     const { projectId } = await seedProjectWithRun();
     const acme = await companySvc.upsertCompany(user, { name: "Acme" });
