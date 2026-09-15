@@ -133,6 +133,7 @@ export function computeCoverage(
 export async function runCoverage(runId: string): Promise<CoverageRow[] | null> {
   const { sql } = await import("@/db/client");
   const { getSubjectCompany } = await import("@/db/companies");
+  const { CURRENT_REVISION } = await import("@/db/mentions");
 
   const [run] = await sql`
     select r.project_id, v.frozen_prompts
@@ -153,14 +154,8 @@ export async function runCoverage(runId: string): Promise<CoverageRow[] | null> 
     where res.run_id = ${runId}
       and res.error is null
       and m.company_id = ${subject.id}
-      -- current-revision predicate: keep in sync with db/mentions.ts
-      -- CURRENT_REVISION (inlined here so this module's db imports stay lazy)
-      and not exists (
-        select 1 from mentions newer
-        where newer.response_id = m.response_id
-          and newer.company_id = m.company_id
-          and newer.revision > m.revision
-      )
+      -- authoritative revision: the ONE shared predicate (class-first), imported lazily
+      and ${CURRENT_REVISION}
     group by res.prompt_id
   `;
   const presence = new Map<string, PromptPresence>(

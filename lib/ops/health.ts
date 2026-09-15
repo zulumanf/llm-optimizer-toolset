@@ -19,6 +19,8 @@ export const SPEND_ALERT_SHARE = 0.9;
 
 export interface HealthReport {
   ok: boolean;
+  /** Commit the running process was built from (BUILD_COMMIT / RAILWAY_GIT_COMMIT_SHA). */
+  version?: string | null;
   db: boolean;
   worker: {
     alive: boolean;
@@ -37,6 +39,7 @@ export interface HealthReport {
 export async function healthReport(): Promise<HealthReport> {
   const report: HealthReport = {
     ok: false,
+
     db: false,
     worker: { alive: false, lastSeenAt: null, workerId: null },
     queue: { queued: 0, oldestQueuedMinutes: null, overdue: 0 },
@@ -79,6 +82,7 @@ export async function healthReport(): Promise<HealthReport> {
     return report;
   }
   report.ok = report.db && report.worker.alive;
+  report.version = runningVersion();
   return report;
 }
 

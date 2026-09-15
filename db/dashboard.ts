@@ -140,12 +140,8 @@ export async function citationSupport(
       ))::int as independently_supported
     from responses r
     left join mentions m on m.response_id = r.id and m.company_id = ${companyId}
-      -- current revision only (the lib/prospects/benchmark.ts CURRENT idiom)
-      and not exists (
-        select 1 from mentions newer
-        where newer.response_id = m.response_id
-          and newer.company_id = m.company_id and newer.revision > m.revision
-      )
+      -- authoritative revision: the ONE shared predicate (class-first, db/mentions.ts)
+      and ${CURRENT_REVISION}
     where r.run_id = ${runId} and r.error is null
   `;
   return {
