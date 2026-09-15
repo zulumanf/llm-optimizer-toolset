@@ -83,10 +83,25 @@ function baseInput(): ReleaseVerdictInput {
     correction: null,
     prospect: side("prospect", blu, 1, "Ryan John Ogle", record("rt-blu")),
     competitor: side("competitor", harbor, 3, "Dana Harbor", record("rt-harbor", { volumeUsd: 65_529_015 })),
+    benchmarkMarket: { projectMarketId: "mkt-jc", launchMarketId: "mkt-jc", projectLabel: "Jersey City, NJ", launchLabel: "Jersey City, NJ" },
   };
 }
 
 const reasonsOf = (i: ReleaseVerdictInput) => composeReleaseVerdict(i).reasons;
+
+describe("BENCHMARK_MARKET_VERIFIED (hardening 2026-09-14)", () => {
+  it("a market-level project answering for a prospect from another market blocks; same market or per-prospect project passes", () => {
+    const base = baseInput();
+    expect(reasonsOf(base)).not.toContain("BENCHMARK_MARKET_MISMATCH");
+    const nc = { ...base, benchmarkMarket: { projectMarketId: "mkt-wilmington-de", launchMarketId: "mkt-wilmington-nc", projectLabel: "Wilmington, DE", launchLabel: "Wilmington, NC" } };
+    expect(reasonsOf(nc)).toContain("BENCHMARK_MARKET_MISMATCH");
+    expect(composeReleaseVerdict(nc).verified).toBe(false);
+    const noLaunch = { ...base, benchmarkMarket: { ...base.benchmarkMarket, launchMarketId: null } };
+    expect(reasonsOf(noLaunch)).toContain("BENCHMARK_MARKET_MISMATCH");
+    const perProspect = { ...base, benchmarkMarket: { projectMarketId: null, launchMarketId: "mkt-x", projectLabel: null, launchLabel: null } };
+    expect(reasonsOf(perProspect)).not.toContain("BENCHMARK_MARKET_MISMATCH");
+  });
+});
 
 // ------------------------------------------------- Blu House property test
 

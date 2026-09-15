@@ -37,7 +37,11 @@ export const handlers: Record<
     await executeRun(payload.runId as string);
   },
   parse_response: async (payload) => {
-    await parseResponse(payload.responseId as string);
+    await parseResponse(payload.responseId as string, { reparse: payload.reparse === true });
+  },
+  backfill_company: async (payload) => {
+    const { runCompanyBackfill } = await import("@/lib/parsing/backfill");
+    await runCompanyBackfill(payload as unknown as import("@/lib/parsing/backfill").BackfillPayload);
   },
   compute_scores: async (payload) => {
     await computeScores(payload.runId as string);

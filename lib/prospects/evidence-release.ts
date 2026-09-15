@@ -21,6 +21,7 @@
 import { sql } from "@/db/client";
 import type { TransactionSql } from "@/db/client";
 import { KNOWN_PARSER_VERSIONS } from "@/lib/parsing/version";
+import { PARSER_VERSION_ADJUDICATION, PARSER_VERSION_LLM } from "@/lib/constants";
 import { providerRecommendationCounts } from "@/lib/prospects/benchmark";
 import {
   deriveLeadAgentAliases,
@@ -65,6 +66,7 @@ export const RELEASE_REASON_CODES = [
   "RECOMMENDATION_SEMANTICS_UNVERIFIED",
   "PENDING_CORRECTION",
   "UNRESOLVED_EVIDENCE_ISSUE",
+  "BENCHMARK_MARKET_MISMATCH",
 ] as const;
 export type ReleaseReasonCode = (typeof RELEASE_REASON_CODES)[number];
 
@@ -81,6 +83,7 @@ export const RELEASE_CHECK_NAMES = [
   "PROVIDER_VERIFIED",
   "RUN_COMPLETENESS_ACCEPTABLE",
   "DENOMINATOR_VERIFIED",
+  "BENCHMARK_MARKET_VERIFIED",
   "PRIMARY_PROSPECT_COUNT_VERIFIED",
   "SHADOW_PROSPECT_COUNT_MATCH",
   "PRIMARY_COMPETITOR_COUNT_VERIFIED",
@@ -120,6 +123,8 @@ export interface ShadowMention {
   recommended: boolean;
   needsReview: boolean;
   parserVersion: string;
+  /** mentions.reviewed_by is set — a person judged this row. */
+  reviewed?: boolean;
 }
 
 export interface ShadowCompany {
@@ -196,12 +201,25 @@ export function rawOccurrence(text: string | null, names: string[]): boolean {
   return nonEmpty(names).some((n) => occurrenceRegex(n).test(text));
 }
 
+/** Re-derived here on purpose (independent of db/mentions.ts SQL and of
+ * lib/parsing/precedence.ts code): a classifier-class row (LLM, adjudication,
+ * or human-reviewed) outranks every heuristic row; within a class the higher
+ * revision wins. A heuristic row appended during a provider outage is
+ * therefore never the row the shadow counts. */
+function classifierClass(m: ShadowMention): boolean {
+  return m.reviewed === true || m.parserVersion === PARSER_VERSION_LLM || m.parserVersion === PARSER_VERSION_ADJUDICATION;
+}
+
 function currentRevisions(mentions: ShadowMention[]): Map<string, ShadowMention> {
   const current = new Map<string, ShadowMention>();
   for (const m of mentions) {
     const key = `${m.responseId}:${m.companyId}`;
     const have = current.get(key);
-    if (!have || m.revision > have.revision) current.set(key, m);
+    if (!have) { current.set(key, m); continue; }
+    const mc = classifierClass(m);
+    const hc = classifierClass(have);
+    if (mc !== hc) { if (mc) current.set(key, m); continue; }
+    if (m.revision > have.revision) current.set(key, m);
   }
   return current;
 }
@@ -322,6 +340,13 @@ export interface ReleaseVerdictInput {
   correction: { id: string; correctedAt: Date; prospectCount: number; competitorCount: number } | null;
   prospect: ReleaseSideInput;
   competitor: ReleaseSideInput;
+  /** Canonical geography of the claim (hardening 2026-09-14). `projectMarketId`
+   * is the run's project market (null for per-prospect benchmark projects,
+   * whose identity is the prospect itself); `launchMarketId` is the
+   * prospect's launch market. A market-level project answering for a
+   * prospect from another market is a binding contaminated by the legacy
+   * display-name collision and must never release. */
+  benchmarkMarket: { projectMarketId: string | null; launchMarketId: string | null; projectLabel: string | null; launchLabel: string | null };
 }
 
 export interface ReleaseDiagnostics {
@@ -445,7 +470,18 @@ function runChecks(i: ReleaseVerdictInput): ReleaseCheck[] {
     mk("DENOMINATOR_VERIFIED", denomOk,
       `stated ${i.snapshot.answerCount} · primary ${i.primaryDenominator ?? "unknown"} · shadow ${i.shadowDenominator ?? "unknown"}`,
       "DENOMINATOR_MISMATCH"),
+    mk("BENCHMARK_MARKET_VERIFIED", benchmarkMarketMatches(i.benchmarkMarket),
+      i.benchmarkMarket.projectMarketId === null
+        ? "per-prospect benchmark project (identity is the prospect)"
+        : `run project market ${i.benchmarkMarket.projectLabel ?? i.benchmarkMarket.projectMarketId} · prospect launch market ${i.benchmarkMarket.launchLabel ?? i.benchmarkMarket.launchMarketId ?? "none"}`,
+      "BENCHMARK_MARKET_MISMATCH"),
   ];
+}
+
+/** Pure. A market-level project must answer for its own market only. */
+export function benchmarkMarketMatches(m: ReleaseVerdictInput["benchmarkMarket"]): boolean {
+  if (m.projectMarketId === null) return true;
+  return m.launchMarketId !== null && m.launchMarketId === m.projectMarketId;
 }
 
 function countChecks(i: ReleaseVerdictInput): ReleaseCheck[] {
@@ -599,16 +635,36 @@ async function loadRun(runId: string, provider: string): Promise<RunLoad> {
   };
 }
 
+async function loadBenchmarkMarket(runId: string, prospectId: string | null): Promise<ReleaseVerdictInput["benchmarkMarket"]> {
+  const [row] = await sql`
+    select p.market_id as project_market_id, pm.name || ', ' || coalesce(pm.state_code, '?') as project_label,
+      l.market_id as launch_market_id, lm.name || ', ' || coalesce(lm.state_code, '?') as launch_label
+    from runs r join projects p on p.id = r.project_id
+    left join markets pm on pm.id = p.market_id
+    left join prospects pr on pr.id = ${prospectId}
+    left join market_launches l on l.id = pr.launch_id
+    left join markets lm on lm.id = l.market_id
+    where r.id = ${runId}
+  `;
+  return {
+    projectMarketId: (row?.projectMarketId as string | null) ?? null,
+    launchMarketId: (row?.launchMarketId as string | null) ?? null,
+    projectLabel: (row?.projectLabel as string | null) ?? null,
+    launchLabel: (row?.launchLabel as string | null) ?? null,
+  };
+}
+
 async function loadMentions(runId: string, companyIds: string[]): Promise<ShadowMention[]> {
   const rows = await sql`
-    select m.response_id, m.company_id, m.revision, m.mentioned, m.recommended, m.needs_review, m.parser_version
+    select m.response_id, m.company_id, m.revision, m.mentioned, m.recommended, m.needs_review, m.parser_version,
+      (m.reviewed_by is not null) as reviewed
     from mentions m join responses r on r.id = m.response_id
     where r.run_id = ${runId} and m.company_id = any(${companyIds}::uuid[])
   `;
   return rows.map((m) => ({
     responseId: m.responseId as string, companyId: m.companyId as string, revision: Number(m.revision),
     mentioned: Boolean(m.mentioned), recommended: Boolean(m.recommended), needsReview: Boolean(m.needsReview),
-    parserVersion: m.parserVersion as string,
+    parserVersion: m.parserVersion as string, reviewed: Boolean(m.reviewed),
   }));
 }
 
@@ -671,7 +727,7 @@ export async function verifyEvidenceRelease(
   ctx: VerifyReleaseContext
 ): Promise<EvidenceReleaseVerdict> {
   const ids = [snapshot.prospect.companyId, snapshot.competitor.companyId];
-  const [runLoad, mentions, companyRows, rels, statuses, primary, correction, prospectRecord, competitorRecord] = await Promise.all([
+  const [runLoad, mentions, companyRows, rels, statuses, primary, correction, prospectRecord, competitorRecord, benchmarkMarket] = await Promise.all([
     loadRun(snapshot.runId, snapshot.provider),
     loadMentions(snapshot.runId, ids),
     sql`select id, name, aliases from companies where id = any(${ids}::uuid[])`,
@@ -684,6 +740,7 @@ export async function verifyEvidenceRelease(
     latestEvidenceCorrection(ctx.prospectId, ctx.sendId),
     loadProductionRecord(snapshot.prospect.productionSignalId),
     loadProductionRecord(snapshot.competitor.productionSignalId),
+    loadBenchmarkMarket(snapshot.runId, snapshot.prospect.prospectId),
   ]);
   const companies = new Map(companyRows.map((c) => [c.id as string, { name: c.name as string, aliases: ((c.aliases as string[]) ?? []) }]));
   const relById = new Map(rels.map((r) => [r.companyId, r]));
@@ -708,6 +765,7 @@ export async function verifyEvidenceRelease(
     };
   };
   return composeReleaseVerdict({
+    benchmarkMarket,
     snapshot: { runId: snapshot.runId, provider: snapshot.provider, answerCount: snapshot.answerCount, metricType: snapshot.metricType },
     expectedProvider: MISMATCH_PROVIDER,
     knownParserVersions: KNOWN_PARSER_VERSIONS,

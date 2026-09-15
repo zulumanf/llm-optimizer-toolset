@@ -152,7 +152,7 @@ export async function reparseRun(
         entityId: runId,
       });
     });
-    const enqueued = await enqueueParseJobs(runId);
+    const enqueued = await enqueueParseJobs(runId, { reparse: true });
     return ok({ runId, enqueued });
   } catch (err) {
     return fail(err);

@@ -14,6 +14,7 @@ import { z } from "zod";
 import { sql } from "@/db/client";
 import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
+import { stateCodeFor, US_STATE_NAMES } from "@/lib/markets/geography";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { createProject } from "@/lib/projects/service";
 import { upsertCompany } from "@/lib/companies/service";
@@ -53,17 +54,18 @@ export async function bootstrapMarketBenchmark(
   try {
     assertCanWrite(user);
     const [launch] = await sql`
-      select l.id, m.name as market_name
+      select l.id, m.id as market_id, m.name as market_name, m.state_code
       from market_launches l join markets m on m.id = l.market_id
       where l.id = ${parsed.data.launchId}
     `;
     if (!launch) throw new ClassifiedError("not_found", "Launch not found.");
+    const marketId = launch.marketId as string;
     const marketName = launch.marketName as string;
 
-    const projectName = `Market benchmark: ${marketName}`;
+    const projectName = marketBenchmarkProjectName(marketName, (launch.stateCode as string | null) ?? null);
 
-    // Idempotent: a second bootstrap returns the existing plumbing instead
-    // of minting a duplicate project.
+    // Idempotent on the CANONICAL market identity (projects.market_id), never
+    // on the display name: Wilmington, NC and Wilmington, DE are two markets.
     const [existing] = await sql`
       select p.id as project_id, s.id as set_id, v.id as version_id,
         (select count(*)::int from prompts where prompt_set_id = s.id
@@ -71,9 +73,10 @@ export async function bootstrapMarketBenchmark(
       from projects p
       join prompt_sets s on s.project_id = p.id
       join prompt_set_versions v on v.prompt_set_id = s.id
-      where p.name = ${projectName} and p.archived_at is null
+      where p.market_id = ${marketId} and p.archived_at is null
       order by v.version desc limit 1
     `;
+    if (!existing) await refuseUnboundNameCollision(marketName);
     if (existing) {
       return ok({
         cityName: marketName,
@@ -102,6 +105,7 @@ export async function bootstrapMarketBenchmark(
       );
     }
     const pack = draft.payload as unknown as MarketPackDefinition;
+    await refusePackStateMismatch(pack, (launch.stateCode as string | null) ?? null, marketName);
 
     // Parsing needs a subject company to anchor (specs 004+): for a
     // market-wide discovery run the anchor is the pack's first prominent
@@ -120,7 +124,7 @@ export async function bootstrapMarketBenchmark(
       description: `Market-level benchmark for ${marketName} prospecting (bootstrapped from the installed market pack). Subject anchor: ${anchorName}, a prominent local brokerage from the pack — not a client.`,
     });
     if (!project.ok) return project;
-    await sql`update projects set kind = 'prospect' where id = ${project.data.id}`;
+    await sql`update projects set kind = 'prospect', market_id = ${marketId} where id = ${project.data.id}`;
     // The anchor may already exist — discovery seeds prospects' companies
     // before the benchmark is bootstrapped, and a brokerage named in the
     // pack is often one of them. Reuse by name; only mint when absent.
@@ -207,4 +211,49 @@ async function latestRunProviders(): Promise<unknown[] | null> {
   `;
   const providers = run?.providers as unknown[] | undefined;
   return providers && providers.length > 0 ? providers : null;
+}
+
+/** Display label only — identity is projects.market_id. The state code is
+ * part of the label so two same-named cities read differently to people. */
+export function marketBenchmarkProjectName(marketName: string, stateCode: string | null): string {
+  return stateCode ? `Market benchmark: ${marketName}, ${stateCode}` : `Market benchmark: ${marketName}`;
+}
+
+/**
+ * A legacy project keyed on the bare display name and not yet bound to a
+ * market is REVIEW_REQUIRED: adopting it would re-create the collision, and
+ * minting a sibling would silently split history. Migration 117 binds every
+ * unambiguous legacy project; what remains needs a person.
+ */
+async function refuseUnboundNameCollision(marketName: string): Promise<void> {
+  const [legacy] = await sql`
+    select id from projects
+    where market_id is null and archived_at is null and name = ${`Market benchmark: ${marketName}`}
+    limit 1
+  `;
+  if (legacy) {
+    throw new ClassifiedError(
+      "conflict",
+      `PROJECT_MARKET_REVIEW_REQUIRED: legacy project ${legacy.id as string} ("Market benchmark: ${marketName}") is not bound to a market and its display name is shared by more than one market. Bind or split it (scripts/pipeline-invariants.ts) before bootstrapping.`
+    );
+  }
+}
+
+/**
+ * The installed pack is looked up by city name, which two states can share.
+ * A pack whose hierarchy names a STATE other than the launch market's state
+ * is a positive contradiction (Wilmington, NC bootstrapped from the Delaware
+ * pack produced a DE-prompted "NC" run on 2026-08-31) — refuse. A pack whose
+ * hierarchy is the city itself, or the same state, passes.
+ */
+async function refusePackStateMismatch(pack: MarketPackDefinition, launchStateCode: string | null, marketName: string): Promise<void> {
+  const hierarchyName = (pack as { hierarchy?: { name?: string } }).hierarchy?.name?.trim();
+  if (!launchStateCode || !hierarchyName) return;
+  const packState = stateCodeFor(hierarchyName);
+  if (packState && packState !== launchStateCode.toUpperCase()) {
+    throw new ClassifiedError(
+      "conflict",
+      `PACK_MARKET_MISMATCH: the installed "${marketName}" pack is scoped to ${US_STATE_NAMES[packState] ?? packState} (${packState}) but this launch is in ${launchStateCode}. Install a pack for ${marketName}, ${launchStateCode} before bootstrapping.`
+    );
+  }
 }

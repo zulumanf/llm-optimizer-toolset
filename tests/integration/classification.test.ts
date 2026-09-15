@@ -131,7 +131,7 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
       if (!job) return;
       if (job.type === "execute_run") await executeRun(job.payload.runId as string);
       else if (job.type === "parse_response")
-        await parseResponse(job.payload.responseId as string);
+        await parseResponse(job.payload.responseId as string, { reparse: job.payload.reparse === true });
       else if (job.type === "compute_scores")
         await computeScores(job.payload.runId as string);
       await jobs.completeJob(job.id);
@@ -180,7 +180,7 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
       if (!job) break;
       if (job.type === "execute_run") await execute.executeRun(job.payload.runId as string);
       else if (job.type === "parse_response")
-        await parsing.parseResponse(job.payload.responseId as string);
+        await parsing.parseResponse(job.payload.responseId as string, { reparse: job.payload.reparse === true });
       await jobs.completeJob(job.id);
     }
     vi.stubEnv("NODE_ENV", "production");

@@ -1,5 +1,5 @@
 import { sql } from "@/db/client";
-import type { Sentiment } from "@/lib/constants";
+import { PARSER_VERSION_ADJUDICATION, PARSER_VERSION_LLM, type Sentiment } from "@/lib/constants";
 
 export interface Mention {
   id: string;
@@ -36,8 +36,10 @@ const COLUMNS = sql`m.id, m.response_id, m.company_id, m.revision, m.mentioned,
   m.created_at`;
 
 /**
- * Current revision = highest revision per (response, company), for queries
- * whose mentions alias is `m`. Exported (cleanup 2026-08-18): the audit
+ * Current (authoritative) revision per (response, company), for queries
+ * whose mentions alias is `m`: the highest revision among classifier-class
+ * rows (LLM v2, adjudication v3, or human-reviewed) when any exists, else
+ * the highest revision overall. Exported (cleanup 2026-08-18): the audit
  * found 26 hand-copied variants of this predicate across 21 files — one
  * fragment, embedded everywhere the alias allows.
  */
@@ -45,7 +47,18 @@ export const CURRENT_REVISION = sql`not exists (
   select 1 from mentions newer
   where newer.response_id = m.response_id
     and newer.company_id = m.company_id
-    and newer.revision > m.revision
+    and (
+      -- Class outranks order (pipeline hardening 2026-09-14, mirrors
+      -- authoritativeRevision in lib/parsing/precedence.ts): a classifier or
+      -- human judgment is never superseded by a heuristic row, whatever its
+      -- revision number — a provider outage cannot demote evidence.
+      ((newer.parser_version in (${PARSER_VERSION_LLM}, ${PARSER_VERSION_ADJUDICATION}) or newer.reviewed_by is not null)
+        and not (m.parser_version in (${PARSER_VERSION_LLM}, ${PARSER_VERSION_ADJUDICATION}) or m.reviewed_by is not null))
+      -- Within a class, the newer revision wins.
+      or (newer.revision > m.revision
+        and ((newer.parser_version in (${PARSER_VERSION_LLM}, ${PARSER_VERSION_ADJUDICATION}) or newer.reviewed_by is not null)
+          or not (m.parser_version in (${PARSER_VERSION_LLM}, ${PARSER_VERSION_ADJUDICATION}) or m.reviewed_by is not null)))
+    )
 )`;
 const CURRENT = CURRENT_REVISION;
 

@@ -33,8 +33,20 @@ import { modelForTask } from "@/lib/ai/routing";
 import { MENTION_CLASSIFIER_V2 } from "@/lib/parsing/classify-llm";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
+import { ClassifierUnavailableError } from "@/lib/parsing/errors";
+import { VERIFIED_PARSER_VERSIONS } from "@/lib/parsing/precedence";
+import type { Sql, TransactionSql } from "@/db/client";
 
-export async function parseResponse(responseId: string): Promise<void> {
+type Db = Sql | TransactionSql;
+
+export interface ParseOptions {
+  /** An explicit operator re-parse (reparseRun): re-run the parser even when
+   * the judgments already exist. Default false — a missing ledger row whose
+   * judgments exist is reconstructed, not re-classified. */
+  reparse?: boolean;
+}
+
+export async function parseResponse(responseId: string, options: ParseOptions = {}): Promise<void> {
   const [response] = await sql`
     select r.id, r.run_id, r.response_text, r.prompt_text, r.error,
       r.raw_payload, r.provider, runs.project_id
@@ -63,6 +75,13 @@ export async function parseResponse(responseId: string): Promise<void> {
     where response_id = ${responseId} and parser_version = ${activeParserVersion()}
   `;
   if (alreadyParsed.length > 0) {
+    await maybeEnqueueScoring(response.runId as string);
+    return;
+  }
+  // The judgments may already exist without their ledger row (the legacy
+  // delete-and-reparse backfill removed ledgers, never mentions). Restore the
+  // ledger from the immutable revisions instead of re-classifying.
+  if (!options.reparse && await reconstructLedgerFromMentions(responseId, response.runId as string, activeParserVersion())) {
     await maybeEnqueueScoring(response.runId as string);
     return;
   }
@@ -113,7 +132,13 @@ export async function parseResponse(responseId: string): Promise<void> {
       classifierModel = modelForTask("mention_classification");
       classifierPromptVersion = MENTION_CLASSIFIER_V2;
     } catch (err) {
-      // Never fail a parse on classifier trouble — fall back and record it
+      // No downgrade (hardening 2026-09-14): a response that already carries
+      // a classifier judgment keeps it — the parse is deferred, not degraded.
+      if (await hasClassifierClassRows(sql, responseId)) {
+        throw new ClassifierUnavailableError(err, `re-parsing response ${responseId}`);
+      }
+      // First parse of a response with no classifier history: the documented
+      // graceful degradation (docs/12) — fall back, stamp truthfully.
       log("warn", "parse.llm_classifier_failed", {
         responseId,
         error: err instanceof Error ? err.message : "unknown",
@@ -296,8 +321,10 @@ export async function maybeEnqueueScoring(runId: string): Promise<void> {
   log("info", "parse.scoring_enqueued", { runId });
 }
 
-/** Enqueue parse jobs for every unparsed response of a run. */
-export async function enqueueParseJobs(runId: string): Promise<number> {
+/** Enqueue parse jobs for every unparsed response of a run. `reparse` marks
+ * an explicit operator re-parse so the worker re-runs the parser instead of
+ * reconstructing the ledger from existing judgments. */
+export async function enqueueParseJobs(runId: string, options: ParseOptions = {}): Promise<number> {
   const rows = await sql`
     select r.id from responses r
     where r.run_id = ${runId}
@@ -310,27 +337,108 @@ export async function enqueueParseJobs(runId: string): Promise<number> {
     await enqueueJob(sql, "parse_response", {
       responseId: row.id as string,
       runId,
+      ...(options.reparse ? { reparse: true } : {}),
     });
   }
   return rows.length;
 }
 
+/** A (response, company) pair already holds a classifier-class judgment
+ * (LLM, adjudication, or human-reviewed). Heuristic-only pairs do NOT count:
+ * they stay eligible for the classifier. */
+export async function hasClassifierClassRows(db: Db, responseId: string, companyId?: string): Promise<boolean> {
+  const rows = await db`
+    select 1 from mentions
+    where response_id = ${responseId}
+      and (${companyId ?? null}::uuid is null or company_id = ${companyId ?? null})
+      and (parser_version = any(${[...VERIFIED_PARSER_VERSIONS]}) or reviewed_by is not null)
+    limit 1
+  `;
+  return rows.length > 0;
+}
+
 /**
- * Parse ONE newly tracked company into an already-parsed run (spec 124
- * cohort pass, 2026-08-31). The per-response parse ledger is append-once
- * per parser version, so a company promoted AFTER a run was parsed would
- * otherwise never receive mention rows for it. This runs the SAME active
- * classifier (LLM with heuristic fallback) scoped to the one company, over
- * only the responses whose text actually names it (the parser's own
- * whole-word prepass — an unnamed company's truthful state is "no row",
- * which every counter already reads as zero). Inserts append normal
- * mention revisions; nothing existing is modified.
+ * Ledger reconstruction: when mention revisions stamped with `version`
+ * exist for the response but its response_parses row is gone, re-insert the
+ * ledger row from the revisions' own instrument stamps. Returns true when a
+ * row was reconstructed (or already existed by the time we wrote).
+ */
+export async function reconstructLedgerFromMentions(responseId: string, runId: string, version: string): Promise<boolean> {
+  const [stamp] = await sql`
+    select classifier_model, classifier_prompt_version from mentions
+    where response_id = ${responseId} and parser_version = ${version}
+    order by (classifier_model is not null and classifier_prompt_version is not null) desc, created_at desc
+    limit 1
+  `;
+  if (!stamp) return false;
+  await sql`
+    insert into response_parses
+      (response_id, run_id, parser_version, classifier_model, classifier_prompt_version,
+       reconstructed_from_mentions)
+    values (${responseId}, ${runId}, ${version}, ${stamp.classifierModel ?? null},
+      ${stamp.classifierPromptVersion ?? null}, true)
+    on conflict do nothing
+  `;
+  log("info", "parse.ledger_reconstructed", { responseId, version });
+  return true;
+}
+
+export interface CompanyParseResult {
+  scanned: number;
+  hits: number;
+  /** Hits already holding a classifier-class judgment — reused, not re-judged. */
+  reused: number;
+  inserted: number;
+  recommended: number;
+  classifierCalls: number;
+  parserVersion: string;
+}
+
+type CompanyInput = { id: string; name: string; aliases: string[]; domain: string | null };
+
+/** One classifier (or policy-heuristic) judgment of one company in one answer. */
+async function classifyCompanyInResponse(input: {
+  text: string; promptText: string; company: CompanyInput; subjectId: string | null; projectId: string; responseId: string;
+}) {
+  const single = [input.company];
+  if (!llmClassificationAvailable()) {
+    return { drafts: classifyResponse(input.text, single), parserUsed: PARSER_VERSION_HEURISTIC as string, classifierModel: null as string | null, classifierPromptVersion: null as string | null, classifierCall: false };
+  }
+  try {
+    const drafts = await classifyResponseLlm({
+      responseText: input.text,
+      promptText: input.promptText,
+      companies: single,
+      identityContext: { ...(await identityFactsFor([input.company.id])), ...(input.subjectId ? { [input.subjectId]: [] } : {}) },
+      projectId: input.projectId,
+    });
+    return { drafts, parserUsed: PARSER_VERSION_LLM as string, classifierModel: modelForTask("mention_classification") as string | null, classifierPromptVersion: MENTION_CLASSIFIER_V2 as string | null, classifierCall: true };
+  } catch (err) {
+    // A key is configured, so the classifier is REQUIRED: defer, never degrade.
+    throw new ClassifierUnavailableError(err, `classifying ${input.company.name} in response ${input.responseId}`);
+  }
+}
+
+/**
+ * Parse ONE tracked company into an already-parsed run (spec 124 cohort
+ * pass, 2026-08-31; hardened 2026-09-14). The per-response parse ledger is
+ * append-once per parser version, so a company promoted AFTER a run was
+ * parsed would otherwise never receive mention rows for it. Runs the active
+ * classifier scoped to the one company, over only the responses whose text
+ * names it (the parser's own whole-word prepass — an unnamed company's
+ * truthful state is "no row", which every counter reads as zero). Pairs that
+ * already hold a classifier-class judgment are reused untouched; heuristic-
+ * only pairs are upgraded. With a classifier key configured, a classifier
+ * failure throws ClassifierUnavailableError before anything is written for
+ * that pair — nothing heuristic is ever written in place of a classifier.
+ * Inserts append normal mention revisions; nothing existing is modified.
  */
 export async function parseCompanyIntoRun(
   runId: string,
-  companyId: string
-): Promise<{ scanned: number; hits: number; inserted: number; recommended: number }> {
-  const [run] = await sql`select id, project_id from runs where id = ${runId}`;
+  companyId: string,
+  db: Db = sql
+): Promise<CompanyParseResult> {
+  const [run] = await db`select id, project_id from runs where id = ${runId}`;
   if (!run) throw new ClassifiedError("not_found", `Run ${runId} not found.`);
   const projectId = run.projectId as string;
   const companies = await listCompaniesForProject(projectId);
@@ -342,46 +450,24 @@ export async function parseCompanyIntoRun(
     );
   }
   const subject = await getSubjectCompany(projectId);
-  const responses = await sql`
+  const responses = await db`
     select r.id, r.response_text, r.prompt_text from responses r
     where r.run_id = ${runId} and r.error is null
   `;
-  const single = [{ id: company.id, name: company.name, aliases: company.aliases, domain: company.domain }];
-  let hits = 0;
-  let inserted = 0;
-  let recommended = 0;
+  const input: CompanyInput = { id: company.id, name: company.name, aliases: company.aliases, domain: company.domain };
+  const out: CompanyParseResult = { scanned: responses.length, hits: 0, reused: 0, inserted: 0, recommended: 0, classifierCalls: 0, parserVersion: activeParserVersion() };
   for (const response of responses) {
     const text = (response.responseText as string) ?? "";
-    if (scanAliases(text, single).length === 0) continue;
-    hits += 1;
-    const [existing] = await sql`
-      select 1 from mentions where response_id = ${response.id} and company_id = ${companyId}
-    `;
-    if (existing) continue; // already has revisions — nothing to backfill
-    let drafts;
-    let parserUsed: string = PARSER_VERSION_HEURISTIC;
-    let classifierModel: string | null = null;
-    let classifierPromptVersion: string | null = null;
-    if (llmClassificationAvailable()) {
-      try {
-        drafts = await classifyResponseLlm({
-          responseText: text,
-          promptText: (response.promptText as string) ?? "",
-          companies: single,
-          identityContext: { ...(await identityFactsFor([company.id])), ...(subject ? { [subject.id]: [] } : {}) },
-          projectId,
-        });
-        parserUsed = PARSER_VERSION_LLM;
-        classifierModel = modelForTask("mention_classification");
-        classifierPromptVersion = MENTION_CLASSIFIER_V2;
-      } catch {
-        drafts = classifyResponse(text, single);
-      }
-    } else {
-      drafts = classifyResponse(text, single);
-    }
-    for (const draft of drafts) {
-      await sql`
+    if (scanAliases(text, [input]).length === 0) continue;
+    out.hits += 1;
+    if (await hasClassifierClassRows(db, response.id as string, companyId)) { out.reused += 1; continue; }
+    const judged = await classifyCompanyInResponse({
+      text, promptText: (response.promptText as string) ?? "", company: input,
+      subjectId: subject?.id ?? null, projectId, responseId: response.id as string,
+    });
+    if (judged.classifierCall) out.classifierCalls += 1;
+    for (const draft of judged.drafts) {
+      await db`
         insert into mentions
           (response_id, company_id, revision, mentioned, recommended,
            list_position, sentiment, excerpt, cited_urls, parser_version,
@@ -392,12 +478,12 @@ export async function parseCompanyIntoRun(
              where response_id = ${response.id} and company_id = ${draft.companyId}), 0) + 1,
            ${draft.mentioned}, ${draft.recommended}, ${draft.listPosition},
            ${draft.sentiment}, ${draft.excerpt}, ${draft.citedUrls},
-           ${parserUsed}, ${draft.confidence}, ${draft.needsReview},
-           ${classifierModel}, ${classifierPromptVersion})
+           ${judged.parserUsed}, ${draft.confidence}, ${draft.needsReview},
+           ${judged.classifierModel}, ${judged.classifierPromptVersion})
       `;
-      inserted += 1;
-      if (draft.recommended) recommended += 1;
+      out.inserted += 1;
+      if (draft.recommended) out.recommended += 1;
     }
   }
-  return { scanned: responses.length, hits, inserted, recommended };
+  return out;
 }

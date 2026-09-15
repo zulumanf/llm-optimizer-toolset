@@ -144,3 +144,39 @@ export function adjudicate(
   if (same(heuristic, llm3)) return { status: "verified", reason: "rev3 classifier agrees with heuristic against rev1 classifier (2 of 3)" };
   return { status: "needs_manual_review", reason: "rev3 classifier disagrees with both rev1 classifier and heuristic" };
 }
+
+// ------------------------------------------------ authoritative (current) row
+
+/**
+ * Parser class of a revision (pipeline hardening 2026-09-14). A row is
+ * classifier-class when a classifier (LLM v2, adjudication v3) or a human
+ * judged it; a heuristic row is directional. The class ranks above the
+ * revision number when the platform selects the CURRENT row of a pair, so a
+ * provider outage that appended a heuristic revision on top of a classifier
+ * judgment can never demote that judgment. History is untouched — the
+ * heuristic row stays, legibly stamped, and is simply not authoritative.
+ */
+export function isClassifierClass(row: { parserVersion: string; reviewed?: boolean }): boolean {
+  return row.reviewed === true || VERIFIED_PARSER_VERSIONS.includes(row.parserVersion);
+}
+
+/**
+ * The authoritative revision of one (response, company) pair: the highest
+ * revision among classifier-class rows when any exists, otherwise the
+ * highest revision overall. Deterministic. Mirrored exactly by
+ * `CURRENT_REVISION` in db/mentions.ts (SQL) and re-derived independently
+ * in lib/prospects/evidence-release.ts (shadow recount).
+ */
+export function authoritativeRevision<T extends { revision: number; parserVersion: string; reviewed?: boolean }>(
+  rows: readonly T[]
+): T | null {
+  let best: T | null = null;
+  for (const row of rows) {
+    if (best === null) { best = row; continue; }
+    const rowClass = isClassifierClass(row);
+    const bestClass = isClassifierClass(best);
+    if (rowClass !== bestClass) { if (rowClass) best = row; continue; }
+    if (row.revision > best.revision) best = row;
+  }
+  return best;
+}

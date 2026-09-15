@@ -207,6 +207,10 @@ export async function applyVerifiedAliases(user: CurrentUser, companyId: string)
       detail: { aliases: derivation.aliases, provenance: derivation.provenance, spec: 130 },
     });
   });
+  // Alias graph changed → re-resolve this company only (resolution layer);
+  // no answer is re-classified for the companies whose aliases did not move.
+  const { enqueueAliasBackfills } = await import("@/lib/parsing/backfill");
+  await enqueueAliasBackfills(companyId);
   return { ...base, added: derivation.aliases };
 }
 
