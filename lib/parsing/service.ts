@@ -325,12 +325,20 @@ export async function maybeEnqueueScoring(runId: string): Promise<void> {
  * an explicit operator re-parse so the worker re-runs the parser instead of
  * reconstructing the ledger from existing judgments. */
 export async function enqueueParseJobs(runId: string, options: ParseOptions = {}): Promise<number> {
+  // Logical job identity = (response, active parser version): a response with
+  // a queued/running parse job is not enqueued again (queue-level dedupe,
+  // 2026-09-15 — a double refresh had queued 891 duplicates).
   const rows = await sql`
     select r.id from responses r
     where r.run_id = ${runId}
       and not exists (
         select 1 from response_parses p
         where p.response_id = r.id and p.parser_version = ${activeParserVersion()}
+      )
+      and not exists (
+        select 1 from jobs j
+        where j.type = 'parse_response' and j.status in ('queued', 'running')
+          and j.payload->>'responseId' = r.id::text
       )
   `;
   for (const row of rows) {
