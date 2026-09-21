@@ -520,6 +520,7 @@ export function agentNode(key: AutomationAgentKey): NodeHandler {
         )}`,
         schema: AGENT_SCHEMAS[key] as z.ZodType<unknown, z.ZodTypeDef, unknown>,
         model: prompt.model,
+        backend: prompt.backend,
         caller: injectedCaller,
       });
 
@@ -531,6 +532,8 @@ export function agentNode(key: AutomationAgentKey): NodeHandler {
         agent: prompt.version,
         node: ctx.nodeKey,
         attempts: result.attempts,
+        backend: result.backend,
+        model: result.model,
         costMicroUsd: result.costMicroUsd,
       });
 
