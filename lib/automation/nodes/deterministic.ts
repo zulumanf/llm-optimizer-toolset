@@ -128,6 +128,73 @@ const queryRecords: NodeHandler = async (ctx): Promise<NodeResult> => {
 
 // ------------------------------------------------------------ normalisation
 
+export function normalizeLeadInput(source: Record<string, unknown>) {
+  const cleanText = (value: unknown): string =>
+    typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+
+  const leadId = cleanText(source.leadId);
+  const email =
+    typeof source.email === "string"
+      ? normalizeEmail(source.email)
+      : "";
+  const website =
+    typeof source.website === "string" && source.website.trim().length > 0
+      ? normalizeUrl(source.website)
+      : "";
+
+  const normalized = {
+    leadId,
+    name: cleanText(source.name),
+    email,
+    company: cleanText(source.company),
+    website,
+    market: cleanText(source.market),
+    specialization: cleanText(source.specialization),
+    sourceChannel:
+      cleanText(source.sourceChannel) || "unknown",
+  };
+
+  return {
+    normalized,
+    present: {
+      leadId: normalized.leadId.length > 0,
+      name: normalized.name.length > 0,
+      email: normalized.email.length > 0,
+      company: normalized.company.length > 0,
+      website: normalized.website.length > 0,
+      market: normalized.market.length > 0,
+      specialization:
+        normalized.specialization.length > 0,
+      sourceChannel:
+        normalized.sourceChannel !== "unknown",
+    },
+  };
+}
+
+const normalizeLead: NodeHandler = async (
+  ctx
+): Promise<NodeResult> => {
+  const path = String(ctx.config.sourcePath ?? "");
+  const source = await resolveObject(ctx, path);
+  const result = normalizeLeadInput(source);
+
+  if (
+    !result.normalized.leadId ||
+    !result.normalized.email
+  ) {
+    return {
+      outcome: "failed_terminal",
+      error:
+        "normalize_lead requires both leadId and email",
+    };
+  }
+
+  return {
+    outcome: "succeeded",
+    output: result,
+  };
+};
+
 const normalizeEntity: NodeHandler = async (ctx): Promise<NodeResult> => {
   const path = String(ctx.config.sourcePath ?? "");
   const source = await resolveObject(ctx, path);
@@ -670,6 +737,7 @@ export const deterministicNodes: Record<string, NodeHandler> = {
   "det.fetch_record": fetchRecord,
   "det.query_records": queryRecords,
   "det.normalize_entity": normalizeEntity,
+  "det.normalize_lead": normalizeLead,
   "det.map_fields": mapFields,
   "det.deduplicate": deduplicate,
   "det.calculate_metric": calculateMetric,

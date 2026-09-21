@@ -142,6 +142,10 @@ const leadCreated = z.object({
   email: z.string(),
   company: z.string().default(""),
   sourceChannel: z.string().default("unknown"),
+  name: z.string().default(""),
+  website: z.string().default(""),
+  market: z.string().default(""),
+  specialization: z.string().default(""),
 });
 const leadQualified = z.object({
   leadId: z.string(),
@@ -295,8 +299,8 @@ export const EVENT_CATALOG: EventTypeDefinition[] = [
   def("transaction.created", "A transaction was recorded", transactionRef),
   def("transaction.verified", "A transaction was verified against evidence", transactionRef),
 
-  def("lead.created", "An inbound lead arrived", leadCreated),
-  def("lead.qualified", "A lead passed qualification", leadQualified),
+  def("lead.created", "An inbound lead arrived", leadCreated, false),
+  def("lead.qualified", "A lead passed qualification", leadQualified, false),
   def("lead.ai_discovery_reported", "A lead self-reported discovering the client via an AI assistant", leadAiDiscovery),
 
   def("opportunity.created", "A CRM opportunity was created", opportunityRef),

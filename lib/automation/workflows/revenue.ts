@@ -345,7 +345,7 @@ export const inboundLeadWorkflow = defineWorkflow({
   ],
   nodes: [
     trigger("entry", "domain_event", "Lead received"),
-    step("normalize", "det.normalize_entity", "Validate and normalise the fields", {
+    step("normalize", "det.normalize_lead", "Validate and normalise the lead facts", {
       sourcePath: "payload",
     }),
     step("dedupe_check", "det.query_records", "Check for an existing lead", {
