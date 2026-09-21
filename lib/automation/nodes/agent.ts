@@ -22,7 +22,7 @@ import { resolve } from "@/lib/automation/nodes/paths";
 import { runModeFor } from "@/lib/automation/testmode";
 import { AUTOMATION_PROMPTS, type AutomationAgentKey } from "@/lib/automation/prompts";
 import { log } from "@/lib/logger";
-import type { NodeHandler, NodeResult } from "@/lib/workflow/types";
+import type { NodeContext, NodeHandler, NodeResult } from "@/lib/workflow/types";
 
 // ---------------------------------------------------------------- schemas
 
@@ -467,6 +467,59 @@ export function setAgentCallerForTests(caller: AgentCaller | undefined): void {
  * the pinned model with a versioned prompt, validates, and returns the output
  * plus its confidence — which a downstream `ctl.confidence_gate` can route on.
  */
+
+export async function resolveAgentContext(
+  ctx: NodeContext
+): Promise<unknown> {
+  const single =
+    ctx.config.contextPath === undefined
+      ? null
+      : String(ctx.config.contextPath);
+
+  const multiple = ctx.config.contextPaths;
+
+  if (single && multiple !== undefined) {
+    throw new Error(
+      'agent node may use contextPath or contextPaths, not both'
+    );
+  }
+
+  if (multiple !== undefined) {
+    if (
+      multiple === null ||
+      typeof multiple !== "object" ||
+      Array.isArray(multiple)
+    ) {
+      throw new Error(
+        "agent contextPaths must be an object of name -> dotted path"
+      );
+    }
+
+    const resolved: Record<string, unknown> = {};
+
+    for (const [name, rawPath] of Object.entries(
+      multiple as Record<string, unknown>
+    )) {
+      if (
+        typeof rawPath !== "string" ||
+        rawPath.length === 0
+      ) {
+        throw new Error(
+          `agent contextPaths.${name} must be a non-empty dotted path`
+        );
+      }
+
+      resolved[name] = await resolve(ctx, rawPath);
+    }
+
+    return resolved;
+  }
+
+  return single
+    ? await resolve(ctx, single)
+    : ctx.inputs;
+}
+
 export function agentNode(key: AutomationAgentKey): NodeHandler {
   return async (ctx): Promise<NodeResult> => {
     const prompt = AUTOMATION_PROMPTS[key];
@@ -501,8 +554,7 @@ export function agentNode(key: AutomationAgentKey): NodeHandler {
     }
 
     // The agent sees exactly what the template hands it, from this run's scope.
-    const contextPath = ctx.config.contextPath === undefined ? null : String(ctx.config.contextPath);
-    const contextData = contextPath ? await resolve(ctx, contextPath) : ctx.inputs;
+    const contextData = await resolveAgentContext(ctx);
     const extra = (ctx.config.params as Record<string, unknown> | undefined) ?? {};
 
     try {

@@ -176,7 +176,10 @@ export const clientSupportWorkflow = defineWorkflow({
       audience: "client",
     }),
     agent("triage", "summarize_support_request", "Classify the request", {
-      contextPath: "payload",
+      contextPaths: {
+        message: "payload",
+        knowledge: "knowledge",
+      },
     }),
     step("record", "dom.record_support_request", "Log the request", {
       messagePath: "payload",

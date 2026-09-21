@@ -458,18 +458,115 @@ anything ambiguous — and say why.`,
 
   summarize_support_request: prompt(
     "summarize_support_request",
-    "summarize-support-request-v1",
+    "summarize-support-request-v3",
     `You triage a client support message.
 
-autoResponseAllowed may be true ONLY for: report timing, workflow status,
-approval links, access instructions, published documentation, metric
-definitions, and known integration status.
+The context has two named sources:
+- context.message: the client's inbound message.
+- context.knowledge: approved client facts available for answering it.
 
-It must be false for: strategic advice, pricing, complaints, legal matters,
-privacy matters, attribution disputes, performance guarantees, scope changes,
-and anything touching reputation risk. When it is false, give the escalation
-reason.`,
-    "Triage this support message. Return JSON only."
+Classify ONLY what the client is asking or saying in context.message.
+Do not classify the knowledge packet.
+
+CATEGORY DEFINITIONS:
+
+- report_timing:
+  asks when a report, audit, deliverable, or scheduled report will be ready.
+
+- workflow_status:
+  asks whether work is running, finished, blocked, queued, or in progress.
+
+- approval_request:
+  asks about an approval, approval link, or action needed to approve something.
+
+- access_instructions:
+  asks how to log in, gain access, connect an account, or reach a resource.
+
+- metric_definition:
+  asks what a metric, measurement, score, rate, or reporting term MEANS.
+  Example: "What does recommendation rate mean?" is metric_definition,
+  NOT report_timing.
+
+- integration_status:
+  asks whether a named integration or connected system is connected, active,
+  working, broken, or disconnected.
+
+- strategic_advice:
+  asks what the client should do strategically, including channel allocation,
+  positioning, investment, prioritization, or recommendations.
+
+- pricing:
+  asks about price, fees, retainers, discounts, payment amount, or changing price.
+
+- complaint:
+  expresses dissatisfaction, says something is wrong, reports a service error,
+  or demands correction because the client is unhappy.
+
+- legal:
+  asks for legal interpretation, legal rights, contract interpretation, or
+  legal/compliance advice.
+
+- privacy:
+  asks to disclose, access, share, expose, or use private/confidential data,
+  including information belonging to OTHER CLIENTS.
+  Requests for another client's raw results are privacy, NOT other.
+
+- attribution_dispute:
+  challenges whether our work caused a result, asks for proof of causal credit,
+  disputes attribution, or questions a claimed performance cause.
+  This is NOT integration_status.
+
+- scope_change:
+  asks to add, remove, expand, replace, or materially change contracted work or
+  deliverables.
+
+- other:
+  use only when none of the categories above apply.
+
+CATEGORY PRECEDENCE:
+- A question about the meaning of a metric is metric_definition even if the
+  metric appears in a report.
+- A request for another client's information is privacy.
+- A challenge about whether our work CAUSED a result is attribution_dispute.
+- Do not use "other" when a specific category above applies.
+
+AUTO-RESPONSE POLICY:
+
+autoResponseAllowed may be true ONLY for:
+- report_timing
+- workflow_status
+- approval_request
+- access_instructions
+- metric_definition
+- integration_status
+
+AND only when context.knowledge actually contains the answer.
+
+It must be false for:
+- strategic_advice
+- pricing
+- complaint
+- legal
+- privacy
+- attribution_dispute
+- scope_change
+- performance guarantees
+- reputation risk
+- any question the approved knowledge does not answer
+
+If autoResponseAllowed=true:
+- suggestedResponse must be supported entirely by context.knowledge.
+- escalationReason must be "".
+- Never invent a status, date, link, definition, instruction, or implication.
+- Treat an approved claim as usable unless the supplied context explicitly marks
+  it stale, contradicted, withheld, or otherwise unsafe.
+
+If autoResponseAllowed=false:
+- suggestedResponse must be "".
+- escalationReason must briefly explain why a human must handle it.
+
+Low confidence is preferable to guessing.`,
+    "Triage the client message using only the supplied message and approved knowledge. Return JSON only."
   ),
 
   analyze_renewal_risk: prompt(
