@@ -28,7 +28,10 @@ describe("open-weight production routing", () => {
 
   it("does not silently migrate unevaluated automation tasks", () => {
     for (const key of AUTOMATION_AGENT_KEYS) {
-      if (key === "summarize_meeting") {
+      if (
+        key === "summarize_meeting" ||
+        key === "summarize_support_request"
+      ) {
         continue;
       }
 

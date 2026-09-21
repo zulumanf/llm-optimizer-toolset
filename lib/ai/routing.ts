@@ -220,6 +220,7 @@ export const INTERNAL_TASK_TARGETS: Partial<
 > = {
   summarize_meeting: LOCAL_INTERNAL_TARGETS.cheap,
   summarize_support_request: LOCAL_INTERNAL_TARGETS.cheap,
+  knowledge_claim_extraction: LOCAL_INTERNAL_TARGETS.qa,
 };
 
 export function inferenceTargetForTask(
