@@ -219,6 +219,7 @@ export const INTERNAL_TASK_TARGETS: Partial<
   Record<RoutedTask, InternalInferenceTarget>
 > = {
   summarize_meeting: LOCAL_INTERNAL_TARGETS.cheap,
+  summarize_support_request: LOCAL_INTERNAL_TARGETS.cheap,
 };
 
 export function inferenceTargetForTask(
