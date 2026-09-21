@@ -14,6 +14,8 @@ import { log } from "@/lib/logger";
 export interface LlmCallRecord {
   agentVersion: string;
   model: string;
+  backend?: string | null;
+  durationMs?: number | null;
   purpose?: string | null;
   projectId?: string | null;
   tokensIn: number;
@@ -27,10 +29,11 @@ export async function recordLlmCall(record: LlmCallRecord): Promise<void> {
   try {
     await sql`
       insert into llm_calls
-        (agent_version, model, purpose, project_id, tokens_in, tokens_out,
-         cost_micro_usd, attempts, success)
+        (agent_version, model, backend, duration_ms, purpose, project_id,
+         tokens_in, tokens_out, cost_micro_usd, attempts, success)
       values
-        (${record.agentVersion}, ${record.model}, ${record.purpose ?? null},
+        (${record.agentVersion}, ${record.model}, ${record.backend ?? null},
+         ${record.durationMs ?? null}, ${record.purpose ?? null},
          ${record.projectId ?? null}, ${record.tokensIn}, ${record.tokensOut},
          ${Math.round(record.costMicroUsd)}, ${record.attempts},
          ${record.success})

@@ -1,12 +1,20 @@
 /**
  * LLM agent runner (docs/15 agent contract, first used by spec 010).
- * One entry point for structured agent calls: pinned model, JSON output,
- * Zod validation with a single retry, cost accounting, and an injectable
- * caller so tests never touch the network. OpenAI-backed (the operator's
- * only provider); the vendor SDK stays inside lib/ai (docs/02).
+ * One entry point for structured internal-agent calls: pinned model, JSON
+ * output, Zod validation with a single retry, cost accounting, and an
+ * injectable provider-neutral inference caller.
+ *
+ * OpenAI remains the default backend for now. Other internal inference
+ * backends (such as Ollama) plug into the same contract.
  */
-import OpenAI from "openai";
 import type { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import type {
+  InternalInferenceBackend,
+  InternalInferenceCaller,
+  InternalInferenceResult,
+} from "@/lib/ai/internal-inference";
+import { callerForInternalBackend } from "@/lib/ai/internal/registry";
 import { ClassifiedError } from "@/lib/errors";
 import { costMicroUsd } from "@/lib/ai/pricing";
 import { log } from "@/lib/logger";
@@ -15,48 +23,20 @@ import { log } from "@/lib/logger";
  * in every agent output's version string. */
 export const AGENT_MODEL = "gpt-5.4-2026-03-05";
 
-export interface AgentCallResult {
-  text: string;
-  tokensIn: number;
-  tokensOut: number;
-}
-
-export type AgentCaller = (args: {
-  system: string;
-  user: string;
-  /** Model override; defaults to AGENT_MODEL when omitted. */
-  model?: string;
-}) => Promise<AgentCallResult>;
-
-let client: OpenAI | undefined;
-
-const openaiCaller: AgentCaller = async ({ system, user, model }) => {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new ClassifiedError(
-      "provider_auth",
-      "OPENAI_API_KEY is not configured — LLM agents need it."
-    );
-  }
-  if (!client) client = new OpenAI({ maxRetries: 1 });
-  const response = await client.chat.completions.create({
-    model: model ?? AGENT_MODEL,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-  });
-  return {
-    text: response.choices[0]?.message?.content ?? "",
-    tokensIn: response.usage?.prompt_tokens ?? 0,
-    tokensOut: response.usage?.completion_tokens ?? 0,
-  };
-};
+/**
+ * Backwards-compatible names used by existing feature code.
+ * The canonical contract now lives in internal-inference.ts.
+ */
+export type AgentCallResult = InternalInferenceResult;
+export type AgentCaller = InternalInferenceCaller;
 
 export interface AgentRun<T> {
   output: T;
   costMicroUsd: number;
   attempts: number;
+  backend: InternalInferenceBackend;
+  model: string;
+  durationMs: number;
 }
 
 /**
@@ -75,6 +55,11 @@ export async function runAgent<T>(args: {
   /** The routed model (spec 055): every caller resolves via
    * lib/ai/routing.modelForTask — no frontier default to land on. */
   model: string;
+  /**
+   * Internal inference backend. Existing behavior remains OpenAI unless
+   * explicitly changed by a reviewed route.
+   */
+  backend?: InternalInferenceBackend;
   /** Ledger attribution (spec 050): which project this spend serves, and a
    * short label for the calling pipeline. Optional — unattributed calls
    * still count in the global ceiling. */
@@ -82,11 +67,19 @@ export async function runAgent<T>(args: {
   purpose?: string | null;
   caller?: AgentCaller;
 }): Promise<AgentRun<T>> {
-  const caller = args.caller ?? openaiCaller;
+  const backend = args.backend ?? "openai";
+  const caller = args.caller ?? callerForInternalBackend(backend);
   const model = args.model;
+
+  const responseSchema = zodToJsonSchema(
+    args.schema as z.ZodTypeAny,
+    { $refStrategy: "none" }
+  ) as Record<string, unknown>;
+
   let cost = 0;
   let tokensIn = 0;
   let tokensOut = 0;
+  let durationMs = 0;
   let lastError = "";
 
   const record = async (attempts: number, success: boolean) => {
@@ -95,6 +88,8 @@ export async function runAgent<T>(args: {
     await recordLlmCall({
       agentVersion: args.agentVersion,
       model,
+      backend,
+      durationMs,
       purpose: args.purpose ?? null,
       projectId: args.projectId ?? null,
       tokensIn,
@@ -110,20 +105,40 @@ export async function runAgent<T>(args: {
       attempt === 1
         ? args.user
         : `${args.user}\n\nYour previous output was invalid (${lastError.slice(0, 300)}). Return ONLY valid JSON matching the required shape.`;
-    const result = await caller({ system: args.system, user: prompt, model });
-    cost += costMicroUsd(model, result.tokensIn, result.tokensOut);
+    const result = await caller({
+      system: args.system,
+      user: prompt,
+      model,
+      responseSchema,
+    });
+    // Local inference has no per-call provider invoice. Do not invent one.
+    // Resource usage remains visible through backend/model/tokens/duration.
+    if (backend !== "ollama") {
+      cost += costMicroUsd(model, result.tokensIn, result.tokensOut);
+    }
     tokensIn += result.tokensIn;
     tokensOut += result.tokensOut;
+    durationMs += result.durationMs ?? 0;
     try {
       const parsed = args.schema.safeParse(JSON.parse(result.text));
       if (parsed.success) {
         log("info", "agent.run", {
           agent: args.agentVersion,
+          backend,
+          model,
           attempts: attempt,
           costMicroUsd: cost,
+          durationMs,
         });
         await record(attempt, true);
-        return { output: parsed.data, costMicroUsd: cost, attempts: attempt };
+        return {
+          output: parsed.data,
+          costMicroUsd: cost,
+          attempts: attempt,
+          backend,
+          model,
+          durationMs,
+        };
       }
       lastError = parsed.error.issues
         .map((i) => `${i.path.join(".")}: ${i.message}`)

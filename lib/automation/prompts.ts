@@ -13,8 +13,9 @@
  * `lib/automation/nodes/agent.ts`; a prompt and its schema are versioned
  * together, so bumping one means bumping the other.
  */
-import { modelForTask } from "@/lib/ai/routing";
+import { inferenceTargetForTask } from "@/lib/ai/routing";
 import { registerAgentVersions } from "@/lib/workflow/agent-versions";
+import type { InternalInferenceBackend } from "@/lib/ai/internal-inference";
 
 export const AUTOMATION_AGENT_KEYS = [
   "classify_lead",
@@ -47,6 +48,7 @@ export type AutomationAgentKey = (typeof AUTOMATION_AGENT_KEYS)[number];
 
 export interface AutomationPrompt {
   version: string;
+  backend: InternalInferenceBackend;
   model: string;
   system: string;
   userPreamble: string;
@@ -77,9 +79,12 @@ function prompt(
 ): AutomationPrompt {
   // The routing table is the single authority (spec 055): no per-prompt
   // model argument, no frontier default — an unrouted key cannot compile.
+  const target = inferenceTargetForTask(key);
+
   return {
     version,
-    model: modelForTask(key),
+    backend: target.backend,
+    model: target.model,
     system: `${system.trim()}\n${GUARDRAILS}`,
     userPreamble,
   };
@@ -359,14 +364,44 @@ week-to-week movement is noise.`,
 
   summarize_meeting: prompt(
     "summarize_meeting",
-    "summarize-meeting-v1",
+    "summarize-meeting-v3",
     `You turn meeting notes or a transcript into structured decisions, action
 items, open questions and relationship notes.
 
-Attribute an owner only when the notes name one. Do not invent a due date.
-Set containsSensitiveContent to true if the notes include pricing disputes,
-legal matters, personnel issues, client complaints, confidential transaction
-detail, or anything a participant would not want auto-emailed.`,
+FIELD RULES:
+- decisions: include only actual decisions that were made.
+- decisions[].owner: use a person's name ONLY if the notes explicitly say that
+  person owns that decision. Otherwise use the empty string "".
+- actionItems: include only actual tasks someone needs to do.
+- actionItems[].owner: use the named owner only when the notes explicitly assign
+  that action to them. Otherwise use the empty string "".
+- actionItems[].dueDate: copy an explicit due date or relative deadline exactly
+  as stated, such as "Friday" or "tomorrow". If no due date was assigned, use
+  the empty string "". Never output "null", "none", "N/A", "unknown", or an
+  invented date.
+- unresolvedQuestions: preserve explicit open or unresolved questions.
+- relationshipNotes: include only genuine relationship context. Do not move
+  operational facts such as "no due date was set" into relationshipNotes.
+- containsSensitiveContent is a SAFETY GATE.
+  Set it to true if ANY sensitive category appears anywhere in the notes.
+  Sensitive categories include:
+  - any client complaint, dissatisfaction, dispute, accusation, or claim that
+    work was inaccurate, misleading, overstated, incomplete, or wrong;
+  - any pricing, fee, billing, payment, or scope dispute;
+  - any legal matter, legal counsel discussion, or legal dispute;
+  - any personnel or employee issue;
+  - any confidential transaction detail;
+  - anything a participant would not want automatically emailed.
+  A meeting can contain ordinary action items and still be sensitive.
+  When uncertain whether something is sensitive, choose true rather than risking
+  an automatic disclosure.
+- confidence: always provide a number from 0 to 1.
+
+Do not infer ownership from nearby sentences. A person assigned an action is
+not automatically the owner of a separate decision.
+
+Every required field must be present even when its value is an empty array or
+empty string.`,
     "Summarise this meeting. Return JSON only.",
   ),
 
