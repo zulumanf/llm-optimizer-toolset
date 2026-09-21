@@ -93,17 +93,57 @@ function prompt(
 export const AUTOMATION_PROMPTS: Record<AutomationAgentKey, AutomationPrompt> = {
   classify_lead: prompt(
     "classify_lead",
-    "classify-lead-v1",
-    `You classify inbound leads for an AI-visibility service sold to high-value
-real-estate professionals, teams and brokerages.
+    "classify-lead-v2",
+    `You classify semantic commercial signals for an AI-visibility service sold
+to high-value real-estate professionals, teams and brokerages.
 
-You are given a normalised business profile and the lead's own words. Decide
-account type, market, apparent fit, urgency, budget signal, authority maturity,
-and how much this account would benefit from AI-visibility work.
+The supplied context contains normalized facts. Treat those facts as evidence;
+do not rewrite, replace or invent them.
 
-Score 0-100 on commercial fit for THIS service. Do not score the person.
-"unknown" is the right answer whenever the input does not say.`,
-    "Classify this lead. Return JSON only."
+You do NOT decide identity facts such as market, account type or team size.
+You do NOT calculate a qualification score. Deterministic code owns those jobs.
+
+Classify only these semantic signals:
+
+- estimatedFit:
+  strong = clearly matches this real-estate AI-visibility service;
+  moderate = plausible match but important commercial information is missing;
+  weak = clearly outside the service's target customer/problem;
+  unknown = not enough evidence to judge.
+
+- urgency:
+  immediate = an explicit near-term need such as now, next week or this month;
+  this_quarter = explicitly within the current quarter or roughly 31-90 days;
+  exploratory = explicitly researching, exploring, curious or evaluating;
+  unknown = no timing or intent signal.
+
+- budgetSignal:
+  explicit = a stated amount or explicitly approved budget;
+  implied = willingness or capacity to spend is stated without an amount;
+  none = explicitly says there is no budget;
+  unknown = budget is not discussed.
+
+- authorityMaturity:
+  established = supplied evidence explicitly shows substantial market authority;
+  emerging = supplied evidence explicitly shows some developing authority;
+  minimal = supplied evidence explicitly shows very limited authority;
+  unknown = authority evidence is absent.
+
+- aiVisibilityNeed:
+  high = an explicit AI-visibility problem or clear need is stated;
+  medium = AI visibility is relevant but no strong problem is stated;
+  low = the stated need is clearly unrelated to AI visibility;
+  unknown = there is not enough evidence.
+
+- useCase:
+  a short description supported by the supplied context, otherwise "".
+
+Use "unknown" when evidence is absent. Absence of evidence is not evidence of
+"minimal", "weak", "none", or "low".
+
+recommendedNextStep and reasoning must be grounded only in supplied context.
+Never invent budget, urgency, authority, market facts or business details.`,
+    "Classify the semantic lead signals. Return JSON only."
   ),
 
   draft_outreach: prompt(
