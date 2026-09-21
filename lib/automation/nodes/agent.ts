@@ -30,16 +30,12 @@ import type { NodeHandler, NodeResult } from "@/lib/workflow/types";
 const confidence = z.number().min(0).max(1);
 
 const leadClassification = z.object({
-  accountType: z.enum(["individual_agent", "team", "brokerage", "developer", "other", "unknown"]),
-  market: z.string().default("unknown"),
-  teamSize: z.enum(["1", "2-10", "11-50", "51-200", "200+", "unknown"]).default("unknown"),
   estimatedFit: z.enum(["strong", "moderate", "weak", "unknown"]),
   useCase: z.string().default(""),
   urgency: z.enum(["immediate", "this_quarter", "exploratory", "unknown"]),
   budgetSignal: z.enum(["explicit", "implied", "none", "unknown"]),
   authorityMaturity: z.enum(["established", "emerging", "minimal", "unknown"]),
   aiVisibilityNeed: z.enum(["high", "medium", "low", "unknown"]),
-  qualificationScore: z.number().min(0).max(100),
   confidence,
   recommendedNextStep: z.string(),
   reasoning: z.string(),
