@@ -284,6 +284,16 @@ const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1";
  * `htmlBody`, emits multipart/alternative (plain text first, HTML second —
  * RFC 2046 puts the preferred form last); plain-text-only messages carry
  * the same headers and body as before spec 092. */
+/** RFC 2047: a header value with any non-ASCII character is sent as an
+ * encoded word. Raw UTF-8 bytes in a header are read as Latin-1 by many
+ * receivers — found live 2026-09-25, when "Robby — Greenville" reached the
+ * inbox as "Robby Ã¢Â€Â” Greenville". Bodies were never affected (they
+ * declare charset=UTF-8). ASCII values pass through unchanged. */
+export function encodeHeaderValue(value: string): string {
+  if (!/[^\x09\x20-\x7E]/.test(value)) return value;
+  return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
+}
+
 function encodeMessage(args: {
   to: string;
   from: string;
@@ -296,7 +306,7 @@ function encodeMessage(args: {
   references?: string;
   messageId?: string;
 }): string {
-  const headers = [`To: ${args.to}`, `From: ${args.from}`, `Subject: ${args.subject}`];
+  const headers = [`To: ${args.to}`, `From: ${args.from}`, `Subject: ${encodeHeaderValue(args.subject)}`];
   if (args.replyTo) headers.push(`Reply-To: ${args.replyTo}`);
   if (args.messageId) headers.push(`Message-ID: ${args.messageId}`);
   if (args.inReplyTo) headers.push(`In-Reply-To: ${args.inReplyTo}`);
@@ -746,4 +756,4 @@ export const googleCalendarConnector = buildAdapter({
 });
 
 /** Exported for the unit tests that assert the encoder's header behaviour. */
-export const __testables = { encodeMessage, decodeBody, connectorFetch };
+export const __testables = { encodeMessage, encodeHeaderValue, decodeBody, connectorFetch };

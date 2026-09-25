@@ -303,6 +303,19 @@ describe("Gmail adapter", () => {
     expect(decoded).toContain("List-Unsubscribe-Post: List-Unsubscribe=One-Click");
   });
 
+  it("RFC 2047-encodes a non-ASCII subject and leaves ASCII subjects and the UTF-8 body alone", () => {
+    expect(__testables.encodeHeaderValue("Laura - Reno")).toBe("Laura - Reno");
+    const word = __testables.encodeHeaderValue("Robby — Greenville");
+    expect(word).toMatch(/^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=$/);
+    expect(Buffer.from(word.slice(10, -2), "base64").toString("utf8")).toBe("Robby — Greenville");
+    const encoded = __testables.encodeMessage({ to: "a@example.com", from: "ops@lumina.example", subject: "Robby — Greenville", body: "Robby —\n\n$60.6M closed · recommended" });
+    const decoded = Buffer.from(encoded.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const subjectLine = decoded.split("\r\n").find((l) => l.startsWith("Subject:"))!;
+    expect(subjectLine).toBe(`Subject: ${word}`);
+    expect(subjectLine).not.toContain("—");
+    expect(decoded).toContain("$60.6M closed · recommended");
+  });
+
   it("normalises a thread read", async () => {
     const { ctx } = contextFor({ config });
     const body = Buffer.from("Thanks, let's talk Tuesday.").toString("base64");
