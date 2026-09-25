@@ -5,6 +5,7 @@
  * Enforced at approval and again inside the send gate; no LLM involved
  * (subjective quality stays with the audit sense-check, spec 077).
  */
+import { touchEntityGrammar } from "@/lib/prospects/audit-mismatch";
 import { sql } from "@/db/client";
 import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
 import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
@@ -122,7 +123,9 @@ export function qaDraftContent(input: DraftQaInput): DraftQaIssue[] {
   // block must show the public website, never the operator-console host.
   // Scoped to the footer — a reply-first BODY may legitimately carry an
   // app-hosted audit proof link above the signature.
-  const footerStart = body.lastIndexOf("\n—\n");
+  // "--" is the current separator (2026-09-25); "—" is the form every draft
+  // before that carried, still QA'd on re-validation.
+  const footerStart = Math.max(body.lastIndexOf("\n--\n"), body.lastIndexOf("\n—\n"));
   const footer = footerStart >= 0 ? body.slice(footerStart) : "";
   if (footer.toLowerCase().includes(OUTREACH_FORBIDDEN_FOOTER_HOST)) {
     add("signature_domain", `signature shows ${OUTREACH_FORBIDDEN_FOOTER_HOST} — the public site is ${OUTREACH_PUBLIC_WEBSITE}.`);
@@ -354,6 +357,14 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
         benchmarkAgeDays: review?.evaluation.benchmarkAgeDays ?? null,
       });
     mismatchIssues.push(...claimIssues);
+    if (!followup) {
+      // ENTITY_COPY_MATCHES_ENTITY_TYPE: the body must address the measured
+      // entity in its own form; unknown entity type is a block.
+      const grammar = touchEntityGrammar(review?.prospect.production?.entityType ?? null);
+      const body = (row.body as string) ?? "";
+      if (!grammar) mismatchIssues.push({ check: "entity_grammar", detail: "the measured entity's type is unknown (team / individual / brokerage) — Touch 1 cannot address it." });
+      else if (!body.includes(`more often than ${grammar.ref},`) || !body.includes(`${grammar.Ref}: `)) mismatchIssues.push({ check: "entity_grammar", detail: `body does not address a ${review?.prospect.production?.entityType} as "${grammar.ref}".` });
+    }
   }
   return mismatchIssues.concat(qaDraftContent({
     subject: (row.subject as string | null) ?? null,

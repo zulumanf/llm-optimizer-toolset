@@ -21,7 +21,7 @@ import { sql } from "@/db/client";
 import { checkSuppression } from "@/lib/outreach/suppression";
 import { BROKERAGE_CUT_COMMA, BROKERAGE_CUT_SUFFIX, BROKERAGE_SEND_CAP_30D, MISMATCH_THRESHOLDS, normalizeBrokerage } from "@/lib/prospects/constants";
 import { EVIDENCE_RELEASE_VERSION } from "@/lib/prospects/evidence-release";
-import { MARKET_POLICY_VERSION, resolveMarketPolicy, type MarketPolicy } from "@/lib/prospects/market-policy";
+import { MARKET_POLICY_STATES, MARKET_POLICY_VERSION, resolveMarketPolicy, type MarketPolicy } from "@/lib/prospects/market-policy";
 import { launchGeographies } from "@/lib/prospects/realtrends-dataset";
 import {
   SUPPLY_ENGINE_VERSION,
@@ -289,7 +289,7 @@ async function main(): Promise<void> {
   const sizing = waveSizing();
   const waves = planWaves(ranked, sizing);
   const byState = (s: string) => all.filter((m) => m.policy.state === s).length;
-  const policySummary = Object.fromEntries(["PROOF_BUILDING", "TIER_1_RESERVED", "ACTIVE_CLIENT_EXCLUSIVE", "OPEN_FOR_SCALE", "PAUSED", "UNCLASSIFIED"].map((s) => [s, byState(s)]));
+  const policySummary = Object.fromEntries([...MARKET_POLICY_STATES].map((s) => [s, byState(s)]));
   const reserved = all.filter((m) => m.policy.state === "TIER_1_RESERVED").map((m) => `${m.city}, ${m.state} (${m.sourceEntities})`);
 
   // Contact pipeline over prequalified entities in outbound-allowed markets.
@@ -326,9 +326,9 @@ async function main(): Promise<void> {
     // Nothing here opens a market.
     marketApprovalQueue: geos.filter((g) => g.high >= 10).map((g) => {
       const m = all.find((x) => x.marketKey === marketKey(g.city, g.state))!;
-      const cls = marketExpansionClass({ policyState: m.policy.state, teams: g.teams, individuals: g.individuals, highProduction: g.high, teams100m: g.teams100m, brokerageDiversity: g.brokeragesHigh, namedLeads: g.namedLeadsHigh });
-      return { market: `${g.city}, ${g.state}`, policy: m.policy.state, entities: g.entities, highProduction: g.high, teams100m: g.teams100m, brokerages: g.brokeragesHigh, namedLeads: g.namedLeadsHigh, klass: cls.klass, reasons: cls.reasons };
-    }).filter((q) => q.policy === "UNCLASSIFIED" || q.policy === "TIER_1_RESERVED").sort((a, b) => b.highProduction - a.highProduction).slice(0, Math.max(researchMarkets, 25)),
+      const cls = marketExpansionClass({ policyState: m.policy.state, founderApproved: m.policy.founderApproved, teams: g.teams, individuals: g.individuals, highProduction: g.high, teams100m: g.teams100m, brokerageDiversity: g.brokeragesHigh, namedLeads: g.namedLeadsHigh });
+      return { market: `${g.city}, ${g.state}`, policy: m.policy.state, entities: g.entities, highProduction: g.high, teams100m: g.teams100m, brokerages: g.brokeragesHigh, namedLeads: g.namedLeadsHigh, klass: cls.klass, priority: cls.priority, reasons: cls.reasons };
+    }).filter((q) => q.policy !== "PROOF_BUILDING").sort((a, b) => b.highProduction - a.highProduction).slice(0, Math.max(researchMarkets, 25)),
     normalization, prequalBlockers, contactPipeline, waves, funnel, metrics: supplyMetrics(funnel, allowed.filter((m) => m.benchmark.status !== "NONE").length), target: { ...T1_COHORT_TARGET, qualified: funnel.qualified },
     dispatch,
   };

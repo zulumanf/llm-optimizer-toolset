@@ -203,10 +203,18 @@ export async function bootstrapMarketBenchmark(
 }
 
 /** The provider config of the newest completed run — copied, not invented. */
+/** Providers that never carry a real benchmark configuration (QA fixtures,
+ * the mock adapter): a run using any of them is not a config to copy. */
+const NON_BENCHMARK_PROVIDERS = ["qa-fixture", "mock"];
+
 async function latestRunProviders(): Promise<unknown[] | null> {
   const [run] = await sql`
     select providers from runs
     where status = 'completed' and providers != '[]'::jsonb
+      and not exists (
+        select 1 from jsonb_array_elements(providers) e
+        where e->>'provider' = any(${NON_BENCHMARK_PROVIDERS}::text[])
+      )
     order by completed_at desc nulls last limit 1
   `;
   const providers = run?.providers as unknown[] | undefined;

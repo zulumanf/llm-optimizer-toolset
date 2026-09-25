@@ -9,7 +9,6 @@ import { BROKERAGE_SEND_CAP_30D, MISMATCH_THRESHOLDS } from "@/lib/prospects/con
 import { resolveMarketPolicy } from "@/lib/prospects/market-policy";
 import {
   OBSERVED_FUNNEL,
-  PREMIUM_RESERVE_TEAMS_100M,
   marketExpansionClass,
   SUPPLY_STAGES,
   benchmarkFreshness,
@@ -244,20 +243,25 @@ describe("stages and metrics", () => {
   });
 });
 
-describe("market expansion classes (founder approval queue)", () => {
-  const base = { policyState: "UNCLASSIFIED" as const, teams: 150, individuals: 300, highProduction: 40, teams100m: 5, brokerageDiversity: 12, namedLeads: 30 };
-  it("top-slice economic value is a PREMIUM reserve candidate, never auto-opened", () => {
-    const r = marketExpansionClass({ ...base, teams100m: PREMIUM_RESERVE_TEAMS_100M + 10 });
-    expect(r.klass).toBe("PREMIUM_RESERVE_CANDIDATE");
-    expect(r.reasons.some((x) => /exclusivity/.test(x))).toBe(true);
+describe("market expansion classes (v2: metrics rank approved markets, never approve)", () => {
+  const base = { policyState: "UNCLASSIFIED" as const, founderApproved: false, teams: 150, individuals: 300, highProduction: 40, teams100m: 5, brokerageDiversity: 12, namedLeads: 30 };
+  it("an unlisted market is HOLD_NOT_FOUNDER_APPROVED whatever its metrics (regression 11, 12)", () => {
+    expect(marketExpansionClass(base).klass).toBe("HOLD_NOT_FOUNDER_APPROVED");
+    expect(marketExpansionClass({ ...base, highProduction: 400, brokerageDiversity: 60, namedLeads: 300, teams100m: 50 }).klass).toBe("HOLD_NOT_FOUNDER_APPROVED");
+    expect(marketExpansionClass({ ...base, policyState: "RESEARCH_ONLY" }).klass).toBe("HOLD_NOT_FOUNDER_APPROVED");
   });
-  it("depth plus brokerage diversity is a proof-building candidate; thin markets are research-more or low", () => {
-    expect(marketExpansionClass(base).klass).toBe("PROOF_BUILDING_CANDIDATE");
-    expect(marketExpansionClass({ ...base, brokerageDiversity: 4 }).klass).toBe("RESEARCH_MORE");
-    expect(marketExpansionClass({ ...base, highProduction: 3 }).klass).toBe("LOW_PRIORITY");
+  it("reserved markets hold regardless of economic value", () => {
+    const r = marketExpansionClass({ ...base, policyState: "TIER_1_RESERVED", teams100m: 60 });
+    expect(r.klass).toBe("HOLD_TIER_1_RESERVED");
+    expect(r.priority).toBeNull();
   });
-  it("reserved and already-open markets are not expansion candidates", () => {
-    expect(marketExpansionClass({ ...base, policyState: "TIER_1_RESERVED" }).klass).toBe("PREMIUM_RESERVE_CANDIDATE");
-    expect(marketExpansionClass({ ...base, policyState: "PROOF_BUILDING" }).klass).toBe("LOW_PRIORITY");
+  it("approved markets get a transparent priority; blocked approved markets hold", () => {
+    const a = marketExpansionClass({ ...base, policyState: "PROOF_BUILDING", founderApproved: true });
+    expect(a.klass).toBe("APPROVED_PRIORITY");
+    expect(a.priority).toBeGreaterThan(0);
+    expect(a.reasons.some((x) => /ranks approved markets only/.test(x))).toBe(true);
+    expect(marketExpansionClass({ ...base, policyState: "APPROVED_UNLAUNCHED", founderApproved: true }).klass).toBe("APPROVED_PRIORITY");
+    expect(marketExpansionClass({ ...base, policyState: "PAUSED", founderApproved: true }).klass).toBe("HOLD_BLOCKED");
+    expect(marketExpansionClass({ ...base, policyState: "ACTIVE_CLIENT_EXCLUSIVE", founderApproved: true }).klass).toBe("HOLD_BLOCKED");
   });
 });

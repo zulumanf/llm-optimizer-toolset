@@ -13,6 +13,7 @@ import {
   type MismatchEvaluationInput,
 } from "@/lib/prospects/mismatch";
 import { generateCompetitiveMismatchEmail } from "@/lib/prospects/outreach";
+import { touchEntityGrammar } from "@/lib/prospects/audit-mismatch";
 import { findProhibitedPhrase, MISMATCH_TEMPLATE_VERSION } from "@/lib/prospects/constants";
 import type { ProductionEvidence } from "@/lib/prospects/realtrends";
 
@@ -257,10 +258,11 @@ describe("generateCompetitiveMismatchEmail", () => {
   const draft = generateCompetitiveMismatchEmail(r, r.evaluation.selected!, NOW);
 
   it("renders the exact five-line comparison", () => {
-    expect(draft.subject).toBe("Joelle — Jersey City");
+    expect(draft.subject).toBe("Joelle - Jersey City");
+    expect(draft.subject).toMatch(/^[\x20-\x7E]+$/);
     expect(draft.body).toBe(
       [
-        "Joelle —",
+        "Joelle,",
         "",
         "Earlier this week I ran Jersey City buyer and seller questions through " +
           "the OpenAI model behind ChatGPT. It recommended Harbor View Group " +
@@ -350,5 +352,37 @@ describe("dataset-sourced competitors (spec 124 data pass)", () => {
       })
     );
     expect(mismatchStrength(weak.selected!)).toBe("valid"); // 87% ratio, gap 2
+  });
+});
+
+describe("ENTITY_COPY_MATCHES_ENTITY_TYPE (founder QA 2026-09-15; regression 14–16)", () => {
+  const withEntity = (entityType: ProductionEvidence["entityType"]): CompetitiveMismatchReview => {
+    const r = review();
+    return { ...r, prospect: { ...r.prospect, production: prod({ entityType }) } };
+  };
+  it("15: TEAM renders \"your team\"", () => {
+    const r = withEntity("team");
+    const d = generateCompetitiveMismatchEmail(r, r.evaluation.selected!, NOW);
+    expect(d.body).toContain("more often than your team, even though RealTrends has you ahead");
+    expect(d.body).toContain("\nYour team: ");
+    expect(d.body).not.toMatch(/more often than you,/);
+  });
+  it("14: INDIVIDUAL_AGENT renders \"you\", never \"your team\"", () => {
+    const r = withEntity("individual");
+    const d = generateCompetitiveMismatchEmail(r, r.evaluation.selected!, NOW);
+    expect(d.body).toContain("more often than you, even though RealTrends has you ahead");
+    expect(d.body).toContain("\nYou: ");
+    expect(d.body).not.toContain("your team");
+  });
+  it("16: UNKNOWN entity type blocks rendering (no default to a team)", () => {
+    const r = withEntity(null);
+    expect(() => generateCompetitiveMismatchEmail(r, r.evaluation.selected!, NOW)).toThrow(/entity's type .* is unknown/);
+  });
+  it("BROKERAGE renders \"your brokerage\" through the canonical helper", () => {
+    expect(touchEntityGrammar("brokerage")).toMatchObject({ ref: "your brokerage", Ref: "Your brokerage" });
+    expect(touchEntityGrammar("team")).toMatchObject({ ref: "your team" });
+    expect(touchEntityGrammar("individual")).toMatchObject({ ref: "you" });
+    expect(touchEntityGrammar(null)).toBeNull();
+    expect(touchEntityGrammar("committee")).toBeNull();
   });
 });
