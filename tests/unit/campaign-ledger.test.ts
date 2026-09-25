@@ -33,6 +33,8 @@ describe("send classification", () => {
     expect(classifySend({ ...base, sequenceId: "s", touch: 3, promptVersion: "competitive_mismatch_t3_engaged_v2" })).toBe("T3");
     expect(classifySend({ ...base, replyTo: "r" })).toBe("FOUNDER");
     expect(classifySend({ ...base, promptVersion: REPORT_DELIVERY_TEMPLATE_VERSION })).toBe("FOUNDER");
+    // Earlier delivery versions already sent keep their class when the template moves on.
+    expect(classifySend({ ...base, promptVersion: "mismatch_report_delivery_v2" })).toBe("FOUNDER");
     expect(classifySend({ ...base, promptVersion: "reply-first-email-v1" })).toBe("OTHER");
   });
   it("never counts a reply-to draft as a campaign touch even inside a sequence", () => {

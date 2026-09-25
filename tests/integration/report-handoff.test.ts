@@ -261,7 +261,7 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     const arts = await sql`select kind, revision, status, manifest_id from prospect_fulfillment_artifacts where handoff_id = ${h.id} and kind in ('private_report', 'positive_reply_email') order by kind`;
     expect(arts.map((a) => [a.kind, Number(a.revision), a.status, a.manifestId === h.manifestId])).toEqual([["positive_reply_email", 1, "ready", true], ["private_report", 1, "ready", true]]);
     const [d] = await sql`select subject, body, reply_to_id, scheduled_send_at, prompt_version, status, send_intent_key, send_message_id from outreach_drafts where id = ${h.draftId}`;
-    expect(d!.promptVersion).toBe("mismatch_report_delivery_v2");
+    expect(d!.promptVersion).toBe("mismatch_report_delivery_v3");
     expect(d!.subject).toBe("Re: Ryan - Reno");
     expect(d!.replyToId).toBe(h.replyId);
     expect(d!.sendIntentKey).toMatch(/^[0-9a-f]{64}$/);

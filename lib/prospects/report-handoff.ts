@@ -360,7 +360,8 @@ export function renderReportDelivery(i: DeliveryInput): { body: string; cta: str
     i.brandedUrl, ``,
     `The biggest thing that stood out: ${summary.text}`, ``,
     `I also included where that gap shows up and the first thing I'd look at changing.`, ``,
-    `Take a look when you get a chance. If anything jumps out, just reply here.`, ``,
+    `Take a look when you get a chance.`, ``,
+    `One question: which two or three zip codes matter most to you? I'll cut the same results down to those.`, ``,
     `Francisco`, ``, `--`, `Francisco`, `Recommended First`, OUTREACH_PUBLIC_WEBSITE, ...i.footerTail,
   ];
   return { body: lines.join("\n"), cta: "read the private report", summary };

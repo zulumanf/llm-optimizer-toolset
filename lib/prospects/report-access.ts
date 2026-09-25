@@ -15,7 +15,7 @@ import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { logActivity } from "@/lib/prospects/shared";
 import { ensureAuditLink, ensureReportSlug, revokeAuditLinks } from "@/lib/prospects/links";
-import { REPORT_DELIVERY_TEMPLATE_VERSION } from "@/lib/prospects/constants";
+import { REPORT_DELIVERY_TEMPLATE_VERSIONS } from "@/lib/prospects/constants";
 import { z } from "zod";
 
 /** Independently authorized browsers one invitation may activate. Env
@@ -368,7 +368,7 @@ export async function reportAccessMetrics(prospectId: string): Promise<ReportAcc
   const [r] = await sql`
     select
       (select min(d.sent_recorded_at) from outreach_drafts d
-        where d.prospect_id = ${prospectId} and d.prompt_version = ${REPORT_DELIVERY_TEMPLATE_VERSION}
+        where d.prospect_id = ${prospectId} and d.prompt_version = any(${[...REPORT_DELIVERY_TEMPLATE_VERSIONS]}::text[])
           and d.sent_recorded_at is not null) as delivered_at,
       (select min(s.first_used_at) from prospect_report_sessions s
         where s.prospect_id = ${prospectId} and not s.is_internal and s.first_used_at is not null) as first_access_at,
@@ -408,7 +408,7 @@ export async function reportAccessSummary(fixturePrefix: string): Promise<Report
     )
     select
       (select count(distinct d.prospect_id)::int from outreach_drafts d
-        where d.prompt_version = ${REPORT_DELIVERY_TEMPLATE_VERSION} and d.sent_recorded_at is not null
+        where d.prompt_version = any(${[...REPORT_DELIVERY_TEMPLATE_VERSIONS]}::text[]) and d.sent_recorded_at is not null
           and d.prospect_id in (select id from live)) as delivered,
       (select count(distinct s.prospect_id)::int from prospect_audit_views v
         join prospect_report_sessions s on s.id = v.session_id
