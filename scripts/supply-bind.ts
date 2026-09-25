@@ -34,7 +34,14 @@ async function operatorUser(): Promise<CurrentUser> {
  * answer set (spec 136 blocks incomplete runs) and then the freshest;
  * never while a run on that project is in flight. */
 async function freshestRunForLaunch(launchId: string): Promise<string | null> {
-  const [proj] = await sql`
+  // The launch's market benchmark project: by canonical market identity first
+  // (a market whose prospects were all promoted AFTER the run has no
+  // prospect_benchmarks link yet), then the legacy prospect-link path.
+  const [byMarket] = await sql`
+    select p.id as project_id from projects p join market_launches l on l.market_id = p.market_id
+    where l.id = ${launchId} and p.archived_at is null and p.kind = 'prospect'
+    order by p.created_at desc limit 1`;
+  const [proj] = byMarket ? [byMarket] : await sql`
     select r.project_id from prospects p join prospect_benchmarks pb on pb.prospect_id = p.id join runs r on r.id = pb.run_id
     where p.launch_id = ${launchId} order by r.completed_at desc nulls last limit 1`;
   if (!proj) return null;
@@ -56,7 +63,14 @@ async function bind(user: CurrentUser, prospectId: string): Promise<string> {
   // A company attached after the run (backfill re-parse) has responses but
   // no scores rows until scoring runs again; idempotent, same handler as the
   // worker — computed once per run per process (it is the expensive step).
-  if (!scoredRuns.has(runId)) { await computeScores(runId); scoredRuns.add(runId); }
+  // Already-scored companies skip the recompute: computeScores is insert-or-
+  // ignore per row, so re-running it for a scored run only replays ~26k no-op
+  // inserts over the wire (2026-09-23: 40+ min per market from an operator shell).
+  if (!scoredRuns.has(runId)) {
+    const [scored] = await sql`select 1 from scores where run_id = ${runId} and company_id = ${p.companyId} limit 1`;
+    if (!scored) await computeScores(runId);
+    scoredRuns.add(runId);
+  }
   let benchmarkId: string | null = null;
   const link = await svc.linkBenchmark(user, { prospectId, runId });
   if (link.ok) benchmarkId = link.data.benchmarkId;
