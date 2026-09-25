@@ -401,13 +401,37 @@ describe.skipIf(!TEST_URL)("prospect send gate (integration)", () => {
           'seeded', '{"checks":[]}', true, ${operator.id})
       `;
     }
-    const refused = await svc.sendProspectDraft(operator, {
+    // Dispatch policy v2 (2026-09-15): three independent Compass teams already
+    // contacted in this market do NOT cap a fourth independent team — the
+    // brand is not a buying unit. The gate only reports the day's brand share.
+    const sent = await svc.sendProspectDraft(operator, {
       draftId,
       channel: "mock",
       businessPurpose: PURPOSE,
     });
+    expect(sent.ok).toBe(true);
+  });
+
+  it("dispatch policy v2: a second cold sequence into the same canonical business is refused", async () => {
+    const { draftId, prospectId } = await seedApprovedDraft();
+    const [me] = await sql`select launch_id, company_id from prospects where id = ${prospectId}`;
+    const [co] = me?.companyId
+      ? [{ id: me.companyId }]
+      : await sql`insert into companies (name) values ('Unit Co') returning id`;
+    await sql`update prospects set company_id = ${co?.id} where id = ${prospectId}`;
+    const [finding] = await sql`select id from prospect_findings limit 1`;
+    const [sibling] = await sql`
+      insert into prospects (launch_id, business_name, prospect_type, brokerage_affiliation, company_id)
+      values (${me?.launchId}, 'Unit Co — ops contact', 'team', 'Compass', ${co?.id}) returning id`;
+    const [d] = await sql`
+      insert into outreach_drafts (prospect_id, finding_id, channel, body, generated_by, status)
+      values (${sibling?.id}, ${finding?.id}, 'email', 'x', 'operator', 'approved') returning id`;
+    await sql`
+      insert into prospect_outreach_sends (draft_id, prospect_id, channel, recipient_email, body_hash, business_purpose, gate_verdict, allowed, sent_by)
+      values (${d?.id}, ${sibling?.id}, 'manual', 'ops@unitco.example', 'h', 'seeded', '{"checks":[]}', true, ${operator.id})`;
+    const refused = await svc.sendProspectDraft(operator, { draftId, channel: "mock", businessPurpose: PURPOSE });
     expect(refused.ok).toBe(false);
-    if (!refused.ok) expect(refused.error.message).toMatch(/cap is 3/);
+    if (!refused.ok) expect(refused.error.message).toMatch(/one cold sequence per buying unit/);
   });
 
   it("spec 127: a follow-up to a prospect already counted by the brokerage cap passes", async () => {
@@ -466,15 +490,19 @@ describe.skipIf(!TEST_URL)("prospect send gate (integration)", () => {
     expect(sent.ok).toBe(true);
   });
 
-  it("spec 120: suffix variants share one in-market cap bucket", async () => {
+  it("dispatch policy v2: suffix variants of one brand are normalized for the brand-share report, and never refuse", async () => {
     const { draftId, prospectId } = await seedApprovedDraft();
     await sql`update prospects set brokerage_affiliation = 'Long & Foster Real Estate' where id = ${prospectId}`;
     const [first] = await sql`select launch_id from prospects where id = ${prospectId}`;
     for (let i = 0; i < 3; i += 1)
       await seedBrokerageSend(first?.launchId as string, "Long & Foster Real Estate Inc.", i);
-    const refused = await svc.sendProspectDraft(operator, { draftId, channel: "mock", businessPurpose: PURPOSE });
-    expect(refused.ok).toBe(false);
-    if (!refused.ok) expect(refused.error.message).toMatch(/cap is 3/);
+    const sent = await svc.sendProspectDraft(operator, { draftId, channel: "mock", businessPurpose: PURPOSE });
+    expect(sent.ok).toBe(true);
+    const [row] = await sql`select gate_verdict from prospect_outreach_sends where draft_id = ${draftId}`;
+    const checks = (row?.gateVerdict as { checks: { name: string; passed: boolean; detail: string }[] }).checks;
+    expect(checks.find((c) => c.name === "recontact_buying_unit")?.passed).toBe(true);
+    expect(checks.find((c) => c.name === "brand_concentration")?.detail).toMatch(/3 send\(s\) today/);
+    expect(checks.some((c) => c.name === "recontact_brokerage")).toBe(false);
   });
 
   it("spec 052: a reserved territory blocks at send time; a recorded override passes", async () => {

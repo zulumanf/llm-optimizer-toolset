@@ -23,7 +23,7 @@ import {
   type T1CandidateFacts,
   type T1Features,
 } from "@/lib/prospects/t1-cohort";
-import { BROKERAGE_SEND_CAP_30D, MISMATCH_TEMPLATE_VERSION } from "@/lib/prospects/constants";
+import { MISMATCH_TEMPLATE_VERSION } from "@/lib/prospects/constants";
 import { EVIDENCE_RELEASE_VERSION } from "@/lib/prospects/evidence-release";
 
 const NOW = new Date("2026-09-11T12:00:00Z");
@@ -44,7 +44,7 @@ function features(over: Partial<T1Features> = {}): T1Features {
 function facts(over: Partial<T1CandidateFacts> = {}, deep: { market?: Partial<T1CandidateFacts["market"]>; outreach?: Partial<T1CandidateFacts["outreach"]>; contact?: Partial<NonNullable<T1CandidateFacts["contact"]>> | null } = {}): T1CandidateFacts {
   const base: T1CandidateFacts = {
     prospectId: "p-1", companyId: "c-1", name: "The Robby Brady Team", prospectType: "team", entityLevel: "team",
-    market: { launchId: "l-1", name: "Greenville", stateCode: "SC", protected: false, exclusiveConflict: false, launchStatus: "outreach_active" },
+    market: { launchId: "l-1", name: "Greenville", stateCode: "SC", protected: false, founderApproved: true, exclusiveConflict: false, launchStatus: "outreach_active" },
     outreach: { stage: "identified", contacted: false, activeSequence: false, positiveReply: false, engagement: false, declined: false, doNotContact: false, suppressed: false, personRecentlyContacted: false },
     mismatch: { eligible: true, reasonCodes: [] },
     release: { verified: true, reasons: [] },
@@ -54,7 +54,7 @@ function facts(over: Partial<T1CandidateFacts> = {}, deep: { market?: Partial<T1
     features: features(),
     buyerSignals: [],
     websiteOnFile: true,
-    dedupe: { brokerageKey: "howard hanna allen tate", leadPersonKey: "robby brady" },
+    dedupe: { brokerageKey: "howard hanna allen tate", leadPersonKey: "robby brady", unitContacted: false, localOfficeKey: null },
   };
   const f: T1CandidateFacts = { ...base, ...over };
   if (deep.market) f.market = { ...base.market, ...deep.market };
@@ -67,6 +67,20 @@ function facts(over: Partial<T1CandidateFacts> = {}, deep: { market?: Partial<T1
 const ev = (f: T1CandidateFacts) => evaluateCandidate(f, NOW);
 
 describe("market gates", () => {
+  it("0: a market off the founder allowlist is blocked with MARKET_NOT_FOUNDER_APPROVED (NON_ALLOWLIST_CANNOT_OUTREACH)", () => {
+    for (const [name, stateCode] of [["Seattle", "WA"], ["San Diego", "CA"], ["Chicago", "IL"], ["Boston", "MA"]] as const) {
+      const f = facts({}, { market: { name: `${name}, ${stateCode}`, stateCode, founderApproved: false } });
+      expect(cohortBlockers(f)).toContain("MARKET_NOT_FOUNDER_APPROVED");
+      expect(ev(f).sendReady).toBe(false);
+      expect(ev(f).band).toBe("HOLD");
+    }
+  });
+  it("0b: regression 13 — a historical benchmark in an unlisted market stays evidence but cannot enter the cohort", () => {
+    const f = facts({ release: { verified: true, reasons: [] }, mismatch: { eligible: true, reasonCodes: [] } }, { market: { name: "Seattle, WA", stateCode: "WA", founderApproved: false } });
+    expect(f.release?.verified).toBe(true);
+    expect(ev(f).sendReady).toBe(false);
+    expect(ev(f).blockers).toEqual(["MARKET_NOT_FOUNDER_APPROVED"]);
+  });
   it("1: reserved/protected market excluded", () => {
     expect(cohortBlockers(facts({}, { market: { protected: true } }))).toContain("MARKET_PROTECTED");
   });
@@ -123,7 +137,7 @@ describe("dedupe", () => {
     const person = facts({ prospectId: "p-i", companyId: "c-i", name: "Robby Brady", prospectType: "individual_agent", entityLevel: "individual", features: features({ absoluteGap: 3, competitorRecs: 3 }) });
     const out = dedupeBuyingUnits([{ facts: team, evaluation: ev(team) }, { facts: person, evaluation: ev(person) }]);
     expect(out.find((o) => o.facts.prospectId === "p-i")!.evaluation.blockers).toContain("DUPLICATE_BUYING_UNIT");
-    const unrelated = facts({ prospectId: "p-u", companyId: "c-u", name: "Robby Brady", dedupe: { brokerageKey: null, leadPersonKey: null } });
+    const unrelated = facts({ prospectId: "p-u", companyId: "c-u", name: "Robby Brady", dedupe: { brokerageKey: null, leadPersonKey: null, unitContacted: false, localOfficeKey: null } });
     const out2 = dedupeBuyingUnits([{ facts: team, evaluation: ev(team) }, { facts: unrelated, evaluation: ev(unrelated) }]);
     expect(out2.every((o) => o.evaluation.sendReady)).toBe(true);
   });
@@ -248,22 +262,22 @@ describe("buyer signals are ranking, never gates", () => {
 });
 
 describe("selection, freeze, idempotency", () => {
-  const item = (id: string, over: Partial<T1CandidateFacts> = {}) => { const f = facts({ prospectId: id, companyId: `c-${id}`, contact: { id: `ct-${id}`, name: "Lead", role: "team lead", email: `${id}@x.com`, provenance: "publicly_sourced", generic: false, isDecisionMaker: true }, dedupe: { brokerageKey: null, leadPersonKey: null }, ...over }); return { facts: f, evaluation: ev(f) }; };
+  const item = (id: string, over: Partial<T1CandidateFacts> = {}) => { const f = facts({ prospectId: id, companyId: `c-${id}`, contact: { id: `ct-${id}`, name: "Lead", role: "team lead", email: `${id}@x.com`, provenance: "publicly_sourced", generic: false, isDecisionMaker: true }, dedupe: { brokerageKey: null, leadPersonKey: null, unitContacted: false, localOfficeKey: null }, ...over }); return { facts: f, evaluation: ev(f) }; };
 
   it("30: rerun does not duplicate cohort membership", () => {
-    const sel = selectCohort({ items: [item("a"), item("b")], priorBrokerageSends: new Map() });
+    const sel = selectCohort({ items: [item("a"), item("b")], priorOfficeSends: new Map() });
     const first = freezeCohort("t1-cohort-002", sel.selected, NOW);
     const existing = new Set(first.map((m) => m.membershipKey));
     const second = freezeCohort("t1-cohort-002", sel.selected, new Date("2026-09-12T00:00:00Z"));
     expect(newMembers(existing, second)).toEqual([]);
   });
   it("31: policy / template / release versions attached to every member", () => {
-    const m = freezeCohort("t1-cohort-002", selectCohort({ items: [item("a")], priorBrokerageSends: new Map() }).selected, NOW)[0]!;
+    const m = freezeCohort("t1-cohort-002", selectCohort({ items: [item("a")], priorOfficeSends: new Map() }).selected, NOW)[0]!;
     expect(m.policy).toEqual(expect.objectContaining({ cohortPolicyVersion: T1_COHORT_POLICY_VERSION, templateVersion: MISMATCH_TEMPLATE_VERSION, evidenceReleaseVersion: EVIDENCE_RELEASE_VERSION }));
     expect(m.policy.mismatchThresholds.minRecommendationGap).toBe(2);
   });
   it("32: frozen feature snapshot is preserved (raw features, zero-case, provenance)", () => {
-    const m = freezeCohort("t1-cohort-002", selectCohort({ items: [item("a")], priorBrokerageSends: new Map() }).selected, NOW)[0]!;
+    const m = freezeCohort("t1-cohort-002", selectCohort({ items: [item("a")], priorOfficeSends: new Map() }).selected, NOW)[0]!;
     expect(m.features).toEqual(expect.objectContaining({ runId: "run-1", denominator: 256, prospectRecs: 0, competitorRecs: 17, absoluteGap: 17, recommendationMultiple: null, zeroCase: true, competitorAiRank: 1 }));
     expect(m.selectedAt).toBe(NOW.toISOString());
     expect(m.sendReadiness).toBe("COHORT_READY_NOT_SCHEDULED");
@@ -271,7 +285,7 @@ describe("selection, freeze, idempotency", () => {
   });
   it("33: fewer than 75 eligible prospects does not loosen rules", () => {
     const items = [item("a"), item("b", { release: { verified: false, reasons: ["ZERO_NOT_VERIFIED"] } })];
-    const sel = selectCohort({ items, priorBrokerageSends: new Map() });
+    const sel = selectCohort({ items, priorOfficeSends: new Map() });
     expect(sel.selected.map((s) => s.facts.prospectId)).toEqual(["a"]);
     expect(cohortVerdict(sel.selected.length)).toBe("COHORT_READY_BELOW_TARGET");
     expect(cohortVerdict(0)).toBe("BLOCKED");
@@ -280,11 +294,11 @@ describe("selection, freeze, idempotency", () => {
   it("34: no send occurs from the cohort build (module exposes no send path; members are not scheduled)", () => {
     const mod = { selectCohort, freezeCohort, evaluateCandidate, dedupeBuyingUnits, revalidateBeforeFreeze };
     expect(Object.keys(mod).some((k) => /send|schedule|enroll/i.test(k))).toBe(false);
-    const m = freezeCohort("t1-cohort-002", selectCohort({ items: [item("a")], priorBrokerageSends: new Map() }).selected, NOW)[0]!;
+    const m = freezeCohort("t1-cohort-002", selectCohort({ items: [item("a")], priorOfficeSends: new Map() }).selected, NOW)[0]!;
     expect(m.sendReadiness).toBe("COHORT_READY_NOT_SCHEDULED");
   });
   it("35: a correction inserted before freeze invalidates the candidate", () => {
-    const sel = selectCohort({ items: [item("a"), item("b")], priorBrokerageSends: new Map() });
+    const sel = selectCohort({ items: [item("a"), item("b")], priorOfficeSends: new Map() });
     const fresh = new Map(sel.selected.map((s) => [s.facts.prospectId, s.facts]));
     fresh.set("a", { ...fresh.get("a")!, pendingCorrection: true });
     const r = revalidateBeforeFreeze(sel.selected, fresh, NOW);
@@ -292,24 +306,37 @@ describe("selection, freeze, idempotency", () => {
     expect(r.dropped[0]).toEqual({ prospectId: "a", name: expect.any(String), blockers: ["PENDING_CORRECTION"] });
   });
   it("36: an exclusivity agreement inserted before freeze invalidates the candidate", () => {
-    const sel = selectCohort({ items: [item("a")], priorBrokerageSends: new Map() });
+    const sel = selectCohort({ items: [item("a")], priorOfficeSends: new Map() });
     const fresh = new Map(sel.selected.map((s) => [s.facts.prospectId, { ...s.facts, market: { ...s.facts.market, exclusiveConflict: true } }]));
     const r = revalidateBeforeFreeze(sel.selected, fresh, NOW);
     expect(r.kept).toEqual([]);
     expect(r.dropped[0]!.blockers).toEqual(["MARKET_EXCLUSIVE_CONFLICT"]);
   });
-  it("per-market brokerage cap (spec 120) defers, never re-grades; prior sends count", () => {
-    const items = ["a", "b", "c", "d"].map((id) => item(id, { dedupe: { brokerageKey: "bhhs towne", leadPersonKey: null } }));
-    const prior = new Map([["l-1|bhhs towne", BROKERAGE_SEND_CAP_30D - 1]]);
-    const sel = selectCohort({ items, priorBrokerageSends: prior });
+  it("dispatch policy v2: no brokerage-brand cap in selection — four teams under one brand all select", () => {
+    const items = ["a", "b", "c", "d"].map((id) => item(id, { dedupe: { brokerageKey: "compass", leadPersonKey: null, unitContacted: false, localOfficeKey: null } }));
+    const sel = selectCohort({ items, priorOfficeSends: new Map() });
+    expect(sel.selected).toHaveLength(4);
+    expect(sel.deferred).toEqual([]);
+  });
+  it("evidence-backed local office guard defers (never re-grades); prior office sends count", () => {
+    const office = "l-1|office:compass-downtown";
+    const items = ["a", "b"].map((id) => item(id, { dedupe: { brokerageKey: "compass", leadPersonKey: null, unitContacted: false, localOfficeKey: office } }));
+    const sel = selectCohort({ items, priorOfficeSends: new Map() });
     expect(sel.selected).toHaveLength(1);
-    expect(sel.deferred.filter((d) => d.reason === "BROKERAGE_CAP_30D")).toHaveLength(3);
-    const other = selectCohort({ items: items.map((i) => ({ ...i, facts: { ...i.facts, market: { ...i.facts.market, launchId: "l-2" } } })), priorBrokerageSends: prior });
-    expect(other.selected).toHaveLength(BROKERAGE_SEND_CAP_30D);
+    expect(sel.deferred.map((d) => d.reason)).toEqual(["LOCAL_OFFICE_COLLISION"]);
+    const prior = selectCohort({ items, priorOfficeSends: new Map([[office, 1]]) });
+    expect(prior.selected).toHaveLength(0);
+    expect(prior.deferred.every((d) => d.reason === "LOCAL_OFFICE_COLLISION")).toBe(true);
+  });
+  it("another prospect of the same buying unit with a cold sequence blocks (BUYING_UNIT_ACTIVE_SEQUENCE)", () => {
+    const f = facts({}, {});
+    const blocked = { ...f, dedupe: { ...f.dedupe, unitContacted: true } };
+    expect(cohortBlockers(blocked)).toContain("BUYING_UNIT_ACTIVE_SEQUENCE");
+    expect(ev(blocked).sendReady).toBe(false);
   });
   it("selection never exceeds the target maximum and orders by band then gap", () => {
     const items = Array.from({ length: T1_COHORT_TARGET.max + 5 }, (_, i) => item(`p${i}`, { features: features({ absoluteGap: i, competitorRecs: i }) }));
-    const sel = selectCohort({ items, priorBrokerageSends: new Map() });
+    const sel = selectCohort({ items, priorOfficeSends: new Map() });
     expect(sel.selected).toHaveLength(T1_COHORT_TARGET.max);
     expect(sel.deferred.filter((d) => d.reason === "OVER_TARGET")).toHaveLength(5);
     expect(sel.selected[0]!.facts.features!.absoluteGap).toBeGreaterThanOrEqual(sel.selected[1]!.facts.features!.absoluteGap);

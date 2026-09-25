@@ -331,8 +331,19 @@ export const FOLLOWUP_MAX_BODY_WORDS = 120;
 /** Spec 129: the threaded reply that delivers the private report after a
  * positive reply. Version string IS the template identity on the draft. */
 /** v1: spec 129 (snapshot-fed). v2: spec 137 — every figure comes from the
- * fact manifest; the validated summary sentence is compiled, not written. */
-export const REPORT_DELIVERY_TEMPLATE_VERSION = "mismatch_report_delivery_v2";
+ * fact manifest; the validated summary sentence is compiled, not written.
+ * v3 (2026-09-23): one scoping question restored — the prospect's two or
+ * three zip codes — because the first live thread (Kirsch Team) stalled two
+ * days after a question-free delivery and turned the moment the prospect
+ * named her zips. Still one link, one ask, manifest-fed figures only. */
+export const REPORT_DELIVERY_TEMPLATE_VERSION = "mismatch_report_delivery_v3";
+/** Every delivery version that has ever been sent: ledgers, access metrics
+ * and the FOUNDER send class match any of these, never only the current one. */
+export const REPORT_DELIVERY_TEMPLATE_VERSIONS = [
+  "mismatch_report_delivery_v1",
+  "mismatch_report_delivery_v2",
+  REPORT_DELIVERY_TEMPLATE_VERSION,
+] as const;
 /** Spec 130's ENGAGEMENT_OFFER moved to the versioned policy list in
  * lib/pricing/policy.ts (spec 135): the one offer stated on a private report
  * when, and only when, the prospect asked for pricing is the ACTIVE policy
@@ -480,6 +491,34 @@ export const RECONTACT_PERSON_WINDOW_DAYS = 30;
  * guards against is local; a national brand's teams in different metros
  * share only the name. Matching is on the normalized brokerage name. */
 export const BROKERAGE_SEND_CAP_30D = 3;
+
+/** Dispatch policy v2 (founder directive 2026-09-15): outreach collision is
+ * controlled per canonical BUYING UNIT (same team / lead business / canonical
+ * company / recipient), not per brokerage brand. BROKERAGE_SEND_CAP_30D is
+ * retired as a send gate and survives only as a supply-ranking heuristic
+ * (brokerage diversity still predicts dispatch headroom). See
+ * lib/prospects/dispatch-policy.ts. */
+export const DISPATCH_POLICY_VERSION = "dispatch-policy-v2";
+/** At most one active cold sequence per canonical buying unit. */
+export const BUYING_UNIT_MAX_ACTIVE_COLD_SEQUENCES = 1;
+/** Max share of ONE DAY's new Touch 1 sends that may come from one brokerage
+ * brand — a campaign-diversity guard on dispatch order, never qualification.
+ * At the 15/day quota this is 4. */
+export const DAILY_BRAND_SHARE_MAX = 0.3;
+export function dailyBrandCap(batchSize: number = DAILY_SEND_QUOTA): number {
+  return Math.max(1, Math.floor(batchSize * DAILY_BRAND_SHARE_MAX));
+}
+/** Local-office collision registry: ONLY evidence-backed entries (a dated
+ * source showing two prospects sit in one tightly managed local office).
+ * Empty = no office guard. A national brand name is never evidence. */
+export interface LocalOfficeCollisionEntry {
+  launchId: string;
+  /** normalizeBrokerage() output the prospects carry. */
+  brokerageKey: string;
+  officeKey: string;
+  source: string;
+}
+export const LOCAL_OFFICE_COLLISION_REGISTRY: readonly LocalOfficeCollisionEntry[] = [];
 
 /** Brokerage-name normalization (spec 120): naming variants must land in
  * the same cap bucket. Cut everything from the first comma, then a trailing
