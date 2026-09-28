@@ -46,7 +46,8 @@ import { MomentumSection } from "@/components/prospects/momentum-section";
 import { FollowupSequencesSection } from "@/components/prospects/followup-sequence";
 import { executiveBrief } from "@/lib/prospects/brief";
 import { ExecutiveBriefSection } from "@/components/prospects/executive-brief";
-import { DAILY_SEND_QUOTA, QA_FIXTURE_NAME_PREFIX } from "@/lib/prospects/constants";
+import { QA_FIXTURE_NAME_PREFIX } from "@/lib/prospects/constants";
+import { dailySendQuota, sendCapStepForDay } from "@/lib/prospects/send-cap";
 import { reportAccessSummary } from "@/lib/prospects/report-access";
 import { pricingLearning } from "@/lib/pricing/quotes";
 import { dashboardHref, type DashboardFilters } from "@/lib/prospects/dashboard-url";
@@ -354,8 +355,8 @@ export default async function ProspectingDashboardPage({
         capUsed24h: health.capUsed24h,
         capLimit: health.capLimit,
         sentToday: momentumToday ? momentumToday.firstTouch + momentumToday.followUps : 0,
-        quota: DAILY_SEND_QUOTA,
-        quotaStreak: quotaStreak(mo.days, DAILY_SEND_QUOTA),
+        quota: dailySendQuota(now),
+        quotaStreak: quotaStreak(mo.days, (day) => sendCapStepForDay(day).touch1Quota),
         stalledAtOne: touchDepthDistribution(c.prospects).stalledAtOne,
         businessDay: isBusinessDay(now),
       })
@@ -480,7 +481,7 @@ export default async function ProspectingDashboardPage({
       {brief && <ExecutiveBriefSection brief={brief} hrefFor={(patch) => href(patch)} />}
 
       {/* ===================== 0. did we do the work (spec 119) */}
-      {mo && <MomentumSection momentum={mo} prospects={c.prospects} cohortName={cohortName} quota={DAILY_SEND_QUOTA} />}
+      {mo && <MomentumSection momentum={mo} prospects={c.prospects} cohortName={cohortName} quota={dailySendQuota(now)} />}
       <FollowupSequencesSection />
 
       {/* ===================== 1. what requires me */}

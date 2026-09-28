@@ -72,13 +72,15 @@ export function fillDailySeries(
 
 /** Consecutive business days at or above the quota, newest backwards.
  * Weekends neither count nor break; today only breaks the streak once it is
- * over, so an in-progress morning shows yesterday's streak, not zero. */
-export function quotaStreak(days: MomentumDay[], quota: number): number {
+ * over, so an in-progress morning shows yesterday's streak, not zero.
+ * A function quota judges each day by the quota in force that day (spec 143). */
+export function quotaStreak(days: MomentumDay[], quota: number | ((day: string) => number)): number {
+  const quotaFor = typeof quota === "number" ? () => quota : quota;
   let streak = 0;
   for (let i = days.length - 1; i >= 0; i--) {
     const d = days[i]!;
     if (!d.isBusinessDay) continue;
-    if (d.firstTouch + d.followUps >= quota) streak++;
+    if (d.firstTouch + d.followUps >= quotaFor(d.day)) streak++;
     else if (d.isToday) continue;
     else break;
   }

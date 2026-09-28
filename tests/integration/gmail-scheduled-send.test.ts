@@ -325,7 +325,8 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
 
   it("daily cap: the send past the cap refuses with a ledgered refusal, before any dispatch", async () => {
     const { draftId, prospectId } = await seedApprovedDraft();
-    for (let i = 0; i < constants.GMAIL_DAILY_SEND_CAP; i += 1) {
+    const { gmailDailySendCap } = await import("@/lib/prospects/send-cap");
+    for (let i = 0; i < gmailDailySendCap(); i += 1) {
       await sql`
         insert into prospect_outreach_sends
           (draft_id, prospect_id, channel, body_hash, business_purpose,

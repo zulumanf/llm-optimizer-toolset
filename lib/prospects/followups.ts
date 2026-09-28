@@ -34,7 +34,6 @@ import {
   FOLLOWUP_SEND_WINDOW,
   FOLLOWUP_TEMPLATE_VERSIONS,
   FOLLOWUP_TEMPLATE_VERSION_LIST,
-  GMAIL_DAILY_SEND_CAP,
   MISMATCH_TEMPLATE_VERSION,
   OUTREACH_PUBLIC_WEBSITE,
   PROSPECT_EXIT_STAGES,
@@ -43,6 +42,7 @@ import {
   type ProspectStage,
   type ReplyClassification,
 } from "@/lib/prospects/constants";
+import { gmailDailySendCap } from "@/lib/prospects/send-cap";
 import { CURRENT } from "@/lib/prospects/benchmark";
 import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
 import {
@@ -865,7 +865,7 @@ async function capAwareSlot(seq: FollowupSequence, slot: Date): Promise<Date> {
             and scheduled_send_at > ${candidate}::timestamptz - interval '24 hours' and scheduled_send_at <= ${candidate}) as queued
     `;
     const used = Number(row?.sent ?? 0) + Number(row?.queued ?? 0);
-    if (used < GMAIL_DAILY_SEND_CAP) return candidate;
+    if (used < gmailDailySendCap(candidate)) return candidate;
     log("warn", "followup.slot_deferred_cap", { sequenceId: seq.id, slot: candidate.toISOString(), used });
     candidate = slotFor(seq, new Date(candidate.getTime() + 86_400_000));
   }

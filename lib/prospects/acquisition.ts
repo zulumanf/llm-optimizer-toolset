@@ -23,7 +23,6 @@ import {
   DECISION_SAMPLE_TARGET,
   FOLLOWUP_CADENCE_BUSINESS_DAYS,
   FOLLOWUP_TEMPLATE_VERSIONS,
-  GMAIL_DAILY_SEND_CAP,
   LOW_RUNWAY_DAYS,
   MATURE_AFTER_BUSINESS_DAYS,
   MISMATCH_TEMPLATE_VERSION,
@@ -925,7 +924,7 @@ export function deriveAcquisition(f: AcquisitionFacts, now: Date): AcquisitionPa
       { label: "Cadence", value: `T2 +${FOLLOWUP_CADENCE_BUSINESS_DAYS[2]} · T3 +${FOLLOWUP_CADENCE_BUSINESS_DAYS[3]} business days` },
       { label: "Pricing", value: `${offerLabel(activePricingPolicy())} · ${billingLabel(activePricingPolicy())} · ${activePricingPolicy().version}` },
       { label: "Thresholds", value: `gap ≥ ${MISMATCH_THRESHOLDS.minRecommendationGap} · ratio ≤ ${MISMATCH_THRESHOLDS.maxCompetitorProductionRatio} · benchmark ≤ ${MISMATCH_THRESHOLDS.maxBenchmarkAgeDays}d` },
-      { label: "Daily cap", value: `${GMAIL_DAILY_SEND_CAP} / trailing 24h` },
+      { label: "Daily cap", value: `${f.capLimit} / trailing 24h` },
     ],
   };
 

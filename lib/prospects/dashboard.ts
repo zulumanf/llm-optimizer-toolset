@@ -15,9 +15,10 @@
  *   diagnostics, never an intent input.
  */
 import { sql } from "@/db/client";
-import { GMAIL_DAILY_SEND_CAP, OUTREACH_LINK_PATTERN, type ProspectStage,
+import { OUTREACH_LINK_PATTERN, type ProspectStage,
   AUDIT_VIEW_PUBLISH_QA_WINDOW_MINUTES,
 } from "@/lib/prospects/constants";
+import { gmailDailySendCap } from "@/lib/prospects/send-cap";
 import {
   compareByPriority,
   deriveIntent,
@@ -472,7 +473,7 @@ export async function machineHealth(): Promise<MachineHealth> {
     `;
   return {
     capUsed24h: Number(row?.capUsed ?? 0),
-    capLimit: GMAIL_DAILY_SEND_CAP,
+    capLimit: gmailDailySendCap(),
     gmailStatus: (row?.gmailStatus as string | null) ?? null,
     scheduledPending: Number(row?.scheduledPending ?? 0),
     activeSuppressions: Number(row?.suppressions ?? 0),
