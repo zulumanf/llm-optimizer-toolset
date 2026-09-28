@@ -14,6 +14,7 @@ import {
   MISMATCH_THRESHOLDS,
   OUTREACH_FORBIDDEN_FOOTER_HOST,
   OUTREACH_PUBLIC_WEBSITE,
+  REPORT_DELIVERY_TEMPLATE_VERSIONS,
 } from "@/lib/prospects/constants";
 import {
   competitiveMismatchReview,
@@ -326,8 +327,16 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
     if (u) validUrls.push(u);
   }
   const followup = isFollowupTemplate(row.promptVersion as string | null);
+  // Spec 129/137: the threaded report delivery carries the SAME frozen
+  // evidence as its Touch 1. Its denominator is that evidence, not the
+  // generic audit sample (which counts on a different basis and is not
+  // rendered on the mismatch private report). The Touch 1 render check and
+  // the live claim re-proof do not apply to it: the lane's send-time
+  // recheck (fulfillmentSendRecheck) re-verifies the frozen evidence and
+  // the fact manifest instead.
+  const delivery = (REPORT_DELIVERY_TEMPLATE_VERSIONS as readonly string[]).includes(row.promptVersion as string);
   const snapshot =
-    (row.promptVersion === MISMATCH_TEMPLATE_VERSION || followup) && row.evidenceSnapshot
+    (row.promptVersion === MISMATCH_TEMPLATE_VERSION || followup || delivery) && row.evidenceSnapshot
       ? (row.evidenceSnapshot as MismatchEvidenceSnapshot)
       : null;
   const mismatchIssues: DraftQaIssue[] = [];
@@ -340,7 +349,7 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
     if (!ctx) mismatchIssues.push({ check: "followup_evidence", detail: "follow-up draft has no sequence context." });
     else mismatchIssues.push(...qaFollowupEvidence(row.promptVersion as FollowupTemplateVersion, (row.body as string) ?? "", snapshot, ctx));
   }
-  if (snapshot) {
+  if (snapshot && !delivery) {
     const review = await competitiveMismatchReview(row.prospectId as string, {
       contactId: (row.contactId as string | null) ?? null,
     });
