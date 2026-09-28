@@ -46,7 +46,6 @@ import {
   BROKERAGE_CUT_COMMA,
   BROKERAGE_CUT_SUFFIX,
   normalizeBrokerage,
-  GMAIL_DAILY_SEND_CAP,
   dailyBrandCap,
   SCHEDULED_SEND_MAX_DAYS_AHEAD,
   UNATTENDED_SEND_BLOCKED_STAGES,
@@ -55,6 +54,7 @@ import {
   REPLY_CLASSIFICATIONS,
   type ReplyClassification,
 } from "@/lib/prospects/constants";
+import { gmailDailySendCap } from "@/lib/prospects/send-cap";
 import { LOCAL_OFFICE_SEND_CAP_30D, localOfficeKeyFor } from "@/lib/prospects/dispatch-policy";
 import { atOrPast, validateTransition } from "@/lib/prospects/stages";
 import {
@@ -2235,7 +2235,7 @@ const SEND_GATE_VERSION = "prospect-send-gate-v3";
  * Dispatch happens inside the transaction. For 'manual'/'mock' that is
  * trivially safe (in-process, instant). For 'gmail' it means the gate's
  * row locks are held across one bounded HTTP call — acceptable at this
- * volume (GMAIL_DAILY_SEND_CAP), and it keeps the invariant that a ledger
+ * volume (gmailDailySendCap), and it keeps the invariant that a ledger
  * row and its draft's sent-marker commit atomically. The crash window
  * between Gmail accepting and the commit is covered on the scheduled path
  * by the claim marker in drainScheduledSends (never auto-retried).
@@ -2522,7 +2522,7 @@ export async function sendProspectDraft(
           : "No sender identity is configured — set the legal sender (name, company, postal address) before any outreach."
       );
 
-      // Daily transmission cap (spec 091): a warming sender address. Counts
+      // Daily transmission cap (spec 091, ramp spec 143): a warming sender address. Counts
       // allowed gmail sends in the trailing 24h — refusals don't consume cap.
       if (channel.id === "gmail") {
         const [{ n } = { n: 0 }] = await tx`
@@ -2530,12 +2530,13 @@ export async function sendProspectDraft(
           where channel = 'gmail' and allowed
             and sent_at > now() - interval '24 hours'
         `;
+        const cap = gmailDailySendCap();
         check(
           "daily_send_cap",
-          Number(n) < GMAIL_DAILY_SEND_CAP,
-          Number(n) < GMAIL_DAILY_SEND_CAP
-            ? `${n} of ${GMAIL_DAILY_SEND_CAP} daily Gmail sends used`
-            : `The daily Gmail cap of ${GMAIL_DAILY_SEND_CAP} sends is spent — the send refuses until the 24-hour window clears.`
+          Number(n) < cap,
+          Number(n) < cap
+            ? `${n} of ${cap} daily Gmail sends used`
+            : `The daily Gmail cap of ${cap} sends is spent — the send refuses until the 24-hour window clears.`
         );
       }
 

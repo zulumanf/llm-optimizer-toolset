@@ -15,11 +15,11 @@ import { sql } from "@/db/client";
 import { wallClock } from "@/lib/prospects/business-days";
 import {
   FOLLOWUP_EXPERIMENT_ID,
-  GMAIL_DAILY_SEND_CAP,
   MISMATCH_TEMPLATE_VERSION,
   REPORT_DELIVERY_TEMPLATE_VERSIONS,
 } from "@/lib/prospects/constants";
 import { OPERATOR_TIMEZONE } from "@/lib/prospects/intent";
+import { sendCapStepForDay } from "@/lib/prospects/send-cap";
 
 /** Operator-local minute of day at which each digest becomes due. */
 export const CAMPAIGN_DIGEST_WINDOWS = {
@@ -128,7 +128,7 @@ export async function campaignLedger(days: string[]): Promise<CampaignLedger> {
     where to_char(created_at at time zone ${OPERATOR_TIMEZONE}, 'YYYY-MM-DD') = any(${days}::text[]) group by 1`;
   const handoffs: Record<string, number> = {};
   for (const h of handoffRows) handoffs[h.status as string] = Number(h.n);
-  const cap = days.length * GMAIL_DAILY_SEND_CAP;
+  const cap = days.reduce((sum, day) => sum + sendCapStepForDay(day).transportCap, 0);
   return {
     days,
     totalOutbound: sends.length,

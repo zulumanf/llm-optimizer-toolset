@@ -20,7 +20,8 @@
  *
  * Pure functions only; the DB assemblers live in the scripts/service.
  */
-import { DAILY_SEND_QUOTA, LOCAL_OFFICE_COLLISION_REGISTRY, dailyBrandCap, type LocalOfficeCollisionEntry } from "@/lib/prospects/constants";
+import { LOCAL_OFFICE_COLLISION_REGISTRY, dailyBrandCap, type LocalOfficeCollisionEntry } from "@/lib/prospects/constants";
+import { dailySendQuota } from "@/lib/prospects/send-cap";
 
 /** Conservative local-office guard: one cold send per evidence-backed office
  * per 30 days. */
@@ -81,7 +82,7 @@ export interface DailyPlan {
 /** Assign qualified prospects (already in priority order) to days. Order
  * only: a prospect that does not fit today goes to the next day; nothing
  * here changes qualification. */
-export function planDailyBatches(candidates: readonly DispatchCandidate[], days: readonly DispatchDay[], brandCap: number = dailyBrandCap(DAILY_SEND_QUOTA)): DailyPlan {
+export function planDailyBatches(candidates: readonly DispatchCandidate[], days: readonly DispatchDay[], brandCap: number = dailyBrandCap(dailySendQuota())): DailyPlan {
   const state = days.map((d) => ({ day: d.day, left: Math.max(0, d.capacity), brand: new Map(Object.entries(d.brandUsed ?? {})) }));
   const assigned: DailyPlan["assigned"] = [];
   const unassigned: DailyPlan["unassigned"] = [];
