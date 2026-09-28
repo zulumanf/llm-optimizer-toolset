@@ -5,6 +5,7 @@
  * Enforced at approval and again inside the send gate; no LLM involved
  * (subjective quality stays with the audit sense-check, spec 077).
  */
+import { touchEntityGrammar } from "@/lib/prospects/audit-mismatch";
 import { sql } from "@/db/client";
 import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
 import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
@@ -13,6 +14,7 @@ import {
   MISMATCH_THRESHOLDS,
   OUTREACH_FORBIDDEN_FOOTER_HOST,
   OUTREACH_PUBLIC_WEBSITE,
+  REPORT_DELIVERY_TEMPLATE_VERSIONS,
 } from "@/lib/prospects/constants";
 import {
   competitiveMismatchReview,
@@ -122,7 +124,9 @@ export function qaDraftContent(input: DraftQaInput): DraftQaIssue[] {
   // block must show the public website, never the operator-console host.
   // Scoped to the footer — a reply-first BODY may legitimately carry an
   // app-hosted audit proof link above the signature.
-  const footerStart = body.lastIndexOf("\n—\n");
+  // "--" is the current separator (2026-09-25); "—" is the form every draft
+  // before that carried, still QA'd on re-validation.
+  const footerStart = Math.max(body.lastIndexOf("\n--\n"), body.lastIndexOf("\n—\n"));
   const footer = footerStart >= 0 ? body.slice(footerStart) : "";
   if (footer.toLowerCase().includes(OUTREACH_FORBIDDEN_FOOTER_HOST)) {
     add("signature_domain", `signature shows ${OUTREACH_FORBIDDEN_FOOTER_HOST} — the public site is ${OUTREACH_PUBLIC_WEBSITE}.`);
@@ -323,8 +327,16 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
     if (u) validUrls.push(u);
   }
   const followup = isFollowupTemplate(row.promptVersion as string | null);
+  // Spec 129/137: the threaded report delivery carries the SAME frozen
+  // evidence as its Touch 1. Its denominator is that evidence, not the
+  // generic audit sample (which counts on a different basis and is not
+  // rendered on the mismatch private report). The Touch 1 render check and
+  // the live claim re-proof do not apply to it: the lane's send-time
+  // recheck (fulfillmentSendRecheck) re-verifies the frozen evidence and
+  // the fact manifest instead.
+  const delivery = (REPORT_DELIVERY_TEMPLATE_VERSIONS as readonly string[]).includes(row.promptVersion as string);
   const snapshot =
-    (row.promptVersion === MISMATCH_TEMPLATE_VERSION || followup) && row.evidenceSnapshot
+    (row.promptVersion === MISMATCH_TEMPLATE_VERSION || followup || delivery) && row.evidenceSnapshot
       ? (row.evidenceSnapshot as MismatchEvidenceSnapshot)
       : null;
   const mismatchIssues: DraftQaIssue[] = [];
@@ -337,7 +349,7 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
     if (!ctx) mismatchIssues.push({ check: "followup_evidence", detail: "follow-up draft has no sequence context." });
     else mismatchIssues.push(...qaFollowupEvidence(row.promptVersion as FollowupTemplateVersion, (row.body as string) ?? "", snapshot, ctx));
   }
-  if (snapshot) {
+  if (snapshot && !delivery) {
     const review = await competitiveMismatchReview(row.prospectId as string, {
       contactId: (row.contactId as string | null) ?? null,
     });
@@ -354,6 +366,14 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
         benchmarkAgeDays: review?.evaluation.benchmarkAgeDays ?? null,
       });
     mismatchIssues.push(...claimIssues);
+    if (!followup) {
+      // ENTITY_COPY_MATCHES_ENTITY_TYPE: the body must address the measured
+      // entity in its own form; unknown entity type is a block.
+      const grammar = touchEntityGrammar(review?.prospect.production?.entityType ?? null);
+      const body = (row.body as string) ?? "";
+      if (!grammar) mismatchIssues.push({ check: "entity_grammar", detail: "the measured entity's type is unknown (team / individual / brokerage) — Touch 1 cannot address it." });
+      else if (!body.includes(`more often than ${grammar.ref},`) || !body.includes(`${grammar.Ref}: `)) mismatchIssues.push({ check: "entity_grammar", detail: `body does not address a ${review?.prospect.production?.entityType} as "${grammar.ref}".` });
+    }
   }
   return mismatchIssues.concat(qaDraftContent({
     subject: (row.subject as string | null) ?? null,

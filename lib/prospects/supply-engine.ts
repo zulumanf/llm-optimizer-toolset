@@ -435,52 +435,45 @@ export function promotionIdentityCheck(record: { entityName: string; entityType:
 
 // ------------------------------------------------------- market expansion
 
-export type MarketExpansionClass = "PROOF_BUILDING_CANDIDATE" | "PREMIUM_RESERVE_CANDIDATE" | "RESEARCH_MORE" | "LOW_PRIORITY";
+/**
+ * v2 (founder directive 2026-09-15): metrics PRIORITIZE approved markets;
+ * they never approve one. A market outside the founder allowlist is HOLD
+ * regardless of density, production, brokerage diversity or contact count
+ * (MARKET_METRICS_CANNOT_GRANT_APPROVAL). Tier-1 stays reserved
+ * (TIER1_CANNOT_AUTO_APPROVE).
+ */
+export type MarketExpansionClass = "APPROVED_PRIORITY" | "HOLD_NOT_FOUNDER_APPROVED" | "HOLD_TIER_1_RESERVED" | "HOLD_BLOCKED";
 
 export interface MarketExpansionFeatures {
   policyState: MarketPolicy["state"];
+  /** From the resolved policy — the ONLY approval input. */
+  founderApproved: boolean;
   teams: number;
   individuals: number;
   /** Entities at or above $50M closed volume. */
   highProduction: number;
-  /** Teams at or above $100M — the economic-value signal a reserve
-   * decision would weigh. */
+  /** Teams at or above $100M — reported for the founder, never decisive. */
   teams100m: number;
   brokerageDiversity: number;
   /** Entities with a named team lead (accessibility). */
   namedLeads: number;
 }
 
-/** PREMIUM_RESERVE_CANDIDATE is the top slice of economic value (a market
- * whose exclusivity a paying client would want later). It applies where
- * $100M+ teams number at or above this floor — the same line the RealTrends
- * profile put between the six largest metros and the rest. */
-export const PREMIUM_RESERVE_TEAMS_100M = 15;
-/** A proof-building candidate needs enough high producers for repeated
- * waves (≥ wave target of 20 contact-verified at a ~30% hit rate → ~60
- * entities at the $50M line is generous; 20 is the floor) and enough
- * brokerages that the per-market cap does not bottleneck dispatch. */
-export const PROOF_BUILDING_MIN_HIGH_PRODUCTION = 20;
+/** Transparent ranking inputs for an approved market: depth for repeated
+ * waves and enough brokerages that the per-market cap does not bottleneck
+ * dispatch. Purely ordinal — a low score never blocks an approved market. */
+export function marketPriorityScore(f: Pick<MarketExpansionFeatures, "highProduction" | "brokerageDiversity" | "namedLeads">): number {
+  const capHeadroom = Math.min(f.brokerageDiversity, BROKERAGE_SEND_CAP_30D * 6);
+  return f.highProduction + capHeadroom * 2 + Math.min(f.namedLeads, f.highProduction);
+}
 
-/** Transparent classes for the founder's approval queue. Never opens a
- * market: UNCLASSIFIED stays UNCLASSIFIED until a launch exists. */
-export function marketExpansionClass(f: MarketExpansionFeatures): { klass: MarketExpansionClass; reasons: string[] } {
-  const reasons: string[] = [];
-  if (f.policyState === "TIER_1_RESERVED") return { klass: "PREMIUM_RESERVE_CANDIDATE", reasons: ["already reserved by founder directive"] };
-  if (f.policyState !== "UNCLASSIFIED") return { klass: "LOW_PRIORITY", reasons: [`already ${f.policyState}`] };
-  const diverse = f.brokerageDiversity >= BROKERAGE_SEND_CAP_30D * 3;
-  reasons.push(`${f.highProduction} entities ≥ $50M, ${f.teams100m} teams ≥ $100M, ${f.brokerageDiversity} brokerages among them, ${f.namedLeads} named leads`);
-  if (f.teams100m >= PREMIUM_RESERVE_TEAMS_100M) {
-    reasons.push("economic value in the top slice: exclusivity is worth more later than a first experiment now");
-    return { klass: "PREMIUM_RESERVE_CANDIDATE", reasons };
-  }
-  if (f.highProduction >= PROOF_BUILDING_MIN_HIGH_PRODUCTION && diverse) {
-    reasons.push("depth for repeated waves and enough brokerages for the per-market cap");
-    return { klass: "PROOF_BUILDING_CANDIDATE", reasons };
-  }
-  if (f.highProduction >= PROOF_BUILDING_MIN_HIGH_PRODUCTION / 2) {
-    reasons.push("some depth; confirm contactability before proposing");
-    return { klass: "RESEARCH_MORE", reasons };
-  }
-  return { klass: "LOW_PRIORITY", reasons };
+export function marketExpansionClass(f: MarketExpansionFeatures): { klass: MarketExpansionClass; priority: number | null; reasons: string[] } {
+  const metrics = `${f.highProduction} entities ≥ $50M, ${f.teams100m} teams ≥ $100M, ${f.brokerageDiversity} brokerages among them, ${f.namedLeads} named leads`;
+  if (f.policyState === "TIER_1_RESERVED") return { klass: "HOLD_TIER_1_RESERVED", priority: null, reasons: ["reserved by founder directive; cannot auto-approve", metrics] };
+  if (!f.founderApproved) return { klass: "HOLD_NOT_FOUNDER_APPROVED", priority: null, reasons: ["not on the founder allowlist; metrics cannot grant approval", metrics] };
+  if (f.policyState === "ACTIVE_CLIENT_EXCLUSIVE" || f.policyState === "PAUSED") return { klass: "HOLD_BLOCKED", priority: null, reasons: [`approved but ${f.policyState}`, metrics] };
+  const priority = marketPriorityScore(f);
+  const reasons = [metrics, `priority ${priority} (depth + brokerage-cap headroom + named leads; ranks approved markets only)`];
+  if (f.brokerageDiversity < BROKERAGE_SEND_CAP_30D * 3) reasons.push("thin brokerage diversity: expect cap deferrals — prefer diverse candidates");
+  return { klass: "APPROVED_PRIORITY", priority, reasons };
 }

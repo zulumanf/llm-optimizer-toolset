@@ -542,6 +542,15 @@ export async function matchDatasetRecords(
         join prospect_benchmarks pb on pb.run_id = r.run_id
         join prospects p on p.id = pb.prospect_id
         where p.archived_at is null
+        union
+        -- Market-identity path (2026-09-23): a rivals-only market benchmark
+        -- has no prospects yet, but its tracked competitors are the market's
+        -- companies all the same. Company → project → market → launch.
+        select cp.company_id, ml.id as launch_id, null as prospect_type
+        from competitors cp
+        join projects pj on pj.id = cp.project_id
+        join market_launches ml on ml.market_id = pj.market_id
+        where cp.archived_at is null and pj.archived_at is null and ml.archived_at is null
       ) l on l.company_id = c.id
       where c.archived_at is null and c.merged_into is null
       group by c.id, c.name, c.aliases

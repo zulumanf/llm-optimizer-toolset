@@ -11,6 +11,8 @@ import {
   OUTREACH_TEMPLATE_VERSION,
 } from "@/lib/prospects/constants";
 import { consumerAnchoredModelPhrase } from "@/lib/prospects/terminology";
+import { touchEntityGrammar } from "@/lib/prospects/audit-mismatch";
+import { ClassifiedError } from "@/lib/errors";
 import {
   formatProductionDisplay,
   implicationLine,
@@ -116,15 +118,24 @@ export function generateCompetitiveMismatchEmail(
   );
   const pronoun = benchmark.modelCount > 1 ? "They" : "It";
   const n = benchmark.answerCount;
+  // ENTITY_COPY_MATCHES_ENTITY_TYPE: the measured entity's own form; an
+  // unknown entity type is a block, never a default to "your team".
+  const entity = touchEntityGrammar(review.prospect.production?.entityType ?? null);
+  if (!entity) {
+    throw new ClassifiedError(
+      "validation",
+      `Touch 1 cannot be rendered: the measured entity's type (team / individual / brokerage) is unknown for ${review.prospect.displayName}.`
+    );
+  }
   const cta = "I have the exact questions and the side-by-side. Want me to send them?";
   const body = [
-    `${firstName} —`,
+    `${firstName},`,
     ``,
     `${recency} I ran ${review.scopeCopy} through ${systemPhrase}. ` +
-      `${pronoun} recommended ${competitor.displayName} more often than your team, ` +
+      `${pronoun} recommended ${competitor.displayName} more often than ${entity.ref}, ` +
       `even though RealTrends has you ahead on ${PRODUCTION_METRIC_COPY[metricType]}.`,
     ``,
-    `Your team: ${formatProductionDisplay(metricType, prospectValue)} · recommended in ${review.prospect.recommendationCount} of ${n} answers`,
+    `${entity.Ref}: ${formatProductionDisplay(metricType, prospectValue)} · recommended in ${review.prospect.recommendationCount} of ${n} answers`,
     `${competitor.displayName}: ${formatProductionDisplay(metricType, competitorValue)} · recommended in ${competitor.recommendationCount} of ${n} answers`,
     ``,
     implicationLine(review.audiences),
@@ -132,7 +143,10 @@ export function generateCompetitiveMismatchEmail(
     cta,
   ].join("\n");
   return {
-    subject: `${firstName} — ${marketShortName(review.marketName)}`,
+    // ASCII hyphen on purpose (operator decision 2026-09-08; docs/13-prompts):
+    // a non-ASCII subject also needs RFC 2047 on the wire, and until
+    // 2026-09-25 the adapter did not do that.
+    subject: `${firstName} - ${marketShortName(review.marketName)}`,
     body,
     tone: "direct, factual, peer-to-peer",
     cta,

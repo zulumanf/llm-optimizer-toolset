@@ -12,15 +12,15 @@
  * prospect with zero recommendations is never gated on that alone.
  */
 import {
-  BROKERAGE_SEND_CAP_30D,
   MISMATCH_TEMPLATE_VERSION,
   MISMATCH_THRESHOLDS,
   type ProvenanceLabel,
 } from "@/lib/prospects/constants";
 import { EVIDENCE_RELEASE_VERSION } from "@/lib/prospects/evidence-release";
+import { LOCAL_OFFICE_SEND_CAP_30D } from "@/lib/prospects/dispatch-policy";
 import { mismatchStrength } from "@/lib/prospects/mismatch";
 
-export const T1_COHORT_POLICY_VERSION = "t1-cohort-policy-v1";
+export const T1_COHORT_POLICY_VERSION = "t1-cohort-policy-v3";
 /** Target band for one analyzable learning batch. Under-supply freezes
  * what exists and reports a gap; it never loosens a gate. */
 export const T1_COHORT_TARGET = { min: 75, max: 100 } as const;
@@ -48,12 +48,14 @@ const FIRST_TOUCH_STAGES = new Set(["identified", "researching", "benchmarking",
 const LAUNCH_BLOCKED_STATUSES = new Set(["protected", "paused", "closed"]);
 
 export const T1_BLOCKERS = [
+  "MARKET_NOT_FOUNDER_APPROVED",
   "MARKET_PROTECTED",
   "MARKET_EXCLUSIVE_CONFLICT",
   "MARKET_PAUSED",
   "STAGE_NOT_FIRST_TOUCH",
   "ALREADY_CONTACTED",
   "ACTIVE_SEQUENCE",
+  "BUYING_UNIT_ACTIVE_SEQUENCE",
   "POSITIVE_RESPONDER",
   "CLIENT_OR_ENGAGEMENT",
   "DECLINED",
@@ -133,6 +135,9 @@ export interface T1CandidateFacts {
     stateCode: string | null;
     /** True when the market or an ancestor is in PROTECTED_MARKET_NAMES. */
     protected: boolean;
+    /** True only when the founder allowlist (market-policy v2) covers the
+     * market by name + resolved state. Unknown state = false (fail closed). */
+    founderApproved: boolean;
     /** True when a live (active/reserved) exclusivity scope covers the
      * market and the prospect is not the client (spec 052 detectConflicts). */
     exclusiveConflict: boolean;
@@ -171,6 +176,13 @@ export interface T1CandidateFacts {
     /** Normalized lead person (RealTrends team_lead for teams, the agent
      * for individuals) — only set when the relationship is provenanced. */
     leadPersonKey: string | null;
+    /** Dispatch policy v2: another prospect of the SAME buying unit (same
+     * canonical company, or same provenanced lead in this market) already
+     * received a cold send or holds an active/paused sequence. */
+    unitContacted: boolean;
+    /** Registry-backed local office key (lib/prospects/dispatch-policy), or
+     * null — a brand name alone never resolves to an office. */
+    localOfficeKey: string | null;
   };
 }
 
@@ -200,12 +212,14 @@ export interface T1Evaluation {
  * order is diagnostic only (all applicable blockers are returned). */
 export function cohortBlockers(f: T1CandidateFacts): T1Blocker[] {
   const b: T1Blocker[] = [];
+  if (!f.market.founderApproved) b.push("MARKET_NOT_FOUNDER_APPROVED");
   if (f.market.protected) b.push("MARKET_PROTECTED");
   if (f.market.exclusiveConflict) b.push("MARKET_EXCLUSIVE_CONFLICT");
   if (LAUNCH_BLOCKED_STATUSES.has(f.market.launchStatus)) b.push("MARKET_PAUSED");
   if (!FIRST_TOUCH_STAGES.has(f.outreach.stage)) b.push("STAGE_NOT_FIRST_TOUCH");
   if (f.outreach.contacted) b.push("ALREADY_CONTACTED");
   if (f.outreach.activeSequence) b.push("ACTIVE_SEQUENCE");
+  if (f.dedupe.unitContacted) b.push("BUYING_UNIT_ACTIVE_SEQUENCE");
   if (f.outreach.positiveReply) b.push("POSITIVE_RESPONDER");
   if (f.outreach.engagement) b.push("CLIENT_OR_ENGAGEMENT");
   if (f.outreach.declined) b.push("DECLINED");
@@ -311,7 +325,7 @@ export function evaluateCandidate(f: T1CandidateFacts, now: Date): T1Evaluation 
     why.push(x.zeroCase ? `${x.competitorName} recommended ${x.competitorRecs}× in ${x.denominator} OpenAI answers; prospect verified zero` : `${x.competitorName} recommended ${x.competitorRecs}× vs prospect ${x.prospectRecs}× in ${x.denominator} OpenAI answers`);
     if (x.competitorAiRank !== null) why.push(`competitor ranks #${x.competitorAiRank} of ${x.competitorRankUniverse ?? "?"} verified entities in the market`);
     if (f.contact) why.push(`recipient ${f.contact.name} (${f.contact.role ?? "decision-maker"}), ${f.contact.provenance} email`);
-    why.push(`market ${f.market.name} open (no live exclusivity, not protected)`);
+    why.push(`market ${f.market.name} founder-approved (allowlist 2026-09-15), no live exclusivity, not protected`);
     why.push(...buyer.evidence.map((e) => `${e.dimension} ${e.level}: ${e.basis}`));
   }
   return { prospectId: f.prospectId, sendReady, blockers, recBucket: recBucket(f.features), buyer, band, bandReasons: reasons, whySelected: why };
@@ -362,28 +376,27 @@ export function dedupeBuyingUnits(
 
 export interface T1SelectionInput {
   items: { facts: T1CandidateFacts; evaluation: T1Evaluation }[];
-  /** Allowed sends already consumed per (launchId, brokerageKey) in the
-   * trailing 30 days — the spec 120 cap counts the market, not the world. */
-  priorBrokerageSends: Map<string, number>;
+  /** Allowed sends in the trailing 30 days per registry-backed local office
+   * key (dispatch policy v2). Empty when the registry has no entry for the
+   * cohort's markets. */
+  priorOfficeSends: Map<string, number>;
   max?: number;
 }
 
 export interface T1Selection {
   selected: { facts: T1CandidateFacts; evaluation: T1Evaluation }[];
-  deferred: { prospectId: string; name: string; reason: "BROKERAGE_CAP_30D" | "DUPLICATE_EMAIL" | "OVER_TARGET" }[];
+  deferred: { prospectId: string; name: string; reason: "LOCAL_OFFICE_COLLISION" | "DUPLICATE_EMAIL" | "OVER_TARGET" }[];
 }
 
-export function brokerageCapKey(launchId: string, brokerageKey: string): string {
-  return `${launchId}|${brokerageKey}`;
-}
-
-/** Priority order, then the canonical per-market brokerage cap and an
- * email-level dedupe. Qualified prospects that do not fit are DEFERRED —
- * still qualified, never re-graded. */
+/** Priority order, then an email-level dedupe and the registry-backed local
+ * office guard. There is NO brokerage-brand cap here (dispatch policy v2):
+ * brand concentration is handled by planDailyBatches as dispatch order.
+ * Qualified prospects that do not fit are DEFERRED — still qualified, never
+ * re-graded. */
 export function selectCohort(input: T1SelectionInput): T1Selection {
   const max = input.max ?? T1_COHORT_TARGET.max;
   const ready = input.items.filter((i) => i.evaluation.sendReady).sort(strengthOrder);
-  const used = new Map<string, number>();
+  const officeUsed = new Map<string, number>();
   const emails = new Set<string>();
   const selected: T1Selection["selected"] = [];
   const deferred: T1Selection["deferred"] = [];
@@ -391,12 +404,11 @@ export function selectCohort(input: T1SelectionInput): T1Selection {
     if (selected.length >= max) { deferred.push({ prospectId: it.facts.prospectId, name: it.facts.name, reason: "OVER_TARGET" }); continue; }
     const email = it.facts.contact!.email.toLowerCase();
     if (emails.has(email)) { deferred.push({ prospectId: it.facts.prospectId, name: it.facts.name, reason: "DUPLICATE_EMAIL" }); continue; }
-    const bk = it.facts.dedupe.brokerageKey;
-    if (bk) {
-      const key = brokerageCapKey(it.facts.market.launchId, bk);
-      const consumed = (input.priorBrokerageSends.get(key) ?? 0) + (used.get(key) ?? 0);
-      if (consumed >= BROKERAGE_SEND_CAP_30D) { deferred.push({ prospectId: it.facts.prospectId, name: it.facts.name, reason: "BROKERAGE_CAP_30D" }); continue; }
-      used.set(key, (used.get(key) ?? 0) + 1);
+    const office = it.facts.dedupe.localOfficeKey;
+    if (office) {
+      const consumed = (input.priorOfficeSends.get(office) ?? 0) + (officeUsed.get(office) ?? 0);
+      if (consumed >= LOCAL_OFFICE_SEND_CAP_30D) { deferred.push({ prospectId: it.facts.prospectId, name: it.facts.name, reason: "LOCAL_OFFICE_COLLISION" }); continue; }
+      officeUsed.set(office, (officeUsed.get(office) ?? 0) + 1);
     }
     emails.add(email);
     selected.push(it);

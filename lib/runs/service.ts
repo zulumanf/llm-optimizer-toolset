@@ -60,14 +60,10 @@ export async function startRun(
       // Portfolio ceiling (plan 2.7): BUDGET_MAX_USD caps one run; this caps
       // the day. Fast refusal here; the executor re-checks for runs that
       // bypass startRun. Raise via DAILY_SPEND_CEILING_USD when deliberate.
-      const { spendLast24hUsd } = await import("@/db/runs");
-      const { DAILY_SPEND_CEILING_USD } = await import("@/lib/constants");
-      const spent = await spendLast24hUsd();
-      if (spent >= DAILY_SPEND_CEILING_USD) {
-        throw new ClassifiedError(
-          "conflict",
-          `Provider spend in the last 24h ($${spent.toFixed(2)}) has reached the portfolio ceiling ($${DAILY_SPEND_CEILING_USD}). Wait, or raise DAILY_SPEND_CEILING_USD deliberately.`
-        );
+      const { portfolioSpendGate } = await import("@/lib/runs/spend-guard");
+      const gate = await portfolioSpendGate();
+      if (!gate.ok) {
+        throw new ClassifiedError("conflict", `Run refused: ${gate.reason}.`);
       }
 
       const [row] = await tx<Run[]>`

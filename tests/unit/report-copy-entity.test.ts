@@ -106,7 +106,9 @@ describe("delivery email and video", () => {
     expect(withVideo.body.split(URL).length).toBe(2);
     for (const r of [without, withVideo]) {
       expect(r.body).toContain("The biggest thing that stood out: The Hertz Team closed roughly 44% of your team's volume, but was recommended 12.5x as often in the same 256-answer test.");
-      expect(r.body).toContain("Take a look when you get a chance. If anything jumps out, just reply here.");
+      expect(r.body).toContain("Take a look when you get a chance.");
+      expect(r.body).toContain("One question: which two or three zip codes matter most to you? I'll cut the same results down to those.");
+      expect((r.body.split("\n--\n")[0]!.match(/\?/g) ?? []).length).toBe(1);
     }
   });
   it("the two variants are distinct send intents; the same variant is one intent", () => {

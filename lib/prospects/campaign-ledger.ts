@@ -17,7 +17,7 @@ import {
   FOLLOWUP_EXPERIMENT_ID,
   GMAIL_DAILY_SEND_CAP,
   MISMATCH_TEMPLATE_VERSION,
-  REPORT_DELIVERY_TEMPLATE_VERSION,
+  REPORT_DELIVERY_TEMPLATE_VERSIONS,
 } from "@/lib/prospects/constants";
 import { OPERATOR_TIMEZONE } from "@/lib/prospects/intent";
 
@@ -42,7 +42,7 @@ export interface SendRow {
 }
 
 export function classifySend(s: SendRow): SendClass {
-  if (s.replyTo || s.promptVersion === REPORT_DELIVERY_TEMPLATE_VERSION) return "FOUNDER";
+  if (s.replyTo || (s.promptVersion !== null && (REPORT_DELIVERY_TEMPLATE_VERSIONS as readonly string[]).includes(s.promptVersion))) return "FOUNDER";
   if (s.sequenceId && s.touch === 2) return "T2";
   if (s.sequenceId && s.touch === 3) return "T3";
   if (s.promptVersion === MISMATCH_TEMPLATE_VERSION) return "T1";

@@ -10,6 +10,8 @@
  *   npx tsx scripts/t1-cohort-build.ts --cohort t1-cohort-002            (dry: report only)
  *   npx tsx scripts/t1-cohort-build.ts --cohort t1-cohort-002 --freeze   (persist members)
  *   npx tsx scripts/t1-cohort-build.ts --cohort t1-cohort-002 --freeze --drafts
+ *   --no-cap   select EVERY send-ready prospect (founder directive 2026-09-23); the
+ *              75–100 target stays a reporting threshold, not a selection limit
  * Idempotent: a rerun with the same facts adds no membership rows and no
  * duplicate drafts (an identical unapproved mismatch draft is reused).
  */
@@ -23,6 +25,9 @@ import { checkSuppression } from "@/lib/outreach/suppression";
 import {
   BROKERAGE_CUT_COMMA,
   BROKERAGE_CUT_SUFFIX,
+  DAILY_SEND_QUOTA,
+  DISPATCH_POLICY_VERSION,
+  GMAIL_DAILY_SEND_CAP,
   MISMATCH_TEMPLATE_VERSION,
   RECONTACT_PERSON_WINDOW_DAYS,
   normalizeBrokerage,
@@ -33,13 +38,14 @@ import { verifyEvidenceRelease } from "@/lib/prospects/evidence-release";
 import { mismatchQuestions } from "@/lib/prospects/audit-mismatch";
 import { providerRecommendationCounts, runSummary } from "@/lib/prospects/benchmark";
 import { launchGeographies } from "@/lib/prospects/realtrends-dataset";
+import { isFounderApprovedMarket } from "@/lib/prospects/market-policy";
+import { localOfficeKeyFor, planDailyBatches } from "@/lib/prospects/dispatch-policy";
 import { listBuyingSignals } from "@/lib/prospects/buying-signals";
 import { createOutreachDraft } from "@/lib/prospects/service";
 import { qaDraft } from "@/lib/prospects/draft-qa";
 import {
   PROTECTED_MARKET_NAMES,
   T1_COHORT_POLICY_VERSION,
-  brokerageCapKey,
   cohortVerdict,
   contactBottleneck,
   dedupeBuyingUnits,
@@ -96,6 +102,27 @@ async function protectedMarketIds(): Promise<Set<string>> {
   return new Set(rows.map((r) => r.id as string));
 }
 
+/** MARKET_ALLOWLIST_REQUIRED: launches whose market (own name or an
+ * ancestor's) plus resolved state is on the founder allowlist. State comes
+ * from the market tree first, then the launch geography resolver; a launch
+ * with no resolvable state is NOT approved (fail closed). */
+async function approvedLaunchIds(geos: Awaited<ReturnType<typeof launchGeographies>>): Promise<Set<string>> {
+  const rows = await sql`
+    with recursive up as (
+      select l.id as launch_id, m.id, m.name, m.parent_id, m.state_code, 0 as depth from market_launches l join markets m on m.id = l.market_id where l.archived_at is null
+      union all select up.launch_id, m.id, m.name, m.parent_id, m.state_code, up.depth + 1 from markets m join up on m.id = up.parent_id
+    )
+    select launch_id, array_agg(name order by depth) as names, (array_agg(state_code order by depth) filter (where state_code is not null))[1] as state_code
+    from up group by launch_id`;
+  const out = new Set<string>();
+  for (const r of rows) {
+    const geo = geos.find((g) => g.launchId === (r.launchId as string));
+    const state = (r.stateCode as string | null) ?? geo?.state ?? null;
+    if (isFounderApprovedMarket(r.names as string[], state)) out.add(r.launchId as string);
+  }
+  return out;
+}
+
 /** Markets covered by a live (active/reserved) exclusivity scope: the scope
  * market, its descendants and its ancestors all conflict (spec 052). */
 async function exclusiveMarketIds(): Promise<Set<string>> {
@@ -129,7 +156,7 @@ async function competitorRank(runId: string, launchId: string, competitorId: str
   return { rank: ordered.findIndex((v) => v <= mine) + 1, universe: ids.length };
 }
 
-async function assemble(p: Row, ctx: { now: Date; protectedIds: Set<string>; exclusiveIds: Set<string>; geos: Awaited<ReturnType<typeof launchGeographies>> }): Promise<{ facts: T1CandidateFacts; snapshot: MismatchEvidenceSnapshot | null; rawReasons: string[] }> {
+async function assemble(p: Row, ctx: { now: Date; protectedIds: Set<string>; approvedIds: Set<string>; exclusiveIds: Set<string>; units: Awaited<ReturnType<typeof contactedUnits>>; geos: Awaited<ReturnType<typeof launchGeographies>> }): Promise<{ facts: T1CandidateFacts; snapshot: MismatchEvidenceSnapshot | null; rawReasons: string[] }> {
   const [sendRow] = await sql`select 1 from prospect_outreach_sends where prospect_id = ${p.id} and allowed limit 1`;
   const [seqRow] = await sql`select 1 from outreach_followup_sequences where prospect_id = ${p.id} and status in ('active','paused') limit 1`;
   const [posRow] = await sql`select 1 from prospect_replies where prospect_id = ${p.id} and classification = any(${POSITIVE_REPLIES}::text[]) limit 1`;
@@ -173,12 +200,16 @@ async function assemble(p: Row, ctx: { now: Date; protectedIds: Set<string>; exc
     const [rt] = await sql`select entity_type, entity_name, team_lead from realtrends_records where company_id = ${p.companyId} and match_status in ('high_confidence','confirmed') order by (match_status='confirmed') desc limit 1`;
     if (rt) leadPersonKey = rt.entityType === "team" ? firstLast(rt.teamLead as string | null) : firstLast(rt.entityName as string);
   }
+  const brokerageKey = p.brokerageAffiliation ? normalizeBrokerage(p.brokerageAffiliation) : null;
+  // Dispatch policy v2: another prospect of the same buying unit already has a cold sequence.
+  const others = (ids: Set<string> | undefined) => Boolean(ids && [...ids].some((id) => id !== p.id));
+  const unitContacted = others(p.companyId ? ctx.units.companies.get(p.companyId) : undefined) || others(leadPersonKey ? ctx.units.leads.get(`${p.launchId}:${leadPersonKey}`) : undefined);
   const contactFL = firstLast(p.contactName);
   const leadFL = firstLast(p.prospectType === "team" ? p.teamLeader : p.businessName) ?? firstLast(p.teamLeader);
   const facts: T1CandidateFacts = {
     prospectId: p.id, companyId: p.companyId, name: p.businessName, prospectType: p.prospectType,
     entityLevel: review?.prospect.production?.entityType ?? null,
-    market: { launchId: p.launchId, name: `${p.marketName}, ${p.stateCode ?? "?"}`, stateCode: p.stateCode, protected: ctx.protectedIds.has(p.marketId), exclusiveConflict: ctx.exclusiveIds.has(p.marketId) || ["possible", "partial", "direct", "blocked"].includes(p.conflictStatus), launchStatus: p.launchStatus },
+    market: { launchId: p.launchId, name: `${p.marketName}, ${p.stateCode ?? "?"}`, stateCode: p.stateCode, protected: ctx.protectedIds.has(p.marketId), founderApproved: ctx.approvedIds.has(p.launchId), exclusiveConflict: ctx.exclusiveIds.has(p.marketId) || ["possible", "partial", "direct", "blocked"].includes(p.conflictStatus), launchStatus: p.launchStatus },
     outreach: { stage: p.stage, contacted: Boolean(sendRow), activeSequence: Boolean(seqRow), positiveReply: Boolean(posRow), engagement: Boolean(engRow), declined: Boolean(decRow), doNotContact: p.doNotContact, suppressed, personRecentlyContacted: personRecent },
     mismatch: { eligible: Boolean(e?.eligible && e.selected), reasonCodes: e?.reasonCodes ?? ["NO_REVIEW"] },
     release,
@@ -186,9 +217,28 @@ async function assemble(p: Row, ctx: { now: Date; protectedIds: Set<string>; exc
     contact: p.contactId && p.contactEmail ? { id: p.contactId, name: p.contactName ?? "", role: p.contactRole, email: p.contactEmail, provenance: (p.contactProvenance ?? "manual") as ProvenanceLabel, generic: isGenericEmail(p.contactEmail), isDecisionMaker: contactFL !== null && contactFL === leadFL } : null,
     firstName: review?.firstName ?? null,
     features, buyerSignals: signals, websiteOnFile: Boolean(p.website),
-    dedupe: { brokerageKey: p.brokerageAffiliation ? normalizeBrokerage(p.brokerageAffiliation) : null, leadPersonKey },
+    dedupe: { brokerageKey, leadPersonKey, unitContacted, localOfficeKey: localOfficeKeyFor(p.launchId, brokerageKey) },
   };
   return { facts, snapshot, rawReasons };
+}
+
+/** Next ET business days with their new-Touch-1 capacity: the daily quota,
+ * bounded by the transport cap minus follow-ups already due that day. */
+async function dispatchDayCapacities(now: Date): Promise<{ day: string; capacity: number }[]> {
+  const tz = "America/New_York";
+  const due = await sql`select to_char(next_due_at at time zone ${tz}, 'YYYY-MM-DD') as d, count(*)::int as n from outreach_followup_sequences where status = 'active' and next_due_at is not null and next_due_at < now() + interval '21 days' group by 1`;
+  const dueBy = new Map(due.map((r) => [r.d as string, Number(r.n)]));
+  const [sent] = await sql`select count(*)::int as n from prospect_outreach_sends where allowed and channel = 'gmail' and sent_at > now() - interval '24 hours'`;
+  const days: { day: string; capacity: number }[] = [];
+  for (let i = 0; days.length < 10; i++) {
+    const d = new Date(now.getTime() + i * 86_400_000);
+    const wd = d.toLocaleDateString("en-US", { timeZone: tz, weekday: "short" });
+    if (wd === "Sat" || wd === "Sun") continue;
+    const key = d.toLocaleDateString("en-CA", { timeZone: tz });
+    const cap = Math.max(0, Math.min(DAILY_SEND_QUOTA, GMAIL_DAILY_SEND_CAP - (dueBy.get(key) ?? 0)) - (i === 0 ? Number(sent?.n ?? 0) : 0));
+    days.push({ day: key, capacity: cap });
+  }
+  return days;
 }
 
 async function loadUniverse(): Promise<Row[]> {
@@ -203,19 +253,46 @@ async function loadUniverse(): Promise<Row[]> {
   return rows as unknown as Row[];
 }
 
-async function priorBrokerageSends(items: { facts: T1CandidateFacts }[]): Promise<Map<string, number>> {
+/** Dispatch policy v2: buying units that already received a cold send or
+ * hold an active/paused sequence, keyed by canonical company and by
+ * (launch, provenanced lead person). Each key maps to the prospect ids that
+ * contributed, so a prospect's OWN history never counts as a unit collision
+ * (that is ALREADY_CONTACTED / ACTIVE_SEQUENCE). */
+async function contactedUnits(): Promise<{ companies: Map<string, Set<string>>; leads: Map<string, Set<string>> }> {
+  const rows = await sql`
+    select p.id, p.company_id, p.launch_id, rt.entity_type, rt.entity_name, rt.team_lead
+    from prospects p
+    left join lateral (
+      select entity_type, entity_name, team_lead from realtrends_records r
+      where r.company_id = p.company_id and r.match_status in ('high_confidence','confirmed')
+      order by (r.match_status = 'confirmed') desc limit 1) rt on true
+    where exists (select 1 from prospect_outreach_sends s where s.prospect_id = p.id and s.allowed)
+       or exists (select 1 from outreach_followup_sequences q where q.prospect_id = p.id and q.status in ('active','paused'))`;
+  const companies = new Map<string, Set<string>>();
+  const leads = new Map<string, Set<string>>();
+  const add = (m: Map<string, Set<string>>, k: string, id: string) => { if (!m.has(k)) m.set(k, new Set()); m.get(k)!.add(id); };
+  for (const r of rows) {
+    if (r.companyId) add(companies, r.companyId as string, r.id as string);
+    const lead = r.entityType === "team" ? firstLast(r.teamLead as string | null) : r.entityName ? firstLast(r.entityName as string) : null;
+    if (lead) add(leads, `${r.launchId}:${lead}`, r.id as string);
+  }
+  return { companies, leads };
+}
+
+/** Allowed sends in the trailing 30 days per registry-backed local office
+ * (dispatch policy v2). Empty registry → empty map. */
+async function priorOfficeSends(items: { facts: T1CandidateFacts }[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   for (const { facts } of items) {
+    const office = facts.dedupe.localOfficeKey;
     const bk = facts.dedupe.brokerageKey;
-    if (!bk) continue;
-    const key = brokerageCapKey(facts.market.launchId, bk);
-    if (out.has(key)) continue;
+    if (!office || !bk || out.has(office)) continue;
     const [{ n } = { n: 0 }] = await sql`
       select count(distinct s.prospect_id)::int as n from prospect_outreach_sends s join prospects p on p.id = s.prospect_id
       where s.allowed and p.launch_id = ${facts.market.launchId}
         and trim(regexp_replace(regexp_replace(lower(trim(p.brokerage_affiliation)), ${BROKERAGE_CUT_COMMA}, ''), ${BROKERAGE_CUT_SUFFIX}, '')) = ${bk}
         and s.sent_at > now() - interval '30 days'`;
-    out.set(key, Number(n));
+    out.set(office, Number(n));
   }
   return out;
 }
@@ -249,15 +326,18 @@ async function main(): Promise<void> {
   const cohortId = arg("--cohort") ?? "t1-cohort-002";
   const freeze = process.argv.includes("--freeze");
   const drafts = process.argv.includes("--drafts");
+  const noCap = process.argv.includes("--no-cap");
   const now = new Date();
   const user = await operatorUser();
   const [protectedIds, exclusiveIds, geos] = await Promise.all([protectedMarketIds(), exclusiveMarketIds(), launchGeographies(sql)]);
+  const approvedIds = await approvedLaunchIds(geos);
+  const units = await contactedUnits();
   const universe = await loadUniverse();
   console.log(`cohort ${cohortId} · policy ${T1_COHORT_POLICY_VERSION} · template ${MISMATCH_TEMPLATE_VERSION} · universe ${universe.length}`);
 
   const items: { facts: T1CandidateFacts; evaluation: T1Evaluation; rawReasons: string[] }[] = [];
   for (const p of universe) {
-    const { facts, rawReasons } = await assemble(p, { now, protectedIds, exclusiveIds, geos });
+    const { facts, rawReasons } = await assemble(p, { now, protectedIds, approvedIds, exclusiveIds, units, geos });
     items.push({ facts, evaluation: evaluateCandidate(facts, now), rawReasons });
   }
   const deduped = dedupeBuyingUnits(items).map((d) => ({ ...d, rawReasons: items.find((i) => i.facts.prospectId === d.facts.prospectId)!.rawReasons }));
@@ -279,18 +359,21 @@ async function main(): Promise<void> {
   const contactBottlenecks: Record<string, number> = {};
   for (const i of f5.filter((i) => !f6.includes(i))) { const k = contactBottleneck(i.evaluation.blockers) ?? "OTHER"; contactBottlenecks[k] = (contactBottlenecks[k] ?? 0) + 1; }
 
-  const prior = await priorBrokerageSends(ready);
-  const selection = selectCohort({ items: ready, priorBrokerageSends: prior });
+  const prior = await priorOfficeSends(ready);
+  const selection = selectCohort({ items: ready, priorOfficeSends: prior, ...(noCap ? { max: Number.POSITIVE_INFINITY } : {}) });
 
   // Pre-freeze revalidation against fresh facts (corrections, agreements, replies landed meanwhile).
   const fresh = new Map<string, T1CandidateFacts>();
   for (const s of selection.selected) {
     const row = universe.find((u) => u.id === s.facts.prospectId)!;
-    fresh.set(s.facts.prospectId, (await assemble(row, { now, protectedIds, exclusiveIds, geos })).facts);
+    fresh.set(s.facts.prospectId, (await assemble(row, { now, protectedIds, approvedIds, exclusiveIds, units, geos })).facts);
   }
   const reval = revalidateBeforeFreeze(selection.selected, fresh, now);
   const members = freezeCohort(cohortId, reval.kept, now);
   const verdict = cohortVerdict(members.length);
+  // Dispatch policy v2: per-day brand concentration is dispatch ORDER only.
+  const dispatchDays = await dispatchDayCapacities(now);
+  const dailyPlan = planDailyBatches(members.map((m) => ({ prospectId: m.prospectId, brandKey: reval.kept.find((k) => k.facts.prospectId === m.prospectId)?.facts.dedupe.brokerageKey ?? null })), dispatchDays);
 
   const count = (xs: T1CohortMember[], key: (m: T1CohortMember) => string) => xs.reduce<Record<string, number>>((acc, m) => { const k = key(m); acc[k] = (acc[k] ?? 0) + 1; return acc; }, {});
   const report = {
@@ -298,6 +381,7 @@ async function main(): Promise<void> {
     funnel, evidenceBottlenecks, contactBottlenecks,
     marketCoverage: count(members, (m) => m.market.name), entityMix: count(members, (m) => m.entityType), recMix: count(members, (m) => m.recBucket), bandMix: count(members, (m) => m.band),
     deferred: selection.deferred, droppedAtRevalidation: reval.dropped,
+    dispatchPolicy: { version: DISPATCH_POLICY_VERSION, brandCap: dailyPlan.brandCap, days: dispatchDays, plan: dailyPlan.assigned, unassigned: dailyPlan.unassigned },
     members,
     nonMembers: deduped.filter((i) => !members.some((m) => m.prospectId === i.facts.prospectId)).map((i) => ({ prospectId: i.facts.prospectId, name: i.facts.name, market: i.facts.market.name, blockers: i.evaluation.blockers, rawReasons: i.rawReasons, band: i.evaluation.band })),
   };
@@ -305,7 +389,8 @@ async function main(): Promise<void> {
   mkdirSync(dir, { recursive: true });
   writeFileSync(`${dir}/${freeze ? "snapshot" : "dry-run"}-${now.toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`, JSON.stringify(report, null, 1));
 
-  console.log(JSON.stringify({ verdict, funnel, evidenceBottlenecks, contactBottlenecks, marketCoverage: report.marketCoverage, entityMix: report.entityMix, recMix: report.recMix, bandMix: report.bandMix, deferred: selection.deferred.length, dropped: reval.dropped }, null, 1));
+  const byDay = dailyPlan.assigned.reduce<Record<string, number>>((acc, a) => { acc[a.day] = (acc[a.day] ?? 0) + 1; return acc; }, {});
+  console.log(JSON.stringify({ verdict, funnel, evidenceBottlenecks, contactBottlenecks, marketCoverage: report.marketCoverage, entityMix: report.entityMix, recMix: report.recMix, bandMix: report.bandMix, deferred: selection.deferred.length, deferredReasons: selection.deferred.reduce<Record<string, number>>((acc, d) => { acc[d.reason] = (acc[d.reason] ?? 0) + 1; return acc; }, {}), dropped: reval.dropped, dispatchByDay: byDay, dispatchUnassigned: dailyPlan.unassigned.length, brandCap: dailyPlan.brandCap }, null, 1));
   for (const m of members) console.log(`${m.band.padEnd(2)} ${m.market.name.padEnd(20)} ${m.entityType.padEnd(16)} ${m.name.padEnd(40)} ${m.features.prospectRecs}/${m.features.competitorRecs}/${m.features.denominator} gap ${m.features.absoluteGap} ratio ${m.features.competitorProductionRatio?.toFixed(2)} vs ${m.features.competitorName} · ${m.contact.name} <${m.contact.email}>`);
 
   if (freeze) {

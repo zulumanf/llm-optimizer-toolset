@@ -43,11 +43,11 @@ import {
   type ProspectStage,
   type ProspectType,
   RECONTACT_PERSON_WINDOW_DAYS,
-  BROKERAGE_SEND_CAP_30D,
   BROKERAGE_CUT_COMMA,
   BROKERAGE_CUT_SUFFIX,
   normalizeBrokerage,
   GMAIL_DAILY_SEND_CAP,
+  dailyBrandCap,
   SCHEDULED_SEND_MAX_DAYS_AHEAD,
   UNATTENDED_SEND_BLOCKED_STAGES,
   CONTACT_GATE_STAGE,
@@ -55,6 +55,7 @@ import {
   REPLY_CLASSIFICATIONS,
   type ReplyClassification,
 } from "@/lib/prospects/constants";
+import { LOCAL_OFFICE_SEND_CAP_30D, localOfficeKeyFor } from "@/lib/prospects/dispatch-policy";
 import { atOrPast, validateTransition } from "@/lib/prospects/stages";
 import {
   generateFindingCandidates,
@@ -2401,12 +2402,43 @@ export async function sendProspectDraft(
       } else {
         check("recontact_person", true, "no email to match");
       }
-      // brokerage_affiliation rides the lockProspect column list now — the
-      // row was already locked above, so re-selecting it was pure waste.
+      // Dispatch policy v2 (founder directive 2026-09-15): the collision we
+      // guard is the canonical BUYING UNIT — the same canonical company (any
+      // market), or an evidence-backed local office — never the brokerage
+      // brand. Independent teams under one national brand are independent
+      // buyers. Brand concentration is a per-day dispatch-order guard in the
+      // cohort planner and is reported here, not enforced.
+      if (prospect.companyId) {
+        const [unitPrior] = await tx`
+          select p.business_name, s.sent_at from prospect_outreach_sends s
+          join prospects p on p.id = s.prospect_id
+          where s.allowed and s.prospect_id != ${draft.prospectId}
+            and p.company_id = ${prospect.companyId}
+          order by s.sent_at desc limit 1
+        `;
+        const [unitSeq] = await tx`
+          select p.business_name from outreach_followup_sequences q
+          join prospects p on p.id = q.prospect_id
+          where q.prospect_id != ${draft.prospectId} and q.status in ('active', 'paused')
+            and p.company_id = ${prospect.companyId}
+          limit 1
+        `;
+        check(
+          "recontact_buying_unit",
+          !unitPrior && !unitSeq,
+          unitPrior
+            ? `Another prospect of the same canonical business (${unitPrior.businessName}) was already sent a cold sequence on ${(unitPrior.sentAt as Date).toISOString().slice(0, 10)} — one cold sequence per buying unit.`
+            : unitSeq
+              ? `Another prospect of the same canonical business (${unitSeq.businessName}) holds an active sequence — one cold sequence per buying unit.`
+              : "no other prospect of this buying unit has a cold sequence"
+        );
+      } else {
+        check("recontact_buying_unit", true, "no canonical company link; unit checked at the person level only");
+      }
       const brokerage = prospect.brokerageAffiliation?.trim();
-      if (brokerage) {
-        // Spec 120: scoped to this prospect's market (launch), matched on
-        // the normalized name so suffix variants share one cap bucket.
+      const brokerageKey = brokerage ? normalizeBrokerage(brokerage) : null;
+      const office = localOfficeKeyFor(prospect.launchId, brokerageKey);
+      if (office && brokerageKey) {
         const [{ n } = { n: 0 }] = await tx`
           select count(distinct s.prospect_id)::int as n from prospect_outreach_sends s
           join prospects p on p.id = s.prospect_id
@@ -2414,18 +2446,32 @@ export async function sendProspectDraft(
             and s.prospect_id != ${draft.prospectId}
             and p.launch_id = ${prospect.launchId}
             and trim(regexp_replace(regexp_replace(lower(trim(p.brokerage_affiliation)),
-                  ${BROKERAGE_CUT_COMMA}, ''), ${BROKERAGE_CUT_SUFFIX}, '')) = ${normalizeBrokerage(brokerage)}
+                  ${BROKERAGE_CUT_COMMA}, ''), ${BROKERAGE_CUT_SUFFIX}, '')) = ${brokerageKey}
             and s.sent_at > now() - interval '30 days'
         `;
         check(
-          "recontact_brokerage",
-          Number(n) < BROKERAGE_SEND_CAP_30D,
-          Number(n) < BROKERAGE_SEND_CAP_30D
-            ? `${n} of ${BROKERAGE_SEND_CAP_30D} brokerage sends used this month in this market`
-            : `${brokerage} already received ${n} sends in this market in 30 days — the cap is ${BROKERAGE_SEND_CAP_30D}.`
+          "recontact_local_office",
+          Number(n) < LOCAL_OFFICE_SEND_CAP_30D,
+          Number(n) < LOCAL_OFFICE_SEND_CAP_30D
+            ? `${n} of ${LOCAL_OFFICE_SEND_CAP_30D} local-office sends used in 30 days (${office})`
+            : `${brokerage} local office (${office}) already received ${n} send(s) in 30 days — evidence-backed office guard.`
         );
       } else {
-        check("recontact_brokerage", true, "no brokerage affiliation recorded");
+        check("recontact_local_office", true, "no evidence-backed local office collision on record");
+      }
+      if (brokerageKey) {
+        const [{ n } = { n: 0 }] = await tx`
+          select count(distinct s.prospect_id)::int as n from prospect_outreach_sends s
+          join prospects p on p.id = s.prospect_id
+          where s.allowed and s.prospect_id != ${draft.prospectId}
+            and trim(regexp_replace(regexp_replace(lower(trim(p.brokerage_affiliation)),
+                  ${BROKERAGE_CUT_COMMA}, ''), ${BROKERAGE_CUT_SUFFIX}, '')) = ${brokerageKey}
+            and (s.sent_at at time zone 'America/New_York')::date = (now() at time zone 'America/New_York')::date
+        `;
+        // Soft guard: reported for the operator; the planner spreads brands across days.
+        check("brand_concentration", true, `${n} send(s) today from ${brokerage}; daily brand share guard is ${dailyBrandCap()} (planner-enforced, not a send block)`);
+      } else {
+        check("brand_concentration", true, "no brokerage affiliation recorded");
       }
 
       // Territory re-check (spec 052, audit 10.7): the exclusivity gate ran

@@ -60,6 +60,9 @@ const envSchema = z
     MCP_USER_ID: z.string().optional(),
     // Spend ceiling override (lib/constants.ts falls back to $25).
     DAILY_SPEND_CEILING_USD: z.string().optional(),
+    // Temporary sprint envelope (lib/constants.ts; both required to exist).
+    SPRINT_SPEND_CEILING_USD: z.string().optional(),
+    SPRINT_SPEND_AUTHORIZED_AT: z.string().optional(),
     // Prospect audit page commission-estimate rate (defaults to 0.025).
     COMMISSION_RATE_ESTIMATE: z.string().optional(),
     // Audit-page display credibility fields (PR B) — display only; the

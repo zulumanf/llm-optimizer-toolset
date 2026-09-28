@@ -132,6 +132,19 @@ export async function spendLast24hUsd(): Promise<number> {
   return Number(rows[0]?.total ?? 0);
 }
 
+/** Provider spend (responses + agent calls) since an instant — the sprint
+ * envelope counter (lib/runs/spend-guard.ts). */
+export async function spendSinceUsd(since: Date): Promise<number> {
+  const rows = await sql`
+    select
+      (select coalesce(sum(cost_usd), 0) from responses where requested_at > ${since})
+      +
+      (select coalesce(sum(cost_micro_usd), 0) / 1e6 from llm_calls where called_at > ${since})
+      as total
+  `;
+  return Number(rows[0]?.total ?? 0);
+}
+
 export async function runCostMicroUsd(runId: string): Promise<number> {
   const rows = await sql`
     select coalesce(sum(cost_usd), 0) as total from responses where run_id = ${runId}

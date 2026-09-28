@@ -120,7 +120,7 @@ describe("agent gates", () => {
 const TAIL = ["Brooklyn, NY", 'If you\'d rather not hear from us, reply "unsubscribe" and we will not contact you again.'];
 const URL = "https://app.recommendedfirst.com/audit/kane-and-partners/y9BnX64cZtgN08Q0";
 
-describe("delivery email (spec 137 template v2, manifest-fed)", () => {
+describe("delivery email (template v3: manifest-fed, one zip-code question)", () => {
   const manifest = manifestFor(snapshot, "team");
   it("renders one link and ONE compiled comparison sentence whose figures are all manifest figures, and passes lint + assertion", () => {
     const team = renderReportDelivery({ firstName: "Ryan", brandedUrl: URL, manifest, footerTail: TAIL });
@@ -129,6 +129,9 @@ describe("delivery email (spec 137 template v2, manifest-fed)", () => {
     expect(team.summary.factIds).toEqual(["FACT_COMPETITOR_NAME", "FACT_PRODUCTION_RATIO", "FACT_RECOMMENDATION_MULTIPLE", "FACT_DENOMINATOR"]);
     expect(lintReportDelivery(team.body, URL)).toEqual([]);
     expect(assertDeliveryMatchesManifest(team.body, URL, manifest)).toEqual([]);
+    expect(team.body).toContain("which two or three zip codes matter most to you?");
+    // Adding a second question must trip the follow-up one-ask rule.
+    expect(lintReportDelivery(team.body.replace("Take a look when you get a chance.", "Take a look when you get a chance. Sellers or buyers?"), URL).map((i) => i.detail).join()).toContain("more than one ask");
     expect(team.body).not.toMatch(/[—–]/);
     const agent = renderReportDelivery({ firstName: "Ryan", brandedUrl: URL, manifest: manifestFor(snapshot, "individual"), footerTail: TAIL });
     expect(agent.body).toContain("of your volume");

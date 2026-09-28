@@ -43,6 +43,20 @@ export const DAILY_SPEND_CEILING_USD = Number.isFinite(ceilingFromEnv)
   ? ceilingFromEnv
   : 25;
 
+/**
+ * Temporary sprint envelope (founder authorization 2026-09-15): total NEW
+ * provider spend since SPRINT_SPEND_AUTHORIZED_AT may not exceed
+ * SPRINT_SPEND_CEILING_USD. Both must be set for the gate to exist; unset
+ * means no sprint envelope (the daily pool still applies). Enforced in
+ * lib/runs/spend-guard.ts below the daily pool and above the per-run cap.
+ */
+const sprintCeilingFromEnv = Number(process.env.SPRINT_SPEND_CEILING_USD);
+export const SPRINT_SPEND_CEILING_USD: number | null =
+  process.env.SPRINT_SPEND_CEILING_USD && Number.isFinite(sprintCeilingFromEnv) ? sprintCeilingFromEnv : null;
+const sprintSinceFromEnv = process.env.SPRINT_SPEND_AUTHORIZED_AT;
+export const SPRINT_SPEND_AUTHORIZED_AT: Date | null =
+  sprintSinceFromEnv && !Number.isNaN(Date.parse(sprintSinceFromEnv)) ? new Date(sprintSinceFromEnv) : null;
+
 export const CONFIDENCE_REVIEW_THRESHOLD = 0.7;
 export const REVIEW_TIMEOUT_HOURS = 72;
 

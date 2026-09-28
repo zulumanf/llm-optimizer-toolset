@@ -225,6 +225,8 @@ async function research(c: DiscoveryCandidate, rec: ResearchRecord, now: Date, a
     }
   }
   rec.status = finalizeStatus(rec.attempts, tiers);
+  // A historical "found" attempt whose identity was later rejected leaves no contact: that is a REVIEW, never a FOUND without an address.
+  if (rec.status === "FOUND" && !rec.contact) rec.status = "REVIEW";
   return rec;
 }
 
@@ -318,7 +320,7 @@ async function main(): Promise<void> {
       const [city, state] = e.market.split("|");
       const c: DiscoveryCandidate = { candidateId: e.sourceRecordId, entityName: e.entity, entityType: e.entityType, decisionMaker: e.teamLead && e.teamLead.trim().split(/\s+/).length >= 2 ? e.teamLead : (e.entityType === "individual" ? e.entity : null), brokerage: e.brokerage, city: city!, state: state!, website: e.prospectId ? (websites.get(e.prospectId) ?? null) : null };
       const rec: ResearchRecord = cache[e.sourceRecordId] ?? { candidateId: e.sourceRecordId, version: CONTACT_DISCOVERY_VERSION, lastAttemptedAt: null, attempts: [], status: "PENDING", contact: null, generic: null, blockedHosts: [] };
-      try { await research(c, rec, now, allowRender); } catch (err) { rec.attempts.push({ at: now.toISOString(), sourceType: "search_discovered_page", url: "n/a", outcome: "TEMPORARY_FETCH_ERROR" }); rec.status = finalizeStatus(rec.attempts, ["search_discovered_page"]); console.error(`error ${e.entity}: ${(err as Error).message}`); }
+      try { await research(c, rec, now, allowRender); } catch (err) { rec.attempts.push({ at: now.toISOString(), sourceType: "search_discovered_page", url: "n/a", outcome: "TEMPORARY_FETCH_ERROR" }); rec.status = finalizeStatus(rec.attempts, ["search_discovered_page"]); if (rec.status === "FOUND" && !rec.contact) rec.status = "REVIEW"; console.error(`error ${e.entity}: ${(err as Error).message}`); }
       if (rec.status === "PENDING") { cache[e.sourceRecordId] = rec; continue; } // untouched by a blocked engine
       cache[e.sourceRecordId] = rec;
       results.push(rec);

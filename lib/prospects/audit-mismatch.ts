@@ -160,6 +160,16 @@ export function entityRef(entityType: ReportEntityType | null | undefined): { re
   return { ref: "your team", Ref: "Your team", yours: "your team's", team: true, isAre: "is" };
 }
 
+/** ENTITY_COPY_MATCHES_ENTITY_TYPE (founder QA 2026-09-15): Touch 1 copy
+ * addresses the MEASURED entity in its own second-person form — a team is
+ * "your team", an individual agent is "you", a brokerage is "your
+ * brokerage". An unknown entity type BLOCKS (null); it never defaults to a
+ * team the way report prose does. */
+export function touchEntityGrammar(entityType: string | null | undefined): ReturnType<typeof entityRef> | null {
+  if (entityType === "individual" || entityType === "team" || entityType === "brokerage") return entityRef(entityType);
+  return null;
+}
+
 const MAX_QUOTE = 240;
 const MAX_EXCERPTS_PER_QUESTION = 2;
 const GAP_MIN_COMPETITOR = 2;

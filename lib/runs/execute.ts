@@ -10,9 +10,8 @@ import {
   getRun,
   successfulCellKeys,
   runCostMicroUsd,
-  spendLast24hUsd,
 } from "@/db/runs";
-import { DAILY_SPEND_CEILING_USD } from "@/lib/constants";
+import { portfolioSpendGate } from "@/lib/runs/spend-guard";
 import type { FrozenPrompt } from "@/lib/prompts/types";
 import { getProvider } from "@/lib/ai/registry";
 import { withRetry } from "@/lib/ai/retry";
@@ -71,15 +70,15 @@ export async function executeRun(runId: string): Promise<void> {
   // Portfolio ceiling backstop (plan 2.7) — scheduled runs reach here
   // without passing startRun's check. A ceiling hit is a terminal state
   // with a reason, not a retry loop.
-  const spent = await spendLast24hUsd();
-  if (spent >= DAILY_SPEND_CEILING_USD) {
+  const gate = await portfolioSpendGate();
+  if (!gate.ok) {
     await sql`
       update runs set status = 'failed',
-        status_detail = ${`portfolio spend ceiling reached ($${spent.toFixed(2)} of $${DAILY_SPEND_CEILING_USD} in 24h) — retry the run once the window clears`},
+        status_detail = ${gate.reason},
         completed_at = now()
       where id = ${runId}
     `;
-    log("error", "run.spend_ceiling_hit", { runId, spent });
+    log("error", "run.spend_ceiling_hit", { runId, spent: gate.last24hUsd, sprintUsd: gate.sprintUsd });
     return;
   }
 

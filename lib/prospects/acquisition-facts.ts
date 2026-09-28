@@ -23,7 +23,7 @@ import {
   MISMATCH_TEMPLATE_VERSION,
   PRICING_REQUEST_RE,
   QA_FIXTURE_NAME_PREFIX,
-  REPORT_DELIVERY_TEMPLATE_VERSION,
+  REPORT_DELIVERY_TEMPLATE_VERSIONS,
 } from "@/lib/prospects/constants";
 import { policyStatedIn } from "@/lib/pricing/policy";
 import { STRONG_CORRECTION_TEMPLATE_VERSION } from "@/lib/prospects/correction-templates";
@@ -61,7 +61,8 @@ async function touch1(): Promise<T1Fact[]> {
       from prospect_outreach_sends s
       join outreach_drafts dr on dr.id = s.draft_id
       where s.allowed and dr.touch_number is null and dr.reply_to_id is null
-        and coalesce(dr.prompt_version, '') not in (${REPORT_DELIVERY_TEMPLATE_VERSION}, ${STRONG_CORRECTION_TEMPLATE_VERSION})
+        and coalesce(dr.prompt_version, '') <> ${STRONG_CORRECTION_TEMPLATE_VERSION}
+        and coalesce(dr.prompt_version, '') <> all(${[...REPORT_DELIVERY_TEMPLATE_VERSIONS]}::text[])
       union all
       select c.send_id, p.id, p.parent_id, p.evidence_snapshot, c.depth + 1
       from chain c join outreach_drafts p on p.id = c.parent_id
@@ -161,14 +162,14 @@ async function touchSends(): Promise<TouchSendFact[]> {
     select s.prospect_id, s.sent_at,
       case
         when dr.prompt_version = ${STRONG_CORRECTION_TEMPLATE_VERSION} then 'CORRECTION'
-        when dr.reply_to_id is not null or dr.prompt_version = ${REPORT_DELIVERY_TEMPLATE_VERSION} then 'FOUNDER'
+        when dr.reply_to_id is not null or dr.prompt_version = any(${[...REPORT_DELIVERY_TEMPLATE_VERSIONS]}::text[]) then 'FOUNDER'
         when dr.sequence_id is not null and dr.touch_number = 2 then 'T2'
         when dr.sequence_id is not null and dr.touch_number = 3 then 'T3'
       end as kind,
       dr.body
     from prospect_outreach_sends s join outreach_drafts dr on dr.id = s.draft_id join prospects p on p.id = s.prospect_id
     where s.allowed and p.archived_at is null
-      and (dr.prompt_version in (${STRONG_CORRECTION_TEMPLATE_VERSION}, ${REPORT_DELIVERY_TEMPLATE_VERSION})
+      and (dr.prompt_version = ${STRONG_CORRECTION_TEMPLATE_VERSION} or dr.prompt_version = any(${[...REPORT_DELIVERY_TEMPLATE_VERSIONS]}::text[])
            or dr.reply_to_id is not null or (dr.sequence_id is not null and dr.touch_number in (2, 3)))
   `;
   return rows.map((r) => ({
@@ -244,7 +245,7 @@ async function queued(): Promise<QueuedDraftFact[]> {
     select to_char(dr.scheduled_send_at at time zone ${OPERATOR_TIMEZONE}, 'YYYY-MM-DD') as day,
       case
         when dr.prompt_version = ${STRONG_CORRECTION_TEMPLATE_VERSION} then 'CORRECTION'
-        when dr.reply_to_id is not null or dr.prompt_version = ${REPORT_DELIVERY_TEMPLATE_VERSION} then 'FOUNDER'
+        when dr.reply_to_id is not null or dr.prompt_version = any(${[...REPORT_DELIVERY_TEMPLATE_VERSIONS]}::text[]) then 'FOUNDER'
         when dr.sequence_id is not null and dr.touch_number = 2 then 'T2'
         when dr.sequence_id is not null and dr.touch_number = 3 then 'T3'
         when dr.prompt_version = ${MISMATCH_TEMPLATE_VERSION} or dr.evidence_snapshot is not null then 'T1'
