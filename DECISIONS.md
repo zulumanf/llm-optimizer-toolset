@@ -3356,3 +3356,53 @@ Public claims and the public dataset read the highest VERIFIED revision of each 
 **Wilmington.** Every run of the legacy "Market benchmark: Wilmington" project (2557818a, 66af5cdb, 62db6814, 843c7496) was executed over frozen prompts that name Delaware (4/9/9/9 prompts) and never North Carolina, from the only installed pack (hierarchy Delaware). By the provenance rule — a run's geography is what its immutable prompts ask about, not its label — the project is bound to Wilmington, DE (`scripts/wilmington-reconcile.ts --apply`, audited as `project.market_bound`). The run labelled "Cohort 124 batch 1: Wilmington, NC" (62db6814) is therefore a DE run; its 24 NC prospect bindings and the 2 NC bindings on 66af5cdb (26 prospects, 0 sends, 0 published audits) are cross-market contamination from the display-name collision. They stay in history, are blocked structurally by the new release check `BENCHMARK_MARKET_VERIFIED` (a market-level project's run may only back prospects of its own market), and cannot recur: `linkBenchmark` refuses cross-market bindings and `bootstrapMarketBenchmark` refuses a pack whose hierarchy names another state (`PACK_MARKET_MISMATCH`). `PROJECT_MARKET_ISOLATION` distinguishes active collisions (BLOCK) from these quarantined historical bindings (reported). Wilmington, NC has no canonical project until an NC pack is installed and benchmarked — a founder action, not a script.
 
 **Queue.** The 617 paused parse jobs are classified by `scripts/paused-jobs-release.ts` before any resume; only NO_OP and ENTITY_RESOLUTION_ONLY categories may be released without a fresh provider preflight, in bounded batches.
+
+## 2026-09-23 — Profile correction extracts canonically: URL ingestion, test-mode and unchanged-page safe stops (spec 145B)
+
+The reputation profile correction workflow replaced the weak `extract_claims` agent with `dom.extract_canonical_claims` (`ingestSource` → `extractClaimsFromSource`; claims land `proposed`; `detect_contradictions` receives `observedClaims` and `approvedFacts` as separate `contextPaths`).
+
+1. **Ingest by URL, not from the connector excerpt.** `cms.fetch_public_page` returns only the first 2,000 characters of raw HTML — mostly `<head>` — because it exists to verify that a page is live, and it is shared by content live-verification and competitor intelligence. Extracting from it would usually yield no claims, and `compare` would then record a clean profile nobody actually checked (PRINCIPLES #5). The node therefore passes the URL the fetch observed to the canonical `ingestSource` (`origin: "url_fetch"`, `privacy: "public"`, `sourceType: "website"`), which fetches the full page through the central outbound-fetch policy and records bytes, sha256, storage key, version and `workflow_run_id`. The fetch still gates it: no successful, reachable fetch with a URL, no ingestion. The trade-off is that the extracted bytes come from a second request moments after the connector's; the artifact, not the excerpt, is the provenance claims cite.
+2. **Safe stop in test mode.** A test run "may compute anything and change nothing" and costs nothing; canonical extraction fetches the network, calls a model and writes untagged proposed claims into a real client's review queue. There is no honest fixture for it — a canned result would need a source artifact id that does not exist — so test runs stop safely at this node with the reason stated.
+3. **Safe stop for an unchanged, already-extracted page.** Identical bytes return the existing artifact (`duplicate`), and `extractClaimsFromSource` is not idempotent, so a weekly scan would add a second copy of every claim to the review queue. Returning an empty claim list instead would route to "no error" and falsely record a clean profile. When the duplicate artifact's `processing_status` (read scoped to the run's project) is `claims_proposed`, the node stops safely naming the artifact; a duplicate that was never extracted is extracted.
+
+## 2026-09-23 — Profile correction live input: domain-event entry and node-level `inputFields` (spec 145C)
+
+A real `profile.error_detected` run never reached Spec 145B's canonical extraction. Its entry node declared a `schedule` entry point, so `triggerNode` refused the event-started run. And the event's `profileUrl` was forwarded whole to `cms.fetch_public_page`, whose contract requires `url`. Decisions:
+
+1. **The entry is `domain_event`.** Only the event carries a profile URL. The weekly `profile_scan` schedule trigger stays declared, but a scheduled run has no URL to fetch. It now fails at `entry` with the existing explicit mismatch message instead of calling a connector with no URL. No URL is invented. Where a scan gets its profiles belongs to a later spec.
+2. **Map the field on the node, not in the connector or the event.** Integration nodes gain an opt-in `inputFields` (capability field → dotted path, resolved by the existing `resolve()`). `fetch_profile` uses `{ url: "payload.profileUrl" }`, so the connector receives exactly `{ url }` and none of the event's other fields. A path that resolves to nothing omits the field, and the connector's own required-field check reports it. `inputFields` and `inputPath` are mutually exclusive, like `contextPath`/`contextPaths`, and the combination is refused at validation and at run time. Why not the alternatives: accepting `profileUrl` in the WordPress adapter would change a connector shared by content live-verification and competitor intelligence. Renaming the event field would break its schema and idempotency template. `det.map_fields` is DB-backed per-client import mapping. Nodes without `inputFields` build their payload exactly as before.
+
+## 2026-09-23 — Profile claims are scoped to the client's recorded identity (spec 145D)
+
+`dom.extract_canonical_claims` now passes `subjectAllowList` to `extractClaimsFromSource`. It reuses the existing check in code (`subjectIsInScope` / `scoreNameMatch`): out-of-scope drafts are returned in `rejected` and never inserted. Nothing in `claims.ts` changed.
+
+1. **Identity source.** `loadClientSubjectIdentity(projectId)` (`lib/knowledge/entities/subject-identity.ts`) reads, for that project only:
+   - `companies.name` and `companies.aliases` through `projects.subject_company_id`;
+   - active `person` entities where `knowledge_entities.project_id = projectId`.
+
+   It never reads the event payload, the fetched page, observed `entity_aliases`, or shared entities, because a page cannot vouch for whom it is about.
+2. **One loader, two callers.** Discovery's private `loadIdentity` delegates to it and is otherwise unchanged. It keeps the 2-principal cap (`DISCOVERY_PRINCIPAL_LIMIT`), the override path, its errors and its own allow-list composition. Profile correction uses every active person, because a directory page is often about one specific team member, and rejecting that person's claims would hide the errors the workflow exists to find.
+3. **Unresolved or empty identity is a safe stop before ingestion.** `subjectIsInScope` treats an empty list as "no scoping". The node therefore never sends `[]`: it safe-stops when the client has no subject company, and when the de-duplicated list is empty.
+4. **Known limitations, deliberately unchanged:** containment counts as a `probable` match (so if the client is "Compass Realty Group", a claim about "Compass" is kept), and claims whose subject is a pronoun are rejected. Changing either would also change discovery.
+
+## 2026-09-23 — Cross-artifact claim de-duplication in canonical storage (spec 145E)
+
+`extractClaimsFromSource` no longer inserts a second claim row when a changed page (a new source artifact) restates a fact the same project already holds. It is the only place canonical claims are written (profile correction, discovery, seed), so the rule lives there and not in a workflow.
+
+1. **Identity is conservative and deterministic.** Two claims are the same fact when all of these are equal:
+   - project;
+   - subject (lowercased, whitespace collapsed, trailing `.,;:` stripped);
+   - `normalizePredicate`;
+   - `normalizeCategory`;
+   - JSON value (`42` and `"42"` differ);
+   - as-of date (`draft.asOf ?? artifact.effective_date`, null-safe);
+   - the normalized statement against `canonical_text`.
+
+   The statement is in the key because the object isn't stored in any column. Without it, "affiliated with Compass" and "affiliated with Douglas Elliman" would merge. Paraphrases are proposed again on purpose: no fuzzy, embedding or model-based matching. Candidates are read from the existing `(project_id, normalized_predicate)` index and compared in TypeScript, so SQL and code normalization cannot drift.
+2. **Provenance is always kept; human decisions are never touched.** Every observation writes its evidence row (`ref_id` = the new artifact). What happens next depends on the match:
+   - **Same-privacy `proposed` claim:** gets the evidence id and artifact id appended. No new row and no `claim.proposed` event, so the reviewer sees one proposal with every source.
+   - **`approved`, `superseded` or `rejected` claim:** left exactly as it is, including `evidence_ids`, `source_artifact_ids` and `claim_versions`. Silently widening an approved evidence set would bypass the approval and could cross a privacy class, and re-proposing a rejected fact on every page change would override the reviewer. The observation is kept in its evidence row and in the audit `matched` detail.
+   - **Only a proposal of another privacy class:** inserted as a new proposal, as before, so evidence never crosses a privacy boundary.
+3. **Changed facts stay separate.** A different value, as-of date, statement or subject is a new proposed claim, and the contradiction scan runs unchanged.
+4. **Recurring errors are still compared.** The result gains `matched` alongside `proposed` (which still means rows inserted by this run, so discovery's and the seed's counts keep their meaning). The profile node hands `compare` `[...proposed, ...matched]`, so a page repeating a previously rejected error is still compared against approved facts.
+5. **Concurrency.** The storage transaction takes `pg_advisory_xact_lock(hashtext('claims:' || projectId))` (the `lib/parsing/backfill.ts` pattern) and locks candidate rows `for update`, so two concurrent extractions cannot both insert one fact. No migration was needed.

@@ -157,9 +157,36 @@ export interface ExtractedClaimProposal extends ProposedClaimDraft {
   excerptVerified: boolean;
 }
 
+/** Statuses whose claims count as a fact the client already holds (spec 145E). */
+export const KNOWN_CLAIM_STATUSES = ["proposed", "approved", "superseded", "rejected"] as const;
+export type KnownClaimStatus = (typeof KNOWN_CLAIM_STATUSES)[number];
+
+/**
+ * A draft that restates a fact this project already holds (spec 145E). No new
+ * claim row was written; the observation's evidence row was.
+ *
+ *  - `linked`: the match is a same-privacy proposal, and the new evidence and
+ *    artifact were attached to it for the reviewer.
+ *  - `already_known`: the match is approved, superseded or rejected, and was
+ *    left exactly as it was — the human decision stands.
+ */
+export interface MatchedClaimObservation extends ProposedClaimDraft {
+  claimId: string;
+  existingStatus: KnownClaimStatus;
+  resolution: "linked" | "already_known";
+  evidenceId: string;
+  materiality: Materiality;
+  requiresIndependentVerification: boolean;
+  subjectEntityId: string | null;
+  excerptVerified: true;
+}
+
 export interface ClaimExtractionResult {
   sourceArtifactId: string;
+  /** Claims inserted by this run. */
   proposed: ExtractedClaimProposal[];
+  /** Drafts that restate a fact the project already holds; nothing inserted. */
+  matched: MatchedClaimObservation[];
   /** Claims the model returned that failed a deterministic guard. */
   rejected: { wording: string; reason: string }[];
   contradictionsDetected: number;
@@ -284,14 +311,90 @@ export async function extractClaimsFromSource(
     }
 
     const proposed: ExtractedClaimProposal[] = [];
+    const matched: MatchedClaimObservation[] = [];
+    const privacy = artifact.privacyClassification as string;
     await sql.begin(async (tx) => {
+      // Spec 145E: one client's claim writes are serialised, so two concurrent
+      // extractions cannot both insert the same fact from different artifacts.
+      await tx`select pg_advisory_xact_lock(hashtext(${`claims:${projectId}`}))`;
+
       for (const draft of accepted) {
+        const asOf = draft.asOf ?? (artifact.effectiveDate as string | null) ?? null;
+        const predicate = normalizePredicate(draft.predicate);
+
+        // The new observation's provenance is kept whatever happens next.
         const [evidenceRow] = await tx`
           insert into evidence (project_id, kind, ref_id, url, note, created_by)
           values (${projectId}, 'source', ${artifact.id}, ${artifact.originalUrl ?? null},
             ${excerptNote(draft)}, ${user.id})
           returning id
         `;
+        const evidenceId = evidenceRow!.id as string;
+
+        const identity = claimIdentity({
+          subject: draft.subject,
+          predicate: draft.predicate,
+          category: draft.category,
+          value: draft.value,
+          asOf,
+          statement: draft.normalizedWording,
+        });
+        const candidateRows = await tx`
+          select id, status, privacy_status, created_at, subject_entity, normalized_predicate,
+            category, value, to_char(as_of, 'YYYY-MM-DD') as as_of, canonical_text
+          from claims
+          where project_id = ${projectId} and normalized_predicate = ${predicate}
+            and status = any(${[...KNOWN_CLAIM_STATUSES]})
+          for update
+        `;
+        const candidates: ClaimMatchCandidate[] = candidateRows
+          .filter((row) =>
+            sameClaimIdentity(
+              identity,
+              claimIdentity({
+                subject: (row.subjectEntity as string | null) ?? "",
+                predicate: (row.normalizedPredicate as string | null) ?? "",
+                category: row.category as string,
+                value: (row.value ?? null) as string | number | boolean | null,
+                asOf: (row.asOf as string | null) ?? null,
+                statement: row.canonicalText as string,
+              })
+            )
+          )
+          .map((row) => ({
+            id: row.id as string,
+            status: row.status as KnownClaimStatus,
+            privacyStatus: row.privacyStatus as string,
+            createdAt: new Date(row.createdAt as string | Date),
+          }));
+        const match = selectClaimMatch(candidates, privacy);
+
+        if (match) {
+          if (match.kind === "link") {
+            await tx`
+              update claims set
+                evidence_ids = array_append(evidence_ids, ${evidenceId}::uuid),
+                source_artifact_ids = case
+                  when ${artifact.id}::uuid = any(source_artifact_ids) then source_artifact_ids
+                  else array_append(source_artifact_ids, ${artifact.id}::uuid)
+                end,
+                updated_at = now()
+              where id = ${match.candidate.id} and status = 'proposed'
+            `;
+          }
+          matched.push({
+            ...draft,
+            claimId: match.candidate.id,
+            existingStatus: match.candidate.status,
+            resolution: match.kind === "link" ? "linked" : "already_known",
+            evidenceId,
+            subjectEntityId: draft.entityId,
+            requiresIndependentVerification: draft.materiality === "high_risk",
+            excerptVerified: true,
+          });
+          continue;
+        }
+
         const [claimRow] = await tx`
           insert into claims (
             project_id, key, canonical_text, value, as_of, status, evidence_ids,
@@ -301,11 +404,11 @@ export async function extractClaimsFromSource(
           ) values (
             ${projectId}, ${claimKey(draft)}, ${draft.normalizedWording},
             ${draft.value === null ? null : tx.json(draft.value as never)},
-            ${draft.asOf ?? (artifact.effectiveDate as string | null) ?? null},
-            'proposed', ${[evidenceRow!.id as string]}, ${user.id},
-            ${normalizePredicate(draft.predicate)}, ${draft.subject}, ${draft.entityId},
+            ${asOf},
+            'proposed', ${[evidenceId]}, ${user.id},
+            ${predicate}, ${draft.subject}, ${draft.entityId},
             ${draft.category}, ${draft.materiality}, ${draft.confidence},
-            ${artifact.privacyClassification}, 'unverified', ${[artifact.id as string]}
+            ${privacy}, 'unverified', ${[artifact.id as string]}
           )
           returning id
         `;
@@ -332,7 +435,16 @@ export async function extractClaimsFromSource(
         action: "knowledge.claims.extract",
         entity: "source_artifact",
         entityId: artifact.id as string,
-        detail: { proposed: proposed.length, rejected: rejected.length },
+        detail: {
+          proposed: proposed.length,
+          rejected: rejected.length,
+          matched: matched.map((m) => ({
+            claimId: m.claimId,
+            status: m.existingStatus,
+            evidenceId: m.evidenceId,
+            resolution: m.resolution,
+          })),
+        },
       });
     });
 
@@ -343,6 +455,7 @@ export async function extractClaimsFromSource(
     log("info", "knowledge.claims.extracted", {
       sourceArtifactId: artifact.id as string,
       proposed: proposed.length,
+      matched: matched.length,
       rejected: rejected.length,
       contradictions: scan.recorded,
     });
@@ -350,6 +463,7 @@ export async function extractClaimsFromSource(
     return ok({
       sourceArtifactId: artifact.id as string,
       proposed,
+      matched,
       rejected,
       contradictionsDetected: scan.recorded,
       costMicroUsd: run.costMicroUsd,
@@ -497,6 +611,111 @@ export function claimCandidateFingerprint(
     normalize(draft.object),
     normalize(draft.originalWording),
   ].join("\u0000");
+}
+
+// ------------------------------------------------- cross-artifact identity
+
+/**
+ * Text normalization for claim identity (spec 145E): lowercase, trim, collapse
+ * whitespace, strip trailing `.,;:`. Deliberately nothing more — no stemming,
+ * synonyms or paraphrase detection, so two different facts cannot merge.
+ */
+export function normalizeClaimText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.,;:]+$/, "")
+    .trim();
+}
+
+export interface ClaimIdentity {
+  subject: string;
+  predicate: string;
+  category: ClaimCategory;
+  /** JSON encoding of the value, so `42` and `"42"` differ and null is explicit. */
+  value: string;
+  asOf: string | null;
+  statement: string;
+}
+
+/**
+ * The deterministic identity of a claim within one project. The statement is
+ * part of it because a claim's object is not stored anywhere else: without it
+ * "affiliated with Compass" and "affiliated with Douglas Elliman" would merge.
+ */
+export function claimIdentity(claim: {
+  subject: string;
+  predicate: string;
+  category: string;
+  value: string | number | boolean | null;
+  asOf: string | null;
+  statement: string;
+}): ClaimIdentity {
+  return {
+    subject: normalizeClaimText(claim.subject),
+    predicate: normalizePredicate(claim.predicate),
+    category: normalizeCategory(claim.category),
+    value: JSON.stringify(claim.value ?? null),
+    asOf: claim.asOf,
+    statement: normalizeClaimText(claim.statement),
+  };
+}
+
+export function sameClaimIdentity(a: ClaimIdentity, b: ClaimIdentity): boolean {
+  return (
+    a.subject === b.subject &&
+    a.predicate === b.predicate &&
+    a.category === b.category &&
+    a.value === b.value &&
+    a.asOf === b.asOf &&
+    a.statement === b.statement
+  );
+}
+
+export interface ClaimMatchCandidate {
+  id: string;
+  status: KnownClaimStatus;
+  privacyStatus: string;
+  createdAt: Date;
+}
+
+const MATCH_STATUS_PRIORITY: Record<KnownClaimStatus, number> = {
+  proposed: 0,
+  approved: 1,
+  superseded: 2,
+  rejected: 3,
+};
+
+function byPriorityThenNewest(a: ClaimMatchCandidate, b: ClaimMatchCandidate): number {
+  const status = MATCH_STATUS_PRIORITY[a.status] - MATCH_STATUS_PRIORITY[b.status];
+  if (status !== 0) return status;
+  const age = b.createdAt.getTime() - a.createdAt.getTime();
+  if (age !== 0) return age;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * What to do with a draft whose identity matches existing claims.
+ *
+ *  - a same-privacy proposal → `link` (the reviewer sees every source);
+ *  - otherwise an approved, superseded or rejected claim → `known` (the human
+ *    decision stands, nothing is mutated);
+ *  - otherwise (only proposals of another privacy class) → null: insert a new
+ *    proposal, so evidence never crosses a privacy boundary.
+ *
+ * Ties break by status priority, then newest, then id.
+ */
+export function selectClaimMatch(
+  candidates: ClaimMatchCandidate[],
+  privacy: string
+): { kind: "link" | "known"; candidate: ClaimMatchCandidate } | null {
+  const ordered = [...candidates].sort(byPriorityThenNewest);
+  const linkable = ordered.find((c) => c.status === "proposed" && c.privacyStatus === privacy);
+  if (linkable) return { kind: "link", candidate: linkable };
+  const decided = ordered.find((c) => c.status !== "proposed");
+  if (decided) return { kind: "known", candidate: decided };
+  return null;
 }
 
 export function subjectIsInScope(subject: string, allowList?: string[]): boolean {

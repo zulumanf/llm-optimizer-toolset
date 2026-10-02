@@ -338,19 +338,32 @@ export const profileCorrectionWorkflow = defineWorkflow({
     "Corrections through unsupported channels become manual tasks, not silent failures.",
   ],
   nodes: [
-    trigger("entry", "schedule", "Profile scan"),
+    // Only the profile.error_detected event carries a profile URL (spec 145C).
+    // A scheduled scan has none and stops here with the entry-kind mismatch.
+    trigger("entry", "domain_event", "Profile error detected"),
+    // The connector's input contract is `{ url }`; the event names it profileUrl.
     fetch("fetch_profile", "cms.fetch_public_page", "Fetch the profile", {
-      inputPath: "payload",
+      inputFields: { url: "payload.profileUrl" },
     }),
-    agent("extract", "extract_claims", "Extract the profile's claims", {
-      contextPath: "fetch_profile.data",
-    }),
+    // Canonical path (spec 145B): ingest the observed page as a source artifact,
+    // then extract proposed claims from that artifact.
+    step(
+      "canonical_extract",
+      "dom.extract_canonical_claims",
+      "Extract the profile's claims (canonical)",
+      { contextPath: "fetch_profile" }
+    ),
     step("approved_facts", "dom.build_evidence_packet", "Load the approved facts", {
       purpose: "profile_correction",
       audience: "public",
     }),
+    // Observed and approved stay separate so the comparison cannot mistake a
+    // proposed claim for an approved fact.
     verify("compare", "detect_contradictions", "Compare against approved facts", {
-      contextPath: "approved_facts",
+      contextPaths: {
+        observedClaims: "canonical_extract.claims",
+        approvedFacts: "approved_facts",
+      },
     }),
     control("has_error", "ctl.condition", "Is there an omission or contradiction?", {
       path: "compare.contradictions.0.severity",
@@ -403,8 +416,8 @@ export const profileCorrectionWorkflow = defineWorkflow({
   ],
   edges: [
     edge("entry", "fetch_profile"),
-    edge("fetch_profile", "extract"),
-    edge("extract", "approved_facts"),
+    edge("fetch_profile", "canonical_extract"),
+    edge("canonical_extract", "approved_facts"),
     edge("approved_facts", "compare"),
     edge("compare", "has_error"),
     branch("has_error", "no_error", false),

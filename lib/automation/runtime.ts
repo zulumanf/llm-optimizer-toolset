@@ -156,14 +156,20 @@ export function validateNodePaths(definition: AutomationWorkflowDefinition): str
         }
       };
 
-      if (key === "contextPaths") {
+      if (key === "contextPaths" || key === "inputFields") {
+        if (key === "inputFields" && config.inputPath !== undefined) {
+          errors.push(
+            `node "${node.key}" may use inputPath or inputFields, not both.`
+          );
+        }
+
         if (
           value === null ||
           typeof value !== "object" ||
           Array.isArray(value)
         ) {
           errors.push(
-            `node "${node.key}" contextPaths must be an object of name -> dotted path.`
+            `node "${node.key}" ${key} must be an object of name -> dotted path.`
           );
           continue;
         }
@@ -176,13 +182,13 @@ export function validateNodePaths(definition: AutomationWorkflowDefinition): str
             rawPath.length === 0
           ) {
             errors.push(
-              `node "${node.key}" contextPaths.${name} must be a non-empty dotted path.`
+              `node "${node.key}" ${key}.${name} must be a non-empty dotted path.`
             );
             continue;
           }
 
           validatePath(
-            `contextPaths.${name}`,
+            `${key}.${name}`,
             rawPath
           );
         }

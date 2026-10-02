@@ -29,7 +29,23 @@ import type { NodeHandler, NodeResult } from "@/lib/workflow/types";
 async function payloadFor(
   ctx: Parameters<NodeHandler>[0]
 ): Promise<Record<string, unknown>> {
+  const configError = inputConfigError(ctx.config);
+  if (configError) throw new Error(configError);
+
   const params = (ctx.config.params as Record<string, unknown> | undefined) ?? {};
+
+  // Opt-in field mapping (spec 145C): build exactly the named fields, each read
+  // from its own path. A path that resolves to nothing omits the field, so the
+  // connector's own required-field check reports the gap.
+  if (ctx.config.inputFields !== undefined) {
+    const mapped: Record<string, unknown> = {};
+    for (const [field, path] of Object.entries(ctx.config.inputFields as Record<string, string>)) {
+      const value = await resolve(ctx, path);
+      if (value !== undefined && value !== null) mapped[field] = value;
+    }
+    return { ...params, ...mapped };
+  }
+
   const inputPath = ctx.config.inputPath === undefined ? null : String(ctx.config.inputPath);
   const upstream = inputPath ? await resolve(ctx, inputPath) : null;
   const dynamic =
@@ -39,9 +55,35 @@ async function payloadFor(
   return { ...params, ...dynamic };
 }
 
+/**
+ * Why an integration node's input configuration is unusable, or null. An
+ * `inputFields` map must be an object of non-empty dotted paths, and it may not
+ * be combined with `inputPath` — two sources for one payload is ambiguous.
+ */
+export function inputConfigError(config: Record<string, unknown>): string | null {
+  const fields = config.inputFields;
+  if (fields === undefined) return null;
+  if (config.inputPath !== undefined) {
+    return "integration node may use inputPath or inputFields, not both";
+  }
+  if (fields === null || typeof fields !== "object" || Array.isArray(fields)) {
+    return "inputFields must be an object of field -> dotted path";
+  }
+  for (const [field, path] of Object.entries(fields as Record<string, unknown>)) {
+    if (typeof path !== "string" || path.length === 0) {
+      return `inputFields.${field} must be a non-empty dotted path`;
+    }
+  }
+  return null;
+}
+
 /** The generic capability node. All non-send integration nodes use it. */
 function capabilityNode(capability: ConnectorCapability): NodeHandler {
   return async (ctx): Promise<NodeResult> => {
+    const configError = inputConfigError(ctx.config);
+    if (configError) {
+      return { outcome: "failed_terminal", error: configError, output: { ok: false, capability } };
+    }
     const mode = await runModeFor(ctx.runId);
     const result = await executeCapability({
       capability,
