@@ -130,3 +130,70 @@ Never optimize for "ranking." Always optimize for:
 | Unbreakable rules? | `PRINCIPLES.md` |
 
 When you make a non-obvious technical decision, append it to `DECISIONS.md` dated, with the why.
+
+---
+
+## FranciscoOS / Open-Weight Workforce Rules
+
+Recommended First is a domain operating system inside the wider FranciscoOS architecture.
+
+### Internal model boundary
+
+- Internal AI workforce tasks are migrating to open-weight, self-hosted models.
+- Ollama/local models are the preferred internal worker brains.
+- Proprietary AI providers may remain when they are systems being measured.
+- Never silently add or restore a proprietary model dependency for an internal task that has been promoted to local inference.
+- Measurement-provider code and internal-worker inference are separate architectural concerns.
+
+### Evidence boundary
+
+Keep these evidence classes separate:
+
+1. authoritative supplied business data
+2. public research evidence
+3. benchmark observations from measured AI systems
+
+Never fabricate evidence, benchmark outputs, citations, source artifacts, source IDs, or provenance.
+
+Search results are discovery leads, not evidence. Stored or fetched source material is evidence.
+
+### Canonical knowledge extraction
+
+- `extractClaimsFromSource` is the canonical knowledge-claim extraction path.
+- AI-generated claims enter as `proposed`.
+- Human approval remains the authority boundary.
+- Preserve deterministic source-verbatim, safety, deduplication, and materiality guards.
+- Do not confuse canonical `knowledge_claim_extraction` with the weaker automation task named `extract_claims`.
+- Do not mechanically invent a `sourceArtifactId` when a workflow does not actually possess source evidence.
+
+### Model promotion
+
+Promote a model-backed task only after its task-specific gate passes:
+
+- 0 runtime failures
+- 100% critical checks
+- at least 90% overall
+- explicit production routing test
+
+Raw model imperfections may be tolerated only when deterministic production guards demonstrably prevent them from entering protected downstream state.
+
+### Coding-agent authority
+
+OpenCode may:
+- inspect the repository
+- edit files for the current spec
+- add or update tests
+- run typecheck, lint, and tests
+- inspect Git status and diffs
+
+OpenCode must not:
+- commit
+- push
+- merge
+- deploy
+- modify secrets
+- alter production databases
+- redesign unrelated architecture
+- start another spec
+
+The human operator retains final approval.
