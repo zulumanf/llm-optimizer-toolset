@@ -26,6 +26,7 @@ import type { AgentCaller } from "@/lib/ai/agent";
 import { ingestSource } from "@/lib/knowledge/sources/ingest";
 import { extractClaimsFromSource } from "@/lib/knowledge/extraction/claims";
 import { normalizeUrl } from "@/lib/knowledge/normalize";
+import { loadClientSubjectIdentity } from "@/lib/knowledge/entities/subject-identity";
 import {
   buildDiscoveryQueries,
   discoveryPrompt,
@@ -57,6 +58,8 @@ export const DISCOVERY_SEARCH_MODEL = "gpt-5.4-mini-2026-03-17+search";
 const DEFAULT_MAX_PAGES = 15;
 /** Politeness gap between fetches, matching discover.ts. */
 const FETCH_DELAY_MS = 1_200;
+/** Principals searched for (and allowed as claim subjects) per run. */
+export const DISCOVERY_PRINCIPAL_LIMIT = 2;
 /** Default ceiling for one run, in micro-dollars. */
 const DEFAULT_COST_CAP_MICRO_USD = 3_000_000;
 
@@ -392,38 +395,26 @@ async function loadIdentity(
     affiliation?: string;
   }
 ): Promise<DiscoveryIdentity> {
-  const [row] = await sql`
-    select p.id, c.name, c.aliases, c.domain
-    from projects p
-    left join companies c on c.id = p.subject_company_id
-    where p.id = ${projectId}
-  `;
-  if (!row) throw new ClassifiedError("not_found", "Client not found.");
-  if (!row.name) {
+  const lookup = await loadClientSubjectIdentity(projectId, {
+    principalLimit: DISCOVERY_PRINCIPAL_LIMIT,
+    skipPrincipals: overrides.principals !== undefined,
+  });
+  if (lookup.status === "client_not_found") {
+    throw new ClassifiedError("not_found", "Client not found.");
+  }
+  if (lookup.status === "no_subject_company") {
     throw new ClassifiedError(
       "conflict",
       "This client has no subject company, so there is nothing to search for."
     );
   }
-
-  // Principals come from recorded entities rather than from parsing claim
-  // prose: an entity row is something a human already accepted as a person.
-  const principals =
-    overrides.principals ??
-    (
-      await sql`
-        select canonical_name from knowledge_entities
-        where project_id = ${projectId} and entity_type = 'person'
-          and status = 'active'
-        order by created_at limit 2
-      `
-    ).map((r) => r.canonicalName as string);
+  const { identity } = lookup;
 
   return {
-    name: row.name as string,
-    aliases: (row.aliases as string[] | null) ?? [],
-    domain: (row.domain as string | null) ?? undefined,
-    principals,
+    name: identity.name,
+    aliases: identity.aliases,
+    domain: identity.domain ?? undefined,
+    principals: overrides.principals ?? identity.principals,
     markets: overrides.markets ?? [],
     affiliation: overrides.affiliation,
   };
