@@ -339,7 +339,7 @@ describe.skipIf(!TEST_URL)("client engagement dry run (integration)", () => {
     unwrap(await eng.confirmMarketDefinition(operator, { engagementId: e0.id, definition: "The borough of Manhattan, residential brokerage, luxury segment only." }));
     unwrap(await eng.activateExclusivity(operator, { engagementId: e0.id }));
 
-    const rival = unwrap(await m.svc.createProspect(operator, { launchId: f.launchId, businessName: "Acme", prospectType: "team", companyId: f.rivalId, email: "acme@example.com" }));
+    const rival = unwrap(await m.svc.createProspect(operator, { launchId: f.launchId, businessName: "Acme", prospectType: "team", companyId: f.rivalId, email: "acme@example.com", fieldProvenance: { email: "publicly_sourced" } }));
     const [bench] = await sql`insert into prospect_benchmarks (prospect_id, run_id, company_id, created_by) values (${rival.prospectId}, ${f.runId}, ${f.rivalId}, ${operator.id}) returning id`;
     const [finding] = await sql`
       insert into prospect_findings (prospect_id, benchmark_id, kind, title, explanation, generator_version)

@@ -397,6 +397,7 @@ describe.skipIf(!TEST_URL)("prospect acquisition (integration)", () => {
         name: "Ana Rivera",
         email: "ana@riverateam.com",
         isPrimary: true,
+        provenance: "publicly_sourced",
       })
     );
     const draft = unwrap(

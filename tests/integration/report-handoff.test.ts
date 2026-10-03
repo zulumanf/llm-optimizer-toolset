@@ -207,7 +207,7 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
       await ea.applyVerifiedAliases(operator, PROSPECT_CO);
       await ea.recordEntityVerification(operator, { companyId: COMPETITOR_CO, level: "team", sourceUrl: "https://lumina.example/team" });
     }
-    const contact = unwrap(await svc.addContact(operator, { prospectId, name: "Ryan Kane", email: RECIPIENT, isPrimary: true }));
+    const contact = unwrap(await svc.addContact(operator, { prospectId, name: "Ryan Kane", email: RECIPIENT, isPrimary: true, provenance: "publicly_sourced" }));
     contactId = contact.contactId;
     await sql`update prospects set stage = 'contacted' where id = ${prospectId}`;
     const [draft] = await sql`

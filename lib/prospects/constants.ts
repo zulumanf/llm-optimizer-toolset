@@ -37,6 +37,53 @@ export const PROVENANCE_LABELS = [
 ] as const;
 export type ProvenanceLabel = (typeof PROVENANCE_LABELS)[number];
 
+/** The one send-ready contact rule (spec 042 labels; spec 148): only these
+ * provenances may carry outreach. Everything else — ai_inferred, estimated,
+ * manual, null, unknown — fails closed at every outreach gate. */
+export const SEND_READY_CONTACT_PROVENANCE: readonly ProvenanceLabel[] = ["verified", "publicly_sourced"];
+
+export function isSendReadyProvenance(provenance: string | null | undefined): boolean {
+  return provenance != null && (SEND_READY_CONTACT_PROVENANCE as readonly string[]).includes(provenance);
+}
+
+/** What an operator may label a hand-entered contact. Never ai_inferred or
+ * estimated — a guess is not entered as a contact. The default is the
+ * non-send-ready state; a send-ready label is always an explicit choice. */
+export const CONTACT_ENTRY_PROVENANCE = [
+  "manual",
+  "publicly_sourced",
+  "verified",
+] as const satisfies readonly ProvenanceLabel[];
+export type ContactEntryProvenance = (typeof CONTACT_ENTRY_PROVENANCE)[number];
+export const DEFAULT_CONTACT_ENTRY_PROVENANCE: ContactEntryProvenance = "manual";
+/** Fits the contact notes column limit (2000) with its "Source: " prefix. */
+export const CONTACT_SOURCE_MAX_LENGTH = 1900;
+/** A changed email drops to this unless the same edit labels it explicitly. */
+export const EMAIL_CHANGE_PROVENANCE: ProvenanceLabel = DEFAULT_CONTACT_ENTRY_PROVENANCE;
+
+export const CONTACT_PROVENANCE_COPY: Record<ProvenanceLabel, { label: string; hint: string }> = {
+  manual: {
+    label: "Manual / unverified",
+    hint: "Not send-ready. Outreach to this address is refused until someone checks it and re-labels the contact.",
+  },
+  publicly_sourced: {
+    label: "Publicly sourced",
+    hint: "Send-ready. Choose only if you saw this exact address on a public page (team site, brokerage profile). Put the page URL in Source.",
+  },
+  verified: {
+    label: "Verified",
+    hint: "Send-ready. Choose only if the address was confirmed directly (the person or their office gave it to you). Say how in Source.",
+  },
+  estimated: {
+    label: "Estimated",
+    hint: "Not send-ready.",
+  },
+  ai_inferred: {
+    label: "AI-inferred",
+    hint: "Not send-ready. A research guess, never sent to until checked.",
+  },
+};
+
 /** Evidence classification (migrations 074/085): who stands behind a fact.
  * 'sponsored' marks paid placement (e.g. sponsored publication coverage) —
  * kept and shown, but discounted by the authority score and badged

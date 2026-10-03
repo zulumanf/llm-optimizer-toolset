@@ -18,7 +18,11 @@ import {
 } from "@/lib/ai/perplexity";
 import { addAuthoritySignal, addContact } from "@/lib/prospects/service";
 import { addBuyingSignal } from "@/lib/prospects/buying-signals";
-import { BUYING_SIGNAL_KINDS } from "@/lib/prospects/constants";
+import {
+  BUYING_SIGNAL_KINDS,
+  isSendReadyProvenance,
+  SEND_READY_CONTACT_PROVENANCE,
+} from "@/lib/prospects/constants";
 import { decideStagedRow } from "@/lib/research/decisions";
 
 export const ENRICHMENT_VERSION = "prospect-enrichment-v1";
@@ -546,28 +550,34 @@ export interface ContactSupplyRow {
  * never sendable until a literal/authoritative verification exists — that
  * is the `contact-verify` step, not a new subsystem. */
 export async function contactSupplyQueue(limit = 200): Promise<ContactSupplyRow[]> {
+  // Spec 148: verification is the persisted contact provenance under the one
+  // send-ready rule — never an activity-log entry (no producer writes one).
+  const sendReady = SEND_READY_CONTACT_PROVENANCE as readonly string[];
   const rows = await sql`
     select p.id, p.business_name, p.prospect_type, m.name as market,
       coalesce(p.qualification_override, p.qualification_score, 0)::int as priority,
       (select c.provenance from prospect_contacts c where c.prospect_id = p.id and c.archived_at is null and c.email is not null and not c.do_not_contact
-        order by (c.provenance = 'manual') desc, (c.provenance = 'publicly_sourced') desc, c.created_at desc limit 1) as best_provenance,
+        order by (c.provenance = 'verified') desc, (c.provenance = 'publicly_sourced') desc, c.created_at desc limit 1) as best_provenance,
       (select c.provenance from prospect_contacts c where c.prospect_id = p.id and c.archived_at is null order by c.created_at desc limit 1) as any_provenance,
       (select count(*)::int from enrichment_proposals e where e.prospect_id = p.id and e.kind = 'contact_email' and e.status = 'pending') as pending,
-      (select count(*)::int from enrichment_proposals e where e.prospect_id = p.id and e.kind = 'contact_email' and e.status = 'failed') as failed,
-      exists (select 1 from prospect_activities a where a.prospect_id = p.id and a.kind = 'contact_verified') as verified_on_page
+      (select count(*)::int from enrichment_proposals e where e.prospect_id = p.id and e.kind = 'contact_email' and e.status = 'failed') as failed
     from prospects p
     left join market_launches l on l.id = p.launch_id left join markets m on m.id = l.market_id
     where p.archived_at is null and not p.do_not_contact and p.stage = 'identified'
       and p.business_name not like 'QA131%'
       and not exists (select 1 from prospect_contacts c where c.prospect_id = p.id and c.archived_at is null and c.email is not null
-        and not c.do_not_contact and c.provenance in ('publicly_sourced', 'manual'))
+        and not c.do_not_contact and c.provenance = any(${sendReady as string[]}))
     order by priority desc, p.created_at asc
     limit ${limit}
   `;
   return rows.map((r) => {
     const best = (r.bestProvenance as string | null) ?? null;
-    const contactStatus: ContactStatus = best === null ? "no_email" : best === "ai_inferred" ? "unverified_email" : "verified_email";
-    const verificationStatus: ContactVerificationStatus = r.verifiedOnPage ? "verified_on_page" : best === "publicly_sourced" || best === "manual" ? "publicly_sourced" : best === "ai_inferred" ? "ai_inferred_unverified" : "none";
+    const contactStatus: ContactStatus = best === null ? "no_email" : isSendReadyProvenance(best) ? "verified_email" : "unverified_email";
+    const verificationStatus: ContactVerificationStatus =
+      best === "verified" ? "verified_on_page"
+      : best === "publicly_sourced" ? "publicly_sourced"
+      : best === "ai_inferred" ? "ai_inferred_unverified"
+      : "none";
     const nextAction =
       contactStatus === "unverified_email" ? "Verify the inferred address literally on an authoritative page (contact-verify) before it can be used."
       : Number(r.pending) > 0 ? "Review the pending contact proposal; approve only with a page citation."

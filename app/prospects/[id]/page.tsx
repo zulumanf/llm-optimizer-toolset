@@ -91,7 +91,13 @@ import {
   ExhibitDialog,
 } from "@/components/prospects/exhibit-dialog";
 import { listExhibits } from "@/lib/prospects/exhibits";
-import { FRESHNESS_WINDOWS_DAYS, staleness } from "@/lib/prospects/constants";
+import {
+  CONTACT_PROVENANCE_COPY,
+  FRESHNESS_WINDOWS_DAYS,
+  isSendReadyProvenance,
+  staleness,
+  type ProvenanceLabel,
+} from "@/lib/prospects/constants";
 import { CONFIDENCE_REVIEW_THRESHOLD } from "@/lib/constants";
 import { prospectIntent, prospectTimeline } from "@/lib/prospects/dashboard";
 import { AuditEngagementSection } from "@/components/prospects/audit-engagement";
@@ -672,7 +678,13 @@ export default async function ProspectDetailPage({
                   <span className="font-medium">{c.name}</span>
                   {c.role && <span className="text-muted-foreground">{c.role}</span>}
                   {c.isPrimary && <Badge variant="default">primary</Badge>}
-                  <Badge variant="secondary">{c.provenance.replaceAll("_", " ")}</Badge>
+                  <Badge variant={isSendReadyProvenance(c.provenance) ? "outline" : "secondary"}>
+                    {CONTACT_PROVENANCE_COPY[c.provenance as ProvenanceLabel]?.label ??
+                      c.provenance.replaceAll("_", " ")}
+                  </Badge>
+                  {c.email && !isSendReadyProvenance(c.provenance) && (
+                    <Badge variant="destructive">verify before sending</Badge>
+                  )}
                   {c.doNotContact && (
                     <Badge variant="destructive">
                       do not contact{c.doNotContactReason ? ` — ${c.doNotContactReason}` : ""}
@@ -696,6 +708,11 @@ export default async function ProspectDetailPage({
                     .filter(Boolean)
                     .join(" · ") || "No contact details on file."}
                 </p>
+                {c.notes && (
+                  <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">
+                    {c.notes}
+                  </p>
+                )}
               </li>
             ))}
           </ul>
