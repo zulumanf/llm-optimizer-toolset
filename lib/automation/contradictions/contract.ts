@@ -116,7 +116,7 @@ export type ContradictionValidation =
   | { ok: true; output: ContradictionDetectionV2 }
   | { ok: false; kind: "schema" | "validation"; errors: string[] };
 
-function normalizeStatement(text: string): string {
+export function normalizeStatement(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 

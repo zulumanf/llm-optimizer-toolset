@@ -24,12 +24,33 @@ import {
   success,
   trigger,
   verify,
+  when,
 } from "@/lib/automation/workflows/helpers";
 import {
   PROFILE_CHECK_IDEMPOTENCY_TEMPLATE,
   PROFILE_CHECK_MAX_PROFILES_PER_PROJECT,
   PROFILE_CHECK_REQUESTED_EVENT,
+  EXTERNAL_SUBMISSION_APPROVAL_NODE,
+  PROFILE_CORRECTION_APPROVAL_NODE,
+  PROFILE_CORRECTION_REQUEST_VERSION,
+  PROFILE_CORRECTION_READY_EVENT,
+  PROFILE_DRAFT_IDEMPOTENCY_TEMPLATE,
+  PROFILE_DRAFT_PROVIDER,
+  PROFILE_RECHECK_DUE_EVENT,
+  PROFILE_RECHECK_IDEMPOTENCY_TEMPLATE,
+  PROFILE_EXTERNAL_APPROVAL_EVENT,
+  PROFILE_EXTERNAL_APPROVAL_TEMPLATE,
+  SEND_CONFIRMATION_NODE,
 } from "@/lib/profile-corrections/constants";
+
+/** Every correction node reads the same validated upstream outputs. */
+const CORRECTION_NODE_CONFIG = {
+  requestVersion: PROFILE_CORRECTION_REQUEST_VERSION,
+  fetchPath: "fetch_profile",
+  extractPath: "canonical_extract",
+  approvedFactsPath: "approved_facts",
+  comparePath: "compare",
+};
 
 // ------------------------------------- 8. Content production (v2)
 
@@ -300,13 +321,43 @@ export const contentRepurposingWorkflow = defineWorkflow({
 
 // ------------------------------------- 10. Reputation / profile correction
 
+/**
+ * The frozen comparison path (Specs 145B–146), shared verbatim by the check
+ * and the recheck so the two can never drift. A fresh copy per call: node
+ * definitions are plain objects and must not be shared by reference.
+ */
+function frozenComparisonNodes() {
+  return [
+    // Canonical path (spec 145B): ingest the observed page as a source artifact,
+    // then extract proposed claims from that artifact.
+    step(
+      "canonical_extract",
+      "dom.extract_canonical_claims",
+      "Extract the profile's claims (canonical)",
+      { contextPath: "fetch_profile" }
+    ),
+    step("approved_facts", "dom.build_evidence_packet", "Load the approved facts", {
+      purpose: "profile_correction",
+      audience: "public",
+    }),
+    // Observed and approved stay separate so the comparison cannot mistake a
+    // proposed claim for an approved fact.
+    verify("compare", "detect_contradictions", "Compare against approved facts", {
+      contextPaths: {
+        observedClaims: "canonical_extract.claims",
+        approvedFacts: "approved_facts",
+      },
+    }),
+  ];
+}
+
 export const PROFILE_CORRECTION_KEY = "reputation_profile_correction_v1";
 
 export const profileCorrectionWorkflow = defineWorkflow({
   key: PROFILE_CORRECTION_KEY,
   name: "Reputation and profile correction",
   description:
-    "Check a client-confirmed public profile, compare its claims against the approved knowledge graph, and score severity. Deterministic correction requests, approval, drafting and live rechecks follow in later Spec 147 slices.",
+    "Check a client-confirmed public profile, compare its claims against the approved knowledge graph, build and verify a deterministic correction request, and record a human approval bound to that request. Destination routing, drafting and live rechecks follow in later Spec 147 slices.",
   domain: "reputation",
   owner: "fulfilment operator",
   actionType: "profile_correction",
@@ -364,26 +415,7 @@ export const profileCorrectionWorkflow = defineWorkflow({
     step("fetch_profile", "dom.fetch_public_profile", "Fetch the public profile", {
       urlPath: "payload.profileUrl",
     }),
-    // Canonical path (spec 145B): ingest the observed page as a source artifact,
-    // then extract proposed claims from that artifact.
-    step(
-      "canonical_extract",
-      "dom.extract_canonical_claims",
-      "Extract the profile's claims (canonical)",
-      { contextPath: "fetch_profile" }
-    ),
-    step("approved_facts", "dom.build_evidence_packet", "Load the approved facts", {
-      purpose: "profile_correction",
-      audience: "public",
-    }),
-    // Observed and approved stay separate so the comparison cannot mistake a
-    // proposed claim for an approved fact.
-    verify("compare", "detect_contradictions", "Compare against approved facts", {
-      contextPaths: {
-        observedClaims: "canonical_extract.claims",
-        approvedFacts: "approved_facts",
-      },
-    }),
+    ...frozenComparisonNodes(),
     control("has_error", "ctl.condition", "Is there an omission or contradiction?", {
       path: "compare.contradictions.0.severity",
       comparator: "truthy",
@@ -401,15 +433,36 @@ export const profileCorrectionWorkflow = defineWorkflow({
         { label: "low", max: 0.4 },
       ],
     }),
-    // Spec 147 slice 1: the paid draft_outreach / verify_claims back half is
-    // retired. Until the deterministic correction request lands (slice 2), a
-    // found contradiction stops here, visibly, with compare's validated pairs
-    // preserved in the run — never drafted by a model, never sent.
-    step("correction_pending", "ctl.safe_stop", "Hold — correction request not yet available", {
-      reason:
-        "contradictions were found and recorded in this run's compare output; the deterministic correction request (Spec 147 slice 2) is not yet available, so nothing is drafted or sent",
+    // Spec 147 slice 2: the correction request is built and verified in code
+    // from compare's validated pairs — no model drafts or judges it — then
+    // waits for a human. Nothing leaves the platform in this workflow.
+    step("build_correction", "dom.build_profile_correction", "Build the correction request", {
+      ...CORRECTION_NODE_CONFIG,
     }),
-    success("done", "Profile checked"),
+    step("verify_correction", "dom.verify_profile_correction", "Verify and record the correction request", {
+      ...CORRECTION_NODE_CONFIG,
+      requestPath: "build_correction",
+    }),
+    human(
+      PROFILE_CORRECTION_APPROVAL_NODE,
+      "approve_profile_correction",
+      "Approve the correction request",
+      { artifactPath: "verify_correction", evidenceIdsPath: "verify_correction.request.evidenceIds" },
+      { riskLevel: "high", approvalRole: "operator" }
+    ),
+    step(
+      "record_approval",
+      "dom.record_profile_correction_approval",
+      "Bind the approval to the request and re-prove its facts",
+      { ...CORRECTION_NODE_CONFIG, approvalNode: PROFILE_CORRECTION_APPROVAL_NODE }
+    ),
+    // Spec 147 slice 3: route the approved request by the profile's active,
+    // operator-recorded destination. None → destination_required; a client
+    // editor → ready_to_draft; a publisher → its own authorization workflow.
+    step("route_correction", "dom.route_profile_correction", "Route the approved request", {
+      requestVersion: PROFILE_CORRECTION_REQUEST_VERSION,
+    }),
+    success("done", "Profile checked; any correction approved and routed"),
   ],
   edges: [
     edge("entry", "fetch_profile"),
@@ -419,8 +472,249 @@ export const profileCorrectionWorkflow = defineWorkflow({
     edge("compare", "has_error"),
     branch("has_error", "no_error", false),
     branch("has_error", "severity", true),
-    edge("severity", "correction_pending"),
+    edge("severity", "build_correction"),
+    edge("build_correction", "verify_correction"),
+    edge("verify_correction", PROFILE_CORRECTION_APPROVAL_NODE),
+    edge(PROFILE_CORRECTION_APPROVAL_NODE, "record_approval"),
+    edge("record_approval", "route_correction"),
+    // Either branch ends the run; neither may wait for the other.
+    edge("route_correction", "done", { required: false }),
     edge("no_error", "done", { required: false }),
+  ],
+});
+
+// ---------------------- 10b. Profile correction: publisher authorization
+
+export const PROFILE_CORRECTION_AUTHORIZE_KEY = "reputation_profile_correction_authorize_v1";
+
+/**
+ * Spec 147 slice 3: a correction routed to a PUBLISHER is a submission to a
+ * third party on the client's behalf. It needs the external-submission
+ * approval — bound to the request hash and the exact destination — before it
+ * can be drafted. Started per (request, destination); nothing is sent here.
+ */
+export const profileCorrectionAuthorizeWorkflow = defineWorkflow({
+  key: PROFILE_CORRECTION_AUTHORIZE_KEY,
+  name: "Profile correction: publisher authorization",
+  description:
+    "Ask a human to authorize submitting an approved, hash-bound correction request to a specific publisher on the client's behalf, then mark it ready to draft.",
+  domain: "reputation",
+  owner: "fulfilment operator",
+  actionType: "profile_correction",
+  autonomyLevel: 2,
+  riskClassification: "high",
+  maxCostMicroUsd: 100_000,
+  maxDurationMinutes: 10_080,
+  maxParallel: 1,
+  maxConcurrentRuns: PROFILE_CHECK_MAX_PROFILES_PER_PROJECT,
+  requiredApprovals: ["approve_external_submission"],
+  requiredConnectors: [],
+  triggers: [
+    {
+      kind: "domain_event",
+      eventType: PROFILE_EXTERNAL_APPROVAL_EVENT,
+      autonomyNote:
+        "Started when an approved correction is routed to a publisher. It only asks a human for the external-submission approval and records it; nothing is drafted, sent or submitted.",
+      idempotencyTemplate: PROFILE_EXTERNAL_APPROVAL_TEMPLATE,
+      description: "An approved correction was routed to a publisher destination",
+    },
+  ],
+  acceptanceCriteria: [
+    "Nothing is submitted to a third party without this approval.",
+    "The approval binds to the request hash and the exact destination shown.",
+    "A request re-routed since the approval was requested cannot use it.",
+  ],
+  nodes: [
+    trigger("entry", "domain_event", "Routed to a publisher"),
+    step("load_external", "dom.load_external_submission", "Load the request and its publisher", {
+      requestVersion: PROFILE_CORRECTION_REQUEST_VERSION,
+    }),
+    human(
+      EXTERNAL_SUBMISSION_APPROVAL_NODE,
+      "approve_external_submission",
+      "Authorize the submission to this publisher",
+      { artifactPath: "load_external", evidenceIdsPath: "load_external.request.evidenceIds" },
+      { riskLevel: "high", approvalRole: "operator" }
+    ),
+    step(
+      "record_external_approval",
+      "dom.record_external_submission_approval",
+      "Bind the authorization and mark the request ready to draft",
+      { requestVersion: PROFILE_CORRECTION_REQUEST_VERSION, approvalNode: EXTERNAL_SUBMISSION_APPROVAL_NODE }
+    ),
+    success("done", "Submission authorized; ready to draft"),
+  ],
+  edges: [
+    edge("entry", "load_external"),
+    edge("load_external", EXTERNAL_SUBMISSION_APPROVAL_NODE),
+    edge(EXTERNAL_SUBMISSION_APPROVAL_NODE, "record_external_approval"),
+    edge("record_external_approval", "done"),
+  ],
+});
+
+// ----------------------------- 10c. Profile correction: Gmail draft + send
+
+export const PROFILE_CORRECTION_DRAFT_KEY = "reputation_profile_correction_draft_v1";
+
+/**
+ * Spec 147 slice 4: one drafting attempt for a ready_to_draft correction.
+ * The deterministic email becomes a Gmail DRAFT — never a send. The request
+ * only becomes `sent` when a human confirms they sent exactly that draft;
+ * that confirmation queues the 14-day recheck.
+ */
+export const profileCorrectionDraftWorkflow = defineWorkflow({
+  key: PROFILE_CORRECTION_DRAFT_KEY,
+  name: "Profile correction: Gmail draft and send confirmation",
+  description:
+    "Render the approved correction request as a deterministic email to its active destination, create it as a Gmail draft (never sent), and record the send only after a human confirms they sent that exact draft.",
+  domain: "reputation",
+  owner: "fulfilment operator",
+  actionType: "profile_correction",
+  autonomyLevel: 2,
+  riskClassification: "high",
+  maxCostMicroUsd: 100_000,
+  maxDurationMinutes: 10_080,
+  maxParallel: 1,
+  maxConcurrentRuns: PROFILE_CHECK_MAX_PROFILES_PER_PROJECT,
+  requiredApprovals: ["confirm_profile_correction_sent"],
+  // The Gmail connection is checked by prepare_draft, which fails the attempt
+  // with a reason instead of dead-lettering the start event.
+  requiredConnectors: [],
+  triggers: [
+    {
+      kind: "domain_event",
+      eventType: PROFILE_CORRECTION_READY_EVENT,
+      autonomyNote:
+        "Started per drafting attempt for an approved, routed correction. It creates a Gmail draft only; nothing is sent, and the request is marked sent only after a human confirms the send.",
+      idempotencyTemplate: PROFILE_DRAFT_IDEMPOTENCY_TEMPLATE,
+      description: "A correction is ready for a Gmail draft attempt",
+    },
+  ],
+  acceptanceCriteria: [
+    "The email is exactly the deterministic rendering of the approved request for the active destination.",
+    "A Gmail draft is created, never sent; there is no send capability in this workflow.",
+    "A request becomes sent only on a human confirmation bound to the request hash, destination and draft.",
+    "Exactly one recheck is queued per sent correction.",
+  ],
+  nodes: [
+    trigger("entry", "domain_event", "Ready to draft"),
+    step("prepare_draft", "dom.prepare_profile_correction_draft", "Check every precondition and render the email", {
+      requestVersion: PROFILE_CORRECTION_REQUEST_VERSION,
+    }),
+    act(
+      "submit",
+      "email.create_draft",
+      "Create the Gmail draft (never sent)",
+      // Creating a draft sends nothing; the human gate below is the send.
+      { inputPath: "prepare_draft", provider: PROFILE_DRAFT_PROVIDER, actionType: "content_drafting" },
+      { riskLevel: "high" }
+    ),
+    step("record_draft", "dom.record_profile_correction_draft", "Record the Gmail draft", {
+      requestVersion: PROFILE_CORRECTION_REQUEST_VERSION,
+      submitPath: "submit",
+    }),
+    human(
+      SEND_CONFIRMATION_NODE,
+      "confirm_profile_correction_sent",
+      "Confirm you sent this Gmail draft",
+      { artifactPath: "record_draft", evidenceIdsPath: "record_draft.evidenceIds" },
+      { riskLevel: "high", approvalRole: "operator" }
+    ),
+    step("record_sent", "dom.record_profile_correction_sent", "Record the send and queue the recheck", {
+      requestVersion: PROFILE_CORRECTION_REQUEST_VERSION,
+      approvalNode: SEND_CONFIRMATION_NODE,
+    }),
+    success("done", "Correction sent by a human; recheck queued"),
+  ],
+  edges: [
+    edge("entry", "prepare_draft"),
+    edge("prepare_draft", "submit"),
+    edge("submit", "record_draft"),
+    edge("record_draft", SEND_CONFIRMATION_NODE),
+    edge(SEND_CONFIRMATION_NODE, "record_sent"),
+    edge("record_sent", "done"),
+  ],
+});
+
+// ------------------------------------- 10d. Profile correction: recheck
+
+export const PROFILE_RECHECK_KEY = "reputation_profile_recheck_v1";
+
+/**
+ * Spec 147 slice 5: the 14-day recheck of a sent correction, released by the
+ * same bounded dispatcher as checks. The same profile URL is fetched again; a
+ * page byte-identical to the before page, or matching an older processed
+ * version, is classified without any model call. Only a changed page runs the
+ * frozen comparison path. The result is recorded; nothing is sent.
+ */
+export const profileRecheckWorkflow = defineWorkflow({
+  key: PROFILE_RECHECK_KEY,
+  name: "Profile correction: 14-day recheck",
+  description:
+    "Fetch a corrected profile again, compare it with the before-page evidence and, if it changed, run the frozen comparison; classify every correction item and record the result.",
+  domain: "reputation",
+  owner: "fulfilment operator",
+  actionType: "profile_correction",
+  autonomyLevel: 3,
+  riskClassification: "medium",
+  maxCostMicroUsd: 2_500_000,
+  maxDurationMinutes: 1_440,
+  maxParallel: 1,
+  maxConcurrentRuns: PROFILE_CHECK_MAX_PROFILES_PER_PROJECT,
+  requiredConnectors: [],
+  triggers: [
+    {
+      kind: "domain_event",
+      eventType: PROFILE_RECHECK_DUE_EVENT,
+      autonomyNote:
+        "Released by the bounded profile-check dispatcher when a sent correction's recheck falls due. It reads a public page and records a classification; nothing is drafted, sent or published.",
+      idempotencyTemplate: PROFILE_RECHECK_IDEMPOTENCY_TEMPLATE,
+      description: "A sent correction's recheck is due",
+    },
+  ],
+  acceptanceCriteria: [
+    "An unreachable page is never recorded as corrected.",
+    "An unchanged page is still incorrect, with no model call.",
+    "Corrected requires the page to restate the approved fact, not merely omit the error.",
+    "Exactly one immutable result per sent correction.",
+  ],
+  nodes: [
+    trigger("entry", "domain_event", "Recheck due"),
+    step("load_request", "dom.load_profile_correction_recheck", "Load the sent correction", {
+      requestVersion: PROFILE_CORRECTION_REQUEST_VERSION,
+    }),
+    step("fetch_profile", "dom.fetch_public_profile", "Fetch the same public profile", {
+      urlPath: "load_request.profileUrl",
+    }),
+    step("precheck", "dom.precheck_profile_recheck", "Compare with the before-page evidence", {
+      requestVersion: PROFILE_CORRECTION_REQUEST_VERSION,
+      fetchPath: "fetch_profile",
+      requestPath: "load_request",
+    }),
+    ...frozenComparisonNodes(),
+    step("classify", "dom.classify_profile_recheck", "Classify and record the recheck", {
+      requestVersion: PROFILE_CORRECTION_REQUEST_VERSION,
+      requestPath: "load_request",
+      precheckPath: "precheck",
+      extractPath: "canonical_extract",
+      approvedFactsPath: "approved_facts",
+      comparePath: "compare",
+    }),
+    success("done", "Recheck recorded"),
+  ],
+  edges: [
+    edge("entry", "load_request"),
+    edge("load_request", "fetch_profile"),
+    edge("fetch_profile", "precheck"),
+    when("precheck", "canonical_extract", "proceedToCompare", true),
+    when("precheck", "classify", "proceedToCompare", false),
+    edge("canonical_extract", "approved_facts"),
+    edge("approved_facts", "compare"),
+    // Optional: on the fast paths the comparison never runs. `classify` waits
+    // for it only when the page changed (computeReady: an optional edge never
+    // blocks, and at least one incoming edge must be satisfied).
+    edge("compare", "classify", { required: false }),
+    edge("classify", "done"),
   ],
 });
 
@@ -604,6 +898,9 @@ export const authorityWorkflows = [
   contentProductionWorkflowV2,
   contentRepurposingWorkflow,
   profileCorrectionWorkflow,
+  profileCorrectionAuthorizeWorkflow,
+  profileCorrectionDraftWorkflow,
+  profileRecheckWorkflow,
   competitorIntelligenceWorkflow,
   transactionToAuthorityWorkflow,
 ];

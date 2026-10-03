@@ -46,6 +46,163 @@ Slice 1 covers this path: confirmed URL → durable queue → bounded dispatcher
   - reconciliation;
   - the "Profile checks" card (only the server action exists).
 
+## Slice 2 — implemented (2026-10-03)
+
+Slice 2 covers this path: validated contradiction pairs → `dom.build_profile_correction` → `dom.verify_profile_correction` (deterministic validation, then the persisted open request) → `approve` (`hum.approve_profile_correction`) → `dom.record_profile_correction_approval` → `done`.
+
+**What was delivered:**
+- `db/migrations/121_profile_correction_requests.sql`;
+- `lib/profile-corrections/{request,approval,approval-binding}.ts`;
+- the three domain nodes;
+- the decision hook in `decideApprovalAction`;
+- the `open_correction` skip at start and at release;
+- `withdrawCorrectionRequest`, as a service and a server action.
+
+**Where the build deviates from the text below:**
+- **The `approved` status.**
+  - It means the content is approved and the destination is not yet resolved. It is an open state, set by `record_approval` after the gate.
+  - That node binds the approval to the request hash and re-proves the request against the database.
+  - Slice 3's `route_correction` consumes `approved` and moves it to `ready_to_draft` or `destination_required`.
+- **What the approver sees (`artifactPath: "verify_correction"`).**
+  - The artifact is `{ request, requestSha256, requestVersion, correctionRequestId }`, so the operator sees the exact request, its hash and its version. The existing run page renders it as JSON.
+  - The binding check (`approvalBindingError`) requires the shown request to hash to the shown hash, and that hash to equal the stored one.
+- **Builder and validator inputs.**
+  - Both also take `authority`: the current `claims` rows for every referenced approved claim (not filtered by project) and the before-page `source_artifacts` row. That makes the tenant, still-approved and exact-evidence-set checks pure and testable.
+  - The validator additionally requires the request to be byte-identical to a fresh deterministic build. Nothing beyond validated data can pass.
+- **Decisions.**
+  - A rejection is persisted on the correction row inside the one approval-decision transaction.
+  - An approval whose shown request does not bind to the stored hash is refused, and the decision rolls back.
+  - Facts that change between building the request and approval close the row as `expired` (`closed_reason` records why), which frees the profile. The run stops.
+- **Migration 121** creates `profile_correction_requests` without the destination, draft and recheck columns; later slices add them. It also adds the deferred foreign key from `profile_check_requests.correction_request_id`. A database trigger enforces tenant consistency for the run, the before page, the packet, the queue row and the context item. Request content is immutable, and deletes are forbidden.
+- **Still not built:**
+  - destinations (§7.3);
+  - drafting (§7.4);
+  - rechecks (§9);
+  - reconciliation (§8.4). Until it lands, a timed-out approval leaves the request `awaiting_approval` until an operator withdraws it;
+  - the dedicated approval view component (§7.1);
+  - the Profile Checks card.
+
+## Slice 3 — implemented (2026-10-03)
+
+Slice 3 covers this path: `approved` → `dom.route_profile_correction` → one of `destination_required`, `awaiting_external_approval` or `ready_to_draft`. Nothing is drafted, sent or submitted.
+
+**What was delivered:**
+- `db/migrations/122_profile_correction_destinations.sql`;
+- `lib/profile-corrections/{routing,destinations}.ts`;
+- the route node, and the publisher authorization workflow `reputation_profile_correction_authorize_v1`;
+- operator actions: `setCorrectionDestination`, `archiveCorrectionDestination`, `clientEditorPrefill`, plus the existing `withdrawCorrectionRequest`.
+
+**Where the build deviates from the text below:**
+- **A new open status, `awaiting_external_approval`.** It is withdrawable and re-routable.
+- **Publisher authorization is its own workflow, not part of the draft workflow (§5.2).**
+  - It runs once per (request, destination) and is started by `profile.external_approval_required`, with dedupe key and idempotency key `profile-external-approval:<request>:<destination>`.
+  - The flow is `load_external → authorize_external (hum.approve_external_submission) → record_external_approval → ready_to_draft`.
+  - The approval binds to the request hash AND the destination shown, both at decision time and at the record step.
+  - A rejection returns the request to `destination_required` (destination cleared, decision audited).
+- **Re-routing follows the profile's active destination.** Setting, replacing or archiving a destination re-routes, in the same transaction and under a per-profile advisory lock, every `destination_required`, `awaiting_external_approval` and `ready_to_draft` request for that profile, oldest first. Routing the same request to the same destination again is a no-op that publishes nothing.
+- **`ready_to_draft` publishes no event yet.** The drafting trigger, `profile.correction_ready`, arrives with Slice 4. That slice must also start drafts for requests already `ready_to_draft`.
+- **Database enforcement.** Destinations are append-plus-archive (enforced by a trigger, with deletes forbidden). One active destination is allowed per (project, profile URL). An attached `destination_id` must be an active destination of the same project and profile.
+- **The dispatcher now claims one queued row at a time,** so a row skipped at release no longer uses a capacity slot.
+
+## Slice 4 — implemented (2026-10-03)
+
+Slice 4 covers this path: `ready_to_draft` → drafting attempt → `reputation_profile_correction_draft_v1` (`prepare_draft → submit (email.create_draft, Gmail) → record_draft → confirm_sent (hum.confirm_profile_correction_sent) → record_sent`) → `sent`, plus one recheck queue row due 14 days later. Recheck execution is not built.
+
+**What was delivered:**
+- `db/migrations/123_profile_correction_drafts.sql`;
+- `lib/profile-corrections/{email,drafting,gmail}.ts`;
+- three domain nodes;
+- the `confirm_profile_correction_sent` human gate;
+- the `profile_correction_draft_dispatch` job, and the draft sweep in the worker tick.
+
+**Where the build deviates from the text below:**
+- **Drafting attempts are durable rows (`profile_correction_drafts`).**
+  - Each attempt starts its own run, via `profile.correction_ready`, keyed by the attempt (`profile-correction-draft:<attemptId>`).
+  - `dispatchCorrectionDrafts` (advisory-locked; runs from the tick and from a job enqueued whenever a request becomes `ready_to_draft`) is the only way an attempt starts. So the Slice 3 backlog is picked up with no manual step.
+  - A partial unique index allows exactly one active attempt (`pending`, `creating` or `created`) per request.
+  - An attempt that stalls before Gmail is called becomes `failed` and is retried after `PROFILE_DRAFT_RETRY_MINUTES` (360).
+  - An attempt that stalls after Gmail may have been called becomes `outcome_unknown` and is never retried automatically, because a second draft would be a duplicate.
+  - A draft created after the request moved on is recorded as `orphaned`, with its Gmail ids, so it can be deleted.
+- **A new open status, `awaiting_send_confirmation`.**
+  - Creating a draft sends nothing. The `submit` node uses `actionType: content_drafting`, so the engine adds no approval on top of it.
+  - The explicit send confirmation is a dedicated human gate. It binds to the request id, the request hash, the destination, the draft attempt and the Gmail draft id, and the destination must still be active. The binding is checked in the decision transaction and again by `record_sent`.
+  - Declining closes the request as `withdrawn` and discards the draft.
+- **Gmail preconditions are checked by `prepare_draft`, not by a connector preflight.** The draft workflow's `requiredConnectors` is `[]`. A missing or inactive Gmail connection, or a missing `sendAsAddress`, fails the attempt with the reason instead of dead-lettering the start event.
+- **`prepare_draft` re-proves the stored request.** It reruns the request against its check run's recorded outputs and the current claims. If the facts changed, the request closes as `expired`.
+- **The recheck is a `profile_check_requests` row** (`kind = 'recheck'`, `not_before = sent_at + 14 days`, unique per correction), as §9.1 specifies. The dispatcher still releases only `check` rows, so it waits for the recheck slice.
+
+## Slice 5 — implemented (2026-10-03)
+
+Slice 5 covers this path: a due recheck row → the same bounded dispatcher (`profile.recheck_due`) → `reputation_profile_recheck_v1`. The workflow runs `load_request → fetch_profile (dom.fetch_public_profile) → precheck`. Then:
+- if the page changed: the frozen `canonical_extract → approved_facts → compare` path, then `classify`;
+- otherwise: straight to `classify`.
+
+The result goes into an immutable `profile_correction_rechecks` row, and the correction's lifecycle moves to that result. Nothing is sent, nothing else is scheduled, and no new correction is created.
+
+**What was delivered:**
+- `db/migrations/124_profile_correction_rechecks.sql`;
+- `lib/profile-corrections/recheck.ts` (a pure classifier);
+- three domain nodes;
+- the dispatcher now releases `recheck` rows alongside `check` rows, under the same capacity, oldest first;
+- the recheck workflow is counted as inference-active.
+
+**Where the build deviates from, or sharpens, the text below:**
+- **`corrected` needs positive evidence.** The incorrect statement must be gone, AND the current page must restate the approved fact: extraction matches an observation to that approved claim (Spec 145E `matched`, `existingStatus` `approved`). If the error is merely absent, the item is `needs_review`, never `corrected`. The same applies if the wrong wording is still observed but was not flagged, if the approved fact has gone from the packet, or if the claim is contradicted with different wording.
+- **A comparison that fails never records a result.** Either the guard stops the run, or `classify` refuses to run without a comparison answer. The correction stays `sent`, and reconciliation (not built yet) will handle it. A comparison that does not validate inside `classify` gives `needs_review` for every item.
+- **The overall result is decided in this order:** unreachable (page-level), then still_incorrect, then needs_review, then corrected. A new contradiction on an approved fact the request did not cover turns an otherwise corrected result into `needs_review`.
+- **A refused fetch, or one with no URL, fails the run.** Only an HTTP or network failure is classified as `unreachable`.
+- **Comparison nodes are shared code.** The frozen comparison nodes come from one `frozenComparisonNodes()` function used by both the check and the recheck, so their definitions cannot drift.
+- **`normalizeStatement`** in the Spec 146 contract module gets an `export` keyword. This is the only edit to that module, as planned in §9.3, and it changes no behaviour.
+
+## Slice 6 — implemented (2026-10-03)
+
+Slice 6 delivers reconciliation of stuck requests, an operator-confirmed retry of uncertain Gmail drafts, and a withdrawal that neutralizes pending work.
+
+**What was delivered:**
+- `lib/profile-corrections/{reconcile-decision,reconcile,retry}.ts`;
+- `db/migrations/125_profile_correction_draft_retries.sql`;
+- `reconcileProfileCorrections()`, called from the worker tick and at the start of each project's `startProfileChecks`;
+- `retryProfileCorrectionDraft`, as a service and a server action.
+
+**Reconciliation (§8.4, as built):**
+- **How it runs.**
+  - It acts only when the run a request waits on can never progress. That means a stopped run state (`failed`, `cancelled`, `safely_stopped`, `timed_out`, `partially_completed`; approval time-outs come from the engine's own `checkApprovalTimeouts`), or a publisher authorization run that never started within `PROFILE_CHECK_RELEASE_TIMEOUT_MINUTES`.
+  - Locking: advisory lock, then `for update skip locked`, with guarded moves.
+  - It processes up to 50 requests per pass, stalest first, and can be scoped to one project.
+- **What it does, by state:**
+
+  | State | Condition | Result |
+  |---|---|---|
+  | `awaiting_approval` | run stopped | `rejected` if the human rejected it, otherwise `expired` |
+  | `approved` | run stopped | `expired` |
+  | `awaiting_external_approval` | run stopped or never started | `destination_required` |
+  | `awaiting_send_confirmation` | run stopped | `ready_to_draft`. The created attempt becomes `outcome_unknown` with its Gmail ids kept. Nothing is marked sent, and nothing retries automatically. |
+  | `sent` | no result, and the recheck run stopped or the recheck row failed or was skipped | `needs_review` (`closed_reason` records why; there is no result row). A released recheck row becomes `failed`. |
+
+- **Boundaries.** A run that is still running or waiting, a healthy queued recheck, and every terminal state are left untouched. A completed run with no outcome is reported as an anomaly and not resolved.
+- **Audit.** Every move is audited with the actor `system:reconcile`, the from and to states, the reason, and the related run, approval, draft attempt and recheck ids.
+
+**Retry drafting:**
+- **Preconditions.**
+  - Operator role and project access.
+  - The attempt is `outcome_unknown` or `orphaned`.
+  - The request is `ready_to_draft`.
+  - `confirmNoUsableDraft: true` is required.
+  - The expected request hash and the active destination must equal the current ones; otherwise the operator must re-route first.
+  - The content approval must still bind.
+- **What it does.**
+  - The uncertain attempt is superseded, not deleted, and its Gmail ids are kept.
+  - Exactly one new attempt is created, recording `retry_of`. A unique index allows one retry per attempt, so a repeated call returns the same attempt.
+  - `profile.correction_ready` is published for the new attempt.
+
+**Withdrawal now neutralizes pending work:**
+- pending attempts are superseded;
+- the active created attempt is discarded (the Gmail draft is never deleted by the platform);
+- a queued recheck is skipped;
+- linked runs still waiting or running are cancelled.
+
+History is kept throughout.
+
 ## 1. Current state (traced 2026-10-02)
 
 | Area | What the code does today |

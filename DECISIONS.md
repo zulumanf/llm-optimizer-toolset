@@ -3665,3 +3665,79 @@ Slice 1 implements this path: confirmed profile URL → `profile_check_requests`
 - **The idempotency template keys on the queue row.** It is `profile-check:{{event.projectId}}:{{payload.checkRequestId}}`. The row is already unique per (project, context item, window), and the queue stores the exact engine key (`live:` + rendered), so capacity and abandonment are judged by a join on `workflow_runs.idempotency_key`.
 - **Window keys are prefixed.** The schedule uses `week:<ISO Monday>` and an operator uses `day:<UTC date>`. Without the prefix, a Monday operator check would collide with that week's scheduled one.
 - **The dispatcher publishes each row under its own savepoint.** One unpublishable row is marked `failed` and cannot roll back, and so permanently block, the global queue.
+
+## 2026-10-03 — Spec 147 slice 2: deterministic correction requests bound to approval
+
+A found contradiction now becomes a persisted correction request, built and verified in code and approved by a human. No model drafts or judges it; `draft_outreach` and `verify_claims` stay out of the workflow.
+
+- **Validation is pure, against database state.** The builder and validator take the current `claims` rows and the before-page artifact as input. The rows are deliberately not filtered by project, so a cross-project id is seen and refused rather than silently missing.
+  - Both run the frozen Spec 146 context check and validator, so contradiction semantics live in one place.
+  - The validator ends by requiring byte-identity with a fresh deterministic build. Any wording, field or ordering not produced from validated data fails.
+- **The approval is bound to the request hash.**
+  - The approval gate shows `{ request, requestSha256, requestVersion }`.
+  - Inside the decision transaction, an approval whose shown request does not hash to the stored `request_sha256` is refused.
+  - After the gate, `record_approval` re-checks the binding and re-proves the request against the database as it is at that moment.
+  - The request row's content is immutable at the database. So an edited request can never inherit an approval: a change needs a new run and a new hash.
+- **`approved` is a new open status**, meaning the content is approved and the destination is not yet resolved. Destination routing (slice 3) consumes it. This keeps "a human approved this content" separate from "we know where to send it".
+- **Facts that change while a request waits fail closed.** The request is closed as `expired` with the reason, which frees the profile for a fresh check. It is never approved on stale facts.
+- **Duplicates are decided by the database.**
+  - The partial unique index `(project_id, profile_url)` over the open statuses decides any race. `insert … on conflict do nothing` returns the existing open request, and the run safe-stops naming it.
+  - The start path and the dispatcher also skip a profile that has an open correction.
+- **Known gap until reconciliation (spec 147 §8.4):** an approval that times out leaves its request `awaiting_approval`. An operator can withdraw it.
+
+## 2026-10-03 — Spec 147 slice 3: destinations, routing and the publisher authorization boundary
+
+- **Destinations are recorded, never inferred.** A destination exists only when an operator records one, for one of the client's own profile URLs, with a basis. A publisher destination also needs the URL where its address was found.
+  - The client's confirmed contact is offered only as an explicit prefill for `client_editor`, and routing never reads it.
+  - Rows are append-plus-archive, with one active row per (project, profile) enforced by a partial unique index and a trigger.
+- **A publisher destination is a third-party submission, so it gets its own human gate.**
+  - Routing to a publisher parks the request as `awaiting_external_approval` and starts `reputation_profile_correction_authorize_v1`, once per (request, destination).
+  - Its `approve_external_submission` decision binds to the request hash and the exact destination shown. The decision transaction refuses a mismatch, and the record step checks the binding again.
+  - Why it is a separate workflow, not part of drafting: late resolution happens long after the correction run has completed, and the approval belongs to the specific destination.
+- **Late resolution re-routes.** Setting, replacing or archiving a destination re-routes every request that follows that profile's destination, in the same transaction and under a per-profile advisory lock.
+  - A replaced publisher yields a new authorization event for the new destination. The old run's approval can no longer be recorded.
+  - Re-routing to an unchanged destination is a no-op. Dedupe keys and run idempotency keys prevent duplicate continuations.
+- **`ready_to_draft` publishes nothing yet.** Drafting (slice 4) introduces the consumer. Publishing an event now, with no subscriber, would be delivered retroactively the moment a subscription appeared, which is implicit behaviour we chose not to create.
+
+## 2026-10-03 — Spec 147 slice 4: Gmail drafts, human send confirmation, recheck schedule
+
+- **Creating a draft is not sending.** The draft workflow has no send capability. The `email.create_draft` node is classed as drafting (`content_drafting`), so autonomy adds no gate on top of it. The one human gate, `confirm_profile_correction_sent`, asks the operator to confirm they sent that exact draft from Gmail themselves.
+  - That confirmation binds to the request id, the request hash, the destination, the draft attempt and the Gmail draft id. The destination must still be active.
+  - The binding is enforced in the decision transaction and again when the send is recorded.
+  - Declining withdraws the request and discards the draft.
+- **Drafting is driven by durable attempts, not by fire-and-forget events.** A sweep, advisory-locked and run from the tick and from a job enqueued when a request becomes ready, creates one attempt per `ready_to_draft` request and publishes `profile.correction_ready` for it.
+  - Requests that became ready before drafting existed are picked up the same way.
+  - One active attempt per request is enforced by a partial unique index.
+  - An attempt that stalls before calling Gmail retries after a back-off.
+  - One that may have called Gmail is marked `outcome_unknown` and is never retried automatically: a duplicate Gmail draft is worse than waiting for an operator.
+- **Gmail preconditions fail the attempt, not the start.** The workflow declares no required connector, and `prepare_draft` checks for an active Gmail connection with a `sendAsAddress`. A missing precondition is recorded on the attempt with its reason, and the request stays `ready_to_draft`. A connector preflight would instead have dead-lettered the start event with no record on the request.
+- **The recheck is scheduled as a queue row** (`profile_check_requests`, `kind = recheck`, due at `sent_at + 14 days`, unique per correction), per spec 147 §9.1. Using the existing queue and dispatcher, rather than a separate delayed job type, keeps rechecks under the same global inference bound when the recheck slice releases them.
+
+## 2026-10-03 — Spec 147 slice 5: the 14-day recheck
+
+- **One concurrency system.** A due recheck row is released by the same dispatcher, under the same `PROFILE_CHECK_MAX_INFERENCE_RUNS`, ordered with normal checks by `not_before`. The recheck workflow counts as inference-active.
+- **Fast paths make no model call.** The re-fetched page is stored through the existing source-artifact store and compared by its content hash:
+  - the same artifact as the before page → `still_incorrect`;
+  - an older, already-extracted artifact → `needs_review`, because canonical extraction would refuse it and no determination is safe;
+  - an HTTP or network failure → `unreachable`.
+
+  Only a changed page runs the frozen extraction and comparison path.
+- **`corrected` requires the page to restate the approved fact,** not merely to omit the error. Absence can come from an extraction miss, a model miss or a page that dropped the section. The positive signal already exists: Spec 145E matches a page claim to the approved claim. Without it the item is `needs_review`.
+- **A comparison failure records nothing, rather than guessing.** The run stops, the correction stays `sent`, and reconciliation is a later slice.
+- **Results are immutable and are not a rewrite of the request.**
+  - `profile_correction_rechecks` is insert-only, unique per correction, tenant-checked by trigger, and content-hashed (`profile-recheck-result-v1`).
+  - The correction's content is untouched; only its lifecycle status moves to the result.
+  - A recorded result frees the profile for future checks. No follow-up action (another email, another correction, another recheck, a notification) is taken in this slice.
+
+## 2026-10-03 — Spec 147 slice 6: reconciliation, manual draft retry, withdrawal
+
+- **Reconciliation acts only on runs that can never progress.** The trigger is a stopped run state, including the engine's own approval time-out, or an authorization run that never started past the release timeout. A run still waiting or running is healthy, however long it has been. The repository does not enforce `maxDurationMinutes`, and guessing a timeout would mean guessing an outcome.
+- **No reconciled state implies success.**
+  - A timed-out content approval → `expired`.
+  - A timed-out publisher approval → `destination_required`.
+  - A send confirmation that expired → `ready_to_draft`, with the draft attempt `outcome_unknown`: the draft may have been sent, and only a human knows.
+  - A recheck that stopped without a result → `needs_review`, never `corrected`.
+  - Anomalies, such as a completed run with no outcome, are reported, not resolved.
+- **Uncertain Gmail actions are never retried automatically.** Retrying needs an operator's explicit confirmation that they checked Gmail and no usable draft exists. It is bound to the current request hash and active destination; anything changed must be re-routed first. The uncertain attempt is superseded and kept, and a unique `retry_of` makes the retry idempotent at the database.
+- **Withdrawal neutralizes, never deletes.** Pending attempts are superseded, the created attempt is discarded, a queued recheck is skipped, and waiting runs are cancelled. The Gmail draft itself is left for the operator to delete. All history remains.
+- **Reconciliation also runs before a project's profile checks are queued,** so a stuck profile is freed before the open-correction skip is evaluated.

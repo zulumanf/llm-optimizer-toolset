@@ -37,6 +37,8 @@ export interface AutomationTickReport {
   campaignDigest: Record<string, unknown>;
   deliveryQa: Record<string, unknown>;
   profileChecks: Record<string, unknown>;
+  correctionDrafts: Record<string, unknown>;
+  correctionReconcile: Record<string, unknown>;
 }
 
 /**
@@ -329,6 +331,35 @@ export async function runAutomationTick(
     profileChecks = { error: "profile check dispatch failed; dispatch was unaffected" };
   }
 
+  // Correction drafts (spec 147 slice 4): start one drafting attempt per
+  // ready_to_draft request — new ones and any backlog alike — and settle
+  // stalled attempts. Isolated: never fails dispatch.
+  let correctionDrafts: Record<string, unknown> = { skipped: true };
+  try {
+    const { dispatchCorrectionDrafts } = await import("@/lib/profile-corrections/drafting");
+    const report = await dispatchCorrectionDrafts();
+    correctionDrafts = { started: report.started.length, settled: report.settled.length, failed: report.failed.length };
+  } catch (err) {
+    log("error", "cron.correction_drafts_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    correctionDrafts = { error: "correction draft dispatch failed; dispatch was unaffected" };
+  }
+
+  // Profile-correction reconciliation (spec 147 §8.4): close or reopen
+  // requests whose awaited run can never progress. Database-only; isolated.
+  let correctionReconcile: Record<string, unknown> = { skipped: true };
+  try {
+    const { reconcileProfileCorrections } = await import("@/lib/profile-corrections/reconcile");
+    const report = await reconcileProfileCorrections();
+    correctionReconcile = { moved: report.moved.length, anomalies: report.anomalies.length };
+  } catch (err) {
+    log("error", "cron.correction_reconcile_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    correctionReconcile = { error: "correction reconciliation failed; dispatch was unaffected" };
+  }
+
   if ((events.deadLettered as number) > 0 || triggers.failed > 0 || (health.failing as number) > 0) {
     log("warn", "cron.automation.degraded", {
       deadLettered: events.deadLettered,
@@ -366,6 +397,8 @@ export async function runAutomationTick(
     campaignDigest,
     deliveryQa,
     profileChecks,
+    correctionDrafts,
+    correctionReconcile,
   };
 }
 

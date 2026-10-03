@@ -22,6 +22,7 @@ import {
   retryNode,
 } from "@/lib/workflow/engine";
 import { signalWorkflow } from "@/lib/automation/runtime";
+import { applyCorrectionDecision } from "@/lib/profile-corrections/approval";
 import { resolveException } from "@/lib/workflow/exceptions";
 import { bootstrapWorkflows } from "@/lib/workflow/templates";
 
@@ -106,6 +107,15 @@ export async function decideApprovalAction(
         rationale: parsed.data.rationale,
       });
       if (!result) return null;
+      // Spec 147: a profile correction's decision is recorded with the
+      // approval itself — a rejection persists atomically, and an approval of
+      // a request other than the stored one is refused (hash binding).
+      await applyCorrectionDecision(tx, {
+        approvalId: parsed.data.approvalId,
+        decision: parsed.data.decision,
+        decidedBy: user.id,
+        rationale: parsed.data.rationale,
+      });
       await writeAudit(tx, {
         userId: user.id,
         action: `workflow.approval.${parsed.data.decision}`,

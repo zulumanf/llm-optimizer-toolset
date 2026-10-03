@@ -94,6 +94,13 @@ const PATH_CONFIG_KEYS = new Set([
   "untilPath",
   "bodyPath",
   "urlPath",
+  "fetchPath",
+  "extractPath",
+  "approvedFactsPath",
+  "comparePath",
+  "requestPath",
+  "submitPath",
+  "precheckPath",
 ]);
 
 /**
