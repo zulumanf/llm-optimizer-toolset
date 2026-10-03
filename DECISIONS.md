@@ -3406,3 +3406,155 @@ A real `profile.error_detected` run never reached Spec 145B's canonical extracti
 3. **Changed facts stay separate.** A different value, as-of date, statement or subject is a new proposed claim, and the contradiction scan runs unchanged.
 4. **Recurring errors are still compared.** The result gains `matched` alongside `proposed` (which still means rows inserted by this run, so discovery's and the seed's counts keep their meaning). The profile node hands `compare` `[...proposed, ...matched]`, so a page repeating a previously rejected error is still compared against approved facts.
 5. **Concurrency.** The storage transaction takes `pg_advisory_xact_lock(hashtext('claims:' || projectId))` (the `lib/parsing/backfill.ts` pattern) and locks candidate rows `for update`, so two concurrent extractions cannot both insert one fact. No migration was needed.
+
+## 2026-10-02 — `detect_contradictions` Phase 1 candidate results; latency split into Spec 146A (spec 146)
+
+**Historical evaluation evidence, recorded after the fact.** The operator ran the Spec 146 holdout evaluator (`scripts/eval-detect-contradictions-internal.ts`, v2 prompt, frozen gold set `d4c0ec53…`, 3 repetitions, Ollama, `OPENAI_API_KEY` unset) against the three §7 candidates **before** the Spec 146A cleanup. Only the summaries below were kept: the raw evaluator output was not saved, and the exact script revision is not recorded.
+
+| Candidate | Result | Detail |
+|---|---|---|
+| `qwen3:30b` | **FAIL (latency only)** | Every quality gate passed: critical runs 33/33; overall, recall, consistency and severity 100%; false positives 0%; 0 runtime, schema and validator failures. p50 22.9 s, **p95 63.7 s**, against the §8 limit of p95 ≤ 60 s. |
+| `gpt-oss:20b` | FAIL | Many Ollama structured-output calls returned empty responses. `ollamaCaller` treats an empty response as a runtime failure, so the zero-failure gate failed. |
+| `qwen3:8b` | FAIL | Very slow calls, several of which hit the 300 s timeout, so the zero-runtime-failure gate failed. |
+
+Decisions:
+1. **No promotion, and routing is unchanged.** `detect_contradictions` stays on its current route. No candidate passed §8, and the gate is not relaxed: 63.7 s is a FAIL.
+2. **Latency work is its own spec (146A).** It is limited to diagnosing `qwen3:30b` and to legitimate runtime changes. Those are the reasoning-mode switch (`think`) and host Ollama settings. Context trimming, output caps, prompt or schema edits and new models are excluded. Every Spec 146 gate, label and semantic stays fixed. A configuration with reasoning off is a separate candidate and must pass the full gold gate again.
+3. **Provider boundary.** `think` and per-call `timings` are optional fields on the provider-neutral internal-inference contract. When a caller leaves them out, the request is unchanged. The latency diagnostic calls the production `ollamaCaller` with `responseSchemaFor` (the schema `runAgent` sends), so it cannot drift from production. Its only direct Ollama request is a model unload for cold-start timing, which has no provider-neutral equivalent and lives only in that script. The evaluator no longer contains any Ollama-specific code.
+4. **Warm-up.** The evaluator makes one ungraded warm-up call, so model load time is not counted against one graded call. Cold start is measured by the diagnostic, and a configuration proposed for promotion must record it alongside the gate results.
+5. **Gold review.** The second review of all 40 fixtures (§9) found no labelling mistakes. No label changed and the hash is unchanged.
+
+## 2026-10-02 — Spec 146A latency diagnosis and `qwen3:30b` reasoning-off retest (spec 146A)
+
+**Warm-latency rule (operator decision).** The Spec 146 §8 gate of p95 ≤ 60 s measures **warm, steady-state** inference. The evaluator makes one ungraded warm-up call, and p95 is computed over the graded calls that follow. This is valid because the production deployment for the selected model keeps it resident. Cold-start time is reported separately and must stay well under the 300 s node timeout. The threshold itself is unchanged.
+
+**A fresh, reproducible evaluation.** This entry is separate from the earlier operator-reported results above, and nothing here is copied from them. Setup:
+- Apple M5 Max, 36 GB, Ollama 0.35.0, `qwen3:30b` Q4_K_M.
+- Code at commit `2bbc7fb` plus the Spec 146/146A working tree.
+- Gold dataset `d4c0ec53…`, `OPENAI_API_KEY` unset.
+- Eval calls logged to the local **test** database (`llm_optimizer_test`: 49 `llm_calls` rows, backend `ollama`, cost 0). Nothing was written to the dev database.
+
+Raw output is in `docs/evals/146a-2026-10-02/`.
+
+**Diagnostic.** Every holdout fixture, 2 warm calls each (32 calls per configuration), through the production `ollamaCaller`:
+
+| | wall p50 | wall p95 | prompt-eval p50 / max | generation p50 / p95 | output tokens p50 / p95 | hidden reasoning p50 |
+|---|---|---|---|---|---|---|
+| reasoning on (default) | 22.0 s | 40.3 s | 0.02 s / 2.1 s | 21.9 s / 36.8 s | 1,949 / 3,111 | 6,984 chars |
+| reasoning off (`think: false`) | 2.1 s | 4.4 s | 0.02 s / 2.4 s | 1.8 s / 4.1 s | 178 / 382 | 0 |
+
+Cold start (model unloaded first, then the first call): 27.4 s with reasoning on, of which 6.8 s is load; 7.0 s with reasoning off, of which 4.1 s is load.
+
+Root cause: **hidden reasoning length.**
+- Generation is about 98% of each call, and nearly all generated tokens are the `thinking` stream.
+- Reasoning length varies between calls on the same fixture even at temperature 0 (`s3`: 12.8 s against 33.1 s), and that variance is what produces the p95 tail.
+- Prompt size, model load and runtime overhead are not material when the model is warm.
+
+**Full holdout eval with `EVAL_THINK=false`.** 16 fixtures × 3 repetitions, plus one ungraded warm-up; frozen labels, validator, grader and gates unchanged. **RESULT: FAIL.**
+
+| Metric | Value | Gate |
+|---|---|---|
+| critical runs | 18/33 | 100%: FAIL |
+| overall | 85.1% (120/141) | ≥ 95%: FAIL |
+| recall | 100% | PASS |
+| false-positive rate | 37.5% | ≤ 5%: FAIL |
+| consistency | 100% (critical 100%) | PASS |
+| severity accuracy | 88.9% | ≥ 90%: FAIL |
+| runtime / schema / validator failures | 0 / 0 / 0 | PASS |
+| latency p50 / p95 | 1.9 s / 4.2 s | ≤ 60 s: PASS |
+
+Every critical failure was a false positive, and each was consistent across all 3 repetitions:
+- compatible detail: `n1` subset market, `n2` "over 40" against 42, and the `s3` secondary pair;
+- different periods: `p1`;
+- different subjects: `f1` same surname;
+- `a5` also reported "over 40" against 42.
+
+Separately, `a3` (stale approved fact) was rated above `medium` in all 3 runs.
+
+Decisions:
+1. **Reasoning off is rejected as a configuration for `detect_contradictions`.** It meets the latency gate easily but fails critical cases 3, 4 and 5. Without reasoning, the model can't reliably tell a real contradiction from compatible detail, a different period or a different subject.
+2. **No promotion, and routing is unchanged.**
+3. **Next measurement.** The reasoning-on configuration reached p95 40.3 s in this warm diagnostic. That is well inside 60 s, unlike the earlier operator-reported 63.7 s. That earlier run did not record whether a warm-up was used, and the evaluator also counts the schema-retry time. The next step is a full holdout evaluator run of `qwen3:30b` with reasoning on (the default), under the warm-latency rule.
+
+## 2026-10-02 — `qwen3:30b` (reasoning on) passes the Spec 146 promotion evaluation; routing not yet changed (spec 146, 146A)
+
+**A fresh, reproducible run of the complete evaluator.**
+- Command: `INTERNAL_EVAL_MODEL=qwen3:30b npx tsx scripts/eval-detect-contradictions-internal.ts` (`EVAL_THINK` unset, so the model default: reasoning on).
+- Split and runs: the holdout split, 16 frozen fixtures × 3 repetitions, plus one ungraded warm-up (23.1 s).
+- Unchanged from Spec 146: v2 prompt, schema, validator, grader and §8 gates.
+- Dataset: gold `d4c0ec53…`, with the hash checked at start-up.
+- Timing: started 2026-10-02 21:46 UTC.
+- Logging and cost: `OPENAI_API_KEY` unset; calls logged only to the local **test** database (`llm_optimizer_test`: 49 new `llm_calls` rows, backend `ollama`, `qwen3:30b`, every call succeeded on its first attempt, cost 0). The dev database has no rows for `detect-contradictions-v2`.
+- Raw output: `docs/evals/146a-2026-10-02/eval-qwen3-30b-think-default.{log,json}`.
+
+**Host state:**
+- Apple M5 Max, 36 GB, macOS 27.0.1, Ollama 0.35.0.
+- `qwen3:30b` Q4_K_M (digest `ad815644918f`), the only model resident: 21.75 GB in GPU memory, 32,768-token context.
+- No thermal or performance warnings were recorded.
+- The Mac ran on **battery** for the whole run (52% at start, 14% at the end). Low-power mode was off. The performance configuration was not changed.
+
+| Gate (§8) | Result | Required |
+|---|---|---|
+| critical runs | **33/33** (critical checks 60/60) | 100% |
+| overall | **100%** (141/141) | ≥ 95% |
+| recall | **100%** | ≥ 95% |
+| false-positive rate | **0%** | ≤ 5% |
+| consistency | **100%**, critical 100% | ≥ 95% / 100% |
+| severity accuracy | **100%** | ≥ 90% |
+| runtime / schema / validator failures | **0 / 0 / 0** | 0 |
+| warm latency | p50 21.0 s, **p95 41.8 s**, max 43.1 s, min 10.9 s | p95 ≤ 60 s |
+| external API cost | **$0** | $0 |
+
+**RESULT: PASS.** Every gate passed.
+
+Under the warm-latency rule, warm p95 is 41.8 s against the 60 s limit. Cold start is reported separately: the Spec 146A diagnostic measured 27.4 s, of which 6.8 s was model load.
+
+The earlier operator-reported p95 of 63.7 s was not reproduced. That run did not record its warm-up or host state, so it stays historical evidence only. Promotion rests on this run.
+
+Decisions:
+1. **`qwen3:30b` with reasoning on is the selected `detect_contradictions` candidate** (§7: the highest holdout score, and the only candidate that passed).
+2. **Routing has deliberately not been changed.** The Spec 146 §10 production change is a separate reviewed step. It must:
+   - pin `INTERNAL_TASK_TARGETS.detect_contradictions` to `LOCAL_INTERNAL_TARGETS.reasoning`, with no `think` override, because reasoning off was rejected;
+   - wire the v2 prompt, the required-field schema and the validator guard;
+   - add the §11 routing and fail-closed tests;
+   - verify the `llm_calls` row.
+3. **Deployment condition.** The warm gate is valid only if production keeps `qwen3:30b` resident, for example by setting `OLLAMA_KEEP_ALIVE` on the inference host. That condition belongs to the §10 change and its runbook.
+4. **Recommended re-check.** This run was on battery power. A re-check on the production inference host's power state is recommended as part of the §10 canary. It is not a promotion condition, because the run passed with a 30% margin.
+
+## 2026-10-02 — `detect_contradictions` promoted to `qwen3:30b` on Ollama (spec 146 Phase 2)
+
+The production change follows the recorded holdout PASS. It ships exactly the configuration that was evaluated:
+1. **Route.** `INTERNAL_TASK_TARGETS.detect_contradictions = LOCAL_INTERNAL_TARGETS.reasoning`, which is Ollama `qwen3:30b` with `execution: "local"`.
+   - `TASK_ROUTES.detect_contradictions.tier` stays `frontier`. It records the task's judgment class; the internal-target override is what moves the model.
+   - There is no `think` override: the PASS used the model's default, with reasoning on, and reasoning off was rejected.
+   - There is no fallback. If Ollama is unavailable, `runAgent` throws, `compare` returns `failed_terminal`, and the node safe-stops. No paid backend is called.
+2. **Contract.**
+   - `AUTOMATION_PROMPTS.detect_contradictions` is `detect-contradictions-v2`, built from the same constants in `lib/automation/contradictions/contract.ts` that the evaluator imports, so the two cannot drift.
+   - The agent schema is the v2 schema, in which `contradictions` is **required**. The v1 schema's `.default([])`, which could turn an omitted field into a clean profile, is gone.
+   - The profile workflow's pinned `agentVersion` moves to v2 through `automationAgentVersion`, so its definition registers as a new version and earlier runs keep v1.
+3. **Guard.** Agent nodes gain a per-agent deterministic guard. `detect_contradictions` uses it for every live answer:
+   - **Before the model call:** `contradictionContextError` requires `observedClaims` to be an array and `approvedFacts` to be a packet with a `claims` array. Against a missing context, even an answer of "none" means nothing. Every gold context satisfies this check.
+   - **After the schema passes:** `validateContradictionOutput`, the validator that was evaluated. It rejects unknown or fabricated ids, edited statements, swapped direction, within-context pairs and duplicates.
+   - Any guard failure is `failed_terminal`. A rejected answer is never read as an empty one.
+   - Test-mode canned outputs keep the schema-only check, as §10 specifies.
+4. **Deployment requirement.** The 60 s SLO assumes a resident model. `docs/deployment.md` now says to set `OLLAMA_KEEP_ALIVE` on the Ollama server. It is a host setting, not a request field: adding `keep_alive` to the request body would change the request that was evaluated, and the right value depends on the host.
+
+Remaining:
+- the §12 `llm_calls` confirmation from the first live or canary run;
+- the 20-run canary, in which the operator reviews every `no_error` outcome against the page.
+
+Rollback is unchanged from §11: remove the one `INTERNAL_TASK_TARGETS` line. That rollback would return the task to the paid frontier route, and it is a deliberate human decision, never an automatic fallback.
+
+## 2026-10-02 — In-flight runs pinned to `detect-contradictions-v1` fail closed (spec 146 §10.4)
+
+Tracing workflow versioning showed what is already handled and what was not:
+- **Already handled:**
+  - the v2 pin changes `graphHash`, so bootstrap registers a new immutable, published version;
+  - `startWorkflow` binds new runs to the latest published version;
+  - each run executes its own version's stored node definitions;
+  - finished runs and their `llm_calls` are never rewritten.
+- **The gap:** node *handlers* are current code. An old-version run still in flight that reached `compare` after deploy would have run v2 on `qwen3:30b` under a node whose stored `agentVersion` says v1. The answer and the ledger would honestly say v2, but the graph pin would not match, and the run's comparison would silently change contract mid-run.
+
+Decision: an agent node that has a contract guard (only `detect_contradictions` today) refuses a stored pin that differs from its current prompt version. It returns `failed_terminal` before any model call, so the run safe-stops: no clean profile is recorded and nothing is drafted. The operator restarts the run, and the new run binds to the current version.
+
+The check is scoped to guarded agents on purpose. Applying it to every agent would also stop in-flight runs whose unguarded prompts were bumped in earlier specs. That is a broader policy change than this spec makes.

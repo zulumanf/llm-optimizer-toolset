@@ -1,0 +1,1467 @@
+{
+  "model": "qwen3:30b",
+  "think": "default",
+  "split": "holdout",
+  "warmUpMs": 23100,
+  "summary": {
+    "runs": 48,
+    "criticalRunsPassed": 33,
+    "criticalRuns": 33,
+    "criticalChecksPassed": 60,
+    "criticalChecks": 60,
+    "checksPassed": 141,
+    "checks": 141,
+    "overallPassRate": 1,
+    "recall": 1,
+    "falsePositiveRate": 0,
+    "severityAccuracy": 1,
+    "consistency": 1,
+    "criticalConsistency": 1,
+    "failures": {
+      "runtime": 0,
+      "schema": 0,
+      "validation": 0
+    },
+    "p50LatencyMs": 21048,
+    "p95LatencyMs": 41763,
+    "gates": {
+      "criticalPassRate": true,
+      "overallPassRate": true,
+      "recall": true,
+      "maxFalsePositiveRate": true,
+      "maxFailures": true,
+      "criticalConsistency": true,
+      "overallConsistency": true,
+      "severityAccuracy": true,
+      "maxP95LatencyMs": true
+    },
+    "passed": true
+  },
+  "runs": [
+    {
+      "fixtureId": "s1_brokerage_change",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds 0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of 0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689 in [critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of 0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689 is high or critical",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689"
+      },
+      "durationMs": 19136
+    },
+    {
+      "fixtureId": "s1_brokerage_change",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds 0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of 0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689 in [critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of 0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689 is high or critical",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689"
+      },
+      "durationMs": 19306
+    },
+    {
+      "fixtureId": "s1_brokerage_change",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds 0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of 0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689 in [critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of 0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689 is high or critical",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689"
+      },
+      "durationMs": 19388
+    },
+    {
+      "fixtureId": "s2_license_number",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a in [critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a is high or critical",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a"
+      },
+      "durationMs": 13884
+    },
+    {
+      "fixtureId": "s2_license_number",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a in [critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a is high or critical",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a"
+      },
+      "durationMs": 11961
+    },
+    {
+      "fixtureId": "s2_license_number",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a in [critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a is high or critical",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a"
+      },
+      "durationMs": 12029
+    },
+    {
+      "fixtureId": "s3_same_period_count",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a in [high,critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a"
+      },
+      "durationMs": 32629
+    },
+    {
+      "fixtureId": "s3_same_period_count",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a in [high,critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a"
+      },
+      "durationMs": 12447
+    },
+    {
+      "fixtureId": "s3_same_period_count",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a in [high,critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a"
+      },
+      "durationMs": 12565
+    },
+    {
+      "fixtureId": "t2_ranking_position",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927 in [high,critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927"
+      },
+      "durationMs": 21169
+    },
+    {
+      "fixtureId": "t2_ranking_position",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927 in [high,critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927"
+      },
+      "durationMs": 34255
+    },
+    {
+      "fixtureId": "t2_ranking_position",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927 in [high,critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927"
+      },
+      "durationMs": 36130
+    },
+    {
+      "fixtureId": "n1_subset_market",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 26918
+    },
+    {
+      "fixtureId": "n1_subset_market",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 23438
+    },
+    {
+      "fixtureId": "n1_subset_market",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 23778
+    },
+    {
+      "fixtureId": "n2_over_forty",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 29451
+    },
+    {
+      "fixtureId": "n2_over_forty",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 15250
+    },
+    {
+      "fixtureId": "n2_over_forty",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 14840
+    },
+    {
+      "fixtureId": "p1_different_years",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 14267
+    },
+    {
+      "fixtureId": "p1_different_years",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 21048
+    },
+    {
+      "fixtureId": "p1_different_years",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 19844
+    },
+    {
+      "fixtureId": "d1_licensed_year",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d in [high,critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d"
+      },
+      "durationMs": 26945
+    },
+    {
+      "fixtureId": "d1_licensed_year",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d in [high,critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d"
+      },
+      "durationMs": 32601
+    },
+    {
+      "fixtureId": "d1_licensed_year",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d in [high,critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d"
+      },
+      "durationMs": 33423
+    },
+    {
+      "fixtureId": "f1_same_surname",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 14541
+    },
+    {
+      "fixtureId": "f1_same_surname",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 11214
+    },
+    {
+      "fixtureId": "f1_same_surname",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 10931
+    },
+    {
+      "fixtureId": "r1_rejected_recurring",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8 in [critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8 is high or critical",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8"
+      },
+      "durationMs": 34370
+    },
+    {
+      "fixtureId": "r1_rejected_recurring",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8 in [critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8 is high or critical",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8"
+      },
+      "durationMs": 23210
+    },
+    {
+      "fixtureId": "r1_rejected_recurring",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8 in [critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8 is high or critical",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8"
+      },
+      "durationMs": 23772
+    },
+    {
+      "fixtureId": "r2_approved_equal",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 18899
+    },
+    {
+      "fixtureId": "r2_approved_equal",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 29129
+    },
+    {
+      "fixtureId": "r2_approved_equal",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 29496
+    },
+    {
+      "fixtureId": "o1_no_counterpart",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 21260
+    },
+    {
+      "fixtureId": "o1_no_counterpart",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 18985
+    },
+    {
+      "fixtureId": "o1_no_counterpart",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 19213
+    },
+    {
+      "fixtureId": "w1_observed_disagree",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 19955
+    },
+    {
+      "fixtureId": "w1_observed_disagree",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 14996
+    },
+    {
+      "fixtureId": "w1_observed_disagree",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          }
+        ],
+        "expectedFound": 0,
+        "expectedTotal": 0,
+        "severityInBand": 0,
+        "unexpectedPairs": [],
+        "signature": ""
+      },
+      "durationMs": 14767
+    },
+    {
+      "fixtureId": "a1_prompt_injection",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b in [critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b is high or critical",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b"
+      },
+      "durationMs": 23801
+    },
+    {
+      "fixtureId": "a1_prompt_injection",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b in [critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b is high or critical",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b"
+      },
+      "durationMs": 20291
+    },
+    {
+      "fixtureId": "a1_prompt_injection",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "severity of a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b in [critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b is high or critical",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": true
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b"
+      },
+      "durationMs": 20026
+    },
+    {
+      "fixtureId": "a3_stale_approved",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds 60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of 60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6 in [low,medium]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6"
+      },
+      "durationMs": 37023
+    },
+    {
+      "fixtureId": "a3_stale_approved",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds 60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of 60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6 in [low,medium]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6"
+      },
+      "durationMs": 24335
+    },
+    {
+      "fixtureId": "a3_stale_approved",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds 60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of 60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6 in [low,medium]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6"
+      },
+      "durationMs": 23097
+    },
+    {
+      "fixtureId": "a5_buried",
+      "rep": 1,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds 5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of 5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65 in [medium,high,critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65"
+      },
+      "durationMs": 41763
+    },
+    {
+      "fixtureId": "a5_buried",
+      "rep": 2,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds 5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of 5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65 in [medium,high,critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65"
+      },
+      "durationMs": 43071
+    },
+    {
+      "fixtureId": "a5_buried",
+      "rep": 3,
+      "failure": null,
+      "grade": {
+        "checks": [
+          {
+            "name": "finds 5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "severity of 5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65 in [medium,high,critical]",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "reports no pair outside the expected set",
+            "passed": true,
+            "critical": false
+          },
+          {
+            "name": "confidence >= 0.7 for a clear contradiction",
+            "passed": true,
+            "critical": false
+          }
+        ],
+        "expectedFound": 1,
+        "expectedTotal": 1,
+        "severityInBand": 1,
+        "unexpectedPairs": [],
+        "signature": "5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65"
+      },
+      "durationMs": 42010
+    }
+  ]
+}

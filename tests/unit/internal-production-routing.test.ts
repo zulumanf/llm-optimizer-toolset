@@ -5,9 +5,20 @@ import {
 } from "@/lib/automation/prompts";
 import {
   inferenceTargetForTask,
+  INTERNAL_TASK_TARGETS,
 } from "@/lib/ai/routing";
+import { LOCAL_INTERNAL_TARGETS } from "@/lib/ai/internal/registry";
 
 describe("open-weight production routing", () => {
+  it("migrates exactly the evaluated tasks, each to its evaluated local target", () => {
+    expect(INTERNAL_TASK_TARGETS).toEqual({
+      summarize_meeting: LOCAL_INTERNAL_TARGETS.cheap,
+      summarize_support_request: LOCAL_INTERNAL_TARGETS.cheap,
+      knowledge_claim_extraction: LOCAL_INTERNAL_TARGETS.qa,
+      detect_contradictions: LOCAL_INTERNAL_TARGETS.reasoning,
+    });
+  });
+
   it("promotes summarize_meeting to the evaluated local target", () => {
     expect(
       inferenceTargetForTask("summarize_meeting")
@@ -30,7 +41,8 @@ describe("open-weight production routing", () => {
     for (const key of AUTOMATION_AGENT_KEYS) {
       if (
         key === "summarize_meeting" ||
-        key === "summarize_support_request"
+        key === "summarize_support_request" ||
+        key === "detect_contradictions"
       ) {
         continue;
       }
