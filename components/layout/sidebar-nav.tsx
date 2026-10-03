@@ -22,6 +22,7 @@ import {
   ListTodo,
   Gauge,
   LayoutDashboard,
+  Radar,
   Shield,
   Users,
   GraduationCap,
@@ -29,6 +30,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DASHBOARD_PATH } from "@/lib/prospects/dashboard-url";
 import {
   PROJECT_NAV_GROUPS,
   sectionFor,
@@ -210,8 +212,26 @@ export function SidebarNav({
             <Users className="size-4" /> Clients
           </NavLink>
         </li>
+      </ul>
+
+      <GroupLabel>Prospecting</GroupLabel>
+      <ul className="space-y-0.5">
         <li>
-          <NavLink href="/prospects" active={pathname.startsWith("/prospects")}>
+          <NavLink
+            href={DASHBOARD_PATH}
+            active={pathname.startsWith(DASHBOARD_PATH)}
+          >
+            <Radar className="size-4" /> Operate
+          </NavLink>
+        </li>
+        <li>
+          <NavLink
+            href="/prospects"
+            active={
+              pathname.startsWith("/prospects") &&
+              !pathname.startsWith(DASHBOARD_PATH)
+            }
+          >
             <Crosshair className="size-4" /> Prospects
           </NavLink>
         </li>
