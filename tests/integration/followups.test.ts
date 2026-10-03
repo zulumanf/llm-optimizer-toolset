@@ -12,6 +12,7 @@ import { seedTestActors } from "../helpers/actors";
 import { unwrap } from "../helpers/result";
 import { seedApprovedFinding, type PipelineModules } from "../helpers/prospect-fixtures";
 import { MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
+import { isBusinessDay, wallClock, zonedInstant } from "@/lib/prospects/business-days";
 import type { MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
@@ -99,7 +100,35 @@ const T1_BODY = [
   "123 Grand St, Jersey City, NJ 07302",
   'If you\'d rather not hear from us, reply "unsubscribe" and we will not contact you again.',
 ].join("\n");
-const T1_SENT = new Date("2026-09-01T13:07:00Z"); // Tue 06:07 PDT
+const TZ = "America/Los_Angeles";
+const DAY_MS = 86_400_000;
+/** Touch 1 anchors to the most recent business day at least 3 days ago, at
+ * 13:07 UTC (early morning Pacific), relative to the real clock: the 21-day
+ * sequence age limit is checked against `new Date()` at enrollment, so a
+ * pinned calendar date goes stale. */
+function touch1Anchor(now: Date): Date {
+  const t = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 13, 7));
+  while (now.getTime() - t.getTime() < 3 * DAY_MS || !isBusinessDay(t, TZ)) t.setUTCDate(t.getUTCDate() - 1);
+  return t;
+}
+const T1_SENT = touch1Anchor(new Date());
+/** UTC instant `days` calendar days after Touch 1's UTC date, at hh:mm UTC. */
+const afterT1 = (days: number, hour: number, minute = 0): Date =>
+  new Date(Date.UTC(T1_SENT.getUTCFullYear(), T1_SENT.getUTCMonth(), T1_SENT.getUTCDate() + days, hour, minute));
+/** Calendar-day offset of the `n`th business day after Touch 1. */
+function businessDaysAfterT1(n: number): number {
+  let days = 0;
+  for (let counted = 0; counted < n; ) {
+    days += 1;
+    if (isBusinessDay(afterT1(days, 13, 7), TZ)) counted += 1;
+  }
+  return days;
+}
+/** Local midnight (in TZ) of the calendar day containing `d`. */
+const localMidnight = (d: Date): Date => {
+  const w = wallClock(d, TZ);
+  return zonedInstant(w.year, w.month, w.day, 0, 0, TZ);
+};
 
 describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
   let sql: (typeof import("@/db/client"))["sql"];
@@ -225,8 +254,9 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
   it("enrolls from the delivered Touch 1 with the frozen snapshot, 3 business days out, idempotently", async () => {
     const first = await enroll();
     expect(first.created).toBe(true);
-    // Tue 09-01 + 3 business days = Fri 09-04, local midnight Pacific.
-    expect(first.nextDueAt?.toISOString()).toBe("2026-09-04T07:00:00.000Z");
+    // Touch 1 + 3 business days, local midnight Pacific.
+    const dueDay = businessDaysAfterT1(3);
+    expect(first.nextDueAt?.toISOString()).toBe(localMidnight(afterT1(dueDay, 12)).toISOString());
     const again = await enroll();
     expect(again.created).toBe(false);
     expect(again.sequenceId).toBe(first.sequenceId);
@@ -234,8 +264,8 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     expect(seq.timezone).toBe("America/Los_Angeles");
     expect(seq.evidenceSnapshot.competitor.name).toBe("Harbor View Group");
     expect(seq.touch1SendId).toBe(t1SendId);
-    expect((await fu.listFollowupSequences({ prospectId }, new Date("2026-09-03T12:00:00Z")))[0]!.displayState).toBe("T1_SENT");
-    expect((await fu.listFollowupSequences({ prospectId }, new Date("2026-09-05T12:00:00Z")))[0]!.displayState).toBe("T2_DUE");
+    expect((await fu.listFollowupSequences({ prospectId }, afterT1(dueDay - 1, 12)))[0]!.displayState).toBe("T1_SENT");
+    expect((await fu.listFollowupSequences({ prospectId }, afterT1(dueDay + 1, 12)))[0]!.displayState).toBe("T2_DUE");
   });
 
   it("renders Touch 2 within the lead, no-engagement branch in a new thread, never twice", async () => {
@@ -295,16 +325,18 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
 
   it("an out-of-office reply pauses until the stated return date; hard bounce and suppression stop", async () => {
     const { sequenceId } = await enroll();
+    const returnDay = afterT1(13, 12);
+    const returnText = `${returnDay.toLocaleString("en-US", { month: "long", timeZone: TZ })} ${wallClock(returnDay, TZ).day}`;
     unwrap(await svc.recordProspectReply(operator, {
-      prospectId, contactId, receivedAt: new Date("2026-09-02T15:00:00Z"),
-      bodyText: "Automatic reply: I am out of the office and will return on September 14. For urgent matters call the office.",
+      prospectId, contactId, receivedAt: afterT1(1, 15),
+      bodyText: `Automatic reply: I am out of the office and will return on ${returnText}. For urgent matters call the office.`,
     }));
-    let seq = await fu.applySequenceSignals(sequenceId, new Date("2026-09-03T12:00:00Z"));
+    let seq = await fu.applySequenceSignals(sequenceId, afterT1(2, 12));
     expect(seq?.status).toBe("paused");
-    expect(seq?.pausedUntil?.toISOString()).toBe("2026-09-15T07:00:00.000Z");
-    expect((await fu.listFollowupSequences({ prospectId }, new Date("2026-09-03T12:00:00Z")))[0]!.displayState).toBe("OOO_PAUSED");
+    expect(seq?.pausedUntil?.toISOString()).toBe(new Date(localMidnight(returnDay).getTime() + DAY_MS).toISOString());
+    expect((await fu.listFollowupSequences({ prospectId }, afterT1(2, 12)))[0]!.displayState).toBe("OOO_PAUSED");
     // Pause expired → resumes.
-    seq = await fu.applySequenceSignals(sequenceId, new Date("2026-09-16T12:00:00Z"));
+    seq = await fu.applySequenceSignals(sequenceId, afterT1(15, 12));
     expect(seq?.status).toBe("active");
     await sql`update prospect_contacts set do_not_contact = true, do_not_contact_reason = 'hard_bounce 2026-09-03: address not found' where id = ${contactId}`;
     seq = await fu.applySequenceSignals(sequenceId, new Date());
@@ -346,7 +378,7 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.message).toContain("failing closed");
     // Fresh sync but the recipient replied in the thread since Touch 1.
-    thread([outbound, { id: "gm-in-1", threadId: "thread-1", messageId: "<r@kane>", from: `Ryan Kane <${RECIPIENT}>`, to: SENDER, subject: "Re: Ryan - Reno", date: "2026-09-02T18:00:00Z", labelIds: ["INBOX"], body: "What is this about?" }]);
+    thread([outbound, { id: "gm-in-1", threadId: "thread-1", messageId: "<r@kane>", from: `Ryan Kane <${RECIPIENT}>`, to: SENDER, subject: "Re: Ryan - Reno", date: afterT1(1, 18).toISOString(), labelIds: ["INBOX"], body: "What is this about?" }]);
     res = await svc.sendProspectDraft(operator, { draftId: d!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.message).toMatch(/inbound reply|stage is "replied"/);
@@ -400,7 +432,7 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     const rec = unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Yes, send it.", gmailMessageId: "gm-in-9" }));
     executeCapability.mockImplementation(async (args: { capability: string }) =>
       args.capability === "email.search_messages"
-        ? { ok: true, data: { messages: [{ id: "gm-in-9", threadId: "thread-1", messageId: "<yes@kane>", from: `Ryan Kane <${RECIPIENT}>`, to: SENDER, subject: "Re: Ryan - Reno", date: "2026-09-03T20:00:00Z", labelIds: ["INBOX"], body: "Yes, send it." }] } }
+        ? { ok: true, data: { messages: [{ id: "gm-in-9", threadId: "thread-1", messageId: "<yes@kane>", from: `Ryan Kane <${RECIPIENT}>`, to: SENDER, subject: "Re: Ryan - Reno", date: afterT1(2, 20).toISOString(), labelIds: ["INBOX"], body: "Yes, send it." }] } }
         : { ok: false, errorCode: "unsupported" }
     );
     const body = `Ryan,\n\nHere it is, as promised.\n\nFrancisco\n\n--\nFrancisco Zuluaga · Recommended First\nwww.RecommendedFirst.com\n123 Grand St, Jersey City, NJ 07302\nIf you'd rather not hear from us, reply "unsubscribe" and we will not contact you again.`;
@@ -484,15 +516,15 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     const { sequenceId } = await enroll();
     const seq0 = (await fu.getFollowupSequence(sequenceId))!;
     expect(seq0.touch1SentAt.toISOString()).toBe(T1_SENT.toISOString());
-    expect(fu.sequenceExpiresAt(seq0.touch1SentAt).toISOString()).toBe("2026-09-22T13:07:00.000Z");
+    expect(fu.sequenceExpiresAt(seq0.touch1SentAt).toISOString()).toBe(new Date(T1_SENT.getTime() + 21 * DAY_MS).toISOString());
     // Deferred to the day before expiry: still renders. Past it: completes.
-    let seq = await fu.applySequenceSignals(sequenceId, new Date("2026-09-21T12:00:00Z"));
+    let seq = await fu.applySequenceSignals(sequenceId, afterT1(20, 12));
     expect(seq?.status).toBe("active");
-    seq = await fu.applySequenceSignals(sequenceId, new Date("2026-09-23T12:00:00Z"));
+    seq = await fu.applySequenceSignals(sequenceId, afterT1(22, 12));
     expect(seq?.status).toBe("complete");
     expect(seq?.stopReason).toContain("expired");
     expect((await fu.listFollowupSequences({ prospectId }))[0]!.displayState).toBe("COMPLETE_NO_REPLY");
-    expect((await fu.scheduleDueFollowups(new Date("2026-09-23T12:00:00Z"))).rendered).toBe(0);
+    expect((await fu.scheduleDueFollowups(afterT1(22, 12))).rendered).toBe(0);
   });
 
   it("an in-thread touch refuses to send when the parent thread id cannot be resolved", async () => {
