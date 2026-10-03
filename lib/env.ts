@@ -58,6 +58,9 @@ const envSchema = z
     ELEVENLABS_VOICE_ID: z.string().optional(),
     // MCP server actor (spec 033) — required only by `npm run mcp`.
     MCP_USER_ID: z.string().optional(),
+    // Spec 147: global bound on inference-active profile checks (1..25,
+    // default 1). Parsed and validated in lib/profile-corrections/config.ts.
+    PROFILE_CHECK_MAX_INFERENCE_RUNS: z.string().optional(),
     // Spend ceiling override (lib/constants.ts falls back to $25).
     DAILY_SPEND_CEILING_USD: z.string().optional(),
     // Prospect audit page commission-estimate rate (defaults to 0.025).

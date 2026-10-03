@@ -93,6 +93,7 @@ const PATH_CONFIG_KEYS = new Set([
   "profilePath",
   "untilPath",
   "bodyPath",
+  "urlPath",
 ]);
 
 /**

@@ -28,6 +28,8 @@ import {
 } from "@/lib/automation/dispatch";
 import { sweepConnections } from "@/lib/connectors/health";
 import { log } from "@/lib/logger";
+import { dispatchProfileChecks } from "@/lib/profile-corrections/dispatch";
+import { PROFILE_CHECK_DISPATCH_JOB } from "@/lib/profile-corrections/constants";
 
 export const handlers: Record<
   string,
@@ -190,6 +192,13 @@ export const handlers: Record<
   // dispatchers on the same slot produce one run.
   dispatch_triggers: async () => {
     await runTriggerDispatch();
+  },
+  // Release queued profile checks within the global inference bound (spec
+  // 147). Re-enqueues itself while due work waits; a capacity check and the
+  // release share one advisory-locked transaction, so any number of these
+  // running together never over-release.
+  [PROFILE_CHECK_DISPATCH_JOB]: async () => {
+    await dispatchProfileChecks();
   },
   // Probe every connection. Prevents the silent-failure mode where a connector
   // broke weeks ago and reporting has been quietly incomplete since.

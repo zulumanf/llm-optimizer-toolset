@@ -3619,3 +3619,49 @@ To resume, with no change to routing, prompts, schemas, validators, model config
 3. Wait until the host is not under contention.
 4. Rerun the same 20-case canary.
 5. Require warm p95 ≤ 60 s.
+
+## 2026-10-02 — Spec 147 architecture corrections: correction destination, public fetch, inference concurrency
+
+Before implementation, an architecture pass replaced three parts of the first Spec 147 draft. The rest of the spec is unchanged: the builder, the validator, human approval and the 14-day recheck.
+
+**1. Correction destination.** The draft addressed every correction email to the client's confirmed contact. That is wrong for pages a third party publishes.
+- **What exists today.** The repository stores no destination for any profile: no publisher contact, no correction form, no per-profile editor. `lib/sources/classify.ts` labels a domain's type, but not who corrects it. The onboarding access question (`lib/engagements/onboarding-questions.ts:70`) sets a working model: the client's team applies profile changes that we specify. Nothing records it per profile.
+- **Decision.** Add a small insert-or-archive table, `profile_correction_destinations`, with one active row per (project, profile URL):
+  - `kind` is `client_editor` or `publisher`;
+  - `recipient_name`, `email` and `basis` are required;
+  - `source_url` is also required for a publisher.
+
+  A destination exists only when an operator records one.
+- **The client's contact.** It is only a prefill for `client_editor`. It is never a default, and it is never inferred from the domain.
+- **Unknown destination.** An approved request becomes `destination_required`. No draft is created and no event is published. When an operator later sets the destination, the request moves to `ready_to_draft`, which publishes `profile.correction_ready` and starts a separate draft workflow.
+- **Publishers.** A publisher destination adds the existing `approve_external_submission` gate.
+- **Why.** Sending a correction to the wrong party is worse than holding it. The default is to hold.
+
+**2. Public fetch.** `fetch_profile` used `cms.fetch_public_page`, whose only provider is WordPress. Every profile check therefore needed an unrelated WordPress connection. That fetch also went through `connectorFetch`, which has no SSRF policy.
+- **What already exists.** `canonical_extract` already re-fetches and stores the page through `ingestSource(origin: "url_fetch")` and `safeFetch`, with the SSRF policy, revalidated redirects, a streaming size cap, a timeout, sha256, versioning and provenance.
+- **Decision.** `fetch_profile` keeps its node key and output contract but becomes the deterministic `dom.fetch_public_profile`, calling `safeFetch` with the same constants as ingestion. No new fetch code is added.
+  - Policy refusals (`validation` or `forbidden`) give `ok: false`.
+  - Network and timeout errors, and non-2xx responses, give `reachable: false`.
+- **What does not change.** `canonical_extract`'s config and handler (Specs 145B, 145D, 145E). The node is kept rather than removed, because `canonical_extract` consumes its contract.
+- **Cost.** A second fetch of the page is accepted.
+- **Result.** No profile workflow requires WordPress.
+
+**3. Concurrency.** The draft spec set `maxConcurrentRuns = 25`.
+- **What the engine does.** The worker runs one job at a time, and `tick()` runs a run's nodes in sequence. So one process never overlaps model calls, but only by accident. Several workers could, nothing bounds Ollama globally, and event starts that hit a limit are dead-lettered after 3 retries.
+- **Why `maxConcurrentRuns` is the wrong lever.** It counts runs parked for up to 72 h awaiting approval.
+- **Decision.** Profile checks and rechecks go through a durable queue, `profile_check_requests`. A dispatcher releases them under a transaction-scoped advisory lock and runs from a self-rescheduling `profile_check_dispatch` job and from the worker tick.
+  - **Limit.** It keeps at most `PROFILE_CHECK_MAX_INFERENCE_RUNS` runs inference-active (running and not parked) across all clients. The default is 1, configurable through `lib/env.ts`.
+  - **Why 1.** There is one host. Each check runs `gpt-oss:20b` and then `qwen3:30b`, and the Spec 146 canary breached its SLO under contention.
+  - **`maxConcurrentRuns`.** It stays at 25 per project, as a ceiling on parked runs only.
+  - **Rechecks.** They use the same queue (`not_before` = 14 days out). This replaces both the broken `det.schedule_remeasurement` and the planned delayed-job type.
+
+## 2026-10-02 — Spec 147 slice 1: profile checks enter the workflow through a bounded queue
+
+Slice 1 implements this path: confirmed profile URL → `profile_check_requests` (migration 120) → `dispatchProfileChecks` → `profile.check_requested` → `reputation_profile_correction_v1` → `dom.fetch_public_profile` (safeFetch) → the unchanged `canonical_extract`. It deviates from the spec text in four places:
+
+- **The paid back half was retired early.**
+  - **What we found.** The old back half was `agt.draft_outreach` and `agt.verify_claims` on paid OpenAI, plus `email.create_draft`. Releasing real checks would have reached those paid calls on every contradiction, and the `email.create_draft` connector preflight would have refused every start that had no Gmail connection.
+  - **Decision.** Until the deterministic correction request lands in slice 2, a found contradiction ends at `correction_pending` (`ctl.safe_stop`), with the validated pairs kept in the `compare` output. `requiredConnectors` is now `[]`.
+- **The idempotency template keys on the queue row.** It is `profile-check:{{event.projectId}}:{{payload.checkRequestId}}`. The row is already unique per (project, context item, window), and the queue stores the exact engine key (`live:` + rendered), so capacity and abandonment are judged by a join on `workflow_runs.idempotency_key`.
+- **Window keys are prefixed.** The schedule uses `week:<ISO Monday>` and an operator uses `day:<UTC date>`. Without the prefix, a Monday operator check would collide with that week's scheduled one.
+- **The dispatcher publishes each row under its own savepoint.** One unpublishable row is marked `failed` and cannot roll back, and so permanently block, the global queue.
