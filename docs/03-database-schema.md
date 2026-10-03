@@ -386,3 +386,19 @@ UPDATE/DELETE, not schema evolution (migration 011 set the precedent).
 | `context_packet_templates` | mirrored from the code registry, the way `agent_definitions` already is | mutable |
 
 Packet access is written to `audit_log`. There is no second audit system.
+
+## Profile checks — migration 120 (spec 147)
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `profile_check_requests` | The durable queue of profile checks. Each row is one client-confirmed profile URL for one window: `week:<ISO Monday>` for the schedule, `day:<UTC date>` for an operator. | Status moves through `queued → released`, `skipped` or `failed`. Deletes are forbidden. |
+
+**Row identity.** `run_idempotency_key` is exactly the engine key of the run a release starts. The bounded dispatcher (`lib/profile-corrections/dispatch.ts`) joins it to `workflow_runs.idempotency_key` for two purposes:
+- to count inference-active work across all clients;
+- to fail releases that never became a run.
+
+**Indexes.**
+- Uniqueness: one `check` per (project, context item, window), and one `recheck` per correction.
+- Scan order: `(status, not_before, created_at)`, which is the dispatcher's oldest-first scan.
+
+**Pending.** `correction_request_id` gains its foreign key when `profile_correction_requests` is created in a later slice.

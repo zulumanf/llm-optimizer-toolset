@@ -36,6 +36,7 @@ export interface AutomationTickReport {
   assistantTasks: Record<string, unknown>;
   campaignDigest: Record<string, unknown>;
   deliveryQa: Record<string, unknown>;
+  profileChecks: Record<string, unknown>;
 }
 
 /**
@@ -309,6 +310,25 @@ export async function runAutomationTick(
     campaignDigest = { error: "campaign digest failed; dispatch was unaffected" };
   }
 
+  // Profile checks (spec 147): the safety net for the bounded dispatcher —
+  // releases queued checks within the global inference limit and fails any
+  // release that never became a run. Isolated: never fails dispatch.
+  let profileChecks: Record<string, unknown> = { skipped: true };
+  try {
+    const { dispatchProfileChecks } = await import("@/lib/profile-corrections/dispatch");
+    const report = await dispatchProfileChecks();
+    profileChecks = {
+      limit: report.limit,
+      released: report.released.length,
+      abandoned: report.abandoned.length,
+    };
+  } catch (err) {
+    log("error", "cron.profile_checks_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    profileChecks = { error: "profile check dispatch failed; dispatch was unaffected" };
+  }
+
   if ((events.deadLettered as number) > 0 || triggers.failed > 0 || (health.failing as number) > 0) {
     log("warn", "cron.automation.degraded", {
       deadLettered: events.deadLettered,
@@ -345,6 +365,7 @@ export async function runAutomationTick(
     assistantTasks,
     campaignDigest,
     deliveryQa,
+    profileChecks,
   };
 }
 
@@ -364,7 +385,20 @@ export async function runWeeklyKick(): Promise<Record<string, unknown>> {
   const cycles = await startWeeklyCycles();
   const briefs = await startWeeklyBriefs();
   const baselines = await runWeeklyBaselines();
-  return { ...cycles, briefs, baselines };
+  // Spec 147: queue this week's checks of every live client's confirmed
+  // profile URLs. Idempotent per ISO week; isolated so a failure here never
+  // stops the cycles, briefs or baselines above.
+  let profileChecks: Record<string, unknown>;
+  try {
+    const { startWeeklyProfileChecks } = await import("@/lib/profile-corrections/start");
+    profileChecks = { ...(await startWeeklyProfileChecks()) };
+  } catch (err) {
+    log("error", "cron.weekly_profile_checks_failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    profileChecks = { error: "weekly profile checks failed" };
+  }
+  return { ...cycles, briefs, baselines, profileChecks };
 }
 
 interface BaselineConfig {

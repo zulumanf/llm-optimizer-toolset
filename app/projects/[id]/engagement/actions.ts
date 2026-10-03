@@ -7,6 +7,7 @@ import * as engagements from "@/lib/engagements/service";
 import * as tasks from "@/lib/tasks/service";
 import * as portfolio from "@/lib/engagements/portfolio";
 import * as reviewers from "@/lib/engagements/reviewers";
+import * as profileChecks from "@/lib/profile-corrections/start";
 
 /** Thin wrappers (ui-conventions): identity → service → revalidate. */
 async function run<T>(
@@ -100,4 +101,8 @@ export async function reviewClientDraft(projectId: string, input: unknown) {
 }
 export async function overrideQaEvent(projectId: string, input: unknown) {
   return run(projectId, (u) => portfolio.overrideQaEvent(u, input));
+}
+/** Spec 147: queue a check of every client-confirmed profile URL (bounded dispatch). */
+export async function startProfileChecks(projectId: string) {
+  return run(projectId, (u) => profileChecks.startProfileChecks(u, { projectId, origin: "operator" }));
 }

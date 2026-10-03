@@ -25,6 +25,11 @@ import {
   trigger,
   verify,
 } from "@/lib/automation/workflows/helpers";
+import {
+  PROFILE_CHECK_IDEMPOTENCY_TEMPLATE,
+  PROFILE_CHECK_MAX_PROFILES_PER_PROJECT,
+  PROFILE_CHECK_REQUESTED_EVENT,
+} from "@/lib/profile-corrections/constants";
 
 // ------------------------------------- 8. Content production (v2)
 
@@ -301,7 +306,7 @@ export const profileCorrectionWorkflow = defineWorkflow({
   key: PROFILE_CORRECTION_KEY,
   name: "Reputation and profile correction",
   description:
-    "Scan public profiles, compare their claims against the approved knowledge graph, score severity, draft an evidence-backed correction, submit it through a supported channel, and verify the correction live.",
+    "Check a client-confirmed public profile, compare its claims against the approved knowledge graph, and score severity. Deterministic correction requests, approval, drafting and live rechecks follow in later Spec 147 slices.",
   domain: "reputation",
   owner: "fulfilment operator",
   actionType: "profile_correction",
@@ -310,8 +315,13 @@ export const profileCorrectionWorkflow = defineWorkflow({
   maxCostMicroUsd: 2_500_000,
   maxDurationMinutes: 10_080,
   maxParallel: 6,
+  // Spec 147 §3.1: a per-project ceiling on PARKED runs only. Inference is
+  // bounded globally by the profile-check dispatcher, not by this number.
+  maxConcurrentRuns: PROFILE_CHECK_MAX_PROFILES_PER_PROJECT,
   requiredApprovals: ["approve_profile_correction"],
-  requiredConnectors: ["cms.fetch_public_page", "email.create_draft"],
+  // Spec 147 §4: the public fetch needs no connector, and nothing in this
+  // slice drafts or sends.
+  requiredConnectors: [],
   triggers: [
     {
       kind: "schedule",
@@ -329,6 +339,14 @@ export const profileCorrectionWorkflow = defineWorkflow({
       idempotencyTemplate: "profile:{{payload.profileUrl}}",
       description: "An incorrect public profile was detected",
     },
+    {
+      kind: "domain_event",
+      eventType: PROFILE_CHECK_REQUESTED_EVENT,
+      autonomyNote:
+        "Released by the bounded profile-check dispatcher for one client-confirmed URL. The run only reads a public page and records proposed claims and a comparison; nothing is drafted, sent or published.",
+      idempotencyTemplate: PROFILE_CHECK_IDEMPOTENCY_TEMPLATE,
+      description: "A client-confirmed profile URL was released for a check",
+    },
   ],
   acceptanceCriteria: [
     "No correction is submitted without evidence.",
@@ -338,12 +356,13 @@ export const profileCorrectionWorkflow = defineWorkflow({
     "Corrections through unsupported channels become manual tasks, not silent failures.",
   ],
   nodes: [
-    // Only the profile.error_detected event carries a profile URL (spec 145C).
-    // A scheduled scan has none and stops here with the entry-kind mismatch.
-    trigger("entry", "domain_event", "Profile error detected"),
-    // The connector's input contract is `{ url }`; the event names it profileUrl.
-    fetch("fetch_profile", "cms.fetch_public_page", "Fetch the profile", {
-      inputFields: { url: "payload.profileUrl" },
+    // Only an event carries a profile URL (spec 145C). A scheduled scan has
+    // none and stops here with the entry-kind mismatch.
+    trigger("entry", "domain_event", "Profile check requested"),
+    // Spec 147 §4: a public page is read through safeFetch, with no connector.
+    // The URL comes only from the event payload and is never invented.
+    step("fetch_profile", "dom.fetch_public_profile", "Fetch the public profile", {
+      urlPath: "payload.profileUrl",
     }),
     // Canonical path (spec 145B): ingest the observed page as a source artifact,
     // then extract proposed claims from that artifact.
@@ -382,37 +401,15 @@ export const profileCorrectionWorkflow = defineWorkflow({
         { label: "low", max: 0.4 },
       ],
     }),
-    agent("draft_correction", "draft_outreach", "Draft the correction", {
-      contextPath: "compare",
+    // Spec 147 slice 1: the paid draft_outreach / verify_claims back half is
+    // retired. Until the deterministic correction request lands (slice 2), a
+    // found contradiction stops here, visibly, with compare's validated pairs
+    // preserved in the run — never drafted by a model, never sent.
+    step("correction_pending", "ctl.safe_stop", "Hold — correction request not yet available", {
+      reason:
+        "contradictions were found and recorded in this run's compare output; the deterministic correction request (Spec 147 slice 2) is not yet available, so nothing is drafted or sent",
     }),
-    verify("verify_correction", "verify_claims", "Verify the correction's claims", {
-      contextPath: "draft_correction",
-    }),
-    human(
-      "approve",
-      "approve_profile_correction",
-      "Approve the correction",
-      { artifactPath: "draft_correction", evidenceIdsPath: "approved_facts.evidenceIds" },
-      { riskLevel: "high", approvalRole: "operator" }
-    ),
-    act(
-      "submit",
-      "email.create_draft",
-      "Submit through the supported channel",
-      { inputPath: "draft_correction" },
-      { riskLevel: "high" }
-    ),
-    step("archive_before_after", "det.hash_artifact", "Archive before-and-after evidence", {
-      contentPath: "fetch_profile.data",
-    }),
-    step("schedule_verify", "det.schedule_remeasurement", "Schedule live verification", {
-      days: 14,
-    }),
-    step("publish_event", "dom.publish_event", "Publish correction_approved", {
-      eventType: "profile.correction_approved",
-      payloadPath: "payload",
-    }),
-    success("done", "Correction submitted and tracked"),
+    success("done", "Profile checked"),
   ],
   edges: [
     edge("entry", "fetch_profile"),
@@ -422,14 +419,7 @@ export const profileCorrectionWorkflow = defineWorkflow({
     edge("compare", "has_error"),
     branch("has_error", "no_error", false),
     branch("has_error", "severity", true),
-    edge("severity", "draft_correction"),
-    edge("draft_correction", "verify_correction"),
-    edge("verify_correction", "approve"),
-    edge("approve", "submit"),
-    edge("submit", "archive_before_after"),
-    edge("archive_before_after", "schedule_verify"),
-    edge("schedule_verify", "publish_event"),
-    edge("publish_event", "done"),
+    edge("severity", "correction_pending"),
     edge("no_error", "done", { required: false }),
   ],
 });

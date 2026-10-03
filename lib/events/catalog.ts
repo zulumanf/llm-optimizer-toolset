@@ -128,6 +128,16 @@ const profileError = z.object({
   findingId: z.string().optional(),
   severity: z.enum(["low", "medium", "high", "critical"]).default("medium"),
 });
+// Spec 147: one released profile_check_requests row. The project is the
+// event's own projectId (tenant key); the payload names the queue row and the
+// client-confirmed profile it checks.
+const profileCheckRequested = z.object({
+  checkRequestId: z.string().uuid(),
+  contextItemId: z.string().uuid(),
+  profileUrl: z.string().url().refine((u) => /^https?:\/\//i.test(u), "http(s) only"),
+  origin: z.enum(["operator", "schedule"]),
+  window: z.string().min(1),
+});
 
 // --------------------------------------------------------- transaction
 const transactionRef = z.object({
@@ -295,6 +305,11 @@ export const EVENT_CATALOG: EventTypeDefinition[] = [
   def("profile.error_detected", "A public profile contradicts approved facts", profileError),
   def("profile.correction_approved", "A correction was approved for submission", profileError),
   def("profile.correction_verified", "A correction was verified live", profileError),
+  def(
+    "profile.check_requested",
+    "A check of a client-confirmed profile URL was released from the queue",
+    profileCheckRequested
+  ),
 
   def("transaction.created", "A transaction was recorded", transactionRef),
   def("transaction.verified", "A transaction was verified against evidence", transactionRef),

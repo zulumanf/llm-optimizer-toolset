@@ -1,6 +1,11 @@
 /**
  * Spec 145C — a real profile.error_detected run enters the profile correction
- * workflow and hands cms.fetch_public_page exactly `{ url }`.
+ * workflow and fetches exactly `payload.profileUrl`, never an invented URL.
+ *
+ * Spec 147 slice 1 replaced the WordPress `cms.fetch_public_page` capability on
+ * `fetch_profile` with the connector-free `dom.fetch_public_profile` (safeFetch).
+ * The 145C invariants are retested against it here; the generic integration
+ * `inputFields` mapping 145C added is still tested on an integration node.
  *
  * The run input is built the way `lib/events/bus.ts` builds it, and the entry
  * and fetch handlers are the workflow's own, so this exercises the live wiring
@@ -13,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   sql: vi.fn(),
   runModeFor: vi.fn(),
   executeCapability: vi.fn(),
+  safeFetch: vi.fn(),
 }));
 
 vi.mock("@/db/client", () => ({ sql: mocks.sql }));
@@ -21,9 +27,11 @@ vi.mock("@/lib/automation/testmode", () => ({
   recordWouldHaveHappened: vi.fn(),
 }));
 vi.mock("@/lib/connectors/execute", () => ({ executeCapability: mocks.executeCapability }));
+vi.mock("@/lib/security/safe-fetch", () => ({ safeFetch: mocks.safeFetch }));
 
 import { eventDefinition } from "@/lib/events/catalog";
 import { integrationNodes } from "@/lib/automation/nodes/integration";
+import { profileCorrectionNodes } from "@/lib/automation/nodes/profile-correction";
 import { triggerNodes } from "@/lib/automation/nodes/human";
 import {
   competitorIntelligenceWorkflow,
@@ -88,7 +96,25 @@ async function runFetch(
   config?: Record<string, unknown>
 ) {
   const fetchNode = node(profileCorrectionWorkflow, "fetch_profile");
-  return integrationNodes[fetchNode.handler!]!(ctxFor(fetchNode, workflowInput, inputs, config));
+  return profileCorrectionNodes[fetchNode.handler!]!(ctxFor(fetchNode, workflowInput, inputs, config));
+}
+
+/** A generic integration fetch node, for the 145C `inputFields` mapping. */
+const INTEGRATION_FETCH: NodeDefinition = {
+  key: "fetch_page",
+  type: "integration_task",
+  name: "Fetch a page",
+  handler: "int.cms_fetch_public_page",
+  config: { capability: "cms.fetch_public_page", inputFields: { url: "payload.profileUrl" } },
+};
+
+async function runIntegrationFetch(
+  workflowInput: Record<string, unknown>,
+  config: Record<string, unknown>
+) {
+  return integrationNodes[INTEGRATION_FETCH.handler!]!(
+    ctxFor(INTEGRATION_FETCH, workflowInput, {}, config)
+  );
 }
 
 function capabilityInput(): unknown {
@@ -112,6 +138,14 @@ beforeEach(() => {
     rowsRead: 1,
     rowsWritten: 0,
   });
+  mocks.safeFetch.mockResolvedValue({
+    status: 200,
+    statusText: "OK",
+    ok: true,
+    headers: new Headers(),
+    bytes: Buffer.from("<html>"),
+    finalUrl: PROFILE_URL,
+  });
 });
 
 describe("profile correction live input (spec 145C)", () => {
@@ -130,7 +164,7 @@ describe("profile correction live input (spec 145C)", () => {
     });
   });
 
-  it("hands cms.fetch_public_page exactly { url } from a real event payload", async () => {
+  it("fetches exactly payload.profileUrl from a real event payload, with no connector", async () => {
     const input = eventRunInput({
       profileType: "zillow",
       profileUrl: PROFILE_URL,
@@ -141,38 +175,38 @@ describe("profile correction live input (spec 145C)", () => {
     const result = await runFetch(input, { entry: entry.output });
 
     expect(result.outcome).toBe("succeeded");
-    expect(mocks.executeCapability).toHaveBeenCalledTimes(1);
-    const call = mocks.executeCapability.mock.calls[0]![0];
-    expect(call.capability).toBe("cms.fetch_public_page");
-    // Nothing else from the payload (profileType, findingId, severity) is forwarded.
-    expect(call.input).toEqual({ url: PROFILE_URL });
-    expect(call.projectId).toBe(PROJECT_ID);
-    expect(call.workflowRunId).toBe(RUN_ID);
-    expect(result.output?.data).toMatchObject({ url: PROFILE_URL, reachable: true });
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(1);
+    // Only the URL is used; nothing else from the payload is forwarded.
+    expect(mocks.safeFetch.mock.calls[0]![0]).toBe(PROFILE_URL);
+    expect(mocks.executeCapability).not.toHaveBeenCalled();
+    expect(result.output).toMatchObject({ ok: true, data: { url: PROFILE_URL, reachable: true } });
   });
 
-  it("omits url rather than inventing one when profileUrl is missing", async () => {
-    mocks.executeCapability.mockResolvedValue({
-      ok: false,
-      provider: "wordpress",
-      error: 'cms.fetch_public_page requires "url"',
-      errorCode: "invalid_input",
-      retryable: false,
-    });
+  it("omits the fetch rather than inventing a URL when profileUrl is missing", async () => {
     const input = { event: { id: "evt-2" }, payload: { profileType: "zillow" } };
     const result = await runFetch(input, {});
-    expect(capabilityInput()).toEqual({});
-    expect(result.outcome).toBe("failed_terminal");
-    expect(result.output?.ok).toBe(false);
+    expect(mocks.safeFetch).not.toHaveBeenCalled();
+    expect(mocks.executeCapability).not.toHaveBeenCalled();
+    expect(result.outcome).toBe("succeeded");
+    // canonical_extract safe-stops on ok: false (spec 145B), as it did before.
+    expect(result.output).toEqual({ ok: false, reason: "no_url" });
   });
 
-  it("keeps params as defaults under inputFields", async () => {
-    await runFetch(eventRunInput({ profileType: "zillow", profileUrl: PROFILE_URL }), {}, {
+  it("keeps params as defaults under inputFields (generic integration nodes)", async () => {
+    await runIntegrationFetch(eventRunInput({ profileType: "zillow", profileUrl: PROFILE_URL }), {
       capability: "cms.fetch_public_page",
       params: { url: "https://fallback.example.com", locale: "en" },
       inputFields: { url: "payload.profileUrl" },
     });
     expect(capabilityInput()).toEqual({ url: PROFILE_URL, locale: "en" });
+  });
+
+  it("hands an integration node exactly { url } through inputFields", async () => {
+    await runIntegrationFetch(
+      eventRunInput({ profileType: "zillow", profileUrl: PROFILE_URL, findingId: "f-1" }),
+      INTEGRATION_FETCH.config ?? {}
+    );
+    expect(capabilityInput()).toEqual({ url: PROFILE_URL });
   });
 
   it.each([
@@ -181,9 +215,8 @@ describe("profile correction live input (spec 145C)", () => {
     ["a non-string path", { inputFields: { url: 42 } }],
     ["an empty path", { inputFields: { url: "" } }],
   ])("fails terminally on %s without calling the connector", async (_label, config) => {
-    const result = await runFetch(
+    const result = await runIntegrationFetch(
       eventRunInput({ profileType: "zillow", profileUrl: PROFILE_URL }),
-      {},
       { capability: "cms.fetch_public_page", ...config }
     );
     expect(result.outcome).toBe("failed_terminal");
@@ -214,10 +247,13 @@ describe("profile correction live input (spec 145C)", () => {
     expect(capabilityInput()).toEqual({ url: "https://upstream.example.com", locale: "en" });
   });
 
-  it("configures fetch_profile with inputFields and no inputPath", () => {
-    const config = node(profileCorrectionWorkflow, "fetch_profile").config ?? {};
+  it("configures fetch_profile to read only payload.profileUrl (spec 147: no connector)", () => {
+    const fetchProfile = node(profileCorrectionWorkflow, "fetch_profile");
+    expect(fetchProfile.handler).toBe("dom.fetch_public_profile");
+    const config = fetchProfile.config ?? {};
     expect(config.inputPath).toBeUndefined();
-    expect(config.inputFields).toEqual({ url: "payload.profileUrl" });
+    expect(config.inputFields).toBeUndefined();
+    expect(config.urlPath).toBe("payload.profileUrl");
   });
 
   it("validates the workflow", () => {
