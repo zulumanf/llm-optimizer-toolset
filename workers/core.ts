@@ -29,7 +29,11 @@ import {
 import { sweepConnections } from "@/lib/connectors/health";
 import { log } from "@/lib/logger";
 import { dispatchProfileChecks } from "@/lib/profile-corrections/dispatch";
-import { PROFILE_CHECK_DISPATCH_JOB } from "@/lib/profile-corrections/constants";
+import { dispatchCorrectionDrafts } from "@/lib/profile-corrections/drafting";
+import {
+  PROFILE_CHECK_DISPATCH_JOB,
+  PROFILE_DRAFT_DISPATCH_JOB,
+} from "@/lib/profile-corrections/constants";
 
 export const handlers: Record<
   string,
@@ -199,6 +203,11 @@ export const handlers: Record<
   // running together never over-release.
   [PROFILE_CHECK_DISPATCH_JOB]: async () => {
     await dispatchProfileChecks();
+  },
+  // Start one Gmail drafting attempt per ready_to_draft correction (spec 147
+  // slice 4). Advisory-locked and idempotent; the tick also runs it.
+  [PROFILE_DRAFT_DISPATCH_JOB]: async () => {
+    await dispatchCorrectionDrafts();
   },
   // Probe every connection. Prevents the silent-failure mode where a connector
   // broke weeks ago and reporting has been quietly incomplete since.

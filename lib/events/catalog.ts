@@ -139,6 +139,27 @@ const profileCheckRequested = z.object({
   window: z.string().min(1),
 });
 
+// Spec 147 slice 3: an approved correction routed to a publisher waits for
+// the external-submission approval before it may be drafted.
+const profileExternalApproval = z.object({
+  correctionRequestId: z.string().uuid(),
+  destinationId: z.string().uuid(),
+});
+
+// Spec 147 slice 4: one drafting attempt for a ready_to_draft correction.
+const profileCorrectionReady = z.object({
+  correctionRequestId: z.string().uuid(),
+  destinationId: z.string().uuid(),
+  draftAttemptId: z.string().uuid(),
+});
+
+// Spec 147 slice 5: a sent correction's 14-day recheck is due.
+const profileRecheckDue = z.object({
+  correctionRequestId: z.string().uuid(),
+  checkRequestId: z.string().uuid(),
+  profileUrl: z.string().url().refine((u) => /^https?:\/\//i.test(u), "http(s) only"),
+});
+
 // --------------------------------------------------------- transaction
 const transactionRef = z.object({
   transactionId: z.string(),
@@ -305,6 +326,21 @@ export const EVENT_CATALOG: EventTypeDefinition[] = [
   def("profile.error_detected", "A public profile contradicts approved facts", profileError),
   def("profile.correction_approved", "A correction was approved for submission", profileError),
   def("profile.correction_verified", "A correction was verified live", profileError),
+  def(
+    "profile.recheck_due",
+    "A sent profile correction is due for its live recheck",
+    profileRecheckDue
+  ),
+  def(
+    "profile.correction_ready",
+    "An approved, routed profile correction is ready for a Gmail draft attempt",
+    profileCorrectionReady
+  ),
+  def(
+    "profile.external_approval_required",
+    "An approved profile correction is routed to a publisher and needs external-submission approval",
+    profileExternalApproval
+  ),
   def(
     "profile.check_requested",
     "A check of a client-confirmed profile URL was released from the queue",

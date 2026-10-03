@@ -28,7 +28,7 @@ function node(key: string) {
   return found;
 }
 
-describe("profile correction workflow (spec 147 slice 1)", () => {
+describe("profile correction workflow (spec 147 slices 1–3)", () => {
   it("fetches through dom.fetch_public_profile from the event payload", () => {
     const fetchProfile = node("fetch_profile");
     expect(fetchProfile.handler).toBe("dom.fetch_public_profile");
@@ -104,12 +104,43 @@ describe("profile correction workflow (spec 147 slice 1)", () => {
     }
   });
 
-  it("holds a found contradiction visibly instead of drafting it", () => {
-    const pending = node("correction_pending");
-    expect(pending.handler).toBe("ctl.safe_stop");
-    expect(String(pending.config?.reason)).toContain("nothing is drafted or sent");
+  it("routes a found contradiction to a deterministic request and a human gate (slice 2)", () => {
+    expect(profileCorrectionWorkflow.nodes.map((n) => n.key)).not.toContain("correction_pending");
+    expect(node("build_correction").handler).toBe("dom.build_profile_correction");
+    expect(node("verify_correction").handler).toBe("dom.verify_profile_correction");
+    expect(node("verify_correction").type).toBe("deterministic_task");
+    expect(node("approve").handler).toBe("hum.approve_profile_correction");
+    expect(node("approve").type).toBe("approval_gate");
+    expect(node("approve").config).toMatchObject({
+      artifactPath: "verify_correction",
+      evidenceIdsPath: "verify_correction.request.evidenceIds",
+    });
+    expect(node("record_approval").handler).toBe("dom.record_profile_correction_approval");
+    expect(node("route_correction").handler).toBe("dom.route_profile_correction");
+    for (const key of ["build_correction", "verify_correction", "record_approval", "route_correction"]) {
+      expect(node(key).config).toMatchObject({ requestVersion: "profile-correction-request-v1" });
+    }
     const edges = profileCorrectionWorkflow.edges.map((e) => `${e.from}->${e.to}`);
-    expect(edges).toContain("severity->correction_pending");
+    for (const e of [
+      "severity->build_correction",
+      "build_correction->verify_correction",
+      "verify_correction->approve",
+      "approve->record_approval",
+      "record_approval->route_correction",
+      "route_correction->done",
+    ]) {
+      expect(edges).toContain(e);
+    }
+  });
+
+  it("puts no agent, connector or send after compare", () => {
+    const keys = profileCorrectionWorkflow.nodes.map((n) => n.key);
+    const after = keys.slice(keys.indexOf("compare") + 1);
+    for (const key of after) {
+      const n = node(key);
+      expect(n.handler ?? "", key).not.toMatch(/^(agt|int)\./);
+      expect(n.config?.capability, key).toBeUndefined();
+    }
   });
 
   it("requires no connector and bounds parked runs per project", () => {

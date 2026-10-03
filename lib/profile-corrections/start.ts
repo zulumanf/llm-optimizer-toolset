@@ -12,6 +12,7 @@ import { writeAudit } from "@/db/audit";
 import {
   enqueueDispatchJob,
   insertCheckRequest,
+  openCorrectionUrls,
   profileCheckPreconditions,
 } from "@/db/profile-corrections";
 import { fail, ok, type ActionResult } from "@/lib/actions/result";
@@ -36,6 +37,7 @@ import {
   type ProfileCheckOrigin,
   type ProfileCheckSkipReason,
 } from "@/lib/profile-corrections/constants";
+import { reconcileProfileCorrections } from "@/lib/profile-corrections/reconcile";
 import { listConfirmedProfileUrls } from "@/lib/profile-corrections/urls";
 
 const ACTIVE_PROJECT_STATUS = "active";
@@ -130,6 +132,9 @@ export async function startProfileChecks(
       return ok(result);
     }
 
+    // Free profiles whose correction can never progress (spec 147 §8.4).
+    await reconcileProfileCorrections({ projectId });
+
     const { urls, skipped } = await listConfirmedProfileUrls(projectId);
     for (const s of skipped) {
       result.skipped.push({ contextItemId: s.contextItemId, profileUrl: s.sourceRef, reason: s.reason });
@@ -145,7 +150,18 @@ export async function startProfileChecks(
       return ok(result);
     }
 
+    // A profile whose correction is still open is not checked again: the
+    // open request (and later its recheck) owns that profile.
+    const open = await openCorrectionUrls(sql, projectId);
     for (const url of urls) {
+      if (open.has(url.profileUrl)) {
+        result.skipped.push({
+          contextItemId: url.contextItemId,
+          profileUrl: url.profileUrl,
+          reason: PROFILE_CHECK_SKIP.openCorrection,
+        });
+        continue;
+      }
       // One URL failing to queue must not stop the others.
       try {
         const checkRequestId = randomUUID();
