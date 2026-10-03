@@ -1,0 +1,125 @@
+MODEL=qwen3:30b think=default split=holdout fixtures=16 reps=3 dataset=d4c0ec530bf4
+{"ts":"2026-10-02T21:46:45.289Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":23026}
+warm-up (ungraded): 23100 ms
+{"ts":"2026-10-02T21:47:04.467Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":19129}
+[s1_brokerage_change #1] [critical] PASS 19136ms pairs=0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689
+{"ts":"2026-10-02T21:47:23.774Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":19300}
+[s1_brokerage_change #2] [critical] PASS 19306ms pairs=0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689
+{"ts":"2026-10-02T21:47:43.163Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":19382}
+[s1_brokerage_change #3] [critical] PASS 19388ms pairs=0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689
+{"ts":"2026-10-02T21:47:57.048Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":13879}
+[s2_license_number #1] [critical] PASS 13884ms pairs=ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a
+{"ts":"2026-10-02T21:48:09.008Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":11953}
+[s2_license_number #2] [critical] PASS 11961ms pairs=ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a
+{"ts":"2026-10-02T21:48:21.037Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":12020}
+[s2_license_number #3] [critical] PASS 12029ms pairs=ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a
+{"ts":"2026-10-02T21:48:53.637Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":32591}
+[s3_same_period_count #1] [critical] PASS 32629ms pairs=ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a
+{"ts":"2026-10-02T21:49:06.112Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":12438}
+[s3_same_period_count #2] [critical] PASS 12447ms pairs=ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a
+{"ts":"2026-10-02T21:49:18.681Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":12558}
+[s3_same_period_count #3] [critical] PASS 12565ms pairs=ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a
+{"ts":"2026-10-02T21:49:39.851Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":21165}
+[t2_ranking_position #1] PASS 21169ms pairs=b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927
+{"ts":"2026-10-02T21:50:14.088Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":34229}
+[t2_ranking_position #2] PASS 34255ms pairs=b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927
+{"ts":"2026-10-02T21:50:50.217Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":36105}
+[t2_ranking_position #3] PASS 36130ms pairs=b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927
+{"ts":"2026-10-02T21:51:17.153Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":26910}
+[n1_subset_market #1] [critical] PASS 26918ms pairs=(none)
+{"ts":"2026-10-02T21:51:40.591Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":23431}
+[n1_subset_market #2] [critical] PASS 23438ms pairs=(none)
+{"ts":"2026-10-02T21:52:04.368Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":23763}
+[n1_subset_market #3] [critical] PASS 23778ms pairs=(none)
+{"ts":"2026-10-02T21:52:33.816Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":29439}
+[n2_over_forty #1] [critical] PASS 29451ms pairs=(none)
+{"ts":"2026-10-02T21:52:49.070Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":15240}
+[n2_over_forty #2] [critical] PASS 15250ms pairs=(none)
+{"ts":"2026-10-02T21:53:03.908Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":14829}
+[n2_over_forty #3] [critical] PASS 14840ms pairs=(none)
+{"ts":"2026-10-02T21:53:18.177Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":14257}
+[p1_different_years #1] [critical] PASS 14267ms pairs=(none)
+{"ts":"2026-10-02T21:53:39.223Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":21035}
+[p1_different_years #2] [critical] PASS 21048ms pairs=(none)
+{"ts":"2026-10-02T21:53:59.066Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":19833}
+[p1_different_years #3] [critical] PASS 19844ms pairs=(none)
+{"ts":"2026-10-02T21:54:26.013Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":26934}
+[d1_licensed_year #1] PASS 26945ms pairs=b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d
+{"ts":"2026-10-02T21:54:58.587Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":32563}
+[d1_licensed_year #2] PASS 32601ms pairs=b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d
+{"ts":"2026-10-02T21:55:32.019Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":33393}
+[d1_licensed_year #3] PASS 33423ms pairs=b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d
+{"ts":"2026-10-02T21:55:46.574Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":14520}
+[f1_same_surname #1] [critical] PASS 14541ms pairs=(none)
+{"ts":"2026-10-02T21:55:57.794Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":11204}
+[f1_same_surname #2] [critical] PASS 11214ms pairs=(none)
+{"ts":"2026-10-02T21:56:08.728Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":10925}
+[f1_same_surname #3] [critical] PASS 10931ms pairs=(none)
+{"ts":"2026-10-02T21:56:43.082Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":34347}
+[r1_rejected_recurring #1] [critical] PASS 34370ms pairs=e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8
+{"ts":"2026-10-02T21:57:06.306Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":23201}
+[r1_rejected_recurring #2] [critical] PASS 23210ms pairs=e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8
+{"ts":"2026-10-02T21:57:30.078Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":23757}
+[r1_rejected_recurring #3] [critical] PASS 23772ms pairs=e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8
+{"ts":"2026-10-02T21:57:48.972Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":18881}
+[r2_approved_equal #1] PASS 18899ms pairs=(none)
+{"ts":"2026-10-02T21:58:18.101Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":29110}
+[r2_approved_equal #2] PASS 29129ms pairs=(none)
+{"ts":"2026-10-02T21:58:47.592Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":29456}
+[r2_approved_equal #3] PASS 29496ms pairs=(none)
+{"ts":"2026-10-02T21:59:08.857Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":21241}
+[o1_no_counterpart #1] [critical] PASS 21260ms pairs=(none)
+{"ts":"2026-10-02T21:59:27.852Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":18974}
+[o1_no_counterpart #2] [critical] PASS 18985ms pairs=(none)
+{"ts":"2026-10-02T21:59:47.063Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":19205}
+[o1_no_counterpart #3] [critical] PASS 19213ms pairs=(none)
+{"ts":"2026-10-02T22:00:07.019Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":19947}
+[w1_observed_disagree #1] [critical] PASS 19955ms pairs=(none)
+{"ts":"2026-10-02T22:00:22.018Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":14985}
+[w1_observed_disagree #2] [critical] PASS 14996ms pairs=(none)
+{"ts":"2026-10-02T22:00:36.784Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":14763}
+[w1_observed_disagree #3] [critical] PASS 14767ms pairs=(none)
+{"ts":"2026-10-02T22:01:00.586Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":23797}
+[a1_prompt_injection #1] [critical] PASS 23801ms pairs=a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b
+{"ts":"2026-10-02T22:01:20.878Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":20287}
+[a1_prompt_injection #2] [critical] PASS 20291ms pairs=a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b
+{"ts":"2026-10-02T22:01:40.901Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":20015}
+[a1_prompt_injection #3] [critical] PASS 20026ms pairs=a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b
+{"ts":"2026-10-02T22:02:17.882Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":36970}
+[a3_stale_approved #1] PASS 37023ms pairs=60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6
+{"ts":"2026-10-02T22:02:42.260Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":24322}
+[a3_stale_approved #2] PASS 24335ms pairs=60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6
+{"ts":"2026-10-02T22:03:05.360Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":23089}
+[a3_stale_approved #3] PASS 23097ms pairs=60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6
+{"ts":"2026-10-02T22:03:47.085Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":41712}
+[a5_buried #1] PASS 41763ms pairs=5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65
+{"ts":"2026-10-02T22:04:30.173Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":43037}
+[a5_buried #2] PASS 43071ms pairs=5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65
+{"ts":"2026-10-02T22:05:12.193Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":41990}
+[a5_buried #3] PASS 42010ms pairs=5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65
+
+================================
+DETECT CONTRADICTIONS v2 EVAL — qwen3:30b (holdout)
+================================
+runs: 48
+critical runs: 33/33
+critical checks: 60/60
+overall: 141/141 = 100.0%
+recall: 100.0%
+false-positive rate: 0.0%
+severity accuracy: 100.0%
+consistency: 100.0% (critical 100.0%)
+failures: runtime 0, schema 0, validation 0 (total 0)
+latency p50: 21048 ms, p95: 41763 ms
+external API cost: $0 (backend ollama, OPENAI_API_KEY unset)
+gate criticalPassRate (1): PASS
+gate overallPassRate (0.95): PASS
+gate recall (0.95): PASS
+gate maxFalsePositiveRate (0.05): PASS
+gate maxFailures (0): PASS
+gate criticalConsistency (1): PASS
+gate overallConsistency (0.95): PASS
+gate severityAccuracy (0.9): PASS
+gate maxP95LatencyMs (60000): PASS
+RESULT: PASS
+EVAL_SUMMARY {"model":"qwen3:30b","think":"default","split":"holdout","warmUpMs":23100,"runs":48,"criticalRunsPassed":33,"criticalRuns":33,"criticalChecksPassed":60,"criticalChecks":60,"checksPassed":141,"checks":141,"overallPassRate":1,"recall":1,"falsePositiveRate":0,"severityAccuracy":1,"consistency":1,"criticalConsistency":1,"failures":{"runtime":0,"schema":0,"validation":0},"p50LatencyMs":21048,"p95LatencyMs":41763,"gates":{"criticalPassRate":true,"overallPassRate":true,"recall":true,"maxFalsePositiveRate":true,"maxFailures":true,"criticalConsistency":true,"overallConsistency":true,"severityAccuracy":true,"maxP95LatencyMs":true},"passed":true}

@@ -221,6 +221,9 @@ export const INTERNAL_TASK_TARGETS: Partial<
   summarize_meeting: LOCAL_INTERNAL_TARGETS.cheap,
   summarize_support_request: LOCAL_INTERNAL_TARGETS.cheap,
   knowledge_claim_extraction: LOCAL_INTERNAL_TARGETS.qa,
+  // Spec 146: holdout PASS 2026-10-02 (qwen3:30b, reasoning on by default,
+  // warm p95 41.8 s). The tier stays "frontier": it records the judgment class.
+  detect_contradictions: LOCAL_INTERNAL_TARGETS.reasoning,
 };
 
 export function inferenceTargetForTask(

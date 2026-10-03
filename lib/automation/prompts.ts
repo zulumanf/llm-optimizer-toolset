@@ -16,6 +16,11 @@
 import { inferenceTargetForTask } from "@/lib/ai/routing";
 import { registerAgentVersions } from "@/lib/workflow/agent-versions";
 import type { InternalInferenceBackend } from "@/lib/ai/internal-inference";
+import {
+  DETECT_CONTRADICTIONS_V2_PREAMBLE,
+  DETECT_CONTRADICTIONS_V2_SYSTEM,
+  DETECT_CONTRADICTIONS_V2_VERSION,
+} from "@/lib/automation/contradictions/contract";
 
 export const AUTOMATION_AGENT_KEYS = [
   "classify_lead",
@@ -71,6 +76,15 @@ NON-NEGOTIABLE RULES:
 - Express uncertainty in the numeric confidence field. Low confidence is a
   correct answer; a confident guess is not.`;
 
+/**
+ * The final system prompt an automation agent receives: its own text plus the
+ * shared guardrails. Exported so a promotion eval sends exactly what
+ * production would (spec 146).
+ */
+export function withGuardrails(system: string): string {
+  return `${system.trim()}\n${GUARDRAILS}`;
+}
+
 function prompt(
   key: AutomationAgentKey,
   version: string,
@@ -85,7 +99,7 @@ function prompt(
     version,
     backend: target.backend,
     model: target.model,
-    system: `${system.trim()}\n${GUARDRAILS}`,
+    system: withGuardrails(system),
     userPreamble,
   };
 }
@@ -581,16 +595,13 @@ fulfilment operator can actually take.`,
     "Assess renewal risk. Return JSON only.",
   ),
 
+  // Spec 146: the exact v2 text the gold evaluation passed, defined once in
+  // the contract module so production and the evaluator cannot drift.
   detect_contradictions: prompt(
     "detect_contradictions",
-    "detect-contradictions-v1",
-    `You find contradictions within a set of claims about one real-estate
-professional or firm.
-
-A contradiction is two statements that cannot both be true. Differing levels of
-detail, or the same fact stated two ways, are not contradictions. Rate severity
-by how damaging the inconsistency would be if a client or journalist noticed it.`,
-    "Find contradictions. Return JSON only.",
+    DETECT_CONTRADICTIONS_V2_VERSION,
+    DETECT_CONTRADICTIONS_V2_SYSTEM,
+    DETECT_CONTRADICTIONS_V2_PREAMBLE,
   ),
 
   generate_executive_narrative: prompt(

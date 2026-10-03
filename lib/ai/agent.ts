@@ -40,6 +40,14 @@ export interface AgentRun<T> {
 }
 
 /**
+ * The JSON Schema `runAgent` sends for constrained generation. Exported so
+ * tooling sends exactly what production would (spec 146A).
+ */
+export function responseSchemaFor(schema: z.ZodTypeAny): Record<string, unknown> {
+  return zodToJsonSchema(schema, { $refStrategy: "none" }) as Record<string, unknown>;
+}
+
+/**
  * Run an agent prompt and validate its JSON against `schema`. One retry on
  * invalid JSON/schema (docs/13 rule), then a classified failure — agents
  * never "kind of" succeed.
@@ -66,15 +74,14 @@ export async function runAgent<T>(args: {
   projectId?: string | null;
   purpose?: string | null;
   caller?: AgentCaller;
+  /** Backend reasoning-mode switch; omitted = model default (spec 146A). */
+  think?: boolean;
 }): Promise<AgentRun<T>> {
   const backend = args.backend ?? "openai";
   const caller = args.caller ?? callerForInternalBackend(backend);
   const model = args.model;
 
-  const responseSchema = zodToJsonSchema(
-    args.schema as z.ZodTypeAny,
-    { $refStrategy: "none" }
-  ) as Record<string, unknown>;
+  const responseSchema = responseSchemaFor(args.schema as z.ZodTypeAny);
 
   let cost = 0;
   let tokensIn = 0;
@@ -110,6 +117,7 @@ export async function runAgent<T>(args: {
       user: prompt,
       model,
       responseSchema,
+      ...(args.think === undefined ? {} : { think: args.think }),
     });
     // Local inference has no per-call provider invoice. Do not invent one.
     // Resource usage remains visible through backend/model/tokens/duration.

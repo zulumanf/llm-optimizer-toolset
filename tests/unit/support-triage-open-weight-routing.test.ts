@@ -57,11 +57,5 @@ describe("support triage open-weight promotion", () => {
         "extract_claims"
       ).backend
     ).toBe("openai");
-
-    expect(
-      inferenceTargetForTask(
-        "detect_contradictions"
-      ).backend
-    ).toBe("openai");
   });
 });

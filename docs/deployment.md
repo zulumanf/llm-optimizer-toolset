@@ -37,6 +37,17 @@ Production minimums:
 - Never in production: `ALLOW_MOCK_PROVIDER`, `ALLOW_MOCK_SCORING`,
   `ALLOW_DEV_AUTH_IN_PROD`.
 
+## Internal open-weight inference (Ollama)
+
+Some internal tasks run on self-hosted open-weight models, through `lib/ai/internal/ollama.ts`. The mapping from task to model lives in `INTERNAL_TASK_TARGETS` in `lib/ai/routing.ts`. These tasks never fall back to a paid provider: when Ollama is down, the task fails closed.
+
+- **The worker needs `OLLAMA_URL`** pointing at the inference host. It defaults to `http://127.0.0.1:11434`. The web process does not call Ollama.
+- **The models must be pulled** on the inference host: `qwen3:8b`, `qwen3:30b` and `gpt-oss:20b` (`LOCAL_INTERNAL_TARGETS` in `lib/ai/internal/registry.ts`).
+- **Keep `qwen3:30b` resident.** `detect_contradictions` (spec 146) passed its promotion gate of warm p95 ≤ 60 s, measured at 41.8 s. That figure assumes the model is already loaded, because a cold load added about 7 s of model loading on the evaluation host. Ollama unloads idle models after 5 minutes by default, and profile-correction runs are infrequent. So on the **Ollama server** (not in the app's env), set `OLLAMA_KEEP_ALIVE` to keep the model loaded, for example `-1` for indefinitely, or a duration longer than the gap between runs.
+  - Give the host enough memory for the resident models together. `qwen3:30b` Q4_K_M used about 22 GB.
+  - Check residency with `ollama ps`.
+  - The `compare` node's 300 s timeout still covers a cold load after a restart, but cold calls don't meet the latency figure the route was promoted on.
+
 ## Scheduling
 
 Point any cron at (bearer `CRON_SECRET`, POST):

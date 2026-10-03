@@ -17,12 +17,24 @@ interface OllamaChatResponse {
   message?: {
     role?: string;
     content?: string;
+    thinking?: string;
   };
   prompt_eval_count?: number;
   eval_count?: number;
   total_duration?: number;
+  load_duration?: number;
+  prompt_eval_duration?: number;
+  eval_duration?: number;
   error?: string;
 }
+
+/** The Ollama server this process talks to (`OLLAMA_URL`, else the local default). */
+export function ollamaBaseUrl(): string {
+  return (process.env.OLLAMA_URL?.trim() || DEFAULT_OLLAMA_URL).replace(/\/+$/, "");
+}
+
+const nsToMs = (ns: number | undefined): number | undefined =>
+  typeof ns === "number" ? Math.round(ns / 1_000_000) : undefined;
 
 function errorKindForStatus(status: number): ErrorKind {
   if (status === 401 || status === 403) {
@@ -45,6 +57,7 @@ export const ollamaCaller: InternalInferenceCaller = async ({
   user,
   model,
   responseSchema,
+  think,
 }): Promise<InternalInferenceResult> => {
   if (!model || model.trim().length === 0) {
     throw new ClassifiedError(
@@ -53,9 +66,7 @@ export const ollamaCaller: InternalInferenceCaller = async ({
     );
   }
 
-  const baseUrl = (
-    process.env.OLLAMA_URL?.trim() || DEFAULT_OLLAMA_URL
-  ).replace(/\/+$/, "");
+  const baseUrl = ollamaBaseUrl();
 
   let response: Response;
 
@@ -76,6 +87,8 @@ export const ollamaCaller: InternalInferenceCaller = async ({
         options: {
           temperature: 0,
         },
+        // Sent only when a route sets it; otherwise the request is unchanged.
+        ...(think === undefined ? {} : { think }),
       }),
     });
   } catch (err) {
@@ -120,9 +133,12 @@ export const ollamaCaller: InternalInferenceCaller = async ({
     text,
     tokensIn: payload.prompt_eval_count ?? 0,
     tokensOut: payload.eval_count ?? 0,
-    durationMs:
-      typeof payload.total_duration === "number"
-        ? Math.round(payload.total_duration / 1_000_000)
-        : undefined,
+    durationMs: nsToMs(payload.total_duration),
+    timings: {
+      loadMs: nsToMs(payload.load_duration),
+      promptEvalMs: nsToMs(payload.prompt_eval_duration),
+      generationMs: nsToMs(payload.eval_duration),
+      reasoningChars: payload.message?.thinking?.length ?? 0,
+    },
   };
 };
