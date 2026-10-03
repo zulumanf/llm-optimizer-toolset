@@ -3558,3 +3558,64 @@ Tracing workflow versioning showed what is already handled and what was not:
 Decision: an agent node that has a contract guard (only `detect_contradictions` today) refuses a stored pin that differs from its current prompt version. It returns `failed_terminal` before any model call, so the run safe-stops: no clean profile is recorded and nothing is drafted. The operator restarts the run, and the new run binds to the current version.
 
 The check is scoped to guarded agents on purpose. Applying it to every agent would also stop in-flight runs whose unguarded prompts were bumped in earlier specs. That is a broader policy change than this spec makes.
+
+## 2026-10-02 — `detect_contradictions` post-promotion canary: correctness PASS, latency over the SLO, keep-alive not configured (spec 146 §11, §12)
+
+**Preflight.**
+- `inferenceTargetForTask("detect_contradictions")` is `{ backend: "ollama", model: "qwen3:30b", execution: "local" }`, with no `think` override, so reasoning is on (the model default). The prompt is `detect-contradictions-v2`.
+- There is no fallback. `runAgent` picks its caller from the route's backend alone, and an Ollama failure becomes `failed_terminal`.
+- Not met on the operator host:
+  - `qwen3:30b` was not resident (`ollama ps` was empty);
+  - the Ollama.app server has no `OLLAMA_KEEP_ALIVE`, so it unloads idle models after 5 minutes, against `docs/deployment.md`.
+
+  The operator chose to run the canary anyway: one ungraded warm-up call loaded the model, and the keep-alive gap stays open.
+
+**Path.** There was no existing canary path, and a full live run would fetch third-party pages and, on a contradiction, reach `draft_correction`, so neither was used. `scripts/canary-detect-contradictions.ts` (tooling, no production change) drives the production pieces against the local test database:
+- the registered `reputation_profile_correction_v1` version and its stored `compare` node (the `contextPaths` and the v2 pin);
+- a real `workflow_runs` row per case, with `canonical_extract` and `approved_facts` stored as succeeded `node_runs`, so `canonical_extract.claims` resolves through the engine's run-scoped lookup;
+- the registered `agt.detect_contradictions` handler (routing, `runAgent`, guard);
+- the registered `ctl.condition` handler for `has_error`.
+
+Nothing after `has_error` runs. It refuses to run with `OPENAI_API_KEY` set or against a non-test database. The inputs are 20 **new** cases (not gold fixtures), labelled before the run:
+- 11 contradictions: brokerage, license number, same-year count, volume magnitude, licensed-since year, founding year, recurring `rejected`, recurring `superseded`, market negation, same-list rank, and an award level buried among compatible claims;
+- 9 non-contradictions: a clean page, a matched `approved` equal claim, a subset market, "more than 25" against 31, different years, an `asOf`-only difference, a same-surname agent, team against agent, and an omission.
+
+The cases alternate between two projects.
+
+**Result** (raw output in `docs/evals/146-canary-2026-10-02/`):
+
+| Measure | Result |
+|---|---|
+| Runs | 20/20 completed, 20/20 correct |
+| False positives / false negatives | 0 / 0 |
+| Validator, schema, runtime failures | 0 / 0 / 0 |
+| Isolation | every run's resolved context deep-equals its own case |
+| `has_error` routing | matched the label every time: 11 to `severity`, 9 to `no_error` |
+| Identity severity | brokerage, license and recurring brokerage were all `critical` |
+
+- **`llm_calls`** (§12 confirmation): all 20 canary rows are `ollama` / `qwen3:30b` / `cost_micro_usd = 0` / 1 attempt / success. The warm-up row is the same. External cost was $0.
+- **Manual review of the 9 `no_error` outcomes.** Each was checked against the page wording and the approved facts, and each is correct under §2. The page claims are equal, a subset, a lower bound, a different year, a date-only difference, a different person, team versus agent, or an omission. None hides a contradiction.
+- **Latency: p50 35.5 s, p95 69.0 s, max 77.7 s, warm.** This is over the §8 SLO of p95 ≤ 60 s that the promotion measured at 41.8 s. 4 of 20 calls took more than 60 s, and none came near the 300 s timeout.
+  - The cause is host throughput, not the answers. Every call took 1 attempt, and output stayed within the evaluation's range (at most 2.7k tokens, against an evaluation p95 of 3.1k).
+  - Generation slowed from about 98 tokens/s early in the run to 31–35 tokens/s on the slow calls. Spec 146A measured a steady 75–100 tokens/s.
+
+**Decision.** The canary passes on correctness and fail-closed behavior, and no rollback trigger fired. No route, prompt or semantics changed. Spec 146 is **not operationally complete** until:
+1. `OLLAMA_KEEP_ALIVE` is set on the inference host;
+2. the warm-latency SLO is re-confirmed on the production host, because this host's throughput dropped mid-run.
+
+Also noted: `agentNode` passes no `projectId` or `purpose` to `runAgent`, so `llm_calls` rows for `compare` cannot be attributed to a run or project. The canary matched them by id and time window instead. This predates spec 146 and is out of its scope.
+
+## 2026-10-02 — Spec 146 operational SLO validation deferred
+
+Spec 146 status: IMPLEMENTATION COMPLETE, MODEL PROMOTION COMPLETE, OPERATIONAL SLO VALIDATION DEFERRED.
+
+The production route stays `qwen3:30b` via Ollama, with reasoning on (the default), $0 external cost and no proprietary fallback. Promotion evaluation passed with a warm p95 of 41.8 s. The production-path canary was 20/20 correct, with 0 false positives, 0 false negatives, 0 validator failures and 0 runtime failures. Its p95 of 69.0 s is over the 60 s SLO; the likely cause is contention on the inference host, which lowered its throughput. `OLLAMA_KEEP_ALIVE` still needs operational verification.
+
+Why defer instead of change: correctness and fail-closed behavior are proven, and no rollback trigger fired. The latency miss is a property of the host, not of the route. Changing the model, prompt or thresholds to meet the SLO would weaken a gate that was already validated.
+
+To resume, with no change to routing, prompts, schemas, validators, model configuration or thresholds:
+1. Restart Ollama with `OLLAMA_KEEP_ALIVE=-1`.
+2. Confirm `qwen3:30b` stays resident.
+3. Wait until the host is not under contention.
+4. Rerun the same 20-case canary.
+5. Require warm p95 ≤ 60 s.

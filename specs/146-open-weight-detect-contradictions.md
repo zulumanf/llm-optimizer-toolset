@@ -4,7 +4,36 @@
 > - `detect_contradictions` routes to `LOCAL_INTERNAL_TARGETS.reasoning`, which is `qwen3:30b` on Ollama with reasoning on by default;
 > - it uses `detect-contradictions-v2`, the required-field v2 schema, and the deterministic validator as a fail-closed guard.
 >
-> Still open: the §12 `llm_calls` confirmation from a live or canary run, and the 20-run canary.
+> **2026-10-02, post-promotion canary (§11): correctness PASS; operationally NOT complete.**
+> - 20 new cases ran through the registered workflow version's `compare` node, the production handler and guard, and `has_error`. 20/20 were correct, with 0 false positives, 0 false negatives, and 0 validator, schema or runtime failures.
+> - The 9 `no_error` outcomes were reviewed by hand against the page and the approved facts. All are correct.
+> - `llm_calls`: all 20 rows are `ollama` / `qwen3:30b` / cost 0, which satisfies §12.
+> - Warm latency was p50 35.5 s, p95 69.0 s and max 77.7 s, **over the 60 s SLO**. The cause was host throughput falling from about 98 to 31–35 tokens/s, with no retries and no longer outputs.
+> - `OLLAMA_KEEP_ALIVE` is **not set** on the operator host.
+>
+> Still open: set keep-alive on the inference host, and re-confirm the warm p95 there. See DECISIONS.md (2026-10-02 canary) and `docs/evals/146-canary-2026-10-02/`.
+>
+> **2026-10-02, operational work paused.**
+>
+> | Track | State |
+> |---|---|
+> | IMPLEMENTATION | **COMPLETE** |
+> | MODEL PROMOTION | **COMPLETE** |
+> | OPERATIONAL SLO VALIDATION | **DEFERRED** |
+>
+> Current state:
+> - The production route is `qwen3:30b` via Ollama, with reasoning on (the default). External cost is $0, and there is no proprietary fallback.
+> - Promotion evaluation: PASS, warm p95 41.8 s.
+> - Production-path canary: 20/20 correct, with 0 false positives, 0 false negatives, 0 validator failures and 0 runtime failures.
+> - Canary p95 was 69.0 s, which is over the 60 s operational SLO. The likely cause is contention on the inference host, which lowered its throughput.
+> - `OLLAMA_KEEP_ALIVE` still needs operational verification.
+>
+> **Deferred work: how to resume.** Do not change routing, prompts, schemas, validators, model configuration or thresholds.
+> 1. Restart Ollama with `OLLAMA_KEEP_ALIVE=-1`.
+> 2. Confirm `qwen3:30b` stays resident (`ollama ps`).
+> 3. Wait until the host is not under contention.
+> 4. Rerun the same 20-case canary (`scripts/canary-detect-contradictions.ts`).
+> 5. Require warm p95 ≤ 60 s. If it passes, tick the operational acceptance criterion below.
 >
 > **Phase 1 history: the earlier operator-reported results.** At the time, routing was unchanged and no candidate had passed §8.
 > - `qwen3:30b`: every quality gate passed. Critical runs 33/33; overall, recall, consistency and severity all 100%; false positives 0%; 0 runtime, schema and validator failures. Latency p50 was 22.9 s and p95 63.7 s, so it failed only the p95 ≤ 60 s latency gate.
@@ -273,7 +302,7 @@ Phase 1 (dataset, contract module, grader, evaluator) changes **no** production 
 
 **Also re-run:** the full unit suite, the four Spec 145 integration suites, typecheck, lint and `git diff --check`.
 
-**Canary.** For the first 20 production profile-correction runs after promotion, the operator reviews every `no_error` outcome against the page. This is a manual checklist; no code.
+**Canary.** For the first 20 production profile-correction runs after promotion, the operator reviews every `no_error` outcome against the page. This is a manual checklist; no code. (Run on 2026-10-02 as 20 new labelled cases through the production `compare` path, driven by `scripts/canary-detect-contradictions.ts`. It is tooling only.)
 
 **Rollback.**
 - **Steps:** remove the one `INTERNAL_TASK_TARGETS.detect_contradictions` line. The route returns to `openai` / `AGENT_MODEL`. The v2 prompt, schema and validator are backend-independent and stay.
@@ -308,7 +337,9 @@ Phase 1 (dataset, contract module, grader, evaluator) changes **no** production 
 - [x] Only then: the §10 production change, with the §11 routing and fail-closed tests. (2026-10-02. Covered by `tests/unit/detect-contradictions-open-weight-routing.test.ts` and the updated `internal-production-routing`, `support-triage-open-weight-routing` and `detect-contradictions-contract` tests.)
   - The guard also checks a context precondition before any model call (`contradictionContextError`): both named contexts must be present and correctly shaped.
   - The warm-model requirement is documented in `docs/deployment.md`.
-- [ ] `llm_calls` shows `ollama`, the selected model and cost 0 for `detect-contradictions-v2`. (The evaluator's 98 rows in the local test database show `ollama` / `qwen3:30b` / cost 0, through the same `runAgent` path. The production confirmation waits for the first live or canary run.)
+- [x] `llm_calls` shows `ollama`, the selected model and cost 0 for `detect-contradictions-v2`. (2026-10-02 canary: all 20 rows, plus the warm-up row, are `ollama` / `qwen3:30b` / cost 0 / 1 attempt.)
+- [x] The §11 20-run canary, with every `no_error` reviewed against the page. (2026-10-02: 20/20 correct; `scripts/canary-detect-contradictions.ts`; raw output in `docs/evals/146-canary-2026-10-02/`.)
+- [ ] Operational: `OLLAMA_KEEP_ALIVE` is set on the inference host, and the warm p95 ≤ 60 s is re-confirmed there. (The canary measured warm p95 at 69.0 s on the operator host, where keep-alive is unset. **Deferred** on 2026-10-02; see the resume steps in the status note.)
 - [x] Typecheck, lint, the full unit suite, the Spec 145 integration suites and `git diff --check` pass. (2026-10-02. The full integration suite passes except `followups.test.ts`, which also fails at `2bbc7fb`, before this change: its dates are fixed to 2026-09-01 and its 21-day sequence has now expired.)
 
 ## Files Expected To Change
