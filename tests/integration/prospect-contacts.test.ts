@@ -311,7 +311,9 @@ describe.skipIf(!TEST_URL)("prospect contacts and import (integration)", () => {
     `;
     expect(solo?.prospectType).toBe("individual_agent");
 
-    // Contact rows created as primary, with the file's provenance
+    // Contact rows created as primary. Spec 148: email addresses do NOT
+    // inherit the file's label — unless the operator explicitly labels the
+    // emails, they land unverified (not send-ready).
     const [contact] = await sql`
       select c.name, c.email, c.is_primary, c.provenance
       from prospect_contacts c join prospects p on p.id = c.prospect_id
@@ -321,17 +323,47 @@ describe.skipIf(!TEST_URL)("prospect contacts and import (integration)", () => {
       name: "Ben Ortiz",
       email: "ben@ortizgroup.com",
       isPrimary: true,
-      provenance: "publicly_sourced",
+      provenance: "manual",
     });
+    const [soloEmail] = await sql`
+      select field_provenance from prospects where launch_id = ${launchId} and business_name = 'Solo Agent'
+    `;
+    expect((soloEmail?.fieldProvenance as Record<string, string>).email).toBe("manual");
+    expect((soloEmail?.fieldProvenance as Record<string, string>).website).toBe("publicly_sourced");
+
+    // An explicit operator label on the emails is honoured.
+    const labelled = unwrap(
+      await svc.importProspects(operator, {
+        launchId,
+        csv: "business_name,email,contact_name,contact_email\nChecked Team,office@checked.com,Cara Check,cara@checked.com",
+        provenance: "publicly_sourced",
+        emailProvenance: "publicly_sourced",
+      })
+    );
+    expect(labelled.created).toBe(1);
+    const [checked] = await sql`
+      select p.field_provenance, c.provenance from prospects p
+      join prospect_contacts c on c.prospect_id = p.id where p.business_name = 'Checked Team'
+    `;
+    expect(checked?.provenance).toBe("publicly_sourced");
+    expect((checked?.fieldProvenance as Record<string, string>).email).toBe("publicly_sourced");
+    // AI-style labels are not accepted for emails.
+    const refused = await svc.importProspects(operator, {
+      launchId,
+      csv: "business_name,contact_email\nGuess Team,guess@guess.com",
+      emailProvenance: "ai_inferred",
+    });
+    expect(refused.ok).toBe(false);
 
     // The import itself is audited with counts and the source URL
     const [auditRow] = await sql`
       select detail from audit_log where action = 'prospect.import'
-      order by at desc limit 1
+        and detail->>'sourceUrl' = 'https://therealdeal.com/rankings'
     `;
     expect(auditRow?.detail).toMatchObject({
       created: 2,
       duplicates: 1,
+      emailProvenance: "manual",
       sourceUrl: "https://therealdeal.com/rankings",
     });
   });
@@ -344,6 +376,7 @@ describe.skipIf(!TEST_URL)("prospect contacts and import (integration)", () => {
         name: "Ana Rivera",
         email: "Ana.Rivera@riverateam.com",
         isPrimary: true,
+        provenance: "publicly_sourced",
       })
     );
 

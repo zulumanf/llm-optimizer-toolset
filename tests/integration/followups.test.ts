@@ -205,7 +205,7 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
       await ea.applyVerifiedAliases(operator, PROSPECT_CO);
       await ea.recordEntityVerification(operator, { companyId: COMPETITOR_CO, level: "team", sourceUrl: "https://harborview.example/team" });
     }
-    const contact = unwrap(await svc.addContact(operator, { prospectId, name: "Ryan Kane", email: RECIPIENT, isPrimary: true }));
+    const contact = unwrap(await svc.addContact(operator, { prospectId, name: "Ryan Kane", email: RECIPIENT, isPrimary: true, provenance: "publicly_sourced" }));
     contactId = contact.contactId;
     const findingId = fixture.findingId;
     await sql`update prospects set stage = 'contacted' where id = ${prospectId}`;
@@ -424,6 +424,24 @@ describe.skipIf(!TEST_URL)("mismatch follow-up sequences (integration)", () => {
     const metrics = await fu.followupMetrics();
     expect(metrics.delivered).toEqual({ t1: 1, t2: 1, t3: 1 });
     expect(metrics.humanReplies).toBe(0);
+  });
+
+  it("spec 148: a follow-up touch never transmits to an ai_inferred recipient, even with a clean preflight", async () => {
+    const { sequenceId } = await enroll();
+    await gmailConnected();
+    thread([outbound]);
+    await renderNow(sequenceId);
+    const [t2] = await queued(sequenceId);
+    await sql`update prospect_contacts set provenance = 'ai_inferred' where id = ${contactId}`;
+    const res = await svc.sendProspectDraft(operator, { draftId: t2!.id as string, channel: "mock", businessPurpose: "Spec 127 follow-up", unattended: true });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toContain("Verify this contact before sending");
+    const ledger = await sql`select allowed, gate_verdict from prospect_outreach_sends where draft_id = ${t2!.id}`;
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]!.allowed).toBe(false);
+    const checks = (ledger[0]!.gateVerdict as { checks: { name: string; passed: boolean }[] }).checks;
+    expect(checks.find((c) => c.name === "recipient_email_provenance")?.passed).toBe(false);
+    expect((await fu.getFollowupSequence(sequenceId))!.nextTouch).toBe(2);
   });
 
   it("a human-composed reply to a recorded reply may be sent unattended and threads under the prospect's message", async () => {

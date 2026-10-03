@@ -3364,3 +3364,399 @@ Next.js renders a route's layouts and page concurrently. When a layout throws `r
 - **`scripts/authz-sweep.ts` makes the evidence reproducible.** It plants canaries in a local sandbox and greps every page's raw response body, not the rendered page.
 - **Exposure requires a production account with a client role.** Whether one exists is an operator check against production, outside this change.
 - **The write side ships in the same hotfix (P1-13).** A client account could start, cancel, retry or decide workflows, start test automation runs (642 write statements as `client_viewer` in the runtime suite), suppress contacts, stop sequences and queue claim extraction on any project's source. The shared action runner now asserts staff before the wrapped action, and hand-written actions assert immediately after `getCurrentUser()`. A refusal counts only if it comes from a staff gate: the runtime suite rejects a "refusal" that is really a validation error or a missed lookup. It also detects attempted writes with statement-level triggers on a sequence, which survive rollbacks and zero-row statements. A structural test fails any new action that parses, queries or awaits before an unconditional gate.
+
+## 2026-09-23 — Profile correction extracts canonically: URL ingestion, test-mode and unchanged-page safe stops (spec 145B)
+
+The reputation profile correction workflow replaced the weak `extract_claims` agent with `dom.extract_canonical_claims` (`ingestSource` → `extractClaimsFromSource`; claims land `proposed`; `detect_contradictions` receives `observedClaims` and `approvedFacts` as separate `contextPaths`).
+
+1. **Ingest by URL, not from the connector excerpt.** `cms.fetch_public_page` returns only the first 2,000 characters of raw HTML — mostly `<head>` — because it exists to verify that a page is live, and it is shared by content live-verification and competitor intelligence. Extracting from it would usually yield no claims, and `compare` would then record a clean profile nobody actually checked (PRINCIPLES #5). The node therefore passes the URL the fetch observed to the canonical `ingestSource` (`origin: "url_fetch"`, `privacy: "public"`, `sourceType: "website"`), which fetches the full page through the central outbound-fetch policy and records bytes, sha256, storage key, version and `workflow_run_id`. The fetch still gates it: no successful, reachable fetch with a URL, no ingestion. The trade-off is that the extracted bytes come from a second request moments after the connector's; the artifact, not the excerpt, is the provenance claims cite.
+2. **Safe stop in test mode.** A test run "may compute anything and change nothing" and costs nothing; canonical extraction fetches the network, calls a model and writes untagged proposed claims into a real client's review queue. There is no honest fixture for it — a canned result would need a source artifact id that does not exist — so test runs stop safely at this node with the reason stated.
+3. **Safe stop for an unchanged, already-extracted page.** Identical bytes return the existing artifact (`duplicate`), and `extractClaimsFromSource` is not idempotent, so a weekly scan would add a second copy of every claim to the review queue. Returning an empty claim list instead would route to "no error" and falsely record a clean profile. When the duplicate artifact's `processing_status` (read scoped to the run's project) is `claims_proposed`, the node stops safely naming the artifact; a duplicate that was never extracted is extracted.
+
+## 2026-09-23 — Profile correction live input: domain-event entry and node-level `inputFields` (spec 145C)
+
+A real `profile.error_detected` run never reached Spec 145B's canonical extraction. Its entry node declared a `schedule` entry point, so `triggerNode` refused the event-started run. And the event's `profileUrl` was forwarded whole to `cms.fetch_public_page`, whose contract requires `url`. Decisions:
+
+1. **The entry is `domain_event`.** Only the event carries a profile URL. The weekly `profile_scan` schedule trigger stays declared, but a scheduled run has no URL to fetch. It now fails at `entry` with the existing explicit mismatch message instead of calling a connector with no URL. No URL is invented. Where a scan gets its profiles belongs to a later spec.
+2. **Map the field on the node, not in the connector or the event.** Integration nodes gain an opt-in `inputFields` (capability field → dotted path, resolved by the existing `resolve()`). `fetch_profile` uses `{ url: "payload.profileUrl" }`, so the connector receives exactly `{ url }` and none of the event's other fields. A path that resolves to nothing omits the field, and the connector's own required-field check reports it. `inputFields` and `inputPath` are mutually exclusive, like `contextPath`/`contextPaths`, and the combination is refused at validation and at run time. Why not the alternatives: accepting `profileUrl` in the WordPress adapter would change a connector shared by content live-verification and competitor intelligence. Renaming the event field would break its schema and idempotency template. `det.map_fields` is DB-backed per-client import mapping. Nodes without `inputFields` build their payload exactly as before.
+
+## 2026-09-23 — Profile claims are scoped to the client's recorded identity (spec 145D)
+
+`dom.extract_canonical_claims` now passes `subjectAllowList` to `extractClaimsFromSource`. It reuses the existing check in code (`subjectIsInScope` / `scoreNameMatch`): out-of-scope drafts are returned in `rejected` and never inserted. Nothing in `claims.ts` changed.
+
+1. **Identity source.** `loadClientSubjectIdentity(projectId)` (`lib/knowledge/entities/subject-identity.ts`) reads, for that project only:
+   - `companies.name` and `companies.aliases` through `projects.subject_company_id`;
+   - active `person` entities where `knowledge_entities.project_id = projectId`.
+
+   It never reads the event payload, the fetched page, observed `entity_aliases`, or shared entities, because a page cannot vouch for whom it is about.
+2. **One loader, two callers.** Discovery's private `loadIdentity` delegates to it and is otherwise unchanged. It keeps the 2-principal cap (`DISCOVERY_PRINCIPAL_LIMIT`), the override path, its errors and its own allow-list composition. Profile correction uses every active person, because a directory page is often about one specific team member, and rejecting that person's claims would hide the errors the workflow exists to find.
+3. **Unresolved or empty identity is a safe stop before ingestion.** `subjectIsInScope` treats an empty list as "no scoping". The node therefore never sends `[]`: it safe-stops when the client has no subject company, and when the de-duplicated list is empty.
+4. **Known limitations, deliberately unchanged:** containment counts as a `probable` match (so if the client is "Compass Realty Group", a claim about "Compass" is kept), and claims whose subject is a pronoun are rejected. Changing either would also change discovery.
+
+## 2026-09-23 — Cross-artifact claim de-duplication in canonical storage (spec 145E)
+
+`extractClaimsFromSource` no longer inserts a second claim row when a changed page (a new source artifact) restates a fact the same project already holds. It is the only place canonical claims are written (profile correction, discovery, seed), so the rule lives there and not in a workflow.
+
+1. **Identity is conservative and deterministic.** Two claims are the same fact when all of these are equal:
+   - project;
+   - subject (lowercased, whitespace collapsed, trailing `.,;:` stripped);
+   - `normalizePredicate`;
+   - `normalizeCategory`;
+   - JSON value (`42` and `"42"` differ);
+   - as-of date (`draft.asOf ?? artifact.effective_date`, null-safe);
+   - the normalized statement against `canonical_text`.
+
+   The statement is in the key because the object isn't stored in any column. Without it, "affiliated with Compass" and "affiliated with Douglas Elliman" would merge. Paraphrases are proposed again on purpose: no fuzzy, embedding or model-based matching. Candidates are read from the existing `(project_id, normalized_predicate)` index and compared in TypeScript, so SQL and code normalization cannot drift.
+2. **Provenance is always kept; human decisions are never touched.** Every observation writes its evidence row (`ref_id` = the new artifact). What happens next depends on the match:
+   - **Same-privacy `proposed` claim:** gets the evidence id and artifact id appended. No new row and no `claim.proposed` event, so the reviewer sees one proposal with every source.
+   - **`approved`, `superseded` or `rejected` claim:** left exactly as it is, including `evidence_ids`, `source_artifact_ids` and `claim_versions`. Silently widening an approved evidence set would bypass the approval and could cross a privacy class, and re-proposing a rejected fact on every page change would override the reviewer. The observation is kept in its evidence row and in the audit `matched` detail.
+   - **Only a proposal of another privacy class:** inserted as a new proposal, as before, so evidence never crosses a privacy boundary.
+3. **Changed facts stay separate.** A different value, as-of date, statement or subject is a new proposed claim, and the contradiction scan runs unchanged.
+4. **Recurring errors are still compared.** The result gains `matched` alongside `proposed` (which still means rows inserted by this run, so discovery's and the seed's counts keep their meaning). The profile node hands `compare` `[...proposed, ...matched]`, so a page repeating a previously rejected error is still compared against approved facts.
+5. **Concurrency.** The storage transaction takes `pg_advisory_xact_lock(hashtext('claims:' || projectId))` (the `lib/parsing/backfill.ts` pattern) and locks candidate rows `for update`, so two concurrent extractions cannot both insert one fact. No migration was needed.
+
+## 2026-10-02 — `detect_contradictions` Phase 1 candidate results; latency split into Spec 146A (spec 146)
+
+**Historical evaluation evidence, recorded after the fact.** The operator ran the Spec 146 holdout evaluator (`scripts/eval-detect-contradictions-internal.ts`, v2 prompt, frozen gold set `d4c0ec53…`, 3 repetitions, Ollama, `OPENAI_API_KEY` unset) against the three §7 candidates **before** the Spec 146A cleanup. Only the summaries below were kept: the raw evaluator output was not saved, and the exact script revision is not recorded.
+
+| Candidate | Result | Detail |
+|---|---|---|
+| `qwen3:30b` | **FAIL (latency only)** | Every quality gate passed: critical runs 33/33; overall, recall, consistency and severity 100%; false positives 0%; 0 runtime, schema and validator failures. p50 22.9 s, **p95 63.7 s**, against the §8 limit of p95 ≤ 60 s. |
+| `gpt-oss:20b` | FAIL | Many Ollama structured-output calls returned empty responses. `ollamaCaller` treats an empty response as a runtime failure, so the zero-failure gate failed. |
+| `qwen3:8b` | FAIL | Very slow calls, several of which hit the 300 s timeout, so the zero-runtime-failure gate failed. |
+
+Decisions:
+1. **No promotion, and routing is unchanged.** `detect_contradictions` stays on its current route. No candidate passed §8, and the gate is not relaxed: 63.7 s is a FAIL.
+2. **Latency work is its own spec (146A).** It is limited to diagnosing `qwen3:30b` and to legitimate runtime changes. Those are the reasoning-mode switch (`think`) and host Ollama settings. Context trimming, output caps, prompt or schema edits and new models are excluded. Every Spec 146 gate, label and semantic stays fixed. A configuration with reasoning off is a separate candidate and must pass the full gold gate again.
+3. **Provider boundary.** `think` and per-call `timings` are optional fields on the provider-neutral internal-inference contract. When a caller leaves them out, the request is unchanged. The latency diagnostic calls the production `ollamaCaller` with `responseSchemaFor` (the schema `runAgent` sends), so it cannot drift from production. Its only direct Ollama request is a model unload for cold-start timing, which has no provider-neutral equivalent and lives only in that script. The evaluator no longer contains any Ollama-specific code.
+4. **Warm-up.** The evaluator makes one ungraded warm-up call, so model load time is not counted against one graded call. Cold start is measured by the diagnostic, and a configuration proposed for promotion must record it alongside the gate results.
+5. **Gold review.** The second review of all 40 fixtures (§9) found no labelling mistakes. No label changed and the hash is unchanged.
+
+## 2026-10-02 — Spec 146A latency diagnosis and `qwen3:30b` reasoning-off retest (spec 146A)
+
+**Warm-latency rule (operator decision).** The Spec 146 §8 gate of p95 ≤ 60 s measures **warm, steady-state** inference. The evaluator makes one ungraded warm-up call, and p95 is computed over the graded calls that follow. This is valid because the production deployment for the selected model keeps it resident. Cold-start time is reported separately and must stay well under the 300 s node timeout. The threshold itself is unchanged.
+
+**A fresh, reproducible evaluation.** This entry is separate from the earlier operator-reported results above, and nothing here is copied from them. Setup:
+- Apple M5 Max, 36 GB, Ollama 0.35.0, `qwen3:30b` Q4_K_M.
+- Code at commit `2bbc7fb` plus the Spec 146/146A working tree.
+- Gold dataset `d4c0ec53…`, `OPENAI_API_KEY` unset.
+- Eval calls logged to the local **test** database (`llm_optimizer_test`: 49 `llm_calls` rows, backend `ollama`, cost 0). Nothing was written to the dev database.
+
+Raw output is in `docs/evals/146a-2026-10-02/`.
+
+**Diagnostic.** Every holdout fixture, 2 warm calls each (32 calls per configuration), through the production `ollamaCaller`:
+
+| | wall p50 | wall p95 | prompt-eval p50 / max | generation p50 / p95 | output tokens p50 / p95 | hidden reasoning p50 |
+|---|---|---|---|---|---|---|
+| reasoning on (default) | 22.0 s | 40.3 s | 0.02 s / 2.1 s | 21.9 s / 36.8 s | 1,949 / 3,111 | 6,984 chars |
+| reasoning off (`think: false`) | 2.1 s | 4.4 s | 0.02 s / 2.4 s | 1.8 s / 4.1 s | 178 / 382 | 0 |
+
+Cold start (model unloaded first, then the first call): 27.4 s with reasoning on, of which 6.8 s is load; 7.0 s with reasoning off, of which 4.1 s is load.
+
+Root cause: **hidden reasoning length.**
+- Generation is about 98% of each call, and nearly all generated tokens are the `thinking` stream.
+- Reasoning length varies between calls on the same fixture even at temperature 0 (`s3`: 12.8 s against 33.1 s), and that variance is what produces the p95 tail.
+- Prompt size, model load and runtime overhead are not material when the model is warm.
+
+**Full holdout eval with `EVAL_THINK=false`.** 16 fixtures × 3 repetitions, plus one ungraded warm-up; frozen labels, validator, grader and gates unchanged. **RESULT: FAIL.**
+
+| Metric | Value | Gate |
+|---|---|---|
+| critical runs | 18/33 | 100%: FAIL |
+| overall | 85.1% (120/141) | ≥ 95%: FAIL |
+| recall | 100% | PASS |
+| false-positive rate | 37.5% | ≤ 5%: FAIL |
+| consistency | 100% (critical 100%) | PASS |
+| severity accuracy | 88.9% | ≥ 90%: FAIL |
+| runtime / schema / validator failures | 0 / 0 / 0 | PASS |
+| latency p50 / p95 | 1.9 s / 4.2 s | ≤ 60 s: PASS |
+
+Every critical failure was a false positive, and each was consistent across all 3 repetitions:
+- compatible detail: `n1` subset market, `n2` "over 40" against 42, and the `s3` secondary pair;
+- different periods: `p1`;
+- different subjects: `f1` same surname;
+- `a5` also reported "over 40" against 42.
+
+Separately, `a3` (stale approved fact) was rated above `medium` in all 3 runs.
+
+Decisions:
+1. **Reasoning off is rejected as a configuration for `detect_contradictions`.** It meets the latency gate easily but fails critical cases 3, 4 and 5. Without reasoning, the model can't reliably tell a real contradiction from compatible detail, a different period or a different subject.
+2. **No promotion, and routing is unchanged.**
+3. **Next measurement.** The reasoning-on configuration reached p95 40.3 s in this warm diagnostic. That is well inside 60 s, unlike the earlier operator-reported 63.7 s. That earlier run did not record whether a warm-up was used, and the evaluator also counts the schema-retry time. The next step is a full holdout evaluator run of `qwen3:30b` with reasoning on (the default), under the warm-latency rule.
+
+## 2026-10-02 — `qwen3:30b` (reasoning on) passes the Spec 146 promotion evaluation; routing not yet changed (spec 146, 146A)
+
+**A fresh, reproducible run of the complete evaluator.**
+- Command: `INTERNAL_EVAL_MODEL=qwen3:30b npx tsx scripts/eval-detect-contradictions-internal.ts` (`EVAL_THINK` unset, so the model default: reasoning on).
+- Split and runs: the holdout split, 16 frozen fixtures × 3 repetitions, plus one ungraded warm-up (23.1 s).
+- Unchanged from Spec 146: v2 prompt, schema, validator, grader and §8 gates.
+- Dataset: gold `d4c0ec53…`, with the hash checked at start-up.
+- Timing: started 2026-10-02 21:46 UTC.
+- Logging and cost: `OPENAI_API_KEY` unset; calls logged only to the local **test** database (`llm_optimizer_test`: 49 new `llm_calls` rows, backend `ollama`, `qwen3:30b`, every call succeeded on its first attempt, cost 0). The dev database has no rows for `detect-contradictions-v2`.
+- Raw output: `docs/evals/146a-2026-10-02/eval-qwen3-30b-think-default.{log,json}`.
+
+**Host state:**
+- Apple M5 Max, 36 GB, macOS 27.0.1, Ollama 0.35.0.
+- `qwen3:30b` Q4_K_M (digest `ad815644918f`), the only model resident: 21.75 GB in GPU memory, 32,768-token context.
+- No thermal or performance warnings were recorded.
+- The Mac ran on **battery** for the whole run (52% at start, 14% at the end). Low-power mode was off. The performance configuration was not changed.
+
+| Gate (§8) | Result | Required |
+|---|---|---|
+| critical runs | **33/33** (critical checks 60/60) | 100% |
+| overall | **100%** (141/141) | ≥ 95% |
+| recall | **100%** | ≥ 95% |
+| false-positive rate | **0%** | ≤ 5% |
+| consistency | **100%**, critical 100% | ≥ 95% / 100% |
+| severity accuracy | **100%** | ≥ 90% |
+| runtime / schema / validator failures | **0 / 0 / 0** | 0 |
+| warm latency | p50 21.0 s, **p95 41.8 s**, max 43.1 s, min 10.9 s | p95 ≤ 60 s |
+| external API cost | **$0** | $0 |
+
+**RESULT: PASS.** Every gate passed.
+
+Under the warm-latency rule, warm p95 is 41.8 s against the 60 s limit. Cold start is reported separately: the Spec 146A diagnostic measured 27.4 s, of which 6.8 s was model load.
+
+The earlier operator-reported p95 of 63.7 s was not reproduced. That run did not record its warm-up or host state, so it stays historical evidence only. Promotion rests on this run.
+
+Decisions:
+1. **`qwen3:30b` with reasoning on is the selected `detect_contradictions` candidate** (§7: the highest holdout score, and the only candidate that passed).
+2. **Routing has deliberately not been changed.** The Spec 146 §10 production change is a separate reviewed step. It must:
+   - pin `INTERNAL_TASK_TARGETS.detect_contradictions` to `LOCAL_INTERNAL_TARGETS.reasoning`, with no `think` override, because reasoning off was rejected;
+   - wire the v2 prompt, the required-field schema and the validator guard;
+   - add the §11 routing and fail-closed tests;
+   - verify the `llm_calls` row.
+3. **Deployment condition.** The warm gate is valid only if production keeps `qwen3:30b` resident, for example by setting `OLLAMA_KEEP_ALIVE` on the inference host. That condition belongs to the §10 change and its runbook.
+4. **Recommended re-check.** This run was on battery power. A re-check on the production inference host's power state is recommended as part of the §10 canary. It is not a promotion condition, because the run passed with a 30% margin.
+
+## 2026-10-02 — `detect_contradictions` promoted to `qwen3:30b` on Ollama (spec 146 Phase 2)
+
+The production change follows the recorded holdout PASS. It ships exactly the configuration that was evaluated:
+1. **Route.** `INTERNAL_TASK_TARGETS.detect_contradictions = LOCAL_INTERNAL_TARGETS.reasoning`, which is Ollama `qwen3:30b` with `execution: "local"`.
+   - `TASK_ROUTES.detect_contradictions.tier` stays `frontier`. It records the task's judgment class; the internal-target override is what moves the model.
+   - There is no `think` override: the PASS used the model's default, with reasoning on, and reasoning off was rejected.
+   - There is no fallback. If Ollama is unavailable, `runAgent` throws, `compare` returns `failed_terminal`, and the node safe-stops. No paid backend is called.
+2. **Contract.**
+   - `AUTOMATION_PROMPTS.detect_contradictions` is `detect-contradictions-v2`, built from the same constants in `lib/automation/contradictions/contract.ts` that the evaluator imports, so the two cannot drift.
+   - The agent schema is the v2 schema, in which `contradictions` is **required**. The v1 schema's `.default([])`, which could turn an omitted field into a clean profile, is gone.
+   - The profile workflow's pinned `agentVersion` moves to v2 through `automationAgentVersion`, so its definition registers as a new version and earlier runs keep v1.
+3. **Guard.** Agent nodes gain a per-agent deterministic guard. `detect_contradictions` uses it for every live answer:
+   - **Before the model call:** `contradictionContextError` requires `observedClaims` to be an array and `approvedFacts` to be a packet with a `claims` array. Against a missing context, even an answer of "none" means nothing. Every gold context satisfies this check.
+   - **After the schema passes:** `validateContradictionOutput`, the validator that was evaluated. It rejects unknown or fabricated ids, edited statements, swapped direction, within-context pairs and duplicates.
+   - Any guard failure is `failed_terminal`. A rejected answer is never read as an empty one.
+   - Test-mode canned outputs keep the schema-only check, as §10 specifies.
+4. **Deployment requirement.** The 60 s SLO assumes a resident model. `docs/deployment.md` now says to set `OLLAMA_KEEP_ALIVE` on the Ollama server. It is a host setting, not a request field: adding `keep_alive` to the request body would change the request that was evaluated, and the right value depends on the host.
+
+Remaining:
+- the §12 `llm_calls` confirmation from the first live or canary run;
+- the 20-run canary, in which the operator reviews every `no_error` outcome against the page.
+
+Rollback is unchanged from §11: remove the one `INTERNAL_TASK_TARGETS` line. That rollback would return the task to the paid frontier route, and it is a deliberate human decision, never an automatic fallback.
+
+## 2026-10-02 — In-flight runs pinned to `detect-contradictions-v1` fail closed (spec 146 §10.4)
+
+Tracing workflow versioning showed what is already handled and what was not:
+- **Already handled:**
+  - the v2 pin changes `graphHash`, so bootstrap registers a new immutable, published version;
+  - `startWorkflow` binds new runs to the latest published version;
+  - each run executes its own version's stored node definitions;
+  - finished runs and their `llm_calls` are never rewritten.
+- **The gap:** node *handlers* are current code. An old-version run still in flight that reached `compare` after deploy would have run v2 on `qwen3:30b` under a node whose stored `agentVersion` says v1. The answer and the ledger would honestly say v2, but the graph pin would not match, and the run's comparison would silently change contract mid-run.
+
+Decision: an agent node that has a contract guard (only `detect_contradictions` today) refuses a stored pin that differs from its current prompt version. It returns `failed_terminal` before any model call, so the run safe-stops: no clean profile is recorded and nothing is drafted. The operator restarts the run, and the new run binds to the current version.
+
+The check is scoped to guarded agents on purpose. Applying it to every agent would also stop in-flight runs whose unguarded prompts were bumped in earlier specs. That is a broader policy change than this spec makes.
+
+## 2026-10-02 — `detect_contradictions` post-promotion canary: correctness PASS, latency over the SLO, keep-alive not configured (spec 146 §11, §12)
+
+**Preflight.**
+- `inferenceTargetForTask("detect_contradictions")` is `{ backend: "ollama", model: "qwen3:30b", execution: "local" }`, with no `think` override, so reasoning is on (the model default). The prompt is `detect-contradictions-v2`.
+- There is no fallback. `runAgent` picks its caller from the route's backend alone, and an Ollama failure becomes `failed_terminal`.
+- Not met on the operator host:
+  - `qwen3:30b` was not resident (`ollama ps` was empty);
+  - the Ollama.app server has no `OLLAMA_KEEP_ALIVE`, so it unloads idle models after 5 minutes, against `docs/deployment.md`.
+
+  The operator chose to run the canary anyway: one ungraded warm-up call loaded the model, and the keep-alive gap stays open.
+
+**Path.** There was no existing canary path, and a full live run would fetch third-party pages and, on a contradiction, reach `draft_correction`, so neither was used. `scripts/canary-detect-contradictions.ts` (tooling, no production change) drives the production pieces against the local test database:
+- the registered `reputation_profile_correction_v1` version and its stored `compare` node (the `contextPaths` and the v2 pin);
+- a real `workflow_runs` row per case, with `canonical_extract` and `approved_facts` stored as succeeded `node_runs`, so `canonical_extract.claims` resolves through the engine's run-scoped lookup;
+- the registered `agt.detect_contradictions` handler (routing, `runAgent`, guard);
+- the registered `ctl.condition` handler for `has_error`.
+
+Nothing after `has_error` runs. It refuses to run with `OPENAI_API_KEY` set or against a non-test database. The inputs are 20 **new** cases (not gold fixtures), labelled before the run:
+- 11 contradictions: brokerage, license number, same-year count, volume magnitude, licensed-since year, founding year, recurring `rejected`, recurring `superseded`, market negation, same-list rank, and an award level buried among compatible claims;
+- 9 non-contradictions: a clean page, a matched `approved` equal claim, a subset market, "more than 25" against 31, different years, an `asOf`-only difference, a same-surname agent, team against agent, and an omission.
+
+The cases alternate between two projects.
+
+**Result** (raw output in `docs/evals/146-canary-2026-10-02/`):
+
+| Measure | Result |
+|---|---|
+| Runs | 20/20 completed, 20/20 correct |
+| False positives / false negatives | 0 / 0 |
+| Validator, schema, runtime failures | 0 / 0 / 0 |
+| Isolation | every run's resolved context deep-equals its own case |
+| `has_error` routing | matched the label every time: 11 to `severity`, 9 to `no_error` |
+| Identity severity | brokerage, license and recurring brokerage were all `critical` |
+
+- **`llm_calls`** (§12 confirmation): all 20 canary rows are `ollama` / `qwen3:30b` / `cost_micro_usd = 0` / 1 attempt / success. The warm-up row is the same. External cost was $0.
+- **Manual review of the 9 `no_error` outcomes.** Each was checked against the page wording and the approved facts, and each is correct under §2. The page claims are equal, a subset, a lower bound, a different year, a date-only difference, a different person, team versus agent, or an omission. None hides a contradiction.
+- **Latency: p50 35.5 s, p95 69.0 s, max 77.7 s, warm.** This is over the §8 SLO of p95 ≤ 60 s that the promotion measured at 41.8 s. 4 of 20 calls took more than 60 s, and none came near the 300 s timeout.
+  - The cause is host throughput, not the answers. Every call took 1 attempt, and output stayed within the evaluation's range (at most 2.7k tokens, against an evaluation p95 of 3.1k).
+  - Generation slowed from about 98 tokens/s early in the run to 31–35 tokens/s on the slow calls. Spec 146A measured a steady 75–100 tokens/s.
+
+**Decision.** The canary passes on correctness and fail-closed behavior, and no rollback trigger fired. No route, prompt or semantics changed. Spec 146 is **not operationally complete** until:
+1. `OLLAMA_KEEP_ALIVE` is set on the inference host;
+2. the warm-latency SLO is re-confirmed on the production host, because this host's throughput dropped mid-run.
+
+Also noted: `agentNode` passes no `projectId` or `purpose` to `runAgent`, so `llm_calls` rows for `compare` cannot be attributed to a run or project. The canary matched them by id and time window instead. This predates spec 146 and is out of its scope.
+
+## 2026-10-02 — Spec 146 operational SLO validation deferred
+
+Spec 146 status: IMPLEMENTATION COMPLETE, MODEL PROMOTION COMPLETE, OPERATIONAL SLO VALIDATION DEFERRED.
+
+The production route stays `qwen3:30b` via Ollama, with reasoning on (the default), $0 external cost and no proprietary fallback. Promotion evaluation passed with a warm p95 of 41.8 s. The production-path canary was 20/20 correct, with 0 false positives, 0 false negatives, 0 validator failures and 0 runtime failures. Its p95 of 69.0 s is over the 60 s SLO; the likely cause is contention on the inference host, which lowered its throughput. `OLLAMA_KEEP_ALIVE` still needs operational verification.
+
+Why defer instead of change: correctness and fail-closed behavior are proven, and no rollback trigger fired. The latency miss is a property of the host, not of the route. Changing the model, prompt or thresholds to meet the SLO would weaken a gate that was already validated.
+
+To resume, with no change to routing, prompts, schemas, validators, model configuration or thresholds:
+1. Restart Ollama with `OLLAMA_KEEP_ALIVE=-1`.
+2. Confirm `qwen3:30b` stays resident.
+3. Wait until the host is not under contention.
+4. Rerun the same 20-case canary.
+5. Require warm p95 ≤ 60 s.
+
+## 2026-10-02 — Spec 147 architecture corrections: correction destination, public fetch, inference concurrency
+
+Before implementation, an architecture pass replaced three parts of the first Spec 147 draft. The rest of the spec is unchanged: the builder, the validator, human approval and the 14-day recheck.
+
+**1. Correction destination.** The draft addressed every correction email to the client's confirmed contact. That is wrong for pages a third party publishes.
+- **What exists today.** The repository stores no destination for any profile: no publisher contact, no correction form, no per-profile editor. `lib/sources/classify.ts` labels a domain's type, but not who corrects it. The onboarding access question (`lib/engagements/onboarding-questions.ts:70`) sets a working model: the client's team applies profile changes that we specify. Nothing records it per profile.
+- **Decision.** Add a small insert-or-archive table, `profile_correction_destinations`, with one active row per (project, profile URL):
+  - `kind` is `client_editor` or `publisher`;
+  - `recipient_name`, `email` and `basis` are required;
+  - `source_url` is also required for a publisher.
+
+  A destination exists only when an operator records one.
+- **The client's contact.** It is only a prefill for `client_editor`. It is never a default, and it is never inferred from the domain.
+- **Unknown destination.** An approved request becomes `destination_required`. No draft is created and no event is published. When an operator later sets the destination, the request moves to `ready_to_draft`, which publishes `profile.correction_ready` and starts a separate draft workflow.
+- **Publishers.** A publisher destination adds the existing `approve_external_submission` gate.
+- **Why.** Sending a correction to the wrong party is worse than holding it. The default is to hold.
+
+**2. Public fetch.** `fetch_profile` used `cms.fetch_public_page`, whose only provider is WordPress. Every profile check therefore needed an unrelated WordPress connection. That fetch also went through `connectorFetch`, which has no SSRF policy.
+- **What already exists.** `canonical_extract` already re-fetches and stores the page through `ingestSource(origin: "url_fetch")` and `safeFetch`, with the SSRF policy, revalidated redirects, a streaming size cap, a timeout, sha256, versioning and provenance.
+- **Decision.** `fetch_profile` keeps its node key and output contract but becomes the deterministic `dom.fetch_public_profile`, calling `safeFetch` with the same constants as ingestion. No new fetch code is added.
+  - Policy refusals (`validation` or `forbidden`) give `ok: false`.
+  - Network and timeout errors, and non-2xx responses, give `reachable: false`.
+- **What does not change.** `canonical_extract`'s config and handler (Specs 145B, 145D, 145E). The node is kept rather than removed, because `canonical_extract` consumes its contract.
+- **Cost.** A second fetch of the page is accepted.
+- **Result.** No profile workflow requires WordPress.
+
+**3. Concurrency.** The draft spec set `maxConcurrentRuns = 25`.
+- **What the engine does.** The worker runs one job at a time, and `tick()` runs a run's nodes in sequence. So one process never overlaps model calls, but only by accident. Several workers could, nothing bounds Ollama globally, and event starts that hit a limit are dead-lettered after 3 retries.
+- **Why `maxConcurrentRuns` is the wrong lever.** It counts runs parked for up to 72 h awaiting approval.
+- **Decision.** Profile checks and rechecks go through a durable queue, `profile_check_requests`. A dispatcher releases them under a transaction-scoped advisory lock and runs from a self-rescheduling `profile_check_dispatch` job and from the worker tick.
+  - **Limit.** It keeps at most `PROFILE_CHECK_MAX_INFERENCE_RUNS` runs inference-active (running and not parked) across all clients. The default is 1, configurable through `lib/env.ts`.
+  - **Why 1.** There is one host. Each check runs `gpt-oss:20b` and then `qwen3:30b`, and the Spec 146 canary breached its SLO under contention.
+  - **`maxConcurrentRuns`.** It stays at 25 per project, as a ceiling on parked runs only.
+  - **Rechecks.** They use the same queue (`not_before` = 14 days out). This replaces both the broken `det.schedule_remeasurement` and the planned delayed-job type.
+
+## 2026-10-02 — Spec 147 slice 1: profile checks enter the workflow through a bounded queue
+
+Slice 1 implements this path: confirmed profile URL → `profile_check_requests` (migration 120) → `dispatchProfileChecks` → `profile.check_requested` → `reputation_profile_correction_v1` → `dom.fetch_public_profile` (safeFetch) → the unchanged `canonical_extract`. It deviates from the spec text in four places:
+
+- **The paid back half was retired early.**
+  - **What we found.** The old back half was `agt.draft_outreach` and `agt.verify_claims` on paid OpenAI, plus `email.create_draft`. Releasing real checks would have reached those paid calls on every contradiction, and the `email.create_draft` connector preflight would have refused every start that had no Gmail connection.
+  - **Decision.** Until the deterministic correction request lands in slice 2, a found contradiction ends at `correction_pending` (`ctl.safe_stop`), with the validated pairs kept in the `compare` output. `requiredConnectors` is now `[]`.
+- **The idempotency template keys on the queue row.** It is `profile-check:{{event.projectId}}:{{payload.checkRequestId}}`. The row is already unique per (project, context item, window), and the queue stores the exact engine key (`live:` + rendered), so capacity and abandonment are judged by a join on `workflow_runs.idempotency_key`.
+- **Window keys are prefixed.** The schedule uses `week:<ISO Monday>` and an operator uses `day:<UTC date>`. Without the prefix, a Monday operator check would collide with that week's scheduled one.
+- **The dispatcher publishes each row under its own savepoint.** One unpublishable row is marked `failed` and cannot roll back, and so permanently block, the global queue.
+
+## 2026-10-03 — Spec 147 slice 2: deterministic correction requests bound to approval
+
+A found contradiction now becomes a persisted correction request, built and verified in code and approved by a human. No model drafts or judges it; `draft_outreach` and `verify_claims` stay out of the workflow.
+
+- **Validation is pure, against database state.** The builder and validator take the current `claims` rows and the before-page artifact as input. The rows are deliberately not filtered by project, so a cross-project id is seen and refused rather than silently missing.
+  - Both run the frozen Spec 146 context check and validator, so contradiction semantics live in one place.
+  - The validator ends by requiring byte-identity with a fresh deterministic build. Any wording, field or ordering not produced from validated data fails.
+- **The approval is bound to the request hash.**
+  - The approval gate shows `{ request, requestSha256, requestVersion }`.
+  - Inside the decision transaction, an approval whose shown request does not hash to the stored `request_sha256` is refused.
+  - After the gate, `record_approval` re-checks the binding and re-proves the request against the database as it is at that moment.
+  - The request row's content is immutable at the database. So an edited request can never inherit an approval: a change needs a new run and a new hash.
+- **`approved` is a new open status**, meaning the content is approved and the destination is not yet resolved. Destination routing (slice 3) consumes it. This keeps "a human approved this content" separate from "we know where to send it".
+- **Facts that change while a request waits fail closed.** The request is closed as `expired` with the reason, which frees the profile for a fresh check. It is never approved on stale facts.
+- **Duplicates are decided by the database.**
+  - The partial unique index `(project_id, profile_url)` over the open statuses decides any race. `insert … on conflict do nothing` returns the existing open request, and the run safe-stops naming it.
+  - The start path and the dispatcher also skip a profile that has an open correction.
+- **Known gap until reconciliation (spec 147 §8.4):** an approval that times out leaves its request `awaiting_approval`. An operator can withdraw it.
+
+## 2026-10-03 — Spec 147 slice 3: destinations, routing and the publisher authorization boundary
+
+- **Destinations are recorded, never inferred.** A destination exists only when an operator records one, for one of the client's own profile URLs, with a basis. A publisher destination also needs the URL where its address was found.
+  - The client's confirmed contact is offered only as an explicit prefill for `client_editor`, and routing never reads it.
+  - Rows are append-plus-archive, with one active row per (project, profile) enforced by a partial unique index and a trigger.
+- **A publisher destination is a third-party submission, so it gets its own human gate.**
+  - Routing to a publisher parks the request as `awaiting_external_approval` and starts `reputation_profile_correction_authorize_v1`, once per (request, destination).
+  - Its `approve_external_submission` decision binds to the request hash and the exact destination shown. The decision transaction refuses a mismatch, and the record step checks the binding again.
+  - Why it is a separate workflow, not part of drafting: late resolution happens long after the correction run has completed, and the approval belongs to the specific destination.
+- **Late resolution re-routes.** Setting, replacing or archiving a destination re-routes every request that follows that profile's destination, in the same transaction and under a per-profile advisory lock.
+  - A replaced publisher yields a new authorization event for the new destination. The old run's approval can no longer be recorded.
+  - Re-routing to an unchanged destination is a no-op. Dedupe keys and run idempotency keys prevent duplicate continuations.
+- **`ready_to_draft` publishes nothing yet.** Drafting (slice 4) introduces the consumer. Publishing an event now, with no subscriber, would be delivered retroactively the moment a subscription appeared, which is implicit behaviour we chose not to create.
+
+## 2026-10-03 — Spec 147 slice 4: Gmail drafts, human send confirmation, recheck schedule
+
+- **Creating a draft is not sending.** The draft workflow has no send capability. The `email.create_draft` node is classed as drafting (`content_drafting`), so autonomy adds no gate on top of it. The one human gate, `confirm_profile_correction_sent`, asks the operator to confirm they sent that exact draft from Gmail themselves.
+  - That confirmation binds to the request id, the request hash, the destination, the draft attempt and the Gmail draft id. The destination must still be active.
+  - The binding is enforced in the decision transaction and again when the send is recorded.
+  - Declining withdraws the request and discards the draft.
+- **Drafting is driven by durable attempts, not by fire-and-forget events.** A sweep, advisory-locked and run from the tick and from a job enqueued when a request becomes ready, creates one attempt per `ready_to_draft` request and publishes `profile.correction_ready` for it.
+  - Requests that became ready before drafting existed are picked up the same way.
+  - One active attempt per request is enforced by a partial unique index.
+  - An attempt that stalls before calling Gmail retries after a back-off.
+  - One that may have called Gmail is marked `outcome_unknown` and is never retried automatically: a duplicate Gmail draft is worse than waiting for an operator.
+- **Gmail preconditions fail the attempt, not the start.** The workflow declares no required connector, and `prepare_draft` checks for an active Gmail connection with a `sendAsAddress`. A missing precondition is recorded on the attempt with its reason, and the request stays `ready_to_draft`. A connector preflight would instead have dead-lettered the start event with no record on the request.
+- **The recheck is scheduled as a queue row** (`profile_check_requests`, `kind = recheck`, due at `sent_at + 14 days`, unique per correction), per spec 147 §9.1. Using the existing queue and dispatcher, rather than a separate delayed job type, keeps rechecks under the same global inference bound when the recheck slice releases them.
+
+## 2026-10-03 — Spec 147 slice 5: the 14-day recheck
+
+- **One concurrency system.** A due recheck row is released by the same dispatcher, under the same `PROFILE_CHECK_MAX_INFERENCE_RUNS`, ordered with normal checks by `not_before`. The recheck workflow counts as inference-active.
+- **Fast paths make no model call.** The re-fetched page is stored through the existing source-artifact store and compared by its content hash:
+  - the same artifact as the before page → `still_incorrect`;
+  - an older, already-extracted artifact → `needs_review`, because canonical extraction would refuse it and no determination is safe;
+  - an HTTP or network failure → `unreachable`.
+
+  Only a changed page runs the frozen extraction and comparison path.
+- **`corrected` requires the page to restate the approved fact,** not merely to omit the error. Absence can come from an extraction miss, a model miss or a page that dropped the section. The positive signal already exists: Spec 145E matches a page claim to the approved claim. Without it the item is `needs_review`.
+- **A comparison failure records nothing, rather than guessing.** The run stops, the correction stays `sent`, and reconciliation is a later slice.
+- **Results are immutable and are not a rewrite of the request.**
+  - `profile_correction_rechecks` is insert-only, unique per correction, tenant-checked by trigger, and content-hashed (`profile-recheck-result-v1`).
+  - The correction's content is untouched; only its lifecycle status moves to the result.
+  - A recorded result frees the profile for future checks. No follow-up action (another email, another correction, another recheck, a notification) is taken in this slice.
+
+## 2026-10-03 — Spec 147 slice 6: reconciliation, manual draft retry, withdrawal
+
+- **Reconciliation acts only on runs that can never progress.** The trigger is a stopped run state, including the engine's own approval time-out, or an authorization run that never started past the release timeout. A run still waiting or running is healthy, however long it has been. The repository does not enforce `maxDurationMinutes`, and guessing a timeout would mean guessing an outcome.
+- **No reconciled state implies success.**
+  - A timed-out content approval → `expired`.
+  - A timed-out publisher approval → `destination_required`.
+  - A send confirmation that expired → `ready_to_draft`, with the draft attempt `outcome_unknown`: the draft may have been sent, and only a human knows.
+  - A recheck that stopped without a result → `needs_review`, never `corrected`.
+  - Anomalies, such as a completed run with no outcome, are reported, not resolved.
+- **Uncertain Gmail actions are never retried automatically.** Retrying needs an operator's explicit confirmation that they checked Gmail and no usable draft exists. It is bound to the current request hash and active destination; anything changed must be re-routed first. The uncertain attempt is superseded and kept, and a unique `retry_of` makes the retry idempotent at the database.
+- **Withdrawal neutralizes, never deletes.** Pending attempts are superseded, the created attempt is discarded, a queued recheck is skipped, and waiting runs are cancelled. The Gmail draft itself is left for the operator to delete. All history remains.
+- **Reconciliation also runs before a project's profile checks are queued,** so a stuck profile is freed before the open-correction skip is evaluated.
+
+## 2026-10-03 — Spec 148: recipient provenance send gate
+
+- **The existing send-ready rule became the gate's rule; no new policy.** `SEND_READY_CONTACT_PROVENANCE` (`verified`, `publicly_sourced`) moved from `t1-cohort.ts` to `constants.ts`, and `t1-cohort.ts` re-exports it. The T1 cohort, the supply engine's `contactability`, the contact-supply queue and every outreach gate now read one constant.
+- **`manual` is not send-ready.** The canonical rule never included it, and a hand-typed address is not evidence. Other surfaces that treated `manual` as sendable (`contactSupplyQueue`, the spec 118 note) are subordinate to that rule. An operator who has confirmed an address labels it `verified` or `publicly_sourced`. Consequence: in-flight drafts or sequences addressed to `manual` contacts refuse at their next send, with a ledgered refusal, until the contact is re-labelled.
+- **One resolver, four gates.** `resolveRecipient` (`shared.ts`) is the only recipient resolution used by approve, schedule, record-sent and `sendProspectDraft`. It judges the provenance of the email actually used (the contact's own, else `prospects.field_provenance.email`). It refuses a contact from another prospect.
+- **Ledger version bumped.** `sendProspectDraft` adds `recipient_email_provenance` and stamps `prospect-send-gate-v4`.
+- **Verification is persisted provenance, not a log kind.** `contactSupplyQueue` read `prospect_activities.kind = 'contact_verified'`, which no producer writes. `supply-promote.ts` already persists the fact as contact provenance `publicly_sourced`, so the queue now reads that. Its free-text note stays as human-readable evidence and is not a state.
+- **Slice 2 (same day): provenance belongs to an address, not to a row.** A changed email (contact or prospect) drops to `manual` unless the same edit labels it, so a trusted label can't silently carry over to a new address.
+- **CSV email provenance is split from the file label.** A list being public says nothing about whether each address in it was checked. Emails default to `manual`, and the operator labels them explicitly per import. The assistant tool deliberately cannot set it.
+- **No migration for a contact source field.** The existing `notes` column carries `Source: …`. The contact dialog requires it for a send-ready label (client-side). Existing `manual` contacts are not rewritten.

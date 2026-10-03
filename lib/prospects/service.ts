@@ -54,6 +54,9 @@ import {
   PRE_CONTACT_STAGES,
   REPLY_CLASSIFICATIONS,
   type ReplyClassification,
+  CONTACT_ENTRY_PROVENANCE,
+  DEFAULT_CONTACT_ENTRY_PROVENANCE,
+  EMAIL_CHANGE_PROVENANCE,
 } from "@/lib/prospects/constants";
 import { atOrPast, validateTransition } from "@/lib/prospects/stages";
 import {
@@ -127,6 +130,8 @@ import {
   lockProspect,
   logActivity,
   launchMarketName,
+  recipientEmailProvenanceVerdict,
+  resolveRecipient,
   type ProspectRow,
 } from "@/lib/prospects/shared";
 
@@ -403,6 +408,16 @@ export async function updateProspect(
     assertCanWrite(user);
     await sql.begin(async (tx) => {
       const current = await lockProspect(tx, input.prospectId);
+      // Spec 148: the email's provenance vouches for one address — a changed
+      // prospect email drops to the unverified state unless this same edit
+      // labels it explicitly.
+      const emailChanged =
+        input.email !== undefined &&
+        input.email.toLowerCase() !== (current.email ?? "").toLowerCase();
+      const fieldProvenance: Record<string, string> = { ...(input.fieldProvenance ?? {}) };
+      if (emailChanged && !fieldProvenance.email) {
+        fieldProvenance.email = EMAIL_CHANGE_PROVENANCE;
+      }
       await tx`
         update prospects set
           business_name = coalesce(${input.businessName ?? null}, business_name),
@@ -416,7 +431,7 @@ export async function updateProspect(
           price_segment = coalesce(${input.priceSegment ?? null}, price_segment),
           est_transaction_volume_usd = coalesce(${input.estTransactionVolumeUsd ?? null}, est_transaction_volume_usd),
           est_team_size = coalesce(${input.estTeamSize ?? null}, est_team_size),
-          field_provenance = field_provenance || ${tx.json((input.fieldProvenance ?? {}) as never)},
+          field_provenance = field_provenance || ${tx.json(fieldProvenance as never)},
           owner_id = coalesce(${input.ownerId ?? null}, owner_id),
           qualification_score = coalesce(${input.qualificationScore ?? null}, qualification_score),
           relationship_strength = coalesce(${input.relationshipStrength ?? null}, relationship_strength),
@@ -659,13 +674,21 @@ export async function updateContact(
     assertCanWrite(user);
     await sql.begin(async (tx) => {
       const [contact] = await tx`
-        select id, prospect_id, do_not_contact, archived_at
+        select id, prospect_id, email, provenance, do_not_contact, archived_at
         from prospect_contacts where id = ${input.contactId} for update
       `;
       if (!contact || contact.archivedAt) {
         throw new ClassifiedError("not_found", "Contact not found.");
       }
       const prospectId = contact.prospectId as string;
+      // Spec 148: provenance vouches for one address. A changed email never
+      // inherits it — it drops to the unverified entry state unless the
+      // operator explicitly labels the new address in this same edit.
+      const emailChanged =
+        input.email !== undefined &&
+        input.email.toLowerCase() !== ((contact.email as string | null) ?? "").toLowerCase();
+      const provenance =
+        input.provenance ?? (emailChanged ? EMAIL_CHANGE_PROVENANCE : null);
       await lockProspect(tx, prospectId);
       if (input.isPrimary === true) {
         await demotePrimaryContact(tx, prospectId, input.contactId);
@@ -679,7 +702,7 @@ export async function updateContact(
           linkedin = coalesce(${input.linkedin ?? null}, linkedin),
           preferred_channel = coalesce(${input.preferredChannel ?? null}, preferred_channel),
           is_primary = coalesce(${input.isPrimary ?? null}, is_primary),
-          provenance = coalesce(${input.provenance ?? null}, provenance),
+          provenance = coalesce(${provenance}, provenance),
           notes = coalesce(${input.notes ?? null}, notes),
           do_not_contact = coalesce(${input.doNotContact ?? null}, do_not_contact),
           do_not_contact_reason = coalesce(${input.doNotContactReason ?? null}, do_not_contact_reason),
@@ -694,6 +717,13 @@ export async function updateContact(
         detail: {
           prospectId,
           fields: Object.keys(input).filter((k) => k !== "contactId"),
+          ...(emailChanged
+            ? {
+                emailChanged: true,
+                provenanceBefore: contact.provenance,
+                provenanceAfter: provenance,
+              }
+            : {}),
         },
       });
       if (input.doNotContact === true && !contact.doNotContact) {
@@ -767,6 +797,11 @@ const importSchema = z.object({
   csv: z.string().min(1).max(500_000),
   /** Applied to every fact the file populates; the file is one source. */
   provenance: z.enum(PROVENANCE_LABELS).default("publicly_sourced"),
+  /** Spec 148: email addresses (contact_email and the prospect's email) are
+   * labelled separately and default to NOT send-ready. A list being public
+   * does not mean every address in it was checked — the operator must say
+   * so explicitly. */
+  emailProvenance: z.enum(CONTACT_ENTRY_PROVENANCE).default(DEFAULT_CONTACT_ENTRY_PROVENANCE),
   /** Where the list came from, recorded on the import audit entry. */
   sourceUrl: z.string().trim().url().max(1000).optional(),
 });
@@ -797,7 +832,8 @@ function normalizeWebsite(raw: string | undefined): string | undefined {
 function importRowToProspectInput(
   row: ImportRow,
   launchId: string,
-  provenance: (typeof PROVENANCE_LABELS)[number]
+  provenance: (typeof PROVENANCE_LABELS)[number],
+  emailProvenance: (typeof PROVENANCE_LABELS)[number]
 ): { input: Record<string, unknown> } | { error: string } {
   let prospectType: ProspectType = "team";
   if (row.prospectType) {
@@ -816,7 +852,7 @@ function importRowToProspectInput(
   };
   const fieldProvenance: Record<string, string> = {};
   for (const [key, value] of Object.entries(facts)) {
-    if (value) fieldProvenance[key] = provenance;
+    if (value) fieldProvenance[key] = key === "email" ? emailProvenance : provenance;
   }
   return {
     input: {
@@ -851,7 +887,12 @@ export async function importProspects(
     let duplicates = 0;
 
     for (const row of file.rows) {
-      const mapped = importRowToProspectInput(row, input.launchId, input.provenance);
+      const mapped = importRowToProspectInput(
+        row,
+        input.launchId,
+        input.provenance,
+        input.emailProvenance
+      );
       if ("error" in mapped) {
         errors.push({ line: row.line, message: mapped.error });
         continue;
@@ -870,7 +911,8 @@ export async function importProspects(
           role: row.contactRole,
           email: row.contactEmail,
           isPrimary: true,
-          provenance: input.provenance,
+          // A name-only contact vouches for no address; the file label applies.
+          provenance: row.contactEmail ? input.emailProvenance : input.provenance,
         });
         if (!contact.ok) {
           errors.push({
@@ -892,6 +934,7 @@ export async function importProspects(
           duplicates,
           errorCount: errors.length,
           provenance: input.provenance,
+          emailProvenance: input.emailProvenance,
           sourceUrl: input.sourceUrl ?? null,
         },
       });
@@ -1875,10 +1918,11 @@ export async function recordProspectReply(
 
 /**
  * The recipient gates shared by approval and record-sent, fail-closed and in
- * order: account do-not-contact → contact do-not-contact → global suppression
- * list on the recipient's normalised identifiers (roadmap 2.3 acceptance:
- * "suppression checks match on contact identifiers"). A draft with no email
- * or phone on file has nothing to match — the DNC gates still apply.
+ * order: account do-not-contact → contact do-not-contact → recipient email
+ * provenance (spec 148) → global suppression list on the recipient's
+ * normalised identifiers (roadmap 2.3 acceptance: "suppression checks match
+ * on contact identifiers"). A draft with no email or phone on file has
+ * nothing to match — the DNC gates still apply.
  */
 async function assertRecipientContactable(
   tx: TransactionSql,
@@ -1892,28 +1936,18 @@ async function assertRecipientContactable(
       `This prospect is flagged do-not-contact — ${refusalVerb}.`
     );
   }
-  let email = prospect.email;
-  let phone = prospect.phone;
-  if (contactId) {
-    const [contact] = await tx`
-      select name, email, phone, do_not_contact, archived_at
-      from prospect_contacts where id = ${contactId}
-    `;
-    if (!contact || contact.archivedAt) {
-      throw new ClassifiedError(
-        "validation",
-        `The draft's contact has been removed — ${refusalVerb}.`
-      );
-    }
-    if (contact.doNotContact) {
-      throw new ClassifiedError(
-        "validation",
-        `Contact "${contact.name}" is flagged do-not-contact — ${refusalVerb}.`
-      );
-    }
-    email = (contact.email as string | null) ?? email;
-    phone = (contact.phone as string | null) ?? phone;
+  const recipient = await resolveRecipient(tx, prospect, contactId);
+  if (recipient.contactBlocked) {
+    throw new ClassifiedError(
+      "validation",
+      `${recipient.contactBlocked.replace(/\.$/, "")} — ${refusalVerb}.`
+    );
   }
+  const provenance = recipientEmailProvenanceVerdict(recipient);
+  if (!provenance.passed) {
+    throw new ClassifiedError("validation", provenance.detail);
+  }
+  const { email, phone } = recipient;
   if (email || phone) {
     const suppression = await checkSuppression({ email, phone, projectId: null });
     if (suppression.suppressed) {
@@ -2221,7 +2255,8 @@ export async function cancelScheduledSend(
 
 // Not exported: stamped into ledger rows, no external consumer.
 // v2 (spec 091): adds the daily_send_cap check for transmitting gmail sends.
-const SEND_GATE_VERSION = "prospect-send-gate-v3";
+// v4 (spec 148): adds recipient_email_provenance.
+const SEND_GATE_VERSION = "prospect-send-gate-v4";
 
 /**
  * The bridge between the two outreach stacks (spec 043): every dispatch —
@@ -2299,29 +2334,22 @@ export async function sendProspectDraft(
         if (!passed && failed === null) failed = detail;
       };
 
-      let email = prospect.email;
-      let phone = prospect.phone;
-      let contactBlocked: string | null = null;
-      if (draft.contactId) {
-        const [contact] = await tx`
-          select name, email, phone, do_not_contact, archived_at
-          from prospect_contacts where id = ${draft.contactId}
-        `;
-        if (!contact || contact.archivedAt) {
-          contactBlocked = "The draft's contact has been removed.";
-        } else if (contact.doNotContact) {
-          contactBlocked = `Contact "${contact.name}" is flagged do-not-contact.`;
-        } else {
-          email = (contact.email as string | null) ?? email;
-          phone = (contact.phone as string | null) ?? phone;
-        }
-      }
+      const recipient = await resolveRecipient(
+        tx,
+        prospect,
+        (draft.contactId as string | null) ?? null
+      );
+      const { email, phone, contactBlocked } = recipient;
       check(
         "account_do_not_contact",
         !prospect.doNotContact,
         prospect.doNotContact ? "The prospect account is flagged do-not-contact." : "clear"
       );
       check("contact_do_not_contact", contactBlocked === null, contactBlocked ?? "clear");
+      // Spec 148: re-read at transmission — a provenance downgrade after
+      // approval refuses here, for human and unattended sends alike.
+      const provenance = recipientEmailProvenanceVerdict(recipient);
+      check("recipient_email_provenance", provenance.passed, provenance.detail);
 
       // Spec 099: a queued draft must never transmit past a recorded reply
       // or exit. Human sends stay free (the ladder sends the audit after a

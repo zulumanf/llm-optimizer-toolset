@@ -171,6 +171,7 @@ describe.skipIf(!TEST_URL)("prospect send gate (integration)", () => {
         name: "Ana Rivera",
         email: "ana@riverateam.com",
         isPrimary: true,
+        provenance: "publicly_sourced",
       })
     );
     const { benchmarkId } = unwrap(
@@ -358,8 +359,8 @@ describe.skipIf(!TEST_URL)("prospect send gate (integration)", () => {
     `;
     const [finding] = await sql`select id from prospect_findings limit 1`;
     const [p2] = await sql`
-      insert into prospects (launch_id, business_name, prospect_type, email)
-      values (${first?.launchId}, 'Harbor Team', 'team', 'ana@riverateam.com')
+      insert into prospects (launch_id, business_name, prospect_type, email, field_provenance)
+      values (${first?.launchId}, 'Harbor Team', 'team', 'ana@riverateam.com', '{"email":"publicly_sourced"}')
       returning id
     `;
     const [d2] = await sql`
