@@ -26,6 +26,8 @@ export const PREFLIGHT_TTL_MINUTES = 30;
 const STATUS_FILE = ".local-data/supply/provider-status.json";
 const REASON_MAX_CHARS = 300;
 const HTTP_FORBIDDEN = 403;
+const HTTP_BAD_REQUEST = 400;
+const OUTPUT_LIMIT_REACHED = /max_tokens or model output limit was reached/i;
 
 export interface ProbeDeps {
   env: Record<string, string | undefined>;
@@ -66,6 +68,12 @@ async function probeCompletion(
     });
     if (res.ok) return status("AVAILABLE", null);
     const text = (await res.text()).slice(0, REASON_MAX_CHARS);
+    // A reasoning model can spend the 1-token probe budget before emitting
+    // output. That refusal comes after auth and billing were accepted, so it
+    // proves availability; nothing else in the 4xx range does.
+    if (res.status === HTTP_BAD_REQUEST && OUTPUT_LIMIT_REACHED.test(text)) {
+      return status("AVAILABLE", "authenticated; probe stopped at its 1-token output cap");
+    }
     return status(preflightStateFor(res.status, text), `HTTP ${res.status}: ${text}`);
   } catch (e) {
     return status("RETRYABLE_ERROR", (e as Error).message);
