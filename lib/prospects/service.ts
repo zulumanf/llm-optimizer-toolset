@@ -77,9 +77,12 @@ import {
   type RunSummary,
 } from "@/lib/prospects/benchmark";
 import {
+  entityTypeFromProspectType,
+  findingOutreachObservation,
   generateCompetitiveMismatchEmail,
   generateReplyFirstEmail,
 } from "@/lib/prospects/outreach";
+import { resolveFindingEvidence } from "@/lib/prospects/finding-evidence";
 import {
   buildEvidenceSnapshot,
   competitiveMismatchReview,
@@ -138,7 +141,11 @@ import {
 // The audit-page lifecycle moved to ./audits (split 2026-08-17); the barrel
 // keeps every existing `@/lib/prospects/service` import working unchanged.
 export * from "@/lib/prospects/audits";
-import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
+import {
+  getActiveSenderIdentity,
+  INCOMPLETE_POSTAL_ADDRESS_MESSAGE,
+  isCompletePostalAddress,
+} from "@/lib/outreach/sender-identity";
 
 /** Diagnoses a prospect may read about themselves — retitled for them.
  * Research-gap keys (about OUR evidence base) and internal-QA keys never
@@ -1633,6 +1640,13 @@ export async function createOutreachDraft(
         }
       }
       const finding = await getPrimaryFinding(tx, input.prospectId);
+      // Spec 150: a cold draft stands on its finding — that finding's OWN run
+      // must be finished, linked to this prospect, fresh and backed by at
+      // least one provider's valid answers. A newer benchmark never helps.
+      const findingEvidence = await resolveFindingEvidence(finding.id, input.prospectId, { db: tx });
+      if (!findingEvidence.ok) {
+        throw new ClassifiedError("validation", `${findingEvidence.detail} (${findingEvidence.code})`);
+      }
 
       let subject = input.subject ?? null;
       let body = input.body ?? null;
@@ -1643,11 +1657,9 @@ export async function createOutreachDraft(
       let evidenceSnapshot: MismatchEvidenceSnapshot | null = null;
 
       if (!body) {
-        const [benchmark] = await tx`
-          select run_id from prospect_benchmarks where id = ${finding.benchmarkId}
-        `;
-        const run = benchmark ? await runSummary(benchmark.runId as string) : null;
         const draftMarketName = await launchMarketName(tx, prospect.launchId);
+        const [typeRow] = await tx`select prospect_type from prospects where id = ${input.prospectId}`;
+        const prospectType = (typeRow?.prospectType as string | undefined) ?? "";
         // The email's proof is the published audit page (plan 3.1) — the
         // page CTA says "reply to the email that brought you here", so the
         // email must actually carry the link. Unpublished or no APP_URL →
@@ -1676,6 +1688,9 @@ export async function createOutreachDraft(
             "No sender identity is configured — an admin must set the legal sender (name, company, postal address) before outreach drafts can be generated."
           );
         }
+        if (!isCompletePostalAddress(draftIdentity.postalAddress)) {
+          throw new ClassifiedError("validation", INCOMPLETE_POSTAL_ADDRESS_MESSAGE);
+        }
         // Spec 124: the competitive-mismatch template is preferred whenever
         // the comparison is clean; anything less fails closed into the
         // reply-first template. The comparison is never weakened to fire.
@@ -1696,24 +1711,58 @@ export async function createOutreachDraft(
             "That competitor is not an eligible mismatch candidate for this prospect — only validated candidates can be used."
           );
         }
-        if (review && chosenCompetitor) {
-          const generated = generateCompetitiveMismatchEmail(review, chosenCompetitor);
+        // Spec 150: the mismatch email addresses an individual as "you" and a
+        // team as "your team" — from the frozen RealTrends entity level, else
+        // the prospect type. Unknown → no mismatch email (reply-first below).
+        const mismatchSnapshot =
+          review && chosenCompetitor ? buildEvidenceSnapshot(review, chosenCompetitor) : null;
+        const mismatchEntity = mismatchSnapshot
+          ? ((await (await import("@/lib/prospects/followups")).prospectEntityType(mismatchSnapshot)) ??
+            entityTypeFromProspectType(prospectType))
+          : null;
+        if (input.competitorCompanyId && !mismatchEntity) {
+          throw new ClassifiedError(
+            "validation",
+            "This prospect's entity type (individual or team) is unknown, so the comparison email cannot address them correctly."
+          );
+        }
+        if (review && chosenCompetitor && mismatchSnapshot && mismatchEntity) {
+          const generated = generateCompetitiveMismatchEmail(review, chosenCompetitor, new Date(), mismatchEntity);
           subject = generated.subject;
           body = generated.body + optOutFooter(draftIdentity);
           tone = generated.tone;
           cta = generated.cta;
           generatedBy = "system";
           promptVersion = generated.promptVersion;
-          evidenceSnapshot = buildEvidenceSnapshot(review, chosenCompetitor);
+          evidenceSnapshot = mismatchSnapshot;
         } else {
+          const [names] = await tx`
+            select
+              coalesce((select array_agg(c.name order by array_position(${finding.competitorCompanyIds}::uuid[], c.id))
+                from companies c where c.id = any(${finding.competitorCompanyIds}::uuid[])), '{}') as competitor_names,
+              (select s.label from prospect_findings f
+                join prospect_authority_signals s on s.id = any(f.signal_ids) and s.prospect_id = f.prospect_id
+                where f.id = ${finding.id}
+                order by array_position(f.signal_ids, s.id) limit 1) as anchor_label
+          `;
+          const observation = findingOutreachObservation({
+            kind: finding.kind,
+            metrics: finding.metrics,
+            prospectName: prospect.businessName,
+            competitorNames: (names?.competitorNames as string[] | null) ?? [],
+            anchorSignalLabel: (names?.anchorLabel as string | null) ?? null,
+          });
+          if (!observation.ok) {
+            throw new ClassifiedError("validation", `${observation.detail} No draft was generated.`);
+          }
           const generated = generateReplyFirstEmail({
             prospectName: prospect.businessName,
             teamLeader: prospect.teamLeader,
             marketName: draftMarketName,
-            findingTitle: finding.title,
-            findingExplanation: finding.explanation,
-            providers: run?.providers ?? [],
-            sampleSize: run?.responseCount ?? 0,
+            prospectType,
+            providerNames: findingEvidence.evidence.providerNames,
+            observation: observation.sentence,
+            sampleSize: observation.sampleSize,
             // Branded link preferred (spec 076): the first readable thing in
             // the emailed URL is the prospect's own name. Legacy token URL is
             // the fallback for prospects minted before the feature.
@@ -2171,6 +2220,17 @@ export async function scheduleDraftSend(
         (draft.contactId as string | null) ?? null,
         "a send cannot be scheduled"
       );
+      // Spec 150: the same deterministic QA the send gate re-runs (finding
+      // freshness, provider attribution, postal address, copy) — refuse now
+      // rather than park at send time.
+      const { qaDraft } = await import("@/lib/prospects/draft-qa");
+      const qaIssues = await qaDraft(draft.id as string);
+      if (qaIssues.length > 0) {
+        throw new ClassifiedError(
+          "validation",
+          `Draft QA failed — a send cannot be scheduled: ${qaIssues.map((i) => `[${i.check}] ${i.detail}`).join(" ")}`
+        );
+      }
       await tx`
         update outreach_drafts set
           scheduled_send_at = ${sendAt}, scheduled_by = ${user.id},
@@ -2536,11 +2596,15 @@ export async function sendProspectDraft(
         );
         check(
           "postal_address",
-          identity !== null && body.includes(identity.postalAddress),
+          identity !== null &&
+            isCompletePostalAddress(identity.postalAddress) &&
+            body.includes(identity.postalAddress),
           identity
-            ? body.includes(identity.postalAddress)
-              ? "physical postal address present (CAN-SPAM)"
-              : "The outgoing text does not carry the sender's postal address."
+            ? !isCompletePostalAddress(identity.postalAddress)
+              ? INCOMPLETE_POSTAL_ADDRESS_MESSAGE
+              : body.includes(identity.postalAddress)
+                ? "physical postal address present (CAN-SPAM)"
+                : "The outgoing text does not carry the sender's postal address."
             : "no sender identity to source the postal address from"
         );
       } else {

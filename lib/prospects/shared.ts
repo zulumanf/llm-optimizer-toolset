@@ -203,6 +203,7 @@ export interface PrimaryFindingRow {
   id: string;
   prospectId: string;
   benchmarkId: string;
+  kind: string;
   title: string;
   explanation: string;
   metrics: Record<string, unknown>;
@@ -215,7 +216,7 @@ export async function getPrimaryFinding(
   prospectId: string
 ): Promise<PrimaryFindingRow> {
   const rows = await tx`
-    select id, prospect_id, benchmark_id, title, explanation, metrics,
+    select id, prospect_id, benchmark_id, kind, title, explanation, metrics,
       response_ids, competitor_company_ids
     from prospect_findings
     where prospect_id = ${prospectId} and is_primary and status = 'approved'
