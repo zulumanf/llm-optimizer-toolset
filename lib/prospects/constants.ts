@@ -333,7 +333,10 @@ export type RecordingStatus = (typeof RECORDING_STATUSES)[number];
 // individuals, counts as the primary unit (no rounded-up sub-10% rates).
 export const FINDING_GENERATOR_VERSION = "prospect-findings-v2+deterministic";
 export const RECORDING_GENERATOR_VERSION = "recording-plan-v1+deterministic";
-export const OUTREACH_TEMPLATE_VERSION = "reply-first-email-v1";
+// v2 (spec 150): observation built from structured finding fields (never the
+// audit-page explanation), valid-evidence provider names, entity-type noun.
+export const OUTREACH_TEMPLATE_VERSION = "reply-first-email-v2";
+const LEGACY_OUTREACH_TEMPLATE_VERSION = "reply-first-email-v1";
 // Spec 124: the competitive-mismatch template. The version string IS the
 // template identity persisted on drafts (prompt_version) — bump it with any
 // copy change so analytics attribution survives edits.
@@ -411,6 +414,7 @@ export const REPLY_SYNC_LOOKBACK_DAYS = 30;
 
 export const OUTREACH_TEMPLATE_LABELS: Record<string, string> = {
   [OUTREACH_TEMPLATE_VERSION]: "Reply-first audit email",
+  [LEGACY_OUTREACH_TEMPLATE_VERSION]: "Reply-first audit email",
   [MISMATCH_TEMPLATE_VERSION]: "Competitive mismatch",
   [FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement]: "Mismatch T2 · no engagement",
   [FOLLOWUP_TEMPLATE_VERSIONS.t2Engaged]: "Mismatch T2 · engaged",

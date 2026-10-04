@@ -12,6 +12,11 @@ import {
 } from "@/lib/prospects/constants";
 import { consumerAnchoredModelPhrase } from "@/lib/prospects/terminology";
 import {
+  prospectLabel,
+  prospectReference,
+  type ProspectEntityType,
+} from "@/lib/prospects/followup-templates";
+import {
   formatProductionDisplay,
   implicationLine,
   marketShortName,
@@ -25,9 +30,15 @@ export interface OutreachDraftInput {
   prospectName: string;
   teamLeader: string | null;
   marketName: string;
-  findingTitle: string;
-  findingExplanation: string;
-  providers: string[];
+  /** prospects.prospect_type — decides "agents" vs "teams" (spec 150). */
+  prospectType: string;
+  /** Prospect-readable names of providers with VALID answers in the
+   * finding's own run (resolveFindingEvidence) — never configured ids. */
+  providerNames: string[];
+  /** Deterministic outreach sentence (findingOutreachObservation) — never
+   * the audit-page explanation. */
+  observation: string;
+  /** The finding's own sample (metrics.sample_size). */
   sampleSize: number;
   /** Published audit page link (plan 3.1). Null = not published or no
    * APP_URL; the draft falls back to the pure reply-first ask. */
@@ -42,11 +53,126 @@ export interface GeneratedDraft {
   promptVersion: string;
 }
 
-const providerLabel = (providers: string[]): string => {
-  if (providers.length === 0) return "AI assistants";
-  if (providers.length === 1) return providers[0]!;
-  return `${providers.slice(0, -1).join(", ")} and ${providers[providers.length - 1]}`;
+/** Plural noun for the kind of business a prospect is (spec 150): an
+ * individual agent is never described as one of several "teams". */
+export function entityPluralNoun(prospectType: string): string {
+  switch (prospectType) {
+    case "team":
+      return "teams";
+    case "individual_agent":
+      return "agents";
+    case "brokerage":
+      return "brokerages";
+    default:
+      return "real estate firms";
+  }
+}
+
+/** Entity level for "you" / "your team" wording; null when the prospect
+ * type does not say (brokerage, developer…). */
+export function entityTypeFromProspectType(prospectType: string): ProspectEntityType | null {
+  if (prospectType === "team") return "team";
+  if (prospectType === "individual_agent") return "individual";
+  return null;
+}
+
+const joinNames = (names: string[]): string =>
+  names.length <= 1
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
+/** "an OpenAI model" / "models from OpenAI and Perplexity". */
+export function providerModelPhrase(providerNames: string[]): string {
+  if (providerNames.length === 1) {
+    const name = providerNames[0]!;
+    return `${/^[AEIOU]/i.test(name) ? "an" : "a"} ${name} model`;
+  }
+  return `models from ${joinNames(providerNames)}`;
+}
+
+export interface FindingObservationInput {
+  kind: string;
+  metrics: Record<string, unknown>;
+  prospectName: string;
+  /** Names of finding.competitor_company_ids, in order. */
+  competitorNames: string[];
+  /** Label of the finding's first evidenced authority signal. */
+  anchorSignalLabel: string | null;
+}
+
+export type FindingObservation = { ok: true; sentence: string; sampleSize: number } | { ok: false; detail: string };
+
+const num = (v: unknown): number | null => {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : null;
 };
+
+/**
+ * The outreach sentence for an approved finding, built only from its
+ * structured fields (spec 150). Audit-page prose (`explanation`) is never
+ * pasted: it carries framing written for the page. Unknown kinds or missing
+ * data fail closed — no sentence, no draft.
+ */
+export function findingOutreachObservation(f: FindingObservationInput): FindingObservation {
+  // Stored snake_case; the db client camelCases JSON keys on read — accept both.
+  const m = (snake: string): unknown =>
+    f.metrics[snake] ?? f.metrics[snake.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())];
+  const n = num(m("sample_size"));
+  if (n === null || n <= 0 || !Number.isInteger(n)) {
+    return { ok: false, detail: "The finding has no usable sample size." };
+  }
+  const count = (rate: unknown): number | null => {
+    const r = num(rate);
+    return r === null || r < 0 || r > 1 ? null : Math.round(r * n);
+  };
+  const p = f.prospectName;
+  switch (f.kind) {
+    case "competitor_contrast": {
+      const competitor = f.competitorNames[0];
+      const pc = count(m("prospect_recommendation_rate"));
+      const cc = count(m("competitor_recommendation_rate"));
+      if (!competitor || pc === null || cc === null) break;
+      return {
+        ok: true,
+        sampleSize: n,
+        sentence: `${competitor} was recommended in ${cc} of ${n} answers; ${p} was recommended in ${pc} of ${n}.`,
+      };
+    }
+    case "authority_visibility_gap": {
+      const rc = count(m("recommendation_rate"));
+      const label = f.anchorSignalLabel?.trim().replace(/\.$/, "");
+      if (rc === null || !label) break;
+      return {
+        ok: true,
+        sampleSize: n,
+        sentence: `${p} has a documented record (${label}), yet was recommended in ${rc} of ${n} answers.`,
+      };
+    }
+    case "absence": {
+      const mc = count(m("mention_rate"));
+      if (mc === null) break;
+      return {
+        ok: true,
+        sampleSize: n,
+        sentence:
+          mc === 0
+            ? `${p} was not mentioned in any of the answers (${n} in total).`
+            : `${p} was mentioned in ${mc} of ${n} answers.`,
+      };
+    }
+    case "citation_gap": {
+      if (f.competitorNames.length === 0) break;
+      return {
+        ok: true,
+        sampleSize: n,
+        sentence: `Those answers cited sources for ${joinNames(f.competitorNames)}, but none that referenced ${p}.`,
+      };
+    }
+    default:
+      return { ok: false, detail: `No outreach copy exists for finding kind "${f.kind}".` };
+  }
+  return { ok: false, detail: `The ${f.kind} finding is missing the data its outreach sentence needs.` };
+}
 
 export function generateReplyFirstEmail(input: OutreachDraftInput): GeneratedDraft {
   const greetingName = input.teamLeader?.split(" ")[0] ?? "there";
@@ -58,15 +184,15 @@ export function generateReplyFirstEmail(input: OutreachDraftInput): GeneratedDra
   const proofParagraph = input.auditUrl
     ? `The full benchmark is here — every question and complete answer included, ` +
       `so you can search for your own name: ${input.auditUrl}`
-    : `I put together the supporting benchmark with the exact prompts and responses.`;
+    : `I put together the supporting benchmark with the exact questions and answers.`;
   const body = [
     `Hi ${greetingName},`,
     ``,
-    `I was benchmarking several leading ${input.marketName} teams across buyer and ` +
-      `seller questions in ${providerLabel(input.providers)} (${input.sampleSize} ` +
-      `monitored responses).`,
+    `I was benchmarking how AI answers recommend ${input.marketName} ` +
+      `${entityPluralNoun(input.prospectType)} across buyer and seller questions, using ` +
+      `${providerModelPhrase(input.providerNames)} (${input.sampleSize} monitored answers).`,
     ``,
-    `One result about ${input.prospectName} surprised me: ${input.findingExplanation}`,
+    `One result about ${input.prospectName} stood out: ${input.observation}`,
     ``,
     `${proofParagraph}${input.auditUrl ? `\n\n${cta}` : ` ${cta}`}`,
   ].join("\n");
@@ -93,7 +219,11 @@ export function generateReplyFirstEmail(input: OutreachDraftInput): GeneratedDra
 export function generateCompetitiveMismatchEmail(
   review: CompetitiveMismatchReview,
   competitor: MismatchCandidate,
-  now: Date = new Date()
+  now: Date = new Date(),
+  /** Spec 150: "you" for an individual agent, "your team" for a team. The
+   * draft path always passes it; the default keeps legacy scripts stable
+   * and draft QA refuses a team phrasing on an individual prospect. */
+  entityType: ProspectEntityType = "team"
 ): GeneratedDraft {
   const firstName = review.firstName!;
   const benchmark = review.benchmark!;
@@ -121,10 +251,10 @@ export function generateCompetitiveMismatchEmail(
     `${firstName} —`,
     ``,
     `${recency} I ran ${review.scopeCopy} through ${systemPhrase}. ` +
-      `${pronoun} recommended ${competitor.displayName} more often than your team, ` +
+      `${pronoun} recommended ${competitor.displayName} more often than ${prospectReference(entityType)}, ` +
       `even though RealTrends has you ahead on ${PRODUCTION_METRIC_COPY[metricType]}.`,
     ``,
-    `Your team: ${formatProductionDisplay(metricType, prospectValue)} · recommended in ${review.prospect.recommendationCount} of ${n} answers`,
+    `${prospectLabel(entityType)}: ${formatProductionDisplay(metricType, prospectValue)} · recommended in ${review.prospect.recommendationCount} of ${n} answers`,
     `${competitor.displayName}: ${formatProductionDisplay(metricType, competitorValue)} · recommended in ${competitor.recommendationCount} of ${n} answers`,
     ``,
     implicationLine(review.audiences),

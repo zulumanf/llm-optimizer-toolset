@@ -300,6 +300,15 @@ describe("generateCompetitiveMismatchEmail", () => {
     expect(findProhibitedPhrase(draft.subject)).toBeNull();
   });
 
+  it("spec 150: an individual agent is addressed as 'you', never 'your team'; team copy is unchanged", () => {
+    const ind = generateCompetitiveMismatchEmail(r, r.evaluation.selected!, NOW, "individual");
+    expect(ind.body).toContain("Harbor View Group more often than you, even though");
+    expect(ind.body).toContain("You: $47.2M closed · recommended in 7 of 64 answers");
+    expect(ind.body).not.toMatch(/your team/i);
+    const team = generateCompetitiveMismatchEmail(r, r.evaluation.selected!, NOW, "team");
+    expect(team.body).toBe(draft.body);
+  });
+
   it("pluralizes the tested-system phrase by model count", () => {
     const multi = review();
     multi.benchmark!.modelCount = 2;
