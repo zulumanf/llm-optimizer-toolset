@@ -61,6 +61,13 @@ describe("provider preflight probes fail closed", () => {
         expect((await probe(deps(respond(429, "insufficient_quota")))).state).toBe("CAPACITY_BLOCKED");
       });
 
+      it("a 400 that only says the 1-token output cap was hit proves auth + billing; any other 400 does not", async () => {
+        const capped = respond(400, '{"error":{"message":"Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens."}}');
+        expect((await probe(deps(capped))).state).toBe("AVAILABLE");
+        expect((await probe(deps(respond(400, '{"error":{"message":"Unsupported parameter: max_tokens"}}')))).state).not.toBe("AVAILABLE");
+        expect((await probe(deps(respond(400, "")))).state).not.toBe("AVAILABLE");
+      });
+
       it("server errors and network faults are not available", async () => {
         expect((await probe(deps(respond(500, "boom")))).state).toBe("RETRYABLE_ERROR");
         const offline = (async () => { throw new Error("ECONNRESET"); }) as unknown as typeof fetch;
