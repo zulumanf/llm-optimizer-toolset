@@ -1,5 +1,8 @@
 # Deployment
 
+> Current host: Railway (web + worker services), Supabase Postgres. Spec 151
+> release steps, blockers and rollback: `docs/engineering/production-readiness.md`.
+
 The single largest gap in the 2026-08-09 architecture audit was this document
 not existing. Everything here is host-agnostic; the host itself is the one
 open operator decision (`docs/production-readiness-plan.md` decision #1).
@@ -34,6 +37,13 @@ Production minimums:
 - `AUTOMATION_CREDENTIAL_KEY` — connector credential envelope.
 - `BACKUP_ENCRYPTION_KEY` + `BACKUP_UPLOAD_CMD` — see Backups.
 - `DIGEST_WEBHOOK_URL` — digests and **system alerts** land here.
+- `ERROR_WEBHOOK_URL` — every error-level log event (redacted, deduped per
+  event for 5 min) is POSTed here (spec 151).
+- `ARTIFACT_ROOT` — persistent directory for evidence, knowledge and video
+  files; must be storage BOTH web and worker can see (spec 151; default
+  `./var`, which is container-local).
+- `BACKUP_DATABASE_URL` — the database `npm run backup` dumps; without it the
+  script dumps the LOCAL dev database only.
 - Never in production: `ALLOW_MOCK_PROVIDER`, `ALLOW_MOCK_SCORING`,
   `ALLOW_DEV_AUTH_IN_PROD`.
 
