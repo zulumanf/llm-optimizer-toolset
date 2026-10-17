@@ -1,6 +1,9 @@
 /**
- * Scoring v1.1 (docs/06): per-company metrics computed per provider then as
- * an unweighted cross-provider mean ('all'). Scores are
+ * Scoring v1.2 (docs/06, spec 151): per-company metrics computed per
+ * INSTRUMENT (lib/scoring/estimates.ts) with statistical intervals in
+ * score_estimates; the legacy `scores` rows are a compatibility projection
+ * (provider rows only for single-instrument providers, 'all' = unweighted
+ * mean across instruments). Scores are
  * written as new rows stamped with SCORING_VERSION — never recomputed in
  * place. The review gate blocks scoring until the run's queue is clear;
  * after REVIEW_TIMEOUT_HOURS, still-pending responses are excluded from N
@@ -15,17 +18,28 @@ import { log } from "@/lib/logger";
 import { extractUrls } from "@/lib/parsing/prepass";
 import { extractCitations } from "@/lib/ai/citations";
 import { CURRENT_REVISION } from "@/db/mentions";
-import {
-  computeProviderMetrics,
-  authorityScore,
-  aggregateAcrossProviders,
-  type ScoredMetric,
-  type MetricValues,
-} from "@/lib/scoring/metrics";
+import { computeEstimates } from "@/lib/scoring/estimates";
+import { cohortForRun } from "@/db/measurement";
+import { SCORING_WRITE_LOCK_KEY } from "@/db/scores";
+import { computeLegacyV11, LEGACY_SCORING_VERSION } from "@/lib/scoring/legacy-v11";
+import { extractServedModel } from "@/lib/ai/served-model";
 
-export async function computeScores(runId: string): Promise<void> {
+export interface ComputeScoresOptions {
+  /** Historical rescoring (scripts/rescore.ts) must not fire movement
+   * events for weeks-old runs. Default true: live scoring publishes. */
+  publishMovement?: boolean;
+  /** Historical rescoring writes v1.2 only (false): adding v1.1 rows to an
+   * old run would change what pre-cutover dashboards show. Live scoring
+   * follows scoring_state.write_legacy. */
+  writeLegacy?: boolean;
+}
+
+export async function computeScores(
+  runId: string,
+  options: ComputeScoresOptions = {}
+): Promise<void> {
   const [run] = await sql`
-    select id, status, project_id, prompt_set_version_id
+    select id, status, project_id, prompt_set_version_id, started_at
     from runs where id = ${runId}
   `;
   if (!run) throw new ClassifiedError("not_found", `Run ${runId} not found.`);
@@ -71,7 +85,9 @@ export async function computeScores(runId: string): Promise<void> {
 
   // Valid cells: successful captures (refusals count; errors don't — docs/06)
   const allValidResponses = await sql`
-    select id, provider, prompt_id, response_text, raw_payload from responses
+    select id, provider, model, prompt_id, prompt_text, response_text,
+      raw_payload, request_params, served_model
+    from responses
     where run_id = ${runId} and error is null
   `;
   // The registry gate stops mock at the door, but a database that once ran
@@ -103,16 +119,12 @@ export async function computeScores(runId: string): Promise<void> {
     return;
   }
 
-  const byProvider = new Map<string, Set<string>>();
   const responsesWithCitation = new Set<string>();
   for (const row of included) {
-    const provider = row.provider as string;
-    if (!byProvider.has(provider)) byProvider.set(provider, new Set());
-    byProvider.get(provider)!.add(row.id as string);
     // Cited = in-text URLs or search citations in the payload (lib/ai/citations)
     if (
       extractUrls((row.responseText as string) ?? "").length > 0 ||
-      extractCitations(provider, row.rawPayload).length > 0
+      extractCitations(row.provider as string, row.rawPayload).length > 0
     ) {
       responsesWithCitation.add(row.id as string);
     }
@@ -121,122 +133,76 @@ export async function computeScores(runId: string): Promise<void> {
   const mentions = (await currentMentionsForRun(runId)).filter(
     (m) => !excludedResponseIds.has(m.responseId) && m.mentioned
   );
-  // Project-scoped: other clients' subjects never enter this run's scores
-  const companies = await listCompaniesForProject(run.projectId as string);
+  // Project-scoped: other clients' subjects never enter this run's scores.
+  // v1.2 (spec 151 A5): a frozen cohort, when the project has one, is the
+  // scored universe and the share-of-voice denominator — the global registry
+  // growing through prospect discovery can no longer move it.
+  const projectCompanies = await listCompaniesForProject(run.projectId as string);
+  const cohort = await cohortForRun(run.projectId as string, run.startedAt as Date);
+  const cohortIds = cohort ? new Set(cohort.companyIds) : null;
+  const companies = cohortIds
+    ? projectCompanies.filter((c) => cohortIds.has(c.id))
+    : projectCompanies;
 
-  interface ScoreInsert {
-    companyId: string;
-    metric: string;
-    provider: string;
-    value: number;
-    sampleSize: number;
+  const { estimates, compat, instruments } = computeEstimates({
+    runId,
+    responses: included.map((r) => ({
+      id: r.id as string,
+      provider: r.provider as string,
+      model: r.model as string,
+      promptId: r.promptId as string,
+      promptText: r.promptText as string,
+      requestParams: r.requestParams,
+      servedModel:
+        (r.servedModel as string | null) ??
+        extractServedModel(r.provider as string, r.rawPayload),
+      hasAnyCitation: responsesWithCitation.has(r.id as string),
+    })),
+    mentions,
+    companies,
+  });
+  const blendedProviders = [
+    ...new Set(
+      instruments
+        .map((g) => g.provider)
+        .filter((p, _, all) => all.filter((x) => x === p).length > 1)
+    ),
+  ];
+  if (blendedProviders.length > 0) {
+    // Not an error: the per-instrument estimates carry the numbers; only the
+    // provider-level compatibility row is refused (spec 151 A3).
+    log("info", "scoring.provider_row_refused_multi_instrument", { runId, providers: blendedProviders });
   }
-  const rows: ScoreInsert[] = [];
-
-  for (const company of companies) {
-    const perProviderValues: Record<string, MetricValues> = {};
-    const perProviderAuthority: (number | null)[] = [];
-
-    for (const [provider, responseIds] of byProvider) {
-      const providerMentions = mentions.filter((m) => responseIds.has(m.responseId));
-      const companyMentions = providerMentions.filter(
-        (m) => m.companyId === company.id
-      );
-      const mentionedResponses = new Set(companyMentions.map((m) => m.responseId));
-
-      const values = computeProviderMetrics({
-        n: responseIds.size,
-        mentionedResponses: mentionedResponses.size,
-        recommendedResponses: new Set(
-          companyMentions.filter((m) => m.recommended).map((m) => m.responseId)
-        ).size,
-        companyMentions: mentionedResponses.size,
-        totalTrackedMentions: new Set(
-          providerMentions.map((m) => `${m.companyId}|${m.responseId}`)
-        ).size,
-        listPositions: companyMentions
-          .map((m) => m.listPosition)
-          .filter((p): p is number => p !== null),
-        // Distinct responses, not mention rows — a rate's numerator must
-        // count in the same unit as its denominator N.
-        firstPositionResponses: new Set(
-          companyMentions
-            .filter((m) => m.listPosition === 1)
-            .map((m) => m.responseId)
-        ).size,
-        topThreeResponses: new Set(
-          companyMentions
-            .filter((m) => m.listPosition !== null && m.listPosition <= 3)
-            .map((m) => m.responseId)
-        ).size,
-        sentiments: companyMentions.map((m) => m.sentiment),
-        citedResponses: new Set(
-          companyMentions.filter((m) => m.citedUrls.length > 0).map((m) => m.responseId)
-        ).size,
-        responsesWithAnyCitation: [...responseIds].filter((id) =>
-          responsesWithCitation.has(id)
-        ).length,
-      });
-      perProviderValues[provider] = values;
-
-      for (const [metric, value] of Object.entries(values)) {
-        if (value === null || value === undefined) continue;
-        rows.push({
-          companyId: company.id,
-          metric,
-          provider,
-          value,
-          sampleSize: responseIds.size,
-        });
-      }
-      const authority = authorityScore(values);
-      perProviderAuthority.push(authority);
-      if (authority !== null) {
-        rows.push({
-          companyId: company.id,
-          metric: "authority_score",
-          provider,
-          value: authority,
-          sampleSize: responseIds.size,
-        });
-      }
-    }
-
-    // Cross-provider aggregates: unweighted mean per metric (docs/06)
-    const metricKeys = new Set<string>(
-      Object.values(perProviderValues).flatMap((v) => Object.keys(v))
-    );
-    for (const metric of metricKeys) {
-      const aggregate = aggregateAcrossProviders(
-        Object.values(perProviderValues).map(
-          (v) => v[metric as ScoredMetric]
-        )
-      );
-      if (aggregate === null) continue;
-      rows.push({
-        companyId: company.id,
-        metric,
-        provider: "all",
-        value: aggregate,
-        sampleSize: included.length,
-      });
-    }
-    const aggregateAuthority = aggregateAcrossProviders(perProviderAuthority);
-    if (aggregateAuthority !== null) {
-      rows.push({
-        companyId: company.id,
-        metric: "authority_score",
-        provider: "all",
-        value: aggregateAuthority,
-        sampleSize: included.length,
-      });
-    }
-  }
+  const rows = compat;
+  // Release 151 cutover window. Inside ONE transaction holding the shared
+  // scoring lock (the cutover takes it exclusively), so a flip can never land
+  // between reading the switch and writing:
+  //  - v1.1 rows (the original algorithm) go to `scores` while the legacy
+  //    writer is on — dashboards stay complete for new runs;
+  //  - v1.2 compatibility rows always go to `scores_staging`, and ALSO to
+  //    `scores` once readers are on v1.2. Before the cutover `scores` holds
+  //    v1.1 only, so a pre-151 application image can be redeployed safely.
+  const legacyInput = {
+    responses: included.map((r) => ({
+      id: r.id as string,
+      provider: r.provider as string,
+      hasAnyCitation: responsesWithCitation.has(r.id as string),
+    })),
+    mentions,
+    companyIds: projectCompanies.map((c) => c.id),
+  };
+  let legacyCount = 0;
 
   await sql.begin(async (tx) => {
+    await tx`select pg_advisory_xact_lock_shared(${SCORING_WRITE_LOCK_KEY})`;
+    const [state] = await tx`select read_version, write_legacy from scoring_state where id = 1`;
+    const readVersion = (state?.readVersion as string | undefined) ?? "v1.1";
+    const writeLegacy = ((state?.writeLegacy as boolean | undefined) ?? true) && options.writeLegacy !== false;
+    const legacyRows = writeLegacy ? computeLegacyV11(legacyInput) : [];
+    legacyCount = legacyRows.length;
     for (const row of rows) {
       await tx`
-        insert into scores
+        insert into scores_staging
           (run_id, company_id, metric, provider, value, sample_size, scoring_version)
         values
           (${runId}, ${row.companyId}, ${row.metric}, ${row.provider},
@@ -244,15 +210,58 @@ export async function computeScores(runId: string): Promise<void> {
         on conflict (run_id, company_id, metric, provider, scoring_version)
         do nothing
       `;
+      if (readVersion === SCORING_VERSION) {
+        await tx`
+          insert into scores
+            (run_id, company_id, metric, provider, value, sample_size, scoring_version)
+          values
+            (${runId}, ${row.companyId}, ${row.metric}, ${row.provider},
+             ${Number(row.value.toFixed(6))}, ${row.sampleSize}, ${SCORING_VERSION})
+          on conflict (run_id, company_id, metric, provider, scoring_version)
+          do nothing
+        `;
+      }
+    }
+    for (const row of legacyRows) {
+      await tx`
+        insert into scores
+          (run_id, company_id, metric, provider, value, sample_size, scoring_version)
+        values
+          (${runId}, ${row.companyId}, ${row.metric}, ${row.provider},
+           ${Number(row.value.toFixed(6))}, ${row.sampleSize}, ${LEGACY_SCORING_VERSION})
+        on conflict (run_id, company_id, metric, provider, scoring_version)
+        do nothing
+      `;
+    }
+    for (const e of estimates) {
+      const round = (v: number | null | undefined) =>
+        v === null || v === undefined || !Number.isFinite(v) ? null : Number(v.toFixed(6));
+      await tx`
+        insert into score_estimates
+          (run_id, company_id, metric, provider, model, instrument_key, served_models,
+           numerator, denominator, distinct_prompts, excluded_echo, rate,
+           wilson_low, wilson_high, clustered_low, clustered_high, icc,
+           cohort_id, scoring_version)
+        values
+          (${runId}, ${e.companyId}, ${e.metric}, ${e.provider}, ${e.model},
+           ${e.instrumentKey}, ${e.servedModels}, ${e.numerator}, ${e.denominator},
+           ${e.distinctPrompts}, ${e.excludedEcho}, ${round(e.rate)},
+           ${round(e.wilson?.[0])}, ${round(e.wilson?.[1])},
+           ${round(e.clustered?.[0])}, ${round(e.clustered?.[1])}, ${round(e.icc)},
+           ${cohort?.id ?? null}, ${SCORING_VERSION})
+        on conflict (run_id, company_id, metric, instrument_key, scoring_version)
+        do nothing
+      `;
     }
   });
-  log("info", "scoring.computed", { runId, rows: rows.length });
+  log("info", "scoring.computed", { runId, rows: rows.length, legacyRows: legacyCount, estimates: estimates.length });
 
   // Movement events (spec 030 / roadmap 2.6): a material decline is
   // published exactly once per (run, metric) — the dedupe key, not the
   // caller, guarantees a re-score cannot double-fire the automation layer.
   // Catalogue type visibility.materially_declined existed producer-less
   // since migration 020.
+  if (options.publishMovement === false) return;
   try {
     const { movementForProject } = await import("@/lib/competitors/movement");
     const { publishEvent } = await import("@/lib/events/bus");

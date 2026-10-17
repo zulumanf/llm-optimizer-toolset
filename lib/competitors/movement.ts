@@ -10,6 +10,7 @@
  * `notable` verdict on at least one side of the flip.
  */
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { getSubjectCompany } from "@/db/companies";
 import { changeVerdict, type ProviderDelta } from "@/lib/reports/deltas";
 import { formatPercent } from "@/lib/format";
@@ -186,11 +187,11 @@ export async function movementForProject(
 
   const [latest] = await sql`
     select r.id, r.prompt_set_version_id, r.started_at,
-      (select s.scoring_version from scores s where s.run_id = r.id limit 1)
+      ${READ_SCORING_VERSION}
         as scoring_version
     from runs r
     where r.project_id = ${projectId}
-      and exists (select 1 from scores s where s.run_id = r.id)
+      and exists (select 1 from scores s where s.run_id = r.id and s.scoring_version = ${READ_SCORING_VERSION})
     order by r.started_at desc limit 1
   `;
   if (!latest) return [];

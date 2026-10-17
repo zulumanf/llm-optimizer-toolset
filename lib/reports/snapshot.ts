@@ -5,9 +5,11 @@
  * version and scoring version (docs/06 forbids cross-version comparison).
  */
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { getSubjectCompany } from "@/db/companies";
 import { ClassifiedError } from "@/lib/errors";
-import { SCORING_VERSION } from "@/lib/constants";
+import { scoringState } from "@/db/scores";
+import { buildMeasurementSection } from "@/lib/reports/measurement-v2";
 import { changeVerdict, type ProviderDelta } from "@/lib/reports/deltas";
 import { draftNarrative } from "@/lib/reports/narrative";
 import { CURRENT_REVISION } from "@/db/mentions";
@@ -31,7 +33,7 @@ async function scoresForRun(
     select s.id as score_id, s.company_id, c.name as company_name,
       s.metric, s.provider, s.value, s.sample_size, s.scoring_version
     from scores s join companies c on c.id = s.company_id
-    where s.run_id = ${runId} and s.scoring_version = ${SCORING_VERSION}
+    where s.run_id = ${runId} and s.scoring_version = ${READ_SCORING_VERSION}
   `;
   return rows.map((r) => ({
     scoreId: r.scoreId as string,
@@ -94,7 +96,7 @@ export async function buildSnapshot(
       and r.started_at < (${periodStart} || ' 00:00:00+00')::timestamptz
       and r.prompt_set_version_id = ${current.promptSetVersionId}
       and exists (select 1 from scores s where s.run_id = r.id
-        and s.scoring_version = ${SCORING_VERSION})
+        and s.scoring_version = ${READ_SCORING_VERSION})
     order by r.started_at desc limit 1
   `;
 
@@ -206,12 +208,19 @@ export async function buildSnapshot(
 
   const [now] = await sql`select now() as ts`;
   // Whole-platform activity + ownership map (spec 016)
-  const [program, categoryOwnership] = await Promise.all([
+  const [program, categoryOwnership, measurement] = await Promise.all([
     buildProgram({ projectId, periodStart, periodEnd }),
     buildCategoryOwnership({
       projectId,
       runId: current.id as string,
       promptSetVersionId: current.promptSetVersionId as string,
+    }),
+    buildMeasurementSection({
+      projectId,
+      currentRunId: current.id as string,
+      previousRunId: (previous?.id as string | undefined) ?? null,
+      periodStart,
+      periodEnd,
     }),
   ]);
 
@@ -219,7 +228,8 @@ export async function buildSnapshot(
     kind,
     program,
     categoryOwnership,
-    scoringVersion: SCORING_VERSION,
+    measurement,
+    scoringVersion: (await scoringState()).readVersion,
     generatedAt: (now?.ts as Date).toISOString(),
     runs: runs.map((r) => ({
       id: r.id as string,

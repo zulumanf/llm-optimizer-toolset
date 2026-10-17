@@ -1,6 +1,6 @@
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { getSubjectCompany } from "@/db/companies";
-import { SCORING_VERSION } from "@/lib/constants";
 
 export interface CompetitorRow {
   id: string;
@@ -48,12 +48,12 @@ export async function latestScoresByCompany(
     select s.company_id, s.metric, s.value
     from scores s
     where s.provider = 'all'
-      and s.scoring_version = ${SCORING_VERSION}
+      and s.scoring_version = ${READ_SCORING_VERSION}
       and s.run_id = (
         select r.id from runs r
         join scores s2 on s2.run_id = r.id
         where r.project_id = ${projectId}
-          and s2.scoring_version = ${SCORING_VERSION}
+          and s2.scoring_version = ${READ_SCORING_VERSION}
         order by r.started_at desc
         limit 1
       )

@@ -12,6 +12,7 @@
  */
 import { z } from "zod";
 import { sql } from "@/db/client";
+import { ensurePinnedInstrument } from "@/lib/measurement/service";
 import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { stateCodeFor, US_STATE_NAMES } from "@/lib/markets/geography";
@@ -84,7 +85,7 @@ export async function bootstrapMarketBenchmark(
         promptSetId: existing.setId as string,
         promptSetVersionId: existing.versionId as string,
         promptCount: Number(existing.promptCount ?? 0),
-        suggestedProviders: await latestRunProviders(),
+        suggestedProviders: await projectInstrumentProviders(existing.projectId as string, user.id),
         alreadyBootstrapped: true,
       });
     }
@@ -194,7 +195,7 @@ export async function bootstrapMarketBenchmark(
       promptSetId: set.data.id,
       promptSetVersionId: version?.id as string,
       promptCount: created,
-      suggestedProviders: await latestRunProviders(),
+      suggestedProviders: await projectInstrumentProviders(project.data.id, user.id),
       alreadyBootstrapped: false,
     });
   } catch (err) {
@@ -202,15 +203,13 @@ export async function bootstrapMarketBenchmark(
   }
 }
 
-/** The provider config of the newest completed run — copied, not invented. */
-async function latestRunProviders(): Promise<unknown[] | null> {
-  const [run] = await sql`
-    select providers from runs
-    where status = 'completed' and providers != '[]'::jsonb
-    order by completed_at desc nulls last limit 1
-  `;
-  const providers = run?.providers as unknown[] | undefined;
-  return providers && providers.length > 0 ? providers : null;
+/** The project's pinned instrument (spec 151 A8). First use pins the named
+ * default; later calls return the pin. Replaces the old rule ("copy the
+ * newest completed run anywhere"), under which a market's instrument
+ * depended on whichever unrelated run happened to finish last. */
+async function projectInstrumentProviders(projectId: string, userId: string): Promise<unknown[]> {
+  const pinned = await ensurePinnedInstrument(projectId, userId, "market benchmark bootstrap");
+  return pinned.providers;
 }
 
 /** Display label only — identity is projects.market_id. The state code is

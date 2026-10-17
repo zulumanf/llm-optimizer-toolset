@@ -10,7 +10,8 @@ import { listCompaniesForProject, getSubjectCompany } from "@/db/companies";
 import { pendingReviewCount } from "@/db/mentions";
 import { classifyResponse } from "@/lib/parsing/classify";
 import { classifyResponseLlm } from "@/lib/parsing/classify-llm";
-import { extractUrls, scanAliases, urlDomain } from "@/lib/parsing/prepass";
+import { domainBelongsTo, extractUrls, scanAliases, urlDomain } from "@/lib/parsing/prepass";
+import { ENTITY_MATCHER_VERSION } from "@/lib/constants";
 import {
   classifySource,
   SOURCE_CLASSIFIER_VERSION,
@@ -159,7 +160,7 @@ export async function parseResponse(responseId: string, options: ParseOptions = 
     const company = companies.find((c) => c.id === draft.companyId);
     if (!company?.domain) continue;
     const owned = searchCitations
-      .filter((c) => c.domain.endsWith(company.domain as string))
+      .filter((c) => domainBelongsTo(c.domain, company.domain))
       .map((c) => c.url);
     if (owned.length > 0) {
       draft.citedUrls = [...new Set([...draft.citedUrls, ...owned])];
@@ -179,13 +180,14 @@ export async function parseResponse(responseId: string, options: ParseOptions = 
       await tx`
         insert into mentions
           (response_id, company_id, revision, mentioned, parser_version,
-           confidence, needs_review, classifier_model, classifier_prompt_version)
+           confidence, needs_review, classifier_model, classifier_prompt_version,
+           matcher_version)
         values
           (${responseId}, ${prev.companyId},
            (select max(revision) from mentions
             where response_id = ${responseId} and company_id = ${prev.companyId}) + 1,
            false, ${parserUsed}, 0.85, false, ${classifierModel},
-           ${classifierPromptVersion})
+           ${classifierPromptVersion}, ${ENTITY_MATCHER_VERSION})
       `;
     }
 
@@ -195,7 +197,8 @@ export async function parseResponse(responseId: string, options: ParseOptions = 
         insert into mentions
           (response_id, company_id, revision, mentioned, recommended,
            list_position, sentiment, excerpt, cited_urls, parser_version,
-           confidence, needs_review, classifier_model, classifier_prompt_version)
+           confidence, needs_review, classifier_model, classifier_prompt_version,
+           matcher_version)
         values
           (${responseId}, ${draft.companyId},
            coalesce((select max(revision) from mentions
@@ -203,7 +206,7 @@ export async function parseResponse(responseId: string, options: ParseOptions = 
            ${draft.mentioned}, ${draft.recommended}, ${draft.listPosition},
            ${draft.sentiment}, ${draft.excerpt}, ${draft.citedUrls},
            ${parserUsed}, ${draft.confidence}, ${draft.needsReview},
-           ${classifierModel}, ${classifierPromptVersion})
+           ${classifierModel}, ${classifierPromptVersion}, ${ENTITY_MATCHER_VERSION})
       `;
     }
 
@@ -224,7 +227,7 @@ export async function parseResponse(responseId: string, options: ParseOptions = 
     for (const url of allUrls) {
       const domain = urlDomain(url);
       if (!domain) continue;
-      const owner = companies.find((c) => c.domain && domain.endsWith(c.domain));
+      const owner = companies.find((c) => domainBelongsTo(domain, c.domain));
       const classified = classifySource(domain, classificationContext);
       await tx`
         insert into sources (project_id, url, domain, company_id, citation_count,
@@ -253,7 +256,7 @@ export async function parseResponse(responseId: string, options: ParseOptions = 
     for (const row of citationRows) {
       const domain = urlDomain(row.url);
       if (!domain) continue;
-      const owner = companies.find((c) => c.domain && domain.endsWith(c.domain));
+      const owner = companies.find((c) => domainBelongsTo(domain, c.domain));
       await tx`
         insert into response_citations (response_id, url, domain, kind, company_id)
         values (${responseId}, ${row.url}, ${domain}, ${row.kind}, ${owner?.id ?? null})
@@ -479,7 +482,8 @@ export async function parseCompanyIntoRun(
         insert into mentions
           (response_id, company_id, revision, mentioned, recommended,
            list_position, sentiment, excerpt, cited_urls, parser_version,
-           confidence, needs_review, classifier_model, classifier_prompt_version)
+           confidence, needs_review, classifier_model, classifier_prompt_version,
+           matcher_version)
         values
           (${response.id}, ${draft.companyId},
            coalesce((select max(revision) from mentions
@@ -487,7 +491,7 @@ export async function parseCompanyIntoRun(
            ${draft.mentioned}, ${draft.recommended}, ${draft.listPosition},
            ${draft.sentiment}, ${draft.excerpt}, ${draft.citedUrls},
            ${judged.parserUsed}, ${draft.confidence}, ${draft.needsReview},
-           ${judged.classifierModel}, ${judged.classifierPromptVersion})
+           ${judged.classifierModel}, ${judged.classifierPromptVersion}, ${ENTITY_MATCHER_VERSION})
       `;
       out.inserted += 1;
       if (draft.recommended) out.recommended += 1;

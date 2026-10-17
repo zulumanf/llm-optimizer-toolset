@@ -8,6 +8,7 @@
  * never quietly scores zero and drags a healthy client into the red.
  */
 import { sql, type TransactionSql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 
 type Tx = TransactionSql | typeof sql;
 
@@ -164,6 +165,7 @@ async function visibilityTrend(projectId: string, period: Period): Promise<Compo
     where r.project_id = ${projectId}
       and s.company_id = p.subject_company_id
       and s.metric = 'recommendation_rate' and s.provider = 'all'
+      and s.scoring_version = ${READ_SCORING_VERSION}
       and r.started_at >= ${period.start}::date - interval '60 days'
       and r.started_at < ${period.end}::date + interval '1 day'
     order by r.started_at asc

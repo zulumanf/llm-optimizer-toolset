@@ -26,12 +26,23 @@ export const PARSER_VERSION_LLM = "mention-parser-v2+llm";
 export const PARSER_VERSION_ADJUDICATION = "mention-parser-v3+adjudication";
 /** Classification is a narrow judgment on every observation — the mini
  * snapshot keeps per-run cost sane (spec 013). */
+/** Spec 151: the deterministic matching layer under every parser —
+ * normalized multi-token alias matching with hard sentence/list boundaries,
+ * and dot-boundary domain ownership. Stamped on new mention rows in its own
+ * column so the parser labels (which drive class-first precedence) stay
+ * unchanged. NULL on rows written before spec 151 (entity-matcher-v1:
+ * exact aliases, suffix domain match). */
+export const ENTITY_MATCHER_VERSION = "entity-matcher-v2";
 export const CLASSIFIER_MODEL = "gpt-5.4-mini-2026-03-17";
 /** v1.1 adds stored first_position_rate and top_three_rate (docs/06
  * changelog). Old v1.0 rows are never recomputed — the scores unique key
  * includes scoring_version, so both versions coexist and cross-version
  * comparisons stay forbidden in UI/reports. */
-export const SCORING_VERSION = "v1.1";
+/** v1.2 (spec 151): per-instrument grouping with statistical intervals in
+ * score_estimates, echo exclusion in core rates, frozen-cohort share-of-voice
+ * denominators, dot-boundary owned citations. v1.1 rows stay untouched;
+ * historical runs gain v1.2 rows only through scripts/rescore.ts. */
+export const SCORING_VERSION = "v1.2";
 /**
  * Portfolio-wide provider spend ceiling over a rolling 24h window (plan
  * 2.7). BUDGET_MAX_USD caps one run; nothing capped fifty of them. Checked

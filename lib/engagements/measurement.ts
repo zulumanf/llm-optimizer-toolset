@@ -7,7 +7,7 @@
  * answer ids so every count is re-derivable from the responses table.
  */
 import { sql } from "@/db/client";
-import { SCORING_VERSION } from "@/lib/constants";
+import { scoringState } from "@/db/scores";
 import {
   MEASUREMENT_METHODOLOGY_VERSION,
   RESOLVER_POLICY_VERSION,
@@ -179,7 +179,7 @@ export async function buildMeasurementSnapshot(input: {
     competitors: ents.filter((e) => e.companyId !== input.subjectCompanyId).map(entity),
     questions,
     versions: {
-      scoringVersion: SCORING_VERSION,
+      scoringVersion: (await scoringState()).readVersion,
       parserVersions: ((versions[0]?.parsers as string[] | null) ?? []).filter(Boolean).sort(),
       classifierModels: ((versions[0]?.classifiers as string[] | null) ?? []).sort(),
       resolverPolicy: RESOLVER_POLICY_VERSION,

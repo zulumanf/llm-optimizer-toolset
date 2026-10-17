@@ -1,4 +1,7 @@
-import { PageHeader, PageShell } from "@/components/layout/page";
+import { PageHeader, PageShell, Section } from "@/components/layout/page";
+import { EstimatesTable } from "@/components/measurement/estimates-table";
+import { namedEstimatesForRun } from "@/db/measurement";
+import { SCORING_VERSION } from "@/lib/constants";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
@@ -27,10 +30,11 @@ export default async function RunDetailPage({
   const { id: projectId, runId } = await params;
   const [project, run] = await Promise.all([getProject(projectId), getRun(runId)]);
   if (!project || !run || run.projectId !== projectId) notFound();
-  const [cells, scores, pendingReviews] = await Promise.all([
+  const [cells, scores, pendingReviews, estimates] = await Promise.all([
     listRunCells(runId),
     listScoresForRun(runId),
     pendingReviewCount(runId),
+    namedEstimatesForRun(runId, SCORING_VERSION),
   ]);
   // Coverage reads the same mentions scoring reads — only meaningful once
   // the run has scored (spec 063).
@@ -153,6 +157,14 @@ export default async function RunDetailPage({
           </p>
         )}
       </section>
+
+      <Section
+        title="Per-model estimates"
+        description="Each AI model is measured separately, with a 95% statistical interval over prompts (not classifier confidence). Answers to prompts that name the company are excluded."
+        className="mb-6"
+      >
+        <EstimatesTable rows={estimates} />
+      </Section>
 
       {coverage && coverage.length > 0 && (
         <section className="mb-6">

@@ -8,6 +8,7 @@
  * names all N, never N client-specific insights (audit measurement §8).
  */
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany } from "@/db/companies";
 import { assertCanWrite, type CurrentUser } from "@/lib/auth";
@@ -104,12 +105,13 @@ async function projectDeltas(
   if (!subject) return null;
   const [latest] = await sql`
     select r.id, r.prompt_set_version_id,
-      (select s.scoring_version from scores s where s.run_id = r.id limit 1)
+      ${READ_SCORING_VERSION}
         as scoring_version
     from runs r
     where r.project_id = ${projectId}
       and exists (select 1 from scores s
-        where s.run_id = r.id and s.company_id = ${subject.id})
+        where s.run_id = r.id and s.company_id = ${subject.id}
+          and s.scoring_version = ${READ_SCORING_VERSION})
     order by r.started_at desc limit 1
   `;
   if (!latest) return null;

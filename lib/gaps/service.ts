@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany } from "@/db/companies";
 import { assertCanWrite, type CurrentUser } from "@/lib/auth";
@@ -23,7 +24,7 @@ import {
   playbookFor,
   SOURCE_PLAYBOOK_VERSION,
 } from "@/lib/sources/playbooks";
-import { extractUrls, urlDomain } from "@/lib/parsing/prepass";
+import { domainBelongsTo, extractUrls, urlDomain } from "@/lib/parsing/prepass";
 import { PROMPT_NAMES_COMPANY } from "@/lib/scoring/prompt-echo";
 import { extractCitations } from "@/lib/ai/citations";
 import { log } from "@/lib/logger";
@@ -96,6 +97,7 @@ export async function analyzeRun(
       from scores s join companies c on c.id = s.company_id
       where s.run_id = ${runId} and s.provider = 'all'
         and s.metric in ('mention_rate', 'recommendation_rate')
+        and s.scoring_version = ${READ_SCORING_VERSION}
     `;
     const byCompany = new Map<string, CompanyOutcome>();
     for (const row of companyRows) {
@@ -206,7 +208,7 @@ export async function analyzeRun(
       ([domain, entry]) => ({
         domain,
         citations: entry.citations,
-        ownedBySubject: Boolean(subject.domain && domain.endsWith(subject.domain)),
+        ownedBySubject: domainBelongsTo(domain, subject.domain),
         sampleResponseIds: entry.sampleResponseIds,
       })
     );
@@ -354,7 +356,8 @@ export async function createTaskFromFinding(
       from gap_findings f
       left join lateral (
         select id from scores
-        where run_id = f.run_id order by computed_at asc limit 1
+        where run_id = f.run_id and scoring_version = ${READ_SCORING_VERSION}
+        order by computed_at asc limit 1
       ) s on true
       where f.id = ${parsed.data.findingId}
     `;

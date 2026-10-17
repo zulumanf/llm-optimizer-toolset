@@ -7,6 +7,7 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { writeAudit } from "@/db/audit";
 import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
@@ -936,7 +937,8 @@ export async function publishAudit(
       const [versions] = await sql`
         select
           (select coalesce(array_agg(distinct s.scoring_version), '{}')
-             from scores s where s.run_id = ${benchmark.runId}) as scoring,
+             from scores s where s.run_id = ${benchmark.runId}
+               and s.scoring_version = ${READ_SCORING_VERSION}) as scoring,
           (select coalesce(array_agg(distinct m.parser_version), '{}')
              from mentions m join responses r on r.id = m.response_id
              where r.run_id = ${benchmark.runId}) as parser

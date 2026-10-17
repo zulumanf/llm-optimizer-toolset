@@ -12,6 +12,7 @@
  * operator to ignore it, so nothing below a materiality threshold is surfaced.
  */
 import { sql, type TransactionSql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { executiveReportingGate, type ReportStatement } from "@/lib/workflow/gates";
 import { SCORING_VERSION } from "@/lib/constants";
 
@@ -99,6 +100,7 @@ export async function collectBriefData(input: BriefInput): Promise<BriefData> {
       where s.run_id = ${currentRun.id}
         and s.company_id = p.subject_company_id
         and s.provider = 'all'
+        and s.scoring_version = ${READ_SCORING_VERSION}
     `;
     const previousByMetric = new Map<string, { value: number; id: string }>();
     if (previousRun) {
@@ -109,6 +111,7 @@ export async function collectBriefData(input: BriefInput): Promise<BriefData> {
         where s.run_id = ${previousRun.id}
           and s.company_id = p.subject_company_id
           and s.provider = 'all'
+          and s.scoring_version = ${READ_SCORING_VERSION}
       `;
       for (const row of prevRows) {
         previousByMetric.set(row.metric as string, {
