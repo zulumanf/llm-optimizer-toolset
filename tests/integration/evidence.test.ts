@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { scoringState } from "@/db/scores";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
@@ -39,7 +40,6 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
   let integrity: typeof import("@/lib/evidence/integrity");
   let evidence: typeof import("@/lib/evidence/service");
   let exporter: typeof import("@/lib/evidence/export");
-  let constants: typeof import("@/lib/constants");
   let mock: typeof import("@/lib/ai/mock");
 
   beforeAll(async () => {
@@ -61,7 +61,6 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     integrity = await import("@/lib/evidence/integrity");
     evidence = await import("@/lib/evidence/service");
     exporter = await import("@/lib/evidence/export");
-    constants = await import("@/lib/constants");
     mock = await import("@/lib/ai/mock");
     await seedTestActors(sql);
   });
@@ -217,7 +216,7 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
       const result = await observations.drilldown({
         runId,
         metric,
-        scoringVersion: constants.SCORING_VERSION,
+        scoringVersion: (await scoringState()).readVersion,
       });
       expect(result).not.toBeNull();
       expect(result!.matchesStored).toBe(true);
@@ -235,7 +234,7 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
       const result = await observations.drilldown({
         runId,
         metric,
-        scoringVersion: constants.SCORING_VERSION,
+        scoringVersion: (await scoringState()).readVersion,
       });
       expect(result).not.toBeNull();
       expect(result!.matchesStored).toBe(true);
@@ -259,7 +258,7 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     const result = await observations.drilldown({
       runId,
       metric: "citation_score",
-      scoringVersion: constants.SCORING_VERSION,
+      scoringVersion: (await scoringState()).readVersion,
     });
     expect(result).not.toBeNull();
     // The stored row must be FOUND — the whole point of the fix.
@@ -358,7 +357,7 @@ describe.skipIf(!TEST_URL)("evidence capture & audit trail (integration)", () =>
     const result = await observations.drilldown({
       runId,
       metric: "mention_rate",
-      scoringVersion: constants.SCORING_VERSION,
+      scoringVersion: (await scoringState()).readVersion,
     });
     // 3 prompts × 3 reps captured, but only the 2 working prompts × 3 count
     expect(result!.denominator).toBe(6);

@@ -18,8 +18,9 @@ import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { drilldown, DRILLDOWN_METRICS } from "@/lib/evidence/observations";
-import { artifactPath } from "@/lib/evidence/storage";
-import { SCORING_VERSION } from "@/lib/constants";
+import { artifactPath, EVIDENCE_ROOT } from "@/lib/evidence/storage";
+import { mirrorStoredFile } from "@/lib/storage/content-addressed";
+import { scoringState } from "@/db/scores";
 
 const execFileAsync = promisify(execFile);
 
@@ -139,12 +140,14 @@ export async function generateEvidenceExport(
       parserVersions.length > 0 ? parserVersions.join(", ") : "none (unparsed run)";
 
     // --- metric summary (numerator/denominator per drill-down) ---
+    // Compared against the scores dashboards currently read (release 151).
+    const readVersion = (await scoringState()).readVersion;
     const metricSummaries = [];
     for (const metric of DRILLDOWN_METRICS) {
       const result = await drilldown({
         runId,
         metric,
-        scoringVersion: SCORING_VERSION,
+        scoringVersion: readVersion,
       });
       if (result) {
         metricSummaries.push({
@@ -200,7 +203,7 @@ export async function generateEvidenceExport(
         ``,
         `- Benchmark: ${run.setName} v${run.setVersion} (frozen prompt set — prompts immutable per version)`,
         `- Run: ${run.label} (${runId})`,
-        `- Scoring version: ${SCORING_VERSION} · Parser version(s): ${parserVersionLabel}`,
+        `- Scoring version: ${readVersion} · Parser version(s): ${parserVersionLabel}`,
         `- Eligible observation: successful capture (refusals count, errors do not), non-holdout prompt.`,
         `- Mention/recommendation/citation rates = positive observations / eligible observations; numerators and denominators are in benchmark-summary.csv and reproducible by counting observations.csv joined to classifications.csv (latest revision per observation+company).`,
         `- Raw evidence is immutable at the database level; every response and payload carries a SHA-256 computed at capture. Verify: sha256(raw-responses/<id>.json field responseText bytes) == response_hash.`,
@@ -229,7 +232,7 @@ export async function generateEvidenceExport(
       runId,
       runLabel: run.label,
       benchmark: `${run.setName} v${run.setVersion}`,
-      scoringVersion: SCORING_VERSION,
+      scoringVersion: readVersion,
       parserVersions,
       observationCount: responses.length,
       metrics: metricSummaries,
@@ -244,6 +247,9 @@ export async function generateEvidenceExport(
     await execFileAsync("tar", ["-czf", artifactPath(storageKey), "-C", workDir,
       "evidence-package"]);
     const tarBytes = await readFile(artifactPath(storageKey));
+    // The tarball is written by the tar CLI, outside writeImmutable: make it
+    // durable explicitly before the export is marked completed.
+    await mirrorStoredFile(EVIDENCE_ROOT, storageKey);
     const sha256 = createHash("sha256").update(tarBytes).digest("hex");
 
     await sql.begin(async (tx) => {

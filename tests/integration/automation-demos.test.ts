@@ -545,6 +545,15 @@ describe.skipIf(!TEST_URL)("automation end-to-end demos", () => {
       const claimCheck = await nodeOutput(run.id, "claim_verification");
       expect(claimCheck?.allSupported).toBe(true);
 
+      // Release 151 consolidation: this run carries no approved lib/content
+      // asset, so the agent's own draft must never reach the CMS — the run
+      // stops at the canonical-content step and no CMS node succeeds.
+      expect(await nodeState(run.id, "cms_draft")).not.toBe("succeeded");
+      expect(await nodeState(run.id, "publish")).not.toBe("succeeded");
+      if (await nodeState(run.id, "client_approval") === "succeeded") {
+        expect(await nodeState(run.id, "canonical_content")).not.toBe("succeeded");
+      }
+
       // 9-11. Publication, live verification, outcome graph, remeasurement.
       const publishState = await nodeState(run.id, "publish");
       if (publishState === "succeeded") {

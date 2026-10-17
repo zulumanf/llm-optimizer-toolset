@@ -15,13 +15,14 @@
  * `lib/storage/content-addressed.ts`.
  */
 import { join } from "node:path";
+import { artifactRoot } from "@/lib/storage/root";
 import {
   resolveStoragePath,
   sha256Of,
   writeImmutable,
 } from "@/lib/storage/content-addressed";
 
-const KNOWLEDGE_ROOT = join(process.cwd(), "var", "knowledge");
+const KNOWLEDGE_ROOT = join(artifactRoot(), "knowledge");
 
 /** Deterministic from (project, content). The sharding keeps directories small. */
 export function sourceStorageKey(projectId: string, sha256: string): string {

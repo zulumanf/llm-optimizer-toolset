@@ -832,6 +832,56 @@ const publishDomainEvent: NodeHandler = async (ctx): Promise<NodeResult> => {
 };
 
 /**
+ * `dom.canonical_publish_input` (release 151 consolidation) — the ONLY way an
+ * automation workflow builds a CMS payload. Text never comes from a
+ * workflow's own drafting agents: it is the approved, verified
+ * `lib/content` asset named by `assetIdPath`, rendered exactly as the
+ * connector-boundary gate (lib/content/publish-gate.ts) will re-check.
+ *   mode "draft"   → { contentAssetId, title, content } for cms.create_draft
+ *   mode "publish" → { contentAssetId, externalId, approvalId } for
+ *                    cms.publish_approved_asset
+ * Anything missing is a safe stop with the reason, never a fallback.
+ */
+const canonicalPublishInput: NodeHandler = async (ctx): Promise<NodeResult> => {
+  const mode = String(ctx.config.mode ?? "draft");
+  const assetId = await resolveString(ctx, String(ctx.config.assetIdPath ?? ""));
+  if (!assetId) {
+    return {
+      outcome: "safe_stop",
+      reason: "no approved content asset: draft, verify and approve it in the content pipeline, then start this workflow with payload.contentAssetId",
+    };
+  }
+  const [asset] = await sql`select id, project_id, title, status from content_assets where id = ${assetId}::uuid`;
+  const [latest] = asset
+    ? await sql`select body from content_versions where asset_id = ${asset.id} order by version desc limit 1`
+    : [];
+  const { checkPublishable } = await import("@/lib/content/publish-gate");
+  const { renderPublishable } = await import("@/lib/content/validate");
+  const content = latest ? renderPublishable(latest.body as string) : "";
+  if (mode === "draft") {
+    const gate = await checkPublishable({ capability: "cms.create_draft", projectId: ctx.projectId, payload: { contentAssetId: assetId, content } });
+    if (!gate.ok) return { outcome: "safe_stop", reason: `${gate.code}: ${gate.reason}` };
+    return { outcome: "succeeded", output: { contentAssetId: assetId, title: asset!.title as string, content } };
+  }
+  const draft = (await resolveObject(ctx, String(ctx.config.draftPath ?? ""))) as { data?: { externalId?: string; id?: string | number } };
+  const externalId = String(draft?.data?.externalId ?? draft?.data?.id ?? "");
+  // The CLIENT approval of this run — not any approval in the run.
+  const [approval] = await sql`
+    select a.id from workflow_approvals a
+    join node_runs n on n.id = a.node_run_id
+    where a.workflow_run_id = ${ctx.runId} and n.node_key = 'client_approval' and a.decision = 'approved'
+    order by a.decided_at desc limit 1
+  `;
+  if (!externalId || !approval) {
+    return { outcome: "safe_stop", reason: !externalId ? "the CMS draft returned no id" : "no recorded client approval for this run" };
+  }
+  const payload = { contentAssetId: assetId, externalId, approvalId: approval.id as string };
+  const gate = await checkPublishable({ capability: "cms.publish_approved_asset", projectId: ctx.projectId, payload });
+  if (!gate.ok) return { outcome: "safe_stop", reason: `${gate.code}: ${gate.reason}` };
+  return { outcome: "succeeded", output: payload };
+};
+
+/**
  * `dom.record_action_outcome` — links an action this workflow took to the
  * outcome graph (spec 019), so "did the thing we did work?" stays answerable.
  */
@@ -966,6 +1016,7 @@ export const domainNodes: Record<string, NodeHandler> = {
   "dom.compute_invoice_amount": computeInvoiceAmount,
   "dom.record_billing_event": recordBillingEvent,
   "dom.publish_event": publishDomainEvent,
+  "dom.canonical_publish_input": canonicalPublishInput,
   "dom.record_action_outcome": recordActionOutcome,
   "dom.assemble_report_section": assembleReportSection,
   "dom.disclose_test_mode": discloseTestMode,

@@ -7,7 +7,8 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { sql } from "@/db/client";
-import { artifactPath } from "@/lib/evidence/storage";
+import { EVIDENCE_ROOT } from "@/lib/evidence/storage";
+import { ensureLocal } from "@/lib/storage/content-addressed";
 
 export interface IntegrityReport {
   checkedResponses: number;
@@ -45,7 +46,7 @@ export async function verifyRunIntegrity(runId: string): Promise<IntegrityReport
   const mismatchedArtifacts: IntegrityReport["mismatchedArtifacts"] = [];
   for (const artifact of artifacts) {
     try {
-      const bytes = await readFile(artifactPath(artifact.storageKey as string));
+      const bytes = await readFile(await ensureLocal(EVIDENCE_ROOT, artifact.storageKey as string));
       const hash = createHash("sha256").update(bytes).digest("hex");
       if (hash !== artifact.sha256) {
         mismatchedArtifacts.push({
