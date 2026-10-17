@@ -2,7 +2,7 @@
 import "dotenv/config";
 import { readFileSync } from "node:fs";
 import { sql } from "@/db/client";
-const rows = JSON.parse(readFileSync("scripts/jc-followup-drafts.json", "utf8"));
+const rows = JSON.parse(readFileSync(".local-data/campaign-inputs/jc-followup-drafts.json", "utf8"));
 async function main() {
   let ok = 0;
   for (const d of rows) {

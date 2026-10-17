@@ -2,7 +2,7 @@
  * Wilmington touch-2 A/B test (prepared 2026-08-25 for the 2026-08-28 batch).
  * Arm A: link CTA (naked branded URL + "nothing to log into" line).
  * Arm B: no link — reply-CTA, finding stated in the body.
- * Reads scripts/wil-t2-ab-drafts.json; every count matches the prospect's
+ * Reads .local-data/campaign-inputs/wil-t2-ab-drafts.json; every count matches the prospect's
  * QA-gated touch-1 body. Design + holds: scripts/RUNBOOK-ab-0828.md.
  *
  *   --create    create followup_email drafts bound to the primary contact
@@ -34,7 +34,7 @@ async function main(): Promise<void> {
   const [u] = await sql`select id, email, name, role from users where email = 'zulumanf@gmail.com'`;
   if (!u) throw new Error("operator user not found");
   const user: CurrentUser = { id: u.id as string, email: u.email as string, name: u.name as string, role: u.role as CurrentUser["role"] };
-  const drafts = JSON.parse(readFileSync("scripts/wil-t2-ab-drafts.json", "utf8")) as Row[];
+  const drafts = JSON.parse(readFileSync(".local-data/campaign-inputs/wil-t2-ab-drafts.json", "utf8")) as Row[];
 
   let slot = 0;
   for (const d of drafts) {

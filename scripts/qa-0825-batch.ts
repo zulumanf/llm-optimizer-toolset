@@ -13,7 +13,7 @@ import { sql } from "@/db/client";
 import { findProhibitedPhrase } from "@/lib/prospects/constants";
 
 const URL_RE = /https:\/\/app\.recommendedfirst\.com\/audit\/[^\s")]+/;
-const FOLLOWUP_JSON = JSON.parse(readFileSync("scripts/jc-followup-drafts.json", "utf8")) as
+const FOLLOWUP_JSON = JSON.parse(readFileSync(".local-data/campaign-inputs/jc-followup-drafts.json", "utf8")) as
   { prospectIdPrefix: string; business: string; subject: string; body: string }[];
 const B2_NAMES = ["The Pinto Group", "Ellason Curdgele", "Farah Alli", "Trompeter Real Estate"];
 

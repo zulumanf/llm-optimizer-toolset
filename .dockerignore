@@ -1,0 +1,32 @@
+# Spec 151 D2: keep secrets, local data and host build artifacts out of the
+# image build context. `railway up` honours .gitignore; a local `docker
+# build` honours only this file — without it, `COPY . .` copied .env, var/
+# (evidence, backups, videos) and macOS node_modules into the image.
+
+# secrets
+.env
+.env.*
+!.env.example
+.claude/
+.opencode/
+opencode.jsonc
+
+# local data, evidence, backups, licensed datasets
+var/
+.local-data/
+data/internal/
+
+# host build output and dependencies (rebuilt inside the image)
+node_modules/
+.next/
+.next-e2e/
+tsconfig.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+
+# VCS and editor noise
+.git/
+.github/
+.DS_Store
+*.log

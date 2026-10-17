@@ -7,7 +7,7 @@
  *   --dnc-gillespie  flag the Wilmington-NC misclassified prospect do-not-contact
  *   --stepd     linkBenchmark → computeProspectScore → generateFindings →
  *               approve best candidate as primary
- *   --contacts  add primary contacts from scripts/wil-contacts.json
+ *   --contacts  add primary contacts from .local-data/campaign-inputs/wil-contacts.json
  *   --sense     run sense-check per prospect (needs working OpenAI key)
  *   --publish   publish audits (creates the live audit page + token)
  *   --drafts    system reply-first email drafts bound to the contact
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   const [u] = await sql`select id, email, name, role from users where email = 'zulumanf@gmail.com'`;
   if (!u) throw new Error("operator user not found");
   const user: CurrentUser = { id: u.id as string, email: u.email as string, name: u.name as string, role: u.role as CurrentUser["role"] };
-  const contacts = JSON.parse(readFileSync("scripts/wil-contacts.json", "utf8")) as
+  const contacts = JSON.parse(readFileSync(".local-data/campaign-inputs/wil-contacts.json", "utf8")) as
     { business: string; name: string; role: string; email: string; phone: string; provenance: "publicly_sourced"; notes: string }[];
 
   const rows = await sql`

@@ -1,6 +1,6 @@
 # Parser revision comparison — revision 3 adjudication (2026-09-14)
 
-Artifact: `data/internal/mention-revision-3/2026-09-14-regressed-runs-offline.json` (method `adjudication:offline-text-corroboration`, parser version `mention-parser-v3+adjudication`, judged 2026-09-14T12:47:15Z against production reads; no production writes). Classifier unavailable: OpenAI classifier unavailable: credit_balance_exhausted (insufficient_quota) on 2026-09-14.
+Artifact: `.local-data/internal/mention-revision-3/2026-09-14-regressed-runs-offline.json` (method `adjudication:offline-text-corroboration`, parser version `mention-parser-v3+adjudication`, judged 2026-09-14T12:47:15Z against production reads; no production writes). Classifier unavailable: OpenAI classifier unavailable: credit_balance_exhausted (insufficient_quota) on 2026-09-14.
 
 ## What happened
 On 2026-09-13/14 the parse service ran without an LLM key (`llmClassificationAvailable()` false, `lib/parsing/version.ts`) and, because the parse ledger had no row for the heuristic version, re-parsed nine historical runs with `mention-parser-v1+heuristic`, writing new revisions (2–5) above the original `mention-parser-v2+llm` rows. Nothing was deleted or edited (immutable trigger); the platform's current-revision rule simply started reading the heuristic rows. Revision 2 was **not** an intended replacement: it is the documented degrade path for an unavailable classifier.
@@ -77,7 +77,7 @@ RELEASE GATE: 9 blocking issue(s)
 ```
 # 1. stop the worker (docs/deployment.md), then:
 npx tsx scripts/migrate.ts up                     # applies 115 and 116 (additive, idempotent)
-npx tsx scripts/mention-revision-3.ts apply --artifact data/internal/mention-revision-3/2026-09-14-regressed-runs-offline.json
+npx tsx scripts/mention-revision-3.ts apply --artifact .local-data/internal/mention-revision-3/2026-09-14-regressed-runs-offline.json
 npx tsx scripts/marketing-claims-verify.ts --check   # expect MANUAL REVIEW lines until the queue is cleared
 # 2. clear the review queue in the app (Mentions → review), then re-run --check; regenerate the dataset if any value moved:
 npx tsx scripts/public-dataset-export.ts --through 2026-09-07 --version 1.0.2
