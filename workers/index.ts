@@ -21,12 +21,14 @@ import { bootstrapWorkflows } from "@/lib/workflow/templates";
 // definitions on top of spec 018's three (specs/native-automation-and-connector-layer).
 import { ensureAutomationReady } from "@/lib/automation/dispatch";
 import { runAutomationTick, runWeeklyKick, tickDue } from "@/lib/ops/tick";
-import { dispatchOnce, handlers } from "@/workers/core";
+import { dispatchOnce, handlers, withTickLock } from "@/workers/core";
 import { log } from "@/lib/logger";
 
 const WORKER_ID = `worker-${randomUUID().slice(0, 8)}`;
 const IDLE_POLL_MS = 2000;
 const STALE_LEASE_MINUTES = 15;
+/** Seconds to wait for in-flight queries when closing the pool at shutdown. */
+const SHUTDOWN_DB_CLOSE_SECONDS = 10;
 /** The platform clock (2026-08-17): the worker is always on, so it ticks the
  * scheduler itself — GitHub's heartbeat workflow is uptime-only now. Every
  * tick runs automation dispatch + the weekly kick (both windowed/idempotent);
@@ -59,15 +61,22 @@ async function main(): Promise<void> {
       lastTickAt = Date.now();
       const includeHealth = tickDue(lastHealthAt, lastTickAt, HEALTH_INTERVAL_MS);
       if (includeHealth) lastHealthAt = lastTickAt;
+      // Release 151: one ticking worker at a time across the fleet.
       try {
-        const report = await runAutomationTick({ includeHealth });
-        const weekly = await runWeeklyKick();
-        log("info", "worker.tick", {
-          triggersFired: report.triggers.fired,
-          triggersFailed: report.triggers.failed,
-          weekly: weekly as never,
-          includeHealth,
-        });
+        const result = await withTickLock(async () => ({
+          report: await runAutomationTick({ includeHealth }),
+          weekly: await runWeeklyKick(),
+        }));
+        if (!result.ran) {
+          log("info", "worker.tick_skipped_other_worker_ticking", { workerId: WORKER_ID });
+        } else {
+          log("info", "worker.tick", {
+            triggersFired: result.value.report.triggers.fired,
+            triggersFailed: result.value.report.triggers.failed,
+            weekly: result.value.weekly as never,
+            includeHealth,
+          });
+        }
       } catch (err) {
         log("error", "worker.tick_failed", {
           error: err instanceof Error ? err.message : "unknown",
@@ -101,7 +110,9 @@ async function main(): Promise<void> {
     }
   }
 
-  await sql.end();
+  // Bounded close (release 151): postgres.js waits forever on a reserved
+  // connection that died mid-job (verified); a redeploy must not hang on it.
+  await sql.end({ timeout: SHUTDOWN_DB_CLOSE_SECONDS });
   log("info", "worker.stop", { workerId: WORKER_ID });
 }
 

@@ -5,7 +5,7 @@
  * unique index is the backstop). Raw payloads are captured before anything
  * else touches them; failed calls are captured with their classified error.
  */
-import { sql } from "@/db/client";
+import { createLockClient, destroyLockClient, sql } from "@/db/client";
 import {
   getRun,
   successfulCellKeys,
@@ -19,6 +19,7 @@ import { withRetry } from "@/lib/ai/retry";
 import { costMicroUsd, microToUsd, usdToMicro } from "@/lib/ai/pricing";
 import { ClassifiedError } from "@/lib/errors";
 import { log } from "@/lib/logger";
+import { extractServedModel } from "@/lib/ai/served-model";
 import { expandCells, type Cell } from "@/lib/runs/cells";
 import { findReusableCapture } from "@/lib/runs/reuse";
 import { concurrencyFor, sharedRateGate } from "@/lib/ai/limits";
@@ -51,7 +52,84 @@ interface ExecState {
   reused: number;
 }
 
-export async function executeRun(runId: string): Promise<void> {
+export interface ExecuteRunOptions {
+  /** Aborts when the worker loses this job's lease (release 151). No new
+   * cell is launched after it fires and the run is NOT finalized — the
+   * worker that now owns the job resumes from the captured cells. */
+  signal?: AbortSignal;
+}
+
+/** Advisory-lock class for "this run is being executed" (release 151). */
+export const RUN_EXECUTION_LOCK_CLASS = 152;
+/** How often the run-lock connection is checked while a run executes. */
+export const RUN_LOCK_WATCH_MS = 15_000;
+
+/**
+ * One executor per run, across workers and duplicate jobs: two jobs for the
+ * same run must never spend concurrently. A second executor returns at once;
+ * the holder finalizes the run.
+ */
+export async function executeRun(runId: string, options: ExecuteRunOptions = {}): Promise<void> {
+  // Dedicated session for the run lock, outside the shared pool.
+  const conn = createLockClient();
+  try {
+    const [got] = await conn`
+      select pg_try_advisory_lock(${RUN_EXECUTION_LOCK_CLASS}, hashtext(${runId})) as ok, pg_backend_pid() as pid
+    `;
+    const lockPid = Number(got?.pid);
+    if (!got?.ok) {
+      log("warn", "run.execute.already_running", { runId });
+      return;
+    }
+    // The run lock lives on this connection: if it dies, the lock is gone
+    // and a duplicate executor could start spending — stop launching cells.
+    const lost = new AbortController();
+    const external = options.signal;
+    if (external?.aborted) lost.abort();
+    else if (external) external.addEventListener("abort", () => lost.abort(), { once: true });
+    // Checked from the pool, never on the lock connection (a query buffered on
+    // a dead socket throws uncatchably inside postgres.js 3.4.x).
+    let connDead = false;
+    const check = async () => {
+      if (lost.signal.aborted) return;
+      try {
+        const [held] = await sql`
+          select 1 as ok from pg_locks
+          where locktype = 'advisory' and classid = ${RUN_EXECUTION_LOCK_CLASS} and pid = ${lockPid} and granted
+        `;
+        if (!held) throw new Error("run lock no longer held");
+      } catch {
+        connDead = true;
+        log("warn", "run.execute.lock_connection_lost", { runId });
+        lost.abort();
+      }
+    };
+    const watch = setInterval(() => void check(), RUN_LOCK_WATCH_MS);
+    watch.unref?.();
+    try {
+      await executeRunLocked(runId, { ...options, signal: lost.signal });
+    } finally {
+      clearInterval(watch);
+      const [still] = connDead
+        ? [undefined]
+        : await sql`
+            select 1 as ok from pg_locks
+            where locktype = 'advisory' and classid = ${RUN_EXECUTION_LOCK_CLASS} and pid = ${lockPid} and granted
+          `.catch(() => [undefined]);
+      if (still) {
+        try {
+          await conn`select pg_advisory_unlock(${RUN_EXECUTION_LOCK_CLASS}, hashtext(${runId}))`;
+        } catch {
+          // dead session: the lock died with it
+        }
+      }
+    }
+  } finally {
+    await destroyLockClient(conn);
+  }
+}
+
+async function executeRunLocked(runId: string, options: ExecuteRunOptions): Promise<void> {
   const run = await getRun(runId);
   if (!run) throw new ClassifiedError("not_found", `Run ${runId} not found.`);
   if (run.status === "completed") return;
@@ -143,6 +221,7 @@ export async function executeRun(runId: string): Promise<void> {
     { length: Math.min(effectiveConcurrency, pending.length) },
     async () => {
       while (true) {
+        if (options.signal?.aborted) return;
         const index = cursor;
         cursor += 1;
         const cell = pending[index];
@@ -181,6 +260,10 @@ export async function executeRun(runId: string): Promise<void> {
   );
   await Promise.all(workers);
 
+  if (options.signal?.aborted) {
+    log("warn", "run.execute.abandoned_lease_lost", { runId, launched: state.launched });
+    return;
+  }
   await finalizeRun(runId, allCells.length, state);
 }
 
@@ -203,14 +286,16 @@ async function tryReuseCapture(
       insert into responses
         (run_id, prompt_id, prompt_text, provider, model, repetition,
          raw_payload, response_text, refusal, latency_ms, tokens_in,
-         tokens_out, cost_usd, request_params, shape_recognized, reused_from)
+         tokens_out, cost_usd, request_params, shape_recognized, reused_from,
+         captured_at, served_model)
       values
         (${runId}, ${cell.promptId}, ${cell.promptText}, ${cell.provider},
          ${cell.model}, ${cell.repetition},
          ${sql.json(source.rawPayload as never)}, ${source.responseText},
          ${source.refusal}, 0, ${source.tokensIn}, ${source.tokensOut}, 0,
          ${sql.json(source.requestParams as never)},
-         ${source.shapeRecognized}, ${source.id})
+         ${source.shapeRecognized}, ${source.id},
+         ${source.capturedAt}, ${source.servedModel})
     `;
   } catch (err) {
     // 23505: a concurrent attempt already captured this cell — that row wins.
@@ -285,7 +370,8 @@ async function executeCell(
           insert into responses
             (run_id, prompt_id, prompt_text, provider, model, repetition,
              raw_payload, response_text, refusal, latency_ms, tokens_in,
-             tokens_out, cost_usd, request_params, shape_recognized)
+             tokens_out, cost_usd, request_params, shape_recognized,
+             served_model)
           values
             (${runId}, ${cell.promptId}, ${cell.promptText}, ${cell.provider},
              ${cell.model}, ${cell.repetition},
@@ -293,7 +379,8 @@ async function executeCell(
              ${result.refusal}, ${Date.now() - startedAt}, ${result.tokensIn},
              ${result.tokensOut}, ${micro === null ? null : microToUsd(micro)},
              ${tx.json(result.requestParams as never)},
-             ${result.shapeRecognized !== false})
+             ${result.shapeRecognized !== false},
+             ${extractServedModel(cell.provider, result.rawPayload)})
         `;
         if (micro !== null) {
           await tx`

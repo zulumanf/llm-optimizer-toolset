@@ -5,7 +5,17 @@
  * loading, signals, polling cadence, stale-lease sweeps; this module owns
  * what a single claim-dispatch-settle step does.
  */
-import { claimNextJob, completeJob, failJob } from "@/db/jobs";
+import {
+  claimNextJob,
+  completeJobHeld,
+  failJob,
+  failJobHeld,
+  JOB_LOCK_CLASS,
+  LEASE_RENEW_INTERVAL_MS,
+  releaseClaim,
+  renewLeaseHeld,
+} from "@/db/jobs";
+import { createLockClient, destroyLockClient, sql } from "@/db/client";
 import { executeRun } from "@/lib/runs/execute";
 import { parseResponse } from "@/lib/parsing/service";
 import { computeScores } from "@/lib/scoring/compute";
@@ -35,12 +45,19 @@ import {
   PROFILE_DRAFT_DISPATCH_JOB,
 } from "@/lib/profile-corrections/constants";
 
+/** Per-job context (release 151). `signal` aborts when this worker loses
+ * the job's lease; a handler that spends money or has side effects must stop
+ * starting new work once it fires — another worker now owns the job. */
+export interface JobContext {
+  signal: AbortSignal;
+}
+
 export const handlers: Record<
   string,
-  (payload: Record<string, unknown>) => Promise<void>
+  (payload: Record<string, unknown>, ctx?: JobContext) => Promise<void>
 > = {
-  execute_run: async (payload) => {
-    await executeRun(payload.runId as string);
+  execute_run: async (payload, ctx) => {
+    await executeRun(payload.runId as string, { signal: ctx?.signal });
   },
   parse_response: async (payload) => {
     await parseResponse(payload.responseId as string, { reparse: payload.reparse === true });
@@ -51,6 +68,13 @@ export const handlers: Record<
   },
   compute_scores: async (payload) => {
     await computeScores(payload.runId as string);
+  },
+  // Spec 151 C1: the scheduled second baseline wave of client onboarding.
+  start_baseline_wave: async (payload) => {
+    const { startBaselineWave } = await import("@/lib/onboarding/service");
+    await startBaselineWave(
+      payload as { projectId: string; promptSetVersionId: string; wave: number; budgetUsd: number; instrumentId: string }
+    );
   },
   start_scheduled_run: async (payload) => {
     await startScheduledRun(
@@ -222,38 +246,166 @@ export const handlers: Record<
   },
 };
 
+/** Advisory lock: the scheduler tick runs on one worker at a time. */
+export const TICK_LOCK_KEY = 727_274_153;
+
+/**
+ * Run `fn` only if no other worker is ticking (release 151). Returns
+ * `skipped` when another worker holds the tick lock. The lock lives on a
+ * dedicated connection and is always released, including on errors.
+ */
+export async function withTickLock<T>(fn: () => Promise<T>): Promise<{ ran: true; value: T } | { ran: false }> {
+  const conn = createLockClient();
+  try {
+    const [got] = await conn`select pg_try_advisory_lock(${TICK_LOCK_KEY}) as ok`;
+    if (!got?.ok) return { ran: false };
+    return { ran: true, value: await fn() };
+  } finally {
+    // Ending the dedicated session releases the lock, whatever state it is in.
+    await destroyLockClient(conn);
+  }
+}
+
 export type DispatchOutcome =
   | { status: "idle" }
-  | { status: "done" | "failed"; jobId: string; type: string };
+  | { status: "done" | "failed" | "deferred"; jobId: string; type: string };
 
 /**
  * Claim and settle exactly one job. This is the whole contract of a worker
  * step: an unknown type or a thrown handler fails the job (requeue with
  * backoff until JOB_MAX_ATTEMPTS, then dead-letter); success completes it.
  */
-export async function dispatchOnce(workerId: string): Promise<DispatchOutcome> {
+export async function dispatchOnce(
+  workerId: string,
+  opts: { renewIntervalMs?: number } = {}
+): Promise<DispatchOutcome> {
   const job = await claimNextJob(workerId);
   if (!job) return { status: "idle" };
 
   log("info", "worker.job.claimed", { jobId: job.id, type: job.type });
   const handler = handlers[job.type];
   if (!handler) {
-    await failJob(job, `No handler for job type: ${job.type}`);
+    await failJob(job, `No handler for job type: ${job.type}`, workerId);
     return { status: "failed", jobId: job.id, type: job.type };
   }
+
+  // Release 151: exclusivity is a session advisory lock on a dedicated
+  // connection, held for the whole execution. If another worker is still
+  // running this job (its lease merely looked stale), we cannot take the
+  // lock: hand the job back untouched and move on.
+  // Dedicated session for the execution lock, outside the shared pool.
+  const lockConn = createLockClient();
   try {
-    await handler(job.payload);
-    await completeJob(job.id);
-    log("info", "worker.job.done", { jobId: job.id });
-    return { status: "done", jobId: job.id, type: job.type };
+    await lockConn`select 1`;
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    await failJob(job, message);
-    log("error", "worker.job.failed", {
-      jobId: job.id,
-      attempts: job.attempts,
-      message,
-    });
-    return { status: "failed", jobId: job.id, type: job.type };
+    await destroyLockClient(lockConn);
+    // Pool exhausted / DB down: hand the claim back instead of stranding it
+    // as `running` until the stale sweep.
+    await releaseClaim(job.id, workerId).catch(() => undefined);
+    log("warn", "worker.job.lock_connection_unavailable", { jobId: job.id, error: err instanceof Error ? err.message : "unknown" });
+    return { status: "deferred", jobId: job.id, type: job.type };
+  }
+  const lock = new AbortController();
+  let locked = false;
+  // Set when the lock connection is known dead: its session (and therefore
+  // the advisory lock) is gone, and the connection must not be used again.
+  let connDead = false;
+  try {
+    const [got] = await lockConn`
+      select pg_try_advisory_lock(${JOB_LOCK_CLASS}, hashtext(${job.id})) as ok, pg_backend_pid() as pid
+    `;
+    locked = Boolean(got?.ok);
+    const lockPid = Number(got?.pid);
+    lockPids.set(lockConn, lockPid);
+    if (!locked) {
+      await releaseClaim(job.id, workerId);
+      log("warn", "worker.job.already_executing", { jobId: job.id, workerId });
+      return { status: "deferred", jobId: job.id, type: job.type };
+    }
+    // Another worker may have finished it between our claim and our lock.
+    const [current] = await sql`select status from jobs where id = ${job.id}`;
+    if (current?.status === "done" || current?.status === "failed") {
+      return { status: "deferred", jobId: job.id, type: job.type };
+    }
+
+    // Heartbeat: re-assert our lease while we hold the lock, and verify the
+    // lock connection is alive — if it dies, the lock is gone and another
+    // worker may start: abort so the handler stops starting new work.
+    // Liveness is checked FROM THE POOL (pg_locks: is the lock still held by
+    // the lock connection's backend?), never by querying the lock connection
+    // itself: postgres.js 3.4.x throws an uncatchable TypeError from its own
+    // setImmediate when a query is buffered on a socket that just died
+    // (reproduced in job-fencing.test.ts) — that would crash the worker.
+    const heartbeat = async () => {
+      if (connDead) return;
+      try {
+        await renewLeaseHeld(job.id, workerId);
+        const [held] = await sql`
+          select 1 as ok from pg_locks
+          where locktype = 'advisory' and classid = ${JOB_LOCK_CLASS} and pid = ${lockPid} and granted
+        `;
+        if (!held) throw new Error("execution lock no longer held (lock session ended)");
+      } catch (err) {
+        connDead = true;
+        if (!lock.signal.aborted) {
+          log("warn", "worker.lock_lost", { jobId: job.id, workerId, error: err instanceof Error ? err.message : "unknown" });
+          lock.abort(new Error("execution lock lost"));
+        }
+      }
+    };
+    const renewal = setInterval(() => void heartbeat(), opts.renewIntervalMs ?? LEASE_RENEW_INTERVAL_MS);
+    renewal.unref?.();
+    try {
+      await handler(job.payload, { signal: lock.signal });
+      if (lock.signal.aborted) {
+        log("warn", "worker.job.abandoned_after_lock_loss", { jobId: job.id, workerId });
+        return { status: "failed", jobId: job.id, type: job.type };
+      }
+      await completeJobHeld(job.id);
+      log("info", "worker.job.done", { jobId: job.id });
+      return { status: "done", jobId: job.id, type: job.type };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      if (!lock.signal.aborted) await failJobHeld(job, message);
+      log("error", "worker.job.failed", { jobId: job.id, attempts: job.attempts, message });
+      return { status: "failed", jobId: job.id, type: job.type };
+    } finally {
+      clearInterval(renewal);
+    }
+  } finally {
+    // Only talk to the lock connection if its session demonstrably still
+    // holds the lock (checked from the pool) — never query a dead socket.
+    const stillHeld = locked && !connDead && (await lockHeldBy(JOB_LOCK_CLASS, lockPidOf(lockConn)));
+    if (stillHeld) {
+      try {
+        await Promise.race([
+          lockConn`select pg_advisory_unlock(${JOB_LOCK_CLASS}, hashtext(${job.id}))`,
+          new Promise((r) => setTimeout(r, 5000)),
+        ]);
+      } catch {
+        // closing the session below releases the lock regardless
+      }
+    }
+    // Ending the session releases every lock it held, dead or alive.
+    await destroyLockClient(lockConn);
   }
 }
+
+const lockPids = new WeakMap<object, number>();
+function lockPidOf(conn: object): number {
+  return lockPids.get(conn) ?? -1;
+}
+
+/** Is an advisory lock of this class held by that backend? (pool query) */
+export async function lockHeldBy(lockClass: number, pid: number): Promise<boolean> {
+  if (pid < 0) return false;
+  try {
+    const [row] = await sql`
+      select 1 as ok from pg_locks where locktype = 'advisory' and classid = ${lockClass} and pid = ${pid} and granted
+    `;
+    return Boolean(row);
+  } catch {
+    return false;
+  }
+}
+
