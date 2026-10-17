@@ -33,6 +33,34 @@ export function ollamaBaseUrl(): string {
   return (process.env.OLLAMA_URL?.trim() || DEFAULT_OLLAMA_URL).replace(/\/+$/, "");
 }
 
+const LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\]|::1)$/;
+
+/**
+ * Request headers for the inference host (release 151). A HOSTED Ollama —
+ * the same open-weight models on a GPU box, keeping the internal-model
+ * boundary — must sit behind an authenticating proxy: `OLLAMA_API_KEY` is
+ * sent as a bearer token. A key is never sent over plain http to a remote
+ * host, and a remote host without a key is refused rather than called
+ * unauthenticated.
+ */
+export function ollamaRequestHeaders(baseUrl = ollamaBaseUrl(), env: Record<string, string | undefined> = process.env): Record<string, string> {
+  const url = new URL(baseUrl);
+  const local = LOCAL_HOST_RE.test(url.hostname);
+  const key = env.OLLAMA_API_KEY?.trim();
+  if (!local) {
+    if (url.protocol !== "https:") {
+      throw new ClassifiedError("internal", "A remote OLLAMA_URL must use https.");
+    }
+    if (!key) {
+      throw new ClassifiedError("internal", "A remote OLLAMA_URL requires OLLAMA_API_KEY (an unauthenticated public inference host is refused).");
+    }
+  }
+  return {
+    "content-type": "application/json",
+    ...(key ? { authorization: `Bearer ${key}` } : {}),
+  };
+}
+
 const nsToMs = (ns: number | undefined): number | undefined =>
   typeof ns === "number" ? Math.round(ns / 1_000_000) : undefined;
 
@@ -67,15 +95,15 @@ export const ollamaCaller: InternalInferenceCaller = async ({
   }
 
   const baseUrl = ollamaBaseUrl();
+  // Before the network try: a refused configuration must surface as itself.
+  const headers = ollamaRequestHeaders(baseUrl);
 
   let response: Response;
 
   try {
     response = await fetch(`${baseUrl}/api/chat`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         model,
         stream: false,
@@ -142,3 +170,37 @@ export const ollamaCaller: InternalInferenceCaller = async ({
     },
   };
 };
+
+/** Reachability window for the operator health probe (spec 151 D2). */
+export const OLLAMA_HEALTH_TIMEOUT_MS = 2500;
+
+export interface OllamaHealth {
+  baseUrl: string;
+  reachable: boolean;
+  installedModels: string[];
+  missingModels: string[];
+  error: string | null;
+}
+
+/**
+ * Is the internal inference host this process would use reachable, and does
+ * it hold every model a promoted task routes to? Read-only (`/api/tags`).
+ * Promoted tasks FAIL CLOSED when it is not — there is deliberately no
+ * proprietary fallback — so this is surfaced to the operator instead.
+ */
+export async function ollamaHealth(requiredModels: string[]): Promise<OllamaHealth> {
+  const baseUrl = ollamaBaseUrl();
+  try {
+    const res = await fetch(`${baseUrl}/api/tags`, {
+      headers: ollamaRequestHeaders(baseUrl),
+      signal: AbortSignal.timeout(OLLAMA_HEALTH_TIMEOUT_MS),
+    });
+    if (!res.ok) return { baseUrl, reachable: false, installedModels: [], missingModels: requiredModels, error: `HTTP ${res.status}` };
+    const body = (await res.json()) as { models?: { name?: string; model?: string }[] };
+    const installed = (body.models ?? []).map((m) => m.name ?? m.model ?? "").filter(Boolean);
+    const missing = requiredModels.filter((r) => !installed.some((i) => i === r || i === `${r}:latest`));
+    return { baseUrl, reachable: true, installedModels: installed, missingModels: missing, error: null };
+  } catch (err) {
+    return { baseUrl, reachable: false, installedModels: [], missingModels: requiredModels, error: err instanceof ClassifiedError ? err.message : err instanceof Error ? err.name : "unknown" };
+  }
+}

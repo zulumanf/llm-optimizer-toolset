@@ -40,6 +40,8 @@ export async function truncateAll(sql: Sql): Promise<void> {
     const list = tables.map((t) => `"${t.tablename}"`).join(", ");
     await sql.unsafe(`truncate ${list} cascade`);
   }
+  // Migration-seeded scoring switch (132) — readers default to v1.1.
+  await sql`insert into scoring_state (id) values (1) on conflict (id) do nothing`;
   // Migration-seeded users (025 dev admin, 037 system user) — verbatim.
   await sql`
     insert into users (id, email, name, role)

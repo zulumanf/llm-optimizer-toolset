@@ -40,7 +40,7 @@ fi
 echo "▸ verifying backup integrity…"
 ( cd "$SRC" && shasum -a 256 -c MANIFEST.sha256 )
 
-echo "▸ recreating database $TARGET_DB…"
+echo "▸ recreating database ${TARGET_DB}…"
 dropdb -p "$DB_PORT" --if-exists "$TARGET_DB"
 createdb -p "$DB_PORT" "$TARGET_DB"
 

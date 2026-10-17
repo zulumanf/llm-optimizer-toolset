@@ -29,6 +29,15 @@ const envSchema = z
     AUTOMATION_CREDENTIAL_KEY: z.string().optional(),
     // Operator webhook for digests and system alerts (spec 059).
     DIGEST_WEBHOOK_URL: z.string().url().optional(),
+    ERROR_WEBHOOK_URL: z.string().url().optional(),
+    // Release 151 durable artifacts (lib/storage/object-store.ts)
+    ARTIFACT_STORE: z.enum(["local", "s3"]).optional(),
+    S3_ENDPOINT: z.string().url().optional(),
+    S3_BUCKET: z.string().min(1).optional(),
+    S3_REGION: z.string().min(1).optional(),
+    S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+    S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    S3_PREFIX: z.string().optional(),
     // Spec 129 kill switch: "false" parks QA-passed report handoffs for a
     // human send instead of scheduling the threaded reply.
     REPORT_HANDOFF_AUTOSEND: z.string().optional(),

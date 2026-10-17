@@ -1,0 +1,55 @@
+name: Nightly encrypted backup
+
+# Release 151. INERT until the operator sets the repository variable
+# BACKUPS_ENABLED=true and the secrets below — merging this file runs nothing.
+#
+# Secrets (Settings → Secrets → Actions):
+#   BACKUP_DATABASE_URL    production DIRECT (non-pooled) connection, read-mostly
+#                          role; it also inserts one row into backup_runs
+#   BACKUP_ENCRYPTION_KEY  same key the restore drill uses; store a copy offline
+#   BACKUP_S3_ENDPOINT, BACKUP_S3_BUCKET, BACKUP_S3_ACCESS_KEY_ID,
+#   BACKUP_S3_SECRET_ACCESS_KEY   a bucket SEPARATE from the artifact bucket,
+#                          with object-lock or versioning and a lifecycle rule
+#                          (e.g. 35 daily, 12 monthly) — retention lives there
+# Variables: BACKUPS_ENABLED=true, PG_CLIENT_VERSION (match or exceed the server)
+on:
+  schedule:
+    - cron: "17 7 * * *" # 07:17 UTC nightly (low-traffic window)
+  workflow_dispatch: {}
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    if: vars.BACKUPS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install PostgreSQL client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq "postgresql-client-${{ vars.PG_CLIENT_VERSION || '17' }}"
+      - name: Back up, encrypt, upload, record
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_RECORD: "1"
+          BACKUP_DESTINATION_LABEL: s3-backups
+          BACKUP_DIR: ${{ runner.temp }}/backups
+        run: |
+          test -n "$BACKUP_ENCRYPTION_KEY" || { echo "BACKUP_ENCRYPTION_KEY missing"; exit 1; }
+          export BACKUP_UPLOAD_CMD='aws s3 cp "$1" "s3://$BACKUP_S3_BUCKET/postgres/" --endpoint-url "$BACKUP_S3_ENDPOINT" --only-show-errors'
+          bash scripts/backup.sh
