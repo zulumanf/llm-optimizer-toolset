@@ -81,6 +81,7 @@ const INTENTIONAL_SHELLS = new Map<string, string>([
   ["app/portal/[projectId]/page.tsx", "client portal overview — portal shell (specs 031/085)"],
   ["app/portal/[projectId]/work/page.tsx", "client portal — portal shell"],
   ["app/portal/[projectId]/reports/page.tsx", "client portal — portal shell"],
+  ["app/portal/organizations/[orgId]/page.tsx", "brokerage portal roster — portal shell (spec 151)"],
   ["app/login/page.tsx", "auth screen — renders before any workspace exists"],
 ]);
 

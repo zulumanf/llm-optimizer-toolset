@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, isStaff, visibleProjectIds } from "@/lib/auth";
 import { listActiveProjects } from "@/db/projects";
+import { visibleOrganizations } from "@/lib/organizations/service";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +12,9 @@ export default async function PortalHome() {
   const user = await getCurrentUser();
   const visible = await visibleProjectIds(user);
   const projects = await listActiveProjects(visible);
+  const organizations = await visibleOrganizations(user);
 
-  if (!isStaff(user) && projects.length === 1) {
+  if (!isStaff(user) && projects.length === 1 && organizations.length === 0) {
     redirect(`/portal/${projects[0]!.id}`);
   }
 
@@ -24,7 +26,18 @@ export default async function PortalHome() {
           ? "Staff preview — every active client's portal."
           : "Select a program to view its visibility and work."}
       </p>
-      {projects.length === 0 ? (
+      {organizations.length > 0 && (
+        <ul className="mt-6 space-y-2">
+          {organizations.map((o) => (
+            <li key={o.id}>
+              <Link href={`/portal/organizations/${o.id}`} className="block rounded-md border p-4 font-medium hover:bg-muted/40">
+                {o.name} <span className="text-sm font-normal text-muted-foreground">· brokerage roster</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      {projects.length === 0 && organizations.length > 0 ? null : projects.length === 0 ? (
         <p className="mt-6 rounded-md border border-dashed p-8 text-sm text-muted-foreground">
           No programs are shared with this account yet. Your agency contact
           can grant access.

@@ -11,7 +11,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   Inbox,
+  Network,
+  ScanSearch,
   ArrowLeft,
   Bot,
   Building2,
@@ -43,12 +46,15 @@ export interface SidebarProject {
 }
 
 const SYSTEM_LINKS = [
+  { href: "/operations", label: "Operations", icon: Activity },
   { href: "/control-tower", label: "Control tower", icon: Gauge },
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/automation", label: "Automation", icon: Zap },
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/companies", label: "Companies", icon: Building2 },
   { href: "/learnings", label: "Learnings", icon: GraduationCap },
+  { href: "/organizations", label: "Brokerages", icon: Network },
+  { href: "/evaluation", label: "Classifier check", icon: ScanSearch },
   { href: "/exclusivity", label: "Exclusivity", icon: Shield },
   { href: "/dogfood", label: "Dogfood", icon: FlaskConical },
 ] as const;
