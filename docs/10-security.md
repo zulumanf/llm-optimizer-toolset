@@ -167,3 +167,28 @@ defence in depth for the Supabase-client path; the primary control is that the
 API roles cannot read anything at all. **Any future table must be created by a
 migration, never through the Supabase dashboard** — a table created there can
 pick up default grants and land on the public API.
+
+## Authorization boundary: pages and server actions (spec 156, 2026-10-21)
+
+**Incident status**
+
+- **Vulnerability: FIXED** (`hotfix/156-page-level-authorization`). Effective only once deployed.
+- **Historical production exposure: UNKNOWN UNTIL PRODUCTION ACCOUNT/LOG REVIEW.**
+
+Test results say nothing about whether the hole was used before the fix. Nothing in this repository establishes that no data was accessed, and no document may claim it. The question stays open until an operator reviews the production `users` rows with client roles, the `portal.invite_client` audit entries, the actions those accounts performed, and the host's request logs. That review procedure is in spec 156.
+
+**What was exposed on `main`** (to any signed-in account with a client role):
+- **Reads:** 31–32 pages streamed staff or other-client data in the response body while the browser showed a redirect or a 404. These included `/work`, `/control-tower`, `/exclusivity`, `/learnings`, `/projects/<any id>/*`, and the client's own internal tasks.
+- **Writes:** a client could start, cancel, retry or decide workflows; start automation runs; suppress contacts; stop outreach sequences; and queue claim extraction on any project's source.
+
+**Permanent constraints.** These are enforced by tests. Do not weaken them to make a feature pass.
+1. **Every internal page enforces its own boundary as its first statement:** `requireProjectStaffPage(id)` under `/projects/[id]`, `requireStaffPage()` elsewhere. Layouts are defence in depth only, because Next.js renders a layout and its page concurrently. Enforced by `tests/unit/page-gates-static.test.ts`.
+2. **Every staff server action authorizes before any read, privileged validation, write or side effect.** It does so either with an unconditional `assertCanWrite`/`assertRole`, or through `makeActionRunner`, which asserts staff itself. Enforced by:
+   - `tests/unit/server-action-gates-static.test.ts`: structural, no database;
+   - `tests/integration/server-action-authorization.test.ts`: every action called as each client role; the refusal must come from a staff gate; no query before the gate; no write statement, even rolled back; no network call or subprocess.
+3. **Cross-project access fails closed:** 404, never 403, never data.
+4. **Client- or public-callable actions and pages exist only by explicit exemption with a stated reason.**
+   - Actions: `tests/helpers/authz-exemptions.ts`.
+   - Pages: the `EXEMPT` list in the page test.
+   - A client-callable feature adds its own narrow gate, and a reasoned entry. It does not loosen a check.
+5. **`scripts/authz-sweep.ts` repeats the read-side canary sweep** against a production build running as a client. A release that touches pages, layouts or the portal should run it.
