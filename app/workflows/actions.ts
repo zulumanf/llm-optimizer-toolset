@@ -12,7 +12,7 @@ import { z } from "zod";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import * as store from "@/db/workflow";
-import { getCurrentUser, assertRole } from "@/lib/auth";
+import { getCurrentUser, assertCanWrite, assertRole } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
@@ -37,12 +37,15 @@ const startSchema = z.object({
 export async function startWorkflowAction(
   raw: unknown
 ): Promise<ActionResult<{ runId: string; state: string }>> {
-  const parsed = startSchema.safeParse(raw);
-  if (!parsed.success) {
-    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
-  }
   try {
+    // Staff only (P1-13), and before validation so a client account
+    // learns nothing from the shape of the error.
     const user = await getCurrentUser();
+    assertCanWrite(user);
+    const parsed = startSchema.safeParse(raw);
+    if (!parsed.success) {
+      return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+    }
     // Definitions live in code; publishing them is cheap and idempotent, and
     // it means a fresh database can start a workflow without a manual step.
     await bootstrapWorkflows();
@@ -80,12 +83,13 @@ const decisionSchema = z.object({
 export async function decideApprovalAction(
   raw: unknown
 ): Promise<ActionResult<{ runId: string }>> {
-  const parsed = decisionSchema.safeParse(raw);
-  if (!parsed.success) {
-    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
-  }
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
+    const parsed = decisionSchema.safeParse(raw);
+    if (!parsed.success) {
+      return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+    }
     const [approval] = await sql`
       select required_role, decision from workflow_approvals
       where id = ${parsed.data.approvalId}
@@ -149,12 +153,13 @@ const cancelSchema = z.object({
 export async function cancelWorkflowAction(
   raw: unknown
 ): Promise<ActionResult<{ runId: string }>> {
-  const parsed = cancelSchema.safeParse(raw);
-  if (!parsed.success) {
-    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
-  }
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
+    const parsed = cancelSchema.safeParse(raw);
+    if (!parsed.success) {
+      return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+    }
     await cancelWorkflow(parsed.data.runId, parsed.data.reason, user.id);
     revalidatePath(`/workflows/${parsed.data.runId}`);
     return ok({ runId: parsed.data.runId });
@@ -166,12 +171,13 @@ export async function cancelWorkflowAction(
 export async function retryNodeAction(
   raw: unknown
 ): Promise<ActionResult<{ nodeRunId: string }>> {
-  const parsed = z.object({ nodeRunId: z.string().uuid() }).safeParse(raw);
-  if (!parsed.success) {
-    return fail(new ClassifiedError("validation", "Invalid node run id."));
-  }
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
+    const parsed = z.object({ nodeRunId: z.string().uuid() }).safeParse(raw);
+    if (!parsed.success) {
+      return fail(new ClassifiedError("validation", "Invalid node run id."));
+    }
     await retryNode(parsed.data.nodeRunId, user.id);
     revalidatePath("/workflows");
     return ok({ nodeRunId: parsed.data.nodeRunId });
@@ -192,12 +198,13 @@ const resolveSchema = z.object({
 export async function resolveExceptionAction(
   raw: unknown
 ): Promise<ActionResult<{ exceptionId: string }>> {
-  const parsed = resolveSchema.safeParse(raw);
-  if (!parsed.success) {
-    return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
-  }
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
+    const parsed = resolveSchema.safeParse(raw);
+    if (!parsed.success) {
+      return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+    }
     const changed = await sql.begin(async (tx) => {
       const done = await resolveException(tx, {
         id: parsed.data.exceptionId,
