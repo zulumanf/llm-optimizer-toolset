@@ -40,8 +40,17 @@ async function drainJobs(): Promise<void> {
 
 async function main(): Promise<void> {
   const dbUrl = process.env.DATABASE_URL ?? "";
-  if (!/llm_optimizer_e2e/.test(dbUrl)) {
-    throw new Error("Refusing: DATABASE_URL must point at llm_optimizer_e2e.");
+  // The seed drops the schema: only ever a local database named for e2e
+  // (llm_optimizer_e2e, or an isolated E2E_DATABASE_URL like rf_<branch>_e2e).
+  const target = (() => {
+    try {
+      return new URL(dbUrl);
+    } catch {
+      return null;
+    }
+  })();
+  if (!target || !["localhost", "127.0.0.1"].includes(target.hostname) || !/e2e/.test(target.pathname)) {
+    throw new Error("Refusing: DATABASE_URL must be a local database whose name contains 'e2e'.");
   }
 
   console.log("▸ resetting e2e schema…");

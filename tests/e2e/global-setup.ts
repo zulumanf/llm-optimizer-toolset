@@ -20,7 +20,9 @@ const ROOT = join(__dirname, "..", "..");
 export default function globalSetup(): void {
   console.log("[e2e-setup] ensuring database exists…");
   try {
-    execSync(`createdb -w -h localhost -p 5433 llm_optimizer_e2e`, {
+    const dbName = new URL(E2E_DB).pathname.slice(1);
+    if (!/^[A-Za-z0-9_]+$/.test(dbName)) throw new Error(`Refusing unsafe e2e database name: ${dbName}`);
+    execSync(`createdb -w -h localhost -p 5433 ${dbName}`, {
       timeout: 15_000,
       stdio: ["ignore", "inherit", "inherit"],
       env: { ...process.env, PGCONNECT_TIMEOUT: "10" },
