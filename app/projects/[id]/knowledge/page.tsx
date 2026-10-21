@@ -12,6 +12,7 @@ import { ClaimWording } from "@/components/knowledge/claim-wording";
 import { ProposeClaimDialog } from "@/components/knowledge/propose-claim-dialog";
 import { KnowledgeLayerNav } from "@/components/knowledge/layer-nav";
 import { knowledgeSummary } from "@/db/knowledge";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 /** A single figure with the caveat that matters attached, never bare. */
 function Stat({ label, value, sub }: { label: string; value: number; sub: string }) {
@@ -29,6 +30,7 @@ export default async function KnowledgePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

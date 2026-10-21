@@ -4,6 +4,7 @@ import { History } from "lucide-react";
 import { getProject } from "@/db/projects";
 import { projectActivity } from "@/db/audit";
 import { Badge } from "@/components/ui/badge";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default async function ProjectActivityPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

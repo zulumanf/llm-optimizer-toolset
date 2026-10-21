@@ -9,6 +9,7 @@ import { BackgroundAction } from "@/components/jobs/background-action";
 import { AccuracyFindingCard } from "@/components/accuracy/finding-card";
 import { formatDate } from "@/lib/format";
 import { ProjectTabs } from "@/components/layout/project-tabs";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export default async function AccuracyPage({
   params,
@@ -17,6 +18,7 @@ export default async function AccuracyPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ status?: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const { status = "open" } = await searchParams;
   const project = await getProject(id);

@@ -29,8 +29,10 @@ import { scoreBlurb } from "@/lib/prospects/score-blurb";
 import { PROSPECT_SOURCE_IDS } from "@/lib/prospects/providers/registry";
 import { mockProviderAllowed } from "@/lib/ai/registry";
 import { listMarkets } from "@/lib/exclusivity/service";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export default async function ProspectsPage() {
+  await requireStaffPage();
   const [launches, prospects, markets, candidates, duplicates, funnel, feedback, refreshCount] =
     await Promise.all([
       listLaunches(),

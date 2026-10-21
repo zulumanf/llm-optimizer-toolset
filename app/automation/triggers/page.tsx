@@ -14,10 +14,12 @@ import { Badge } from "@/components/ui/badge";
 import { AutomationNav } from "@/components/automation/nav";
 import { EmptyState } from "@/components/automation/empty-state";
 import { TriggerToggle } from "@/components/automation/trigger-toggle";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
 export default async function TriggersPage() {
+  await requireStaffPage();
   const [triggers, stats, subscriptions, endpoints, receipts, projectRows] =
     await Promise.all([
       listTriggers(),

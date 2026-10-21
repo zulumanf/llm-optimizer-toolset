@@ -13,8 +13,12 @@ import {
  * Each `/projects/[id]/*` page reads client data through the id in the URL,
  * and none of them re-checked that the caller may see that client — the
  * audit found `visibleProjectIds` with zero call sites, which made project
- * isolation URL-parameter-shaped. This layout is the choke point: one check,
- * inherited by every section, impossible for a new page to forget.
+ * isolation URL-parameter-shaped.
+ *
+ * This layout is NOT the boundary (spec 156): Next.js renders it and the page
+ * concurrently, so a redirect()/notFound() here does not stop the page's data
+ * from streaming. Every page calls requireProjectStaffPage() itself, first;
+ * this check stays as defence in depth.
  *
  * Denial renders as 404, never 403 — confirming a project id exists is
  * itself a leak across clients. Staff pass untouched (visibleProjectIds

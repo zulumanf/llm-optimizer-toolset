@@ -13,6 +13,7 @@ import { KnowledgeLayerNav } from "@/components/knowledge/layer-nav";
 import { openKnowledgeExceptions } from "@/lib/knowledge/maintenance/exceptions";
 import { recentMaintenanceRuns } from "@/lib/knowledge/maintenance/service";
 import { knowledgeHealth } from "@/lib/knowledge/maintenance/metrics";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,7 @@ export default async function MaintenancePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

@@ -20,12 +20,14 @@ import { CheckForm } from "@/components/exclusivity/check-form";
 import { MarketDialog } from "@/components/exclusivity/market-dialog";
 import { AgreementDialog } from "@/components/exclusivity/agreement-dialog";
 import { formatDate } from "@/lib/format";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
 /** Spec 028. Staff-only surface (middleware + layout auth); exclusivity is
  * agency-level data, so there is no per-project scoping here. */
 export default async function ExclusivityPage() {
+  await requireStaffPage();
   const user = await getCurrentUser();
   const [markets, agreements, checks, projects] = await Promise.all([
     listMarkets(),

@@ -1,8 +1,10 @@
 import { PageHeader, PageShell } from "@/components/layout/page";
 import { VERTICAL_PACKS } from "@/lib/verticals/packs";
 import { OnboardingWizard } from "@/components/onboarding/wizard";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
-export default function OnboardingPage() {
+export default async function OnboardingPage() {
+  await requireStaffPage();
   return (
     <PageShell>
       <PageHeader

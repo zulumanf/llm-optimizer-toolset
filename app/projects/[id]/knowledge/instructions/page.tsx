@@ -12,6 +12,7 @@ import {
   NewInstructionForm,
   ReviseInstruction,
 } from "@/components/knowledge/instruction-form";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export default async function InstructionsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

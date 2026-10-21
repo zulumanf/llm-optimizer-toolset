@@ -13,6 +13,7 @@ import { verifyRunIntegrity } from "@/lib/evidence/integrity";
 import { SCORING_VERSION } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { EvidenceTools } from "@/components/evidence/evidence-tools";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -30,6 +31,7 @@ export default async function EvidencePage({
   params: Promise<{ id: string; runId: string }>;
   searchParams: Promise<{ metric?: string; company?: string; provider?: string; filter?: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id: projectId, runId } = await params;
   const search = await searchParams;
   const run = await getRun(runId);

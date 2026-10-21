@@ -10,12 +10,14 @@ import { NewValidationRunButton } from "@/components/validation/new-validation-r
 import { RecordObservationDialog } from "@/components/validation/record-observation";
 import { formatDate } from "@/lib/format";
 import { ProjectTabs } from "@/components/layout/project-tabs";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export default async function ValidationPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

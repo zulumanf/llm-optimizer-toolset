@@ -6,6 +6,7 @@ import {
   RetireLearningButton,
 } from "@/components/learnings/learning-controls";
 import { formatDate } from "@/lib/format";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ const CONFIDENCE_VARIANT: Record<string, "default" | "secondary" | "outline"> = 
  * strongly-supported rows re-order plan composition; everything else is
  * context. Retire-and-rewrite is the only correction path. */
 export default async function LearningsPage() {
+  await requireStaffPage();
   const learnings = await searchLearnings({ includeRetired: true });
   const active = learnings.filter((l) => l.status === "active");
   const retired = learnings.filter((l) => l.status === "retired");

@@ -5,6 +5,7 @@ import { NotificationsControls } from "@/components/notifications/controls";
 import { NotificationRow } from "@/components/notifications/row";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 const FILTERS = ["open", "unread", "resolved", "dismissed", "all"] as const;
 
@@ -13,6 +14,7 @@ export default async function NotificationsPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
+  await requireStaffPage();
   const { status = "open" } = await searchParams;
   const filter = (FILTERS as readonly string[]).includes(status)
     ? (status as (typeof FILTERS)[number])

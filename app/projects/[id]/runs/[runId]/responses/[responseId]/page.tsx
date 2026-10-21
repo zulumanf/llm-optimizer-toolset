@@ -4,12 +4,14 @@ import { getResponse, getRun } from "@/db/runs";
 import { sql } from "@/db/client";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/format";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export default async function ResponsePage({
   params,
 }: {
   params: Promise<{ id: string; runId: string; responseId: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id: projectId, runId, responseId } = await params;
   const [run, response] = await Promise.all([
     getRun(runId),

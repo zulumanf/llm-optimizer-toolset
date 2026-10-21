@@ -22,12 +22,14 @@ import { SuggestionsPanel } from "@/components/prompts/suggestions-panel";
 import { listPromptSuggestions } from "@/lib/prompts/suggest";
 import { clusterPrompts, PROMPT_CLUSTER_VERSION } from "@/lib/prompts/cluster";
 import { formatDate } from "@/lib/format";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export default async function PromptSetDetailPage({
   params,
 }: {
   params: Promise<{ id: string; setId: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id: projectId, setId } = await params;
   const [project, set] = await Promise.all([
     getProject(projectId),

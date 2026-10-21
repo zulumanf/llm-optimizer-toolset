@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { AutomationNav } from "@/components/automation/nav";
 import { EmptyState } from "@/components/automation/empty-state";
 import { TestConnectionButton } from "@/components/automation/test-connection-button";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function ConnectorsPage() {
+  await requireStaffPage();
   const [health, metrics, freshness] = await Promise.all([
     healthSummaries(),
     connectorMetrics(),

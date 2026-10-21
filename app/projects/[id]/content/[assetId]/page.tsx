@@ -7,6 +7,7 @@ import { AssetControls } from "@/components/content/asset-controls";
 import type { ContentBrief } from "@/lib/content/prompts";
 import type { ContentValidation } from "@/lib/content/validate";
 import { formatDate } from "@/lib/format";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 interface VerificationBlob {
   gate?: ContentValidation;
@@ -21,6 +22,7 @@ export default async function AssetPage({
 }: {
   params: Promise<{ id: string; assetId: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id: projectId, assetId } = await params;
   const project = await getProject(projectId);
   const [asset] = await sql`

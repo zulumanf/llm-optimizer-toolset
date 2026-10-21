@@ -21,6 +21,7 @@ import {
   marketSourceGraph,
   MIN_MARKET_CITATIONS,
 } from "@/lib/citations/market";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 const SOURCE_TYPE_LABELS: Record<string, string> = {
   industry_ranking: "industry ranking",
@@ -37,6 +38,7 @@ export default async function MarketSourcesPage({
 }: {
   searchParams: Promise<{ launch?: string }>;
 }) {
+  await requireStaffPage();
   const { launch } = await searchParams;
   const launches = await listLaunches();
   const selected =

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { NewBriefButton } from "@/components/content/new-brief-button";
 import { formatDate } from "@/lib/format";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   published: "default",
@@ -29,6 +30,7 @@ export default async function ContentPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

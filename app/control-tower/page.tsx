@@ -20,6 +20,7 @@ import { PriorityBreakdownDetails } from "@/components/control-tower/priority-br
 import { ResolveException } from "@/components/control-tower/resolve-exception";
 import { HealthComponents } from "@/components/control-tower/health-components";
 import { SEVERITY_VARIANT as SHARED_SEVERITY_VARIANT, type BadgeVariant } from "@/lib/ui/variants";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +72,7 @@ function periodOfLastDays(days: number): { start: string; end: string } {
 }
 
 export default async function ControlTowerPage() {
+  await requireStaffPage();
   const period = periodOfLastDays(28);
   const [metrics, queue, driftSignals, health, capacity, automation, activeProjects, briefs] =
     await Promise.all([
