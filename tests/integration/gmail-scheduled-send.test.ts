@@ -11,7 +11,7 @@
  */
 import { execSync } from "node:child_process";
 import { join } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
 import { unwrap } from "../helpers/result";
@@ -133,6 +133,17 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
         replyToEmail: "dana@avos.agency",
       })
     );
+  });
+
+  // Spec 157: a Gmail send needs APP_URL for its one-click unsubscribe link
+  // (tests/setup.ts deletes it globally). Tests that need it absent unset it.
+  const savedAppUrl = process.env.APP_URL;
+  beforeEach(() => {
+    process.env.APP_URL = "https://app.test.local";
+  });
+  afterEach(() => {
+    if (savedAppUrl === undefined) delete process.env.APP_URL;
+    else process.env.APP_URL = savedAppUrl;
   });
 
   afterAll(async () => {
@@ -278,6 +289,9 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     };
     expect(dispatched.input.body).toMatch(/unsubscribe/i);
     expect(dispatched.input.body).toContain("123 Grand St");
+    // Spec 157: the RFC 8058 one-click target reaches the adapter.
+    const withLink = dispatched.input as { unsubscribeUrl?: string };
+    expect(withLink.unsubscribeUrl).toMatch(/^https:\/\/app\.test\.local\/api\/unsubscribe\/[0-9a-f]{32}$/);
 
     const [ledger] = await sql`
       select channel, allowed, provider_message_id, gate_verdict
@@ -292,7 +306,7 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
       version: string;
       checks: { name: string; passed: boolean }[];
     };
-    expect(verdict.version).toBe("prospect-send-gate-v4");
+    expect(verdict.version).toBe("prospect-send-gate-v5");
     const cap = verdict.checks.find((c) => c.name === "daily_send_cap");
     expect(cap?.passed).toBe(true);
 
@@ -675,37 +689,25 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     }
   });
 
-  it("open tracking: without APP_URL the send transmits untracked — never blocked, never zero", async () => {
+  it("spec 157: without APP_URL a Gmail send refuses (no compliant unsubscribe link), ledgered, nothing dispatched", async () => {
     const { draftId } = await seedApprovedDraft();
     executeCapability.mockResolvedValue(sendOk);
-    const originalAppUrl = process.env.APP_URL;
     delete process.env.APP_URL;
-    try {
-      const result = unwrap(
-        await svc.sendProspectDraft(operator, {
-          draftId,
-          channel: "gmail",
-          businessPurpose: PURPOSE,
-        })
-      );
-      const dispatched = executeCapability.mock.calls[0]?.[0] as {
-        input: { htmlBody?: string };
-      };
-      expect(dispatched.input.htmlBody).toBeUndefined();
-      const [ledger] = await sql`
-        select open_token from prospect_outreach_sends where id = ${result.sendId}
-      `;
-      expect(ledger?.openToken).toBeNull();
-      const [row] = await sql`
-        select bool_or(s.open_token is not null) as open_tracked
-        from prospect_outreach_sends s
-        where s.draft_id = ${draftId} and s.allowed
-      `;
-      expect(row?.openTracked).toBe(false);
-    } finally {
-      if (originalAppUrl === undefined) delete process.env.APP_URL;
-      else process.env.APP_URL = originalAppUrl;
-    }
+    const result = await svc.sendProspectDraft(operator, {
+      draftId,
+      channel: "gmail",
+      businessPurpose: PURPOSE,
+    });
+    expect(result.ok).toBe(false);
+    expect(executeCapability).not.toHaveBeenCalled();
+    const [ledger] = await sql`
+      select allowed, gate_verdict from prospect_outreach_sends where draft_id = ${draftId}
+    `;
+    expect(ledger?.allowed).toBe(false);
+    const checks = (ledger?.gateVerdict as { checks: { name: string; passed: boolean }[] }).checks;
+    expect(checks.find((c) => c.name === "one_click_unsubscribe")?.passed).toBe(false);
+    const [{ n }] = (await sql`select count(*)::int as n from outreach_unsubscribe_tokens where draft_id = ${draftId}`) as unknown as [{ n: number }];
+    expect(n).toBe(0);
   });
 
   it("drain: never picks up a schedule on anything but an approved, unsent draft", async () => {

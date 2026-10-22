@@ -51,7 +51,7 @@ describe.skipIf(!TEST_URL)("spec 151 migration guards (integration)", () => {
       await sql`update scoring_state set read_version = 'v1.1'`.catch(() => undefined);
       await migrate("up", TEST_URL as string, quiet);
     }
-    expect(await latest()).toBe("134_scores_staging_and_backup_runs.sql");
+    expect(await latest()).toBe("135_outreach_unsubscribe_tokens.sql");
     const [state] = await sql`select read_version, write_legacy from scoring_state`;
     expect(state).toMatchObject({ readVersion: "v1.1", writeLegacy: true });
   });

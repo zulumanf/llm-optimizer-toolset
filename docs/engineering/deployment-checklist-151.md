@@ -54,6 +54,10 @@ If AWS S3 is chosen instead:
 - a private bucket with SSE-S3 default encryption and Block Public Access on;
 - an IAM policy granting `s3:GetObject` and `s3:PutObject` on `arn:aws:s3:::<bucket>/*`, and `s3:ListBucket` on `arn:aws:s3:::<bucket>`.
 
+## 2a-bis. Outreach email (spec 157, if that branch is merged)
+
+`APP_URL` must be set on **both** web and worker, e.g. `https://app.recommendedfirst.com`. Without it, every Gmail send refuses with `one_click_unsubscribe`. The public paths `/api/unsubscribe/*` and `/unsubscribe/*` must reach the web service unauthenticated (the middleware already allows them).
+
 ## 2b. Database connection budget
 
 Advisory locks require a **session-mode** pooler or direct connections; a transaction-mode pooler silently breaks them.

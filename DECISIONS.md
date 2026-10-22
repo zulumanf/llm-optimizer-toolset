@@ -3793,3 +3793,9 @@ A found contradiction now becomes a persisted correction request, built and veri
 - **Object-store write-once uses a conditional PUT (`If-None-Match: *`)**, not HEAD-then-PUT. Why: two racing writers could both see 404. 412/409 means "already present"; sha256 metadata is then compared. Downloads without RF's sha256 metadata are refused.
 - **`releaseClaim` always returns the attempt** a deferred claim added, even when the real executor's heartbeat has re-asserted the lease first. Why: otherwise a lock-deferred claim silently consumed one of the job's attempts (observed as a 1-in-10 flake).
 - **Worker shutdown closes the pool with a bound** (`sql.end({ timeout: 10 })`). Why: an unbounded `end()` waits forever after a reserved connection died (reproduced).
+
+## 2026-10-21 — Spec 157: one-click unsubscribe
+
+- **A route handler, not a server action.** RFC 8058 one-click is an unauthenticated POST from a mail provider, which makes it a webhook in everything but name. It sits beside `/api/open`, the other public mail-client endpoint.
+- **Gmail sends now refuse without `APP_URL`.** This reverses spec 092's "untracked, never blocked" for Gmail only: without `APP_URL` there is no working one-click link, and bulk-sender rules require one. Manual and mock channels are unaffected.
+- **Tokens are written outside the send transaction, before dispatch, and the token table has no foreign keys.** A delivered link must work even if the ledger transaction rolls back. A foreign key to `outreach_drafts` self-deadlocked against the send transaction's `for update` lock on the draft (reproduced). `prospect_id` and `draft_id` stay as plain provenance.
