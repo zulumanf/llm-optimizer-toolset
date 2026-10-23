@@ -45,6 +45,17 @@ vi.mock("@/lib/connectors/execute", () => ({
 }));
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
+
+// Spec 158: profile corrections are opt-in (unset = off). These suites test
+// the feature itself, so they run with it explicitly enabled; the disabled
+// behaviour and the draft-retry cap are covered at the end of
+// profile-correction-drafts.test.ts.
+beforeAll(() => {
+  vi.stubEnv("PROFILE_CORRECTIONS_ENABLED", "true");
+});
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 const URL_A = "https://directory.example.com/agents/perez-realty";
 const DAY1 = new Date("2026-10-05T12:00:00Z");
 const DAY2 = new Date("2026-10-06T12:00:00Z");

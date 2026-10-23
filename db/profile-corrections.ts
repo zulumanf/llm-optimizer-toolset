@@ -976,7 +976,8 @@ export interface DraftCandidate {
 export async function readyForDrafting(
   tx: TransactionSql,
   limit: number,
-  retryMinutes: number
+  retryMinutes: number,
+  maxAutoAttempts: number
 ): Promise<DraftCandidate[]> {
   const rows = await tx`
     select r.id, r.project_id, r.destination_id, r.request_sha256,
@@ -992,6 +993,10 @@ export async function readyForDrafting(
                or d.status in ('outcome_unknown', 'orphaned')
                or (d.status = 'failed' and d.updated_at > now() - make_interval(mins => ${retryMinutes})))
       )
+      -- Spec 158: automatic drafting stops after maxAutoAttempts failures;
+      -- an operator re-arms the request (retryProfileCorrectionDraft).
+      and (select count(*) from profile_correction_drafts d
+           where d.correction_request_id = r.id and d.status = 'failed') < ${maxAutoAttempts}
     order by r.routed_at asc nulls first, r.created_at asc, r.id asc
     limit ${limit}
     for update of r skip locked

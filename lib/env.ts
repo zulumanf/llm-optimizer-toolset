@@ -53,6 +53,8 @@ const envSchema = z
     VIDEO_WALKTHROUGH_MODE: z.string().optional(),
     VIDEO_WALKTHROUGH_KILL_SWITCH: z.string().optional(),
     VIDEO_WALKTHROUGH_RELEASE_KILL_SWITCH: z.string().optional(),
+    // Spec 158: profile checks + correction drafting are opt-in ("true").
+    PROFILE_CORRECTIONS_ENABLED: z.string().optional(),
     VIDEO_DISTRIBUTION: z.string().optional(),
     VIDEO_TTS_PROVIDER: z.string().optional(),
     VIDEO_ALLOW_FIXTURE_INTRO: z.string().optional(),

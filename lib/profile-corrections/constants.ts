@@ -238,6 +238,18 @@ export const PROFILE_DRAFT_DISPATCH_LOCK_KEY = 727_147_002;
 export const PROFILE_DRAFT_BATCH = 25;
 /** A failed attempt is retried automatically only after this long. */
 export const PROFILE_DRAFT_RETRY_MINUTES = 360;
+/** Spec 158: failed attempts after which automatic drafting stops; an
+ * operator re-arms the request through retryProfileCorrectionDraft. */
+export const PROFILE_DRAFT_MAX_AUTO_ATTEMPTS = 3;
+
+/** Spec 158: profile checks, correction drafting and reconciliation are
+ * OPT-IN. Unset means off — nothing is fetched, inferred or drafted. */
+export const PROFILE_CORRECTIONS_FLAG = "PROFILE_CORRECTIONS_ENABLED";
+export function profileCorrectionsEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env[PROFILE_CORRECTIONS_FLAG] === "true";
+}
+export const PROFILE_CORRECTIONS_DISABLED_MESSAGE =
+  "Profile corrections are disabled (set PROFILE_CORRECTIONS_ENABLED=true to enable).";
 
 /** The human send-confirmation gate in the draft workflow. */
 export const SEND_CONFIRMATION_NODE = "confirm_sent";

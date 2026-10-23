@@ -49,6 +49,17 @@ vi.mock("@/lib/connectors/execute", () => ({
 }));
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
+
+// Spec 158: profile corrections are opt-in (unset = off). These suites test
+// the feature itself, so they run with it explicitly enabled; the disabled
+// behaviour and the draft-retry cap are covered at the end of
+// profile-correction-drafts.test.ts.
+beforeAll(() => {
+  vi.stubEnv("PROFILE_CORRECTIONS_ENABLED", "true");
+});
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 const URL_A = "https://directory.example.com/agents/perez-realty";
 const SENDER = "corrections@recommendedfirst.example";
 const DAY1 = new Date("2026-10-05T12:00:00Z");
@@ -471,5 +482,80 @@ describe.skipIf(!TEST_URL)("profile correction drafts and send confirmation (spe
       d.sql`update profile_correction_drafts set gmail_draft_id = 'r-x' where id = ${draft!.id}`
     ).rejects.toThrow(/write-once/);
     await expect(d.sql`delete from profile_correction_drafts`).rejects.toThrow(/forbidden/);
+  });
+
+  // ------------------------------------------------- spec 158 hardening
+
+  it("stops automatic drafting after the failure cap; only an operator re-arms it", async () => {
+    const { PROFILE_DRAFT_MAX_AUTO_ATTEMPTS } = await import("@/lib/profile-corrections/constants");
+    const retry = await import("@/lib/profile-corrections/retry");
+    const dest = await setEditor();
+    await readyToDraft();
+    // No Gmail connection: every automatic attempt fails on the precondition.
+    for (let n = 1; n <= PROFILE_DRAFT_MAX_AUTO_ATTEMPTS; n += 1) {
+      await d.sql`update profile_correction_drafts set updated_at = now() - interval '7 hours'`;
+      await sweepAndDraft();
+      expect(await drafts()).toHaveLength(n);
+      if (n === 1) {
+        // Below the cap a failed attempt is the dispatcher's to retry, not the operator's.
+        const row = await correction();
+        const below = await retry.retryProfileCorrectionDraft(OPERATOR, {
+          projectId: a.projectId, correctionRequestId: row.id, draftAttemptId: (await drafts())[0]!.id,
+          expectedRequestSha256: row.requestSha256, expectedDestinationId: dest.id, confirmNoUsableDraft: true, reason: "too early",
+        });
+        expect(below.ok).toBe(false);
+        if (!below.ok) expect(below.error.message).toMatch(/retries it until 3 attempts have failed/);
+      }
+    }
+    expect((await drafts()).every((x) => x.status === "failed")).toBe(true);
+    // Capped: even long after the back-off window, nothing starts automatically.
+    await d.sql`update profile_correction_drafts set updated_at = now() - interval '30 days'`;
+    expect((await drafting.dispatchCorrectionDrafts()).started).toHaveLength(0);
+    expect(await drafts()).toHaveLength(PROFILE_DRAFT_MAX_AUTO_ATTEMPTS);
+
+    // The operator re-arms it: the failed attempt is superseded (kept) and
+    // exactly one new attempt records who retried it and why.
+    const row = await correction();
+    const last = (await drafts())[PROFILE_DRAFT_MAX_AUTO_ATTEMPTS - 1]!;
+    const rearmed = await retry.retryProfileCorrectionDraft(OPERATOR, {
+      projectId: a.projectId, correctionRequestId: row.id, draftAttemptId: last.id,
+      expectedRequestSha256: row.requestSha256, expectedDestinationId: dest.id, confirmNoUsableDraft: true,
+      reason: "Gmail connection fixed; retry once.",
+    });
+    expect(rearmed.ok).toBe(true);
+    const after = await drafts();
+    expect(after).toHaveLength(PROFILE_DRAFT_MAX_AUTO_ATTEMPTS + 1);
+    expect(after.find((x) => x.id === last.id)).toMatchObject({ status: "superseded" });
+    expect(after.at(-1)).toMatchObject({ retryOf: last.id, retryRequestedBy: OPERATOR.id, retryReason: "Gmail connection fixed; retry once." });
+  });
+
+  it("does nothing while PROFILE_CORRECTIONS_ENABLED is unset: no checks, no jobs, no drafts", async () => {
+    await gmailConnected();
+    await setEditor();
+    await readyToDraft(); // created while enabled
+    const { handlers } = await import("@/workers/core");
+    const { PROFILE_CHECK_DISPATCH_JOB, PROFILE_DRAFT_DISPATCH_JOB } = await import("@/lib/profile-corrections/constants");
+    const { runWeeklyKick } = await import("@/lib/ops/tick");
+    vi.stubEnv("PROFILE_CORRECTIONS_ENABLED", "");
+    try {
+      const checksBefore = (await d.sql`select count(*)::int as n from profile_check_requests`)[0]!.n as number;
+      // Operator start: authorization still runs first (a client is forbidden), then the flag refuses.
+      const client = { ...OPERATOR, id: "00000000-0000-4000-8000-00000000a002", role: "client_viewer" as const };
+      const asClient = await d.start.startProfileChecks(client, { projectId: a.projectId, origin: "operator" });
+      expect(asClient.ok).toBe(false);
+      if (!asClient.ok) expect(asClient.error.kind).toBe("forbidden");
+      const asOperator = await d.start.startProfileChecks(OPERATOR, { projectId: a.projectId, origin: "operator" });
+      expect(asOperator.ok).toBe(false);
+      if (!asOperator.ok) expect(asOperator.error).toMatchObject({ kind: "conflict", message: expect.stringMatching(/disabled/) });
+      // Scheduled path and queued jobs are no-ops.
+      expect((await runWeeklyKick()).profileChecks).toEqual({ skipped: "disabled" });
+      await handlers[PROFILE_CHECK_DISPATCH_JOB]!({} as never);
+      await handlers[PROFILE_DRAFT_DISPATCH_JOB]!({} as never);
+      expect((await d.sql`select count(*)::int as n from profile_check_requests`)[0]!.n).toBe(checksBefore);
+      expect(await drafts()).toHaveLength(0);
+      expect(connector.calls).toHaveLength(0);
+    } finally {
+      vi.stubEnv("PROFILE_CORRECTIONS_ENABLED", "true");
+    }
   });
 });
