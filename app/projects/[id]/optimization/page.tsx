@@ -17,7 +17,8 @@ import { onboardingChecklist } from "@/lib/onboarding/service";
 import { listOpportunities } from "@/lib/optimization/plan";
 import { sourcePresence } from "@/lib/optimization/source-presence";
 import { structuredDataSuggestion } from "@/lib/optimization/structured-data";
-import { requireStaffPage } from "@/lib/security/page-gates";
+import { getCurrentUser } from "@/lib/auth";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 const BAND_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   do_now: "default",
@@ -34,7 +35,8 @@ const PRESENCE_LABEL: Record<string, string> = {
 };
 
 export default async function OptimizationPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireStaffPage();
+  await requireProjectStaffPage((await params).id);
+  const user = await getCurrentUser();
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

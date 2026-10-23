@@ -3,10 +3,12 @@ import { EmptyState, PageHeader, PageShell, Section } from "@/components/layout/
 import { AnnotationForm } from "@/components/evaluation/annotation-form";
 import { GoldReportView } from "@/components/evaluation/gold-report";
 import { goldReport, listGoldSamples, nextItemForAnnotator } from "@/lib/evaluation/gold";
+import { getCurrentUser } from "@/lib/auth";
 import { requireStaffPage } from "@/lib/security/page-gates";
 
 export default async function GoldSamplePage({ params }: { params: Promise<{ sampleId: string }> }) {
-  const user = await requireStaffPage();
+  await requireStaffPage();
+  const user = await getCurrentUser();
   const { sampleId } = await params;
   const sample = (await listGoldSamples()).find((s) => s.id === sampleId);
   if (!sample) notFound();

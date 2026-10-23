@@ -7,6 +7,7 @@ import { ScenarioCalculator } from "@/components/operations/scenario-calculator"
 import { listProjects } from "@/db/projects";
 import { unitEconomics } from "@/lib/economics/service";
 import { exceptionQueue } from "@/lib/operations/exceptions";
+import { getCurrentUser } from "@/lib/auth";
 import { requireStaffPage } from "@/lib/security/page-gates";
 
 const SEVERITY: Record<string, "destructive" | "secondary" | "outline"> = { high: "destructive", medium: "secondary", low: "outline" };
@@ -14,7 +15,8 @@ const WINDOW_DAYS = 30;
 const usd = (v: number | null) => (v === null ? "not recorded" : `$${v.toFixed(2)}`);
 
 export default async function OperationsPage({ searchParams }: { searchParams: Promise<{ rate?: string }> }) {
-  const user = await requireStaffPage();
+  await requireStaffPage();
+  const user = await getCurrentUser();
   const { rate } = await searchParams;
   const hourly = rate && Number(rate) > 0 ? Number(rate) : undefined;
   const to = new Date().toISOString().slice(0, 10);

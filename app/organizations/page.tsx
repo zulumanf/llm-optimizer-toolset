@@ -2,10 +2,12 @@ import Link from "next/link";
 import { EmptyState, PageHeader, PageShell, Section } from "@/components/layout/page";
 import { CreateOrganizationForm } from "@/components/organizations/org-forms";
 import { visibleOrganizations } from "@/lib/organizations/service";
+import { getCurrentUser } from "@/lib/auth";
 import { requireStaffPage } from "@/lib/security/page-gates";
 
 export default async function OrganizationsPage() {
-  const user = await requireStaffPage();
+  await requireStaffPage();
+  const user = await getCurrentUser();
   const orgs = await visibleOrganizations(user);
   return (
     <PageShell>

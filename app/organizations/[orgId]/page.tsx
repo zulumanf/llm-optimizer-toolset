@@ -3,10 +3,12 @@ import { PageHeader, PageShell, Section } from "@/components/layout/page";
 import { AddMemberForm, GrantAccessForm } from "@/components/organizations/org-forms";
 import { ROSTER_NOTE, RosterTable } from "@/components/organizations/roster-table";
 import { OrganizationAccessError, organizationFormData, organizationRoster } from "@/lib/organizations/service";
+import { getCurrentUser } from "@/lib/auth";
 import { requireStaffPage } from "@/lib/security/page-gates";
 
 export default async function OrganizationPage({ params }: { params: Promise<{ orgId: string }> }) {
-  const user = await requireStaffPage();
+  await requireStaffPage();
+  const user = await getCurrentUser();
   const { orgId } = await params;
   const roster = await organizationRoster(user, orgId).catch((err: unknown) => {
     if (err instanceof OrganizationAccessError) notFound();
