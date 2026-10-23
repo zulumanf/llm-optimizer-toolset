@@ -53,6 +53,8 @@ const envSchema = z
     VIDEO_WALKTHROUGH_MODE: z.string().optional(),
     VIDEO_WALKTHROUGH_KILL_SWITCH: z.string().optional(),
     VIDEO_WALKTHROUGH_RELEASE_KILL_SWITCH: z.string().optional(),
+    // Spec 158: profile checks + correction drafting are opt-in ("true").
+    PROFILE_CORRECTIONS_ENABLED: z.string().optional(),
     VIDEO_DISTRIBUTION: z.string().optional(),
     VIDEO_TTS_PROVIDER: z.string().optional(),
     VIDEO_ALLOW_FIXTURE_INTRO: z.string().optional(),
@@ -60,6 +62,9 @@ const envSchema = z
     ELEVENLABS_VOICE_ID: z.string().optional(),
     // MCP server actor (spec 033) — required only by `npm run mcp`.
     MCP_USER_ID: z.string().optional(),
+    // Spec 147: global bound on inference-active profile checks (1..25,
+    // default 1). Parsed and validated in lib/profile-corrections/config.ts.
+    PROFILE_CHECK_MAX_INFERENCE_RUNS: z.string().optional(),
     // Spend ceiling override (lib/constants.ts falls back to $25).
     DAILY_SPEND_CEILING_USD: z.string().optional(),
     // Prospect audit page commission-estimate rate (defaults to 0.025).

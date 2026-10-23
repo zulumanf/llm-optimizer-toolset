@@ -93,6 +93,14 @@ const PATH_CONFIG_KEYS = new Set([
   "profilePath",
   "untilPath",
   "bodyPath",
+  "urlPath",
+  "fetchPath",
+  "extractPath",
+  "approvedFactsPath",
+  "comparePath",
+  "requestPath",
+  "submitPath",
+  "precheckPath",
 ]);
 
 /**
@@ -138,18 +146,73 @@ export function validateNodePaths(definition: AutomationWorkflowDefinition): str
     const config = node.config ?? {};
     const ancestors = ancestorsOf(definition, node.key);
     for (const [key, value] of Object.entries(config)) {
-      if (!PATH_CONFIG_KEYS.has(key) || typeof value !== "string" || value.length === 0) continue;
-      const root = value.split(".")[0]!;
-      // A path rooted at a run-input key (`payload`, `trigger`, `event`) reads
-      // the run itself and needs no ordering.
-      if (!nodeKeys.has(root)) continue;
-      if (root === node.key) continue;
-      if (!ancestors.has(root)) {
-        errors.push(
-          `node "${node.key}" reads "${value}", but "${root}" is not an ancestor of it — ` +
-            "nothing orders it first, so the value may not exist when this node runs."
-        );
+      const validatePath = (
+        label: string,
+        path: string
+      ): void => {
+        const root = path.split(".")[0]!;
+
+        // Run-input roots do not require an upstream node.
+        if (!nodeKeys.has(root)) return;
+        if (root === node.key) return;
+
+        if (!ancestors.has(root)) {
+          errors.push(
+            `node "${node.key}" reads "${path}" via ${label}, but "${root}" is not an ancestor of it — ` +
+              "nothing orders it first, so the value may not exist when this node runs."
+          );
+        }
+      };
+
+      if (key === "contextPaths" || key === "inputFields") {
+        if (key === "inputFields" && config.inputPath !== undefined) {
+          errors.push(
+            `node "${node.key}" may use inputPath or inputFields, not both.`
+          );
+        }
+
+        if (
+          value === null ||
+          typeof value !== "object" ||
+          Array.isArray(value)
+        ) {
+          errors.push(
+            `node "${node.key}" ${key} must be an object of name -> dotted path.`
+          );
+          continue;
+        }
+
+        for (const [name, rawPath] of Object.entries(
+          value as Record<string, unknown>
+        )) {
+          if (
+            typeof rawPath !== "string" ||
+            rawPath.length === 0
+          ) {
+            errors.push(
+              `node "${node.key}" ${key}.${name} must be a non-empty dotted path.`
+            );
+            continue;
+          }
+
+          validatePath(
+            `${key}.${name}`,
+            rawPath
+          );
+        }
+
+        continue;
       }
+
+      if (
+        !PATH_CONFIG_KEYS.has(key) ||
+        typeof value !== "string" ||
+        value.length === 0
+      ) {
+        continue;
+      }
+
+      validatePath(key, value);
     }
   }
   return errors;

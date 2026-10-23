@@ -1,0 +1,1076 @@
+{
+  "summary": {
+    "stopReason": null,
+    "runsCompleted": 20,
+    "correct": 20,
+    "falsePositives": 0,
+    "falseNegatives": 0,
+    "validatorFailures": 0,
+    "runtimeFailures": 0,
+    "p50LatencyMs": 35520,
+    "p95LatencyMs": 68989,
+    "maxLatencyMs": 77654,
+    "warmUpMs": 31200,
+    "ledger": [
+      {
+        "backend": "ollama",
+        "model": "qwen3:30b",
+        "costMicroUsd": 0,
+        "calls": 20,
+        "allSuccess": true
+      }
+    ]
+  },
+  "runs": [
+    {
+      "caseId": "c01_brokerage",
+      "kind": "actual contradiction (brokerage)",
+      "workflowRunId": "4e0ff0df-99e8-47db-a7ab-89c0a370c55b",
+      "projectId": "68ce7893-1b49-4fed-970e-f17e684d96e1",
+      "llmCallId": "7f354a04-f40e-4c27-b721-3c5ce67103bd",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 27170,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [
+        {
+          "pair": "1d01b4b9-7f49-4b32-8ec2-a96d93597c9b→645b96b0-c9e7-4f1d-8755-bab13923c762",
+          "severity": "critical"
+        }
+      ],
+      "expectedPairs": [
+        "1d01b4b9-7f49-4b32-8ec2-a96d93597c9b→645b96b0-c9e7-4f1d-8755-bab13923c762"
+      ],
+      "branch": "severity",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c02_license",
+      "kind": "actual contradiction (license number)",
+      "workflowRunId": "4e97fb96-1489-4814-a62c-5527320cdbe0",
+      "projectId": "9c6cd512-ac88-4bc6-bae6-4499a3cf413f",
+      "llmCallId": "3981ecc1-8ba9-4eb1-983d-9a722ddc4201",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 19029,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [
+        {
+          "pair": "8b509efb-97af-40a4-8e38-e9b6c22183a4→4253d34d-bd8d-41ab-8915-40c07c9933d9",
+          "severity": "critical"
+        }
+      ],
+      "expectedPairs": [
+        "8b509efb-97af-40a4-8e38-e9b6c22183a4→4253d34d-bd8d-41ab-8915-40c07c9933d9"
+      ],
+      "branch": "severity",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c03_count_same_year",
+      "kind": "changed value (same period)",
+      "workflowRunId": "5a646095-6301-47dc-975e-972854117119",
+      "projectId": "68ce7893-1b49-4fed-970e-f17e684d96e1",
+      "llmCallId": "0a54b3ea-62c2-4955-bd06-157d17dc86f7",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 16763,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [
+        {
+          "pair": "4637a7e5-fb12-4f15-84c0-634abc1afce3→bf2629ca-f858-481a-88f5-54a11c07f9f0",
+          "severity": "high"
+        }
+      ],
+      "expectedPairs": [
+        "4637a7e5-fb12-4f15-84c0-634abc1afce3→bf2629ca-f858-481a-88f5-54a11c07f9f0"
+      ],
+      "branch": "severity",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c04_volume_magnitude",
+      "kind": "changed value (magnitude)",
+      "workflowRunId": "ec955ccf-98df-42ac-9e81-54d2a12fdef1",
+      "projectId": "9c6cd512-ac88-4bc6-bae6-4499a3cf413f",
+      "llmCallId": "863f39b4-7c46-447a-ad8b-7d62ac3cf42b",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 49121,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [
+        {
+          "pair": "c93d6e81-d1af-44d5-85cd-59f68ed40da2→b7160fc0-44bf-4e18-8ce2-d00ab0958ea4",
+          "severity": "high"
+        }
+      ],
+      "expectedPairs": [
+        "c93d6e81-d1af-44d5-85cd-59f68ed40da2→b7160fc0-44bf-4e18-8ce2-d00ab0958ea4"
+      ],
+      "branch": "severity",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c05_licensed_year",
+      "kind": "changed date (contradiction)",
+      "workflowRunId": "06c8cc16-f853-4f15-a3d0-8232384866a8",
+      "projectId": "68ce7893-1b49-4fed-970e-f17e684d96e1",
+      "llmCallId": "2fd1d81a-1095-4b24-9c46-15657500e145",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 25548,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [
+        {
+          "pair": "a0c5ff16-3489-49c2-87b9-c4ea2db4672f→3d63858e-f72b-4fe3-8f9c-784ab095929f",
+          "severity": "critical"
+        }
+      ],
+      "expectedPairs": [
+        "a0c5ff16-3489-49c2-87b9-c4ea2db4672f→3d63858e-f72b-4fe3-8f9c-784ab095929f"
+      ],
+      "branch": "severity",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c06_founded_year",
+      "kind": "changed date (contradiction)",
+      "workflowRunId": "58a4f67d-d3d1-4fa8-8939-88a5b8413cf3",
+      "projectId": "9c6cd512-ac88-4bc6-bae6-4499a3cf413f",
+      "llmCallId": "db818fa2-073e-4c2c-8033-20bb4d12a9f3",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 24821,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [
+        {
+          "pair": "60bd74de-272a-4873-8d7b-b4a0ecaaf242→5a3db45a-5af1-4c12-8c79-f28f54b6d96b",
+          "severity": "critical"
+        }
+      ],
+      "expectedPairs": [
+        "60bd74de-272a-4873-8d7b-b4a0ecaaf242→5a3db45a-5af1-4c12-8c79-f28f54b6d96b"
+      ],
+      "branch": "severity",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c07_rejected_recurring",
+      "kind": "repeated known error (rejected)",
+      "workflowRunId": "a6d78292-30b1-4148-bf18-ad228f7bb844",
+      "projectId": "68ce7893-1b49-4fed-970e-f17e684d96e1",
+      "llmCallId": "d28835d1-945d-45c8-9fa2-0e5d96836697",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 28305,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [
+        {
+          "pair": "97f8908c-19ef-4f80-83b6-3ca4cb963e3a→66047e6f-da13-41c7-8b23-e5376401ec8d",
+          "severity": "critical"
+        }
+      ],
+      "expectedPairs": [
+        "97f8908c-19ef-4f80-83b6-3ca4cb963e3a→66047e6f-da13-41c7-8b23-e5376401ec8d"
+      ],
+      "branch": "severity",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c08_superseded_recurring",
+      "kind": "repeated known error (superseded)",
+      "workflowRunId": "c46ca0ab-3e48-492c-9c9d-762b9c90d7b2",
+      "projectId": "9c6cd512-ac88-4bc6-bae6-4499a3cf413f",
+      "llmCallId": "79a96657-a465-4860-9c88-cfce56b12c27",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 68476,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [
+        {
+          "pair": "d7b51010-4656-4324-82b3-935258b17a24→c01ae51e-bcc7-4c22-8e55-02aab28cb0f0",
+          "severity": "critical"
+        }
+      ],
+      "expectedPairs": [
+        "d7b51010-4656-4324-82b3-935258b17a24→c01ae51e-bcc7-4c22-8e55-02aab28cb0f0"
+      ],
+      "branch": "severity",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c09_market_negation",
+      "kind": "actual contradiction (negation)",
+      "workflowRunId": "78f055bc-8fd7-4582-8639-44f13dd513a3",
+      "projectId": "68ce7893-1b49-4fed-970e-f17e684d96e1",
+      "llmCallId": "f042f808-e588-4f82-ac89-cb6f66d5d7d3",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 45162,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [
+        {
+          "pair": "98ea1991-2921-4cd9-8dfd-b9a7f5b72372→8a51c5e9-8275-4e4a-8abc-8981a4921c75",
+          "severity": "medium"
+        }
+      ],
+      "expectedPairs": [
+        "98ea1991-2921-4cd9-8dfd-b9a7f5b72372→8a51c5e9-8275-4e4a-8abc-8981a4921c75"
+      ],
+      "branch": "severity",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c10_ranking",
+      "kind": "changed value (rank, same list and year)",
+      "workflowRunId": "f7eab681-6bae-4537-9ba4-f23271cd5b0d",
+      "projectId": "9c6cd512-ac88-4bc6-bae6-4499a3cf413f",
+      "llmCallId": "0d461cb0-9ddf-40cc-8d60-cdd99bf6c57b",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 67306,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [
+        {
+          "pair": "da530a69-2060-4aa3-8f48-f3dfb16b2173→38073549-bd02-43c5-89e6-ec5e2d233687",
+          "severity": "high"
+        }
+      ],
+      "expectedPairs": [
+        "da530a69-2060-4aa3-8f48-f3dfb16b2173→38073549-bd02-43c5-89e6-ec5e2d233687"
+      ],
+      "branch": "severity",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c11_buried_award",
+      "kind": "actual contradiction (buried, award level)",
+      "workflowRunId": "1cea3d9a-878b-4924-a2ba-218ae8764db2",
+      "projectId": "68ce7893-1b49-4fed-970e-f17e684d96e1",
+      "llmCallId": "2a868b98-3cda-4a46-b525-2d8008240b0a",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 77654,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [
+        {
+          "pair": "842bf5ba-53c5-4bfe-8c40-8fba56a4e6ec→5e100b51-0662-4aab-85a3-ce827ea7f9b5",
+          "severity": "high"
+        }
+      ],
+      "expectedPairs": [
+        "842bf5ba-53c5-4bfe-8c40-8fba56a4e6ec→5e100b51-0662-4aab-85a3-ce827ea7f9b5"
+      ],
+      "branch": "severity",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c12_clean_page",
+      "kind": "clean page",
+      "workflowRunId": "af3d94e7-7a6e-42fe-b1a8-1229196b6551",
+      "projectId": "9c6cd512-ac88-4bc6-bae6-4499a3cf413f",
+      "llmCallId": "ea4b42a7-cdfa-403b-95a5-ccc68fd802d2",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 49353,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [],
+      "expectedPairs": [],
+      "branch": "no_error",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c13_approved_equal",
+      "kind": "repeated known claim (approved, equal)",
+      "workflowRunId": "d82a975f-2b59-45c4-b270-38a538c4950a",
+      "projectId": "68ce7893-1b49-4fed-970e-f17e684d96e1",
+      "llmCallId": "4bb87d3f-4379-463a-9944-45c2a03126d2",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 28179,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [],
+      "expectedPairs": [],
+      "branch": "no_error",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c14_subset_market",
+      "kind": "compatible detail (subset)",
+      "workflowRunId": "e17f9083-fd32-40cd-9cf5-12c2d3d41749",
+      "projectId": "9c6cd512-ac88-4bc6-bae6-4499a3cf413f",
+      "llmCallId": "c20f3390-99e5-45e5-91fc-3d72ba7deea8",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 35520,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [],
+      "expectedPairs": [],
+      "branch": "no_error",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c15_more_than",
+      "kind": "compatible detail (lower bound)",
+      "workflowRunId": "9105e39a-8dfb-4a73-8838-edf6d4af9261",
+      "projectId": "68ce7893-1b49-4fed-970e-f17e684d96e1",
+      "llmCallId": "329bd014-afda-4d18-864e-dc3da96d2262",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 43215,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [],
+      "expectedPairs": [],
+      "branch": "no_error",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c16_different_period",
+      "kind": "changed value (different period)",
+      "workflowRunId": "7de81eed-7064-479c-a0b0-c46e3671ec42",
+      "projectId": "9c6cd512-ac88-4bc6-bae6-4499a3cf413f",
+      "llmCallId": "6282334a-e785-49e7-be25-b5dff1d67cb6",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 26757,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [],
+      "expectedPairs": [],
+      "branch": "no_error",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c17_asof_only",
+      "kind": "changed date (asOf only, equal value)",
+      "workflowRunId": "9fb9ee0c-2515-41fb-a551-01a6d85578c8",
+      "projectId": "68ce7893-1b49-4fed-970e-f17e684d96e1",
+      "llmCallId": "12b57895-dd01-43f4-9bb4-5eca9b61330e",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 48182,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [],
+      "expectedPairs": [],
+      "branch": "no_error",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c18_same_surname",
+      "kind": "different subject (same surname)",
+      "workflowRunId": "1e1de27d-b71c-4b5d-a971-99f4ffcb92a8",
+      "projectId": "9c6cd512-ac88-4bc6-bae6-4499a3cf413f",
+      "llmCallId": "a98041a3-0207-4006-b9d1-7b3e19cdd386",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 35386,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [],
+      "expectedPairs": [],
+      "branch": "no_error",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c19_team_vs_agent",
+      "kind": "different subject (team vs agent)",
+      "workflowRunId": "809d831c-4874-4d7d-80ad-364554760d32",
+      "projectId": "68ce7893-1b49-4fed-970e-f17e684d96e1",
+      "llmCallId": "a26c289a-7010-4ab7-a0e1-ab3c73bb971f",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 68989,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [],
+      "expectedPairs": [],
+      "branch": "no_error",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    },
+    {
+      "caseId": "c20_omission",
+      "kind": "no contradiction (omission, no counterpart)",
+      "workflowRunId": "9dd79363-c03e-4313-baa4-4c0e79375481",
+      "projectId": "9c6cd512-ac88-4bc6-bae6-4499a3cf413f",
+      "llmCallId": "17198542-51a2-41b4-9ce6-00cb646b09dc",
+      "backend": "ollama",
+      "model": "qwen3:30b",
+      "costMicroUsd": 0,
+      "latencyMs": 45679,
+      "outcome": "succeeded",
+      "error": null,
+      "validation": "passed",
+      "reportedPairs": [],
+      "expectedPairs": [],
+      "branch": "no_error",
+      "falsePositives": [],
+      "falseNegatives": [],
+      "severityOk": true,
+      "correct": true
+    }
+  ],
+  "cases": [
+    {
+      "caseId": "c01_brokerage",
+      "kind": "actual contradiction (brokerage)",
+      "rule": "exclusive relationship: brokerage",
+      "page": [
+        {
+          "claimId": "1d01b4b9-7f49-4b32-8ec2-a96d93597c9b",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado is a sales associate with Keller Williams Hoboken.",
+          "existingStatus": null,
+          "asOf": null
+        },
+        {
+          "claimId": "c86682f9-c519-4b5d-80e9-9f5ab414cb4f",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado serves Hoboken and Weehawken.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "645b96b0-c9e7-4f1d-8755-bab13923c762",
+          "text": "Rosa Delgado is affiliated with Coldwell Banker Realty.",
+          "asOf": null
+        },
+        {
+          "id": "f9accf9f-ff40-47c3-8dde-1f6dd1f68641",
+          "text": "Rosa Delgado serves Hoboken, Weehawken and Union City.",
+          "asOf": null
+        }
+      ],
+      "expected": [
+        "1d01b4b9-7f49-4b32-8ec2-a96d93597c9b→645b96b0-c9e7-4f1d-8755-bab13923c762"
+      ]
+    },
+    {
+      "caseId": "c02_license",
+      "kind": "actual contradiction (license number)",
+      "rule": "exclusive relationship: license number",
+      "page": [
+        {
+          "claimId": "8b509efb-97af-40a4-8e38-e9b6c22183a4",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado holds New Jersey real estate salesperson license 0458812.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "4253d34d-bd8d-41ab-8915-40c07c9933d9",
+          "text": "Rosa Delgado holds New Jersey real estate salesperson license 0451288.",
+          "asOf": null
+        }
+      ],
+      "expected": [
+        "8b509efb-97af-40a4-8e38-e9b6c22183a4→4253d34d-bd8d-41ab-8915-40c07c9933d9"
+      ]
+    },
+    {
+      "caseId": "c03_count_same_year",
+      "kind": "changed value (same period)",
+      "rule": "same subject, measure and period, different quantity",
+      "page": [
+        {
+          "claimId": "4637a7e5-fb12-4f15-84c0-634abc1afce3",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado closed 27 transactions in 2025.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "bf2629ca-f858-481a-88f5-54a11c07f9f0",
+          "text": "Rosa Delgado closed 31 transactions in 2025.",
+          "asOf": null
+        }
+      ],
+      "expected": [
+        "4637a7e5-fb12-4f15-84c0-634abc1afce3→bf2629ca-f858-481a-88f5-54a11c07f9f0"
+      ]
+    },
+    {
+      "caseId": "c04_volume_magnitude",
+      "kind": "changed value (magnitude)",
+      "rule": "same subject, measure and period, different quantity",
+      "page": [
+        {
+          "claimId": "c93d6e81-d1af-44d5-85cd-59f68ed40da2",
+          "subject": "Harborline Homes Team",
+          "originalWording": "Harborline Homes Team recorded $1.9 million in sales volume in 2025.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "b7160fc0-44bf-4e18-8ce2-d00ab0958ea4",
+          "text": "Harborline Homes Team recorded $19 million in sales volume in 2025.",
+          "asOf": null
+        }
+      ],
+      "expected": [
+        "c93d6e81-d1af-44d5-85cd-59f68ed40da2→b7160fc0-44bf-4e18-8ce2-d00ab0958ea4"
+      ]
+    },
+    {
+      "caseId": "c05_licensed_year",
+      "kind": "changed date (contradiction)",
+      "rule": "same event, different date",
+      "page": [
+        {
+          "claimId": "a0c5ff16-3489-49c2-87b9-c4ea2db4672f",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado has been licensed in New Jersey since 2015.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "3d63858e-f72b-4fe3-8f9c-784ab095929f",
+          "text": "Rosa Delgado has been licensed in New Jersey since 2011.",
+          "asOf": null
+        }
+      ],
+      "expected": [
+        "a0c5ff16-3489-49c2-87b9-c4ea2db4672f→3d63858e-f72b-4fe3-8f9c-784ab095929f"
+      ]
+    },
+    {
+      "caseId": "c06_founded_year",
+      "kind": "changed date (contradiction)",
+      "rule": "same event, different date",
+      "page": [
+        {
+          "claimId": "60bd74de-272a-4873-8d7b-b4a0ecaaf242",
+          "subject": "Harborline Homes Team",
+          "originalWording": "Harborline Homes Team was founded in 2007.",
+          "existingStatus": null,
+          "asOf": null
+        },
+        {
+          "claimId": "6306cd42-9992-46b6-8c61-121ab79bfc31",
+          "subject": "Harborline Homes Team",
+          "originalWording": "Harborline Homes Team is based in Hoboken.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "5a3db45a-5af1-4c12-8c79-f28f54b6d96b",
+          "text": "Harborline Homes Team was founded in 2003.",
+          "asOf": null
+        },
+        {
+          "id": "d5fcf455-a33f-498a-8040-1392f78aa47f",
+          "text": "Harborline Homes Team is headquartered in Hoboken.",
+          "asOf": null
+        }
+      ],
+      "expected": [
+        "60bd74de-272a-4873-8d7b-b4a0ecaaf242→5a3db45a-5af1-4c12-8c79-f28f54b6d96b"
+      ]
+    },
+    {
+      "caseId": "c07_rejected_recurring",
+      "kind": "repeated known error (rejected)",
+      "rule": "a rejected claim that disagrees is a recurring error",
+      "page": [
+        {
+          "claimId": "97f8908c-19ef-4f80-83b6-3ca4cb963e3a",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado is an agent with RE/MAX Gold Coast.",
+          "existingStatus": "rejected",
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "66047e6f-da13-41c7-8b23-e5376401ec8d",
+          "text": "Rosa Delgado is affiliated with Coldwell Banker Realty.",
+          "asOf": null
+        }
+      ],
+      "expected": [
+        "97f8908c-19ef-4f80-83b6-3ca4cb963e3a→66047e6f-da13-41c7-8b23-e5376401ec8d"
+      ]
+    },
+    {
+      "caseId": "c08_superseded_recurring",
+      "kind": "repeated known error (superseded)",
+      "rule": "a superseded claim that disagrees is a recurring error",
+      "page": [
+        {
+          "claimId": "d7b51010-4656-4324-82b3-935258b17a24",
+          "subject": "Harborline Homes Team",
+          "originalWording": "Harborline Homes Team is led by Marcus Webb.",
+          "existingStatus": "superseded",
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "c01ae51e-bcc7-4c22-8e55-02aab28cb0f0",
+          "text": "Harborline Homes Team is led by Rosa Delgado.",
+          "asOf": null
+        }
+      ],
+      "expected": [
+        "d7b51010-4656-4324-82b3-935258b17a24→c01ae51e-bcc7-4c22-8e55-02aab28cb0f0"
+      ]
+    },
+    {
+      "caseId": "c09_market_negation",
+      "kind": "actual contradiction (negation)",
+      "rule": "negation of an approved fact",
+      "page": [
+        {
+          "claimId": "98ea1991-2921-4cd9-8dfd-b9a7f5b72372",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado no longer serves Union City.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "8a51c5e9-8275-4e4a-8abc-8981a4921c75",
+          "text": "Rosa Delgado serves Hoboken, Weehawken and Union City.",
+          "asOf": null
+        }
+      ],
+      "expected": [
+        "98ea1991-2921-4cd9-8dfd-b9a7f5b72372→8a51c5e9-8275-4e4a-8abc-8981a4921c75"
+      ]
+    },
+    {
+      "caseId": "c10_ranking",
+      "kind": "changed value (rank, same list and year)",
+      "rule": "different rank, same list and year",
+      "page": [
+        {
+          "claimId": "da530a69-2060-4aa3-8f48-f3dfb16b2173",
+          "subject": "Harborline Homes Team",
+          "originalWording": "RealTrends ranked Harborline Homes Team #22 among New Jersey teams by transaction sides in 2025.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "38073549-bd02-43c5-89e6-ec5e2d233687",
+          "text": "RealTrends ranked Harborline Homes Team #12 among New Jersey teams by transaction sides in 2025.",
+          "asOf": null
+        }
+      ],
+      "expected": [
+        "da530a69-2060-4aa3-8f48-f3dfb16b2173→38073549-bd02-43c5-89e6-ec5e2d233687"
+      ]
+    },
+    {
+      "caseId": "c11_buried_award",
+      "kind": "actual contradiction (buried, award level)",
+      "rule": "different award level, same list and year; the rest compatible",
+      "page": [
+        {
+          "claimId": "c2bd32c9-0f79-4264-89b0-6193728b0feb",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado serves buyers and sellers in Hoboken.",
+          "existingStatus": null,
+          "asOf": null
+        },
+        {
+          "claimId": "f21066a8-bbb4-4d7f-84b0-8ee79e65ee22",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado is affiliated with Coldwell Banker Realty.",
+          "existingStatus": null,
+          "asOf": null
+        },
+        {
+          "claimId": "842bf5ba-53c5-4bfe-8c40-8fba56a4e6ec",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado earned the NJ Realtors Circle of Excellence Platinum award for 2024.",
+          "existingStatus": null,
+          "asOf": null
+        },
+        {
+          "claimId": "badfb6b4-dd08-4071-8d4a-85055d34e12e",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado specializes in brownstone sales.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "4b8adbad-bc08-4854-816f-ddb0c33b1e0e",
+          "text": "Rosa Delgado serves Hoboken, Weehawken and Union City.",
+          "asOf": null
+        },
+        {
+          "id": "aec7b02d-eabb-4994-8a62-b39d3e345131",
+          "text": "Rosa Delgado is affiliated with Coldwell Banker Realty.",
+          "asOf": null
+        },
+        {
+          "id": "5e100b51-0662-4aab-85a3-ce827ea7f9b5",
+          "text": "Rosa Delgado earned the NJ Realtors Circle of Excellence Gold award for 2024.",
+          "asOf": null
+        },
+        {
+          "id": "56be821e-337b-4357-8927-e1ed28534453",
+          "text": "Rosa Delgado specializes in brownstone and condominium sales.",
+          "asOf": null
+        }
+      ],
+      "expected": [
+        "842bf5ba-53c5-4bfe-8c40-8fba56a4e6ec→5e100b51-0662-4aab-85a3-ce827ea7f9b5"
+      ]
+    },
+    {
+      "caseId": "c12_clean_page",
+      "kind": "clean page",
+      "rule": "every observed claim equals an approved fact",
+      "page": [
+        {
+          "claimId": "a8f110a2-d529-4db4-878d-441f52549c35",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado is affiliated with Coldwell Banker Realty.",
+          "existingStatus": null,
+          "asOf": null
+        },
+        {
+          "claimId": "43cf1b1d-42dd-4480-8be4-97b4ac94afb3",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado closed 31 transactions in 2025.",
+          "existingStatus": null,
+          "asOf": null
+        },
+        {
+          "claimId": "f4d8384c-c2ff-4feb-8c9e-1e0ec3d4b5d0",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado serves Hoboken, Weehawken and Union City.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "33de886e-86ad-475a-843f-99be0d6803f6",
+          "text": "Rosa Delgado is affiliated with Coldwell Banker Realty.",
+          "asOf": null
+        },
+        {
+          "id": "2eba5023-7ad3-4064-84ff-a57b9e47b70c",
+          "text": "Rosa Delgado closed 31 transactions in 2025.",
+          "asOf": null
+        },
+        {
+          "id": "877bd205-cd96-4cf1-8ebd-3ac38e2cc1c6",
+          "text": "Rosa Delgado serves Hoboken, Weehawken and Union City.",
+          "asOf": null
+        }
+      ],
+      "expected": []
+    },
+    {
+      "caseId": "c13_approved_equal",
+      "kind": "repeated known claim (approved, equal)",
+      "rule": "an observed claim already held as approved agrees",
+      "page": [
+        {
+          "claimId": "92e65755-42b4-46f2-8f4d-83c536fc004c",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado is affiliated with Coldwell Banker Realty.",
+          "existingStatus": "approved",
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "92e65755-42b4-46f2-8f4d-83c536fc004c",
+          "text": "Rosa Delgado is affiliated with Coldwell Banker Realty.",
+          "asOf": null
+        }
+      ],
+      "expected": []
+    },
+    {
+      "caseId": "c14_subset_market",
+      "kind": "compatible detail (subset)",
+      "rule": "compatible detail",
+      "page": [
+        {
+          "claimId": "f97ab535-6bb4-40c1-8240-e48c9d008b62",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado serves Hoboken.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "3d7b93b0-2084-4ab9-8080-dc3f75d0623d",
+          "text": "Rosa Delgado serves Hoboken, Weehawken and Union City.",
+          "asOf": null
+        }
+      ],
+      "expected": []
+    },
+    {
+      "caseId": "c15_more_than",
+      "kind": "compatible detail (lower bound)",
+      "rule": "compatible detail",
+      "page": [
+        {
+          "claimId": "6bfc4e15-9d91-4cf1-8333-c6f1d42eafcb",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado closed more than 25 transactions in 2025.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "c996be83-bdb0-467c-88ed-2e51649ae1f5",
+          "text": "Rosa Delgado closed 31 transactions in 2025.",
+          "asOf": null
+        }
+      ],
+      "expected": []
+    },
+    {
+      "caseId": "c16_different_period",
+      "kind": "changed value (different period)",
+      "rule": "different periods are history, not conflict",
+      "page": [
+        {
+          "claimId": "332bcf21-2097-415c-81d2-8b4466faad6d",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado closed 24 transactions in 2024.",
+          "existingStatus": null,
+          "asOf": "2024"
+        }
+      ],
+      "approved": [
+        {
+          "id": "37a1a286-fa94-46d4-8990-e8a7048d0628",
+          "text": "Rosa Delgado closed 31 transactions in 2025.",
+          "asOf": "2025"
+        }
+      ],
+      "expected": []
+    },
+    {
+      "caseId": "c17_asof_only",
+      "kind": "changed date (asOf only, equal value)",
+      "rule": "same fact, only the observation date differs",
+      "page": [
+        {
+          "claimId": "89005c47-94ec-4ed7-8499-9f4a7e572fd0",
+          "subject": "Harborline Homes Team",
+          "originalWording": "Harborline Homes Team is led by Rosa Delgado.",
+          "existingStatus": null,
+          "asOf": "2026-08-15"
+        }
+      ],
+      "approved": [
+        {
+          "id": "6f41729f-1096-4985-86a2-0b7e7b956b6e",
+          "text": "Harborline Homes Team is led by Rosa Delgado.",
+          "asOf": "2025-01-10"
+        }
+      ],
+      "expected": []
+    },
+    {
+      "caseId": "c18_same_surname",
+      "kind": "different subject (same surname)",
+      "rule": "different subjects",
+      "page": [
+        {
+          "claimId": "25a4dce7-2308-429e-8db2-54ea1d1ab0ce",
+          "subject": "Daniel Delgado",
+          "originalWording": "Daniel Delgado is an agent with Keller Williams Hoboken.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "1c839e21-b80b-4ec7-8d0e-354d65b2f8cd",
+          "text": "Rosa Delgado is affiliated with Coldwell Banker Realty.",
+          "asOf": null
+        }
+      ],
+      "expected": []
+    },
+    {
+      "caseId": "c19_team_vs_agent",
+      "kind": "different subject (team vs agent)",
+      "rule": "different subjects",
+      "page": [
+        {
+          "claimId": "718a082c-4758-42e2-8b02-23149637035c",
+          "subject": "Harborline Homes Team",
+          "originalWording": "Harborline Homes Team closed 68 transactions in 2025.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "c3780d66-891e-4cda-8f95-ded6328e862f",
+          "text": "Rosa Delgado closed 31 transactions in 2025.",
+          "asOf": null
+        }
+      ],
+      "expected": []
+    },
+    {
+      "caseId": "c20_omission",
+      "kind": "no contradiction (omission, no counterpart)",
+      "rule": "missing information is not a contradiction",
+      "page": [
+        {
+          "claimId": "36d85e48-2906-4c0b-8d2c-ced120e0a9f8",
+          "subject": "Rosa Delgado",
+          "originalWording": "Rosa Delgado speaks English and Spanish.",
+          "existingStatus": null,
+          "asOf": null
+        }
+      ],
+      "approved": [
+        {
+          "id": "370f5453-3a64-49ae-8948-9b7584abf2f9",
+          "text": "Rosa Delgado has been licensed in New Jersey since 2011.",
+          "asOf": null
+        },
+        {
+          "id": "caf74fc6-9baa-4cf8-875c-135c0a6c81e4",
+          "text": "Rosa Delgado is affiliated with Coldwell Banker Realty.",
+          "asOf": null
+        }
+      ],
+      "expected": []
+    }
+  ]
+}

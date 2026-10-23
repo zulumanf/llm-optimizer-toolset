@@ -9,6 +9,7 @@ import {
   TASK_ROUTES,
   TIER_MODELS,
   modelForTask,
+  inferenceTargetForTask,
   type RoutedTask,
 } from "@/lib/ai/routing";
 import { costMicroUsd } from "@/lib/ai/pricing";
@@ -37,7 +38,9 @@ describe("model routing (spec 055)", () => {
   it("every automation prompt key has a route, and every prompt carries its routed model", () => {
     for (const key of AUTOMATION_AGENT_KEYS) {
       expect(TASK_ROUTES[key], `route missing for ${key}`).toBeDefined();
-      expect(AUTOMATION_PROMPTS[key].model).toBe(modelForTask(key));
+      const target = inferenceTargetForTask(key);
+      expect(AUTOMATION_PROMPTS[key].model).toBe(target.model);
+      expect(AUTOMATION_PROMPTS[key].backend).toBe(target.backend);
     }
   });
 

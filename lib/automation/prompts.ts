@@ -13,8 +13,14 @@
  * `lib/automation/nodes/agent.ts`; a prompt and its schema are versioned
  * together, so bumping one means bumping the other.
  */
-import { modelForTask } from "@/lib/ai/routing";
+import { inferenceTargetForTask } from "@/lib/ai/routing";
 import { registerAgentVersions } from "@/lib/workflow/agent-versions";
+import type { InternalInferenceBackend } from "@/lib/ai/internal-inference";
+import {
+  DETECT_CONTRADICTIONS_V2_PREAMBLE,
+  DETECT_CONTRADICTIONS_V2_SYSTEM,
+  DETECT_CONTRADICTIONS_V2_VERSION,
+} from "@/lib/automation/contradictions/contract";
 
 export const AUTOMATION_AGENT_KEYS = [
   "classify_lead",
@@ -47,6 +53,7 @@ export type AutomationAgentKey = (typeof AUTOMATION_AGENT_KEYS)[number];
 
 export interface AutomationPrompt {
   version: string;
+  backend: InternalInferenceBackend;
   model: string;
   system: string;
   userPreamble: string;
@@ -69,6 +76,15 @@ NON-NEGOTIABLE RULES:
 - Express uncertainty in the numeric confidence field. Low confidence is a
   correct answer; a confident guess is not.`;
 
+/**
+ * The final system prompt an automation agent receives: its own text plus the
+ * shared guardrails. Exported so a promotion eval sends exactly what
+ * production would (spec 146).
+ */
+export function withGuardrails(system: string): string {
+  return `${system.trim()}\n${GUARDRAILS}`;
+}
+
 function prompt(
   key: AutomationAgentKey,
   version: string,
@@ -77,10 +93,13 @@ function prompt(
 ): AutomationPrompt {
   // The routing table is the single authority (spec 055): no per-prompt
   // model argument, no frontier default — an unrouted key cannot compile.
+  const target = inferenceTargetForTask(key);
+
   return {
     version,
-    model: modelForTask(key),
-    system: `${system.trim()}\n${GUARDRAILS}`,
+    backend: target.backend,
+    model: target.model,
+    system: withGuardrails(system),
     userPreamble,
   };
 }
@@ -88,17 +107,57 @@ function prompt(
 export const AUTOMATION_PROMPTS: Record<AutomationAgentKey, AutomationPrompt> = {
   classify_lead: prompt(
     "classify_lead",
-    "classify-lead-v1",
-    `You classify inbound leads for an AI-visibility service sold to high-value
-real-estate professionals, teams and brokerages.
+    "classify-lead-v2",
+    `You classify semantic commercial signals for an AI-visibility service sold
+to high-value real-estate professionals, teams and brokerages.
 
-You are given a normalised business profile and the lead's own words. Decide
-account type, market, apparent fit, urgency, budget signal, authority maturity,
-and how much this account would benefit from AI-visibility work.
+The supplied context contains normalized facts. Treat those facts as evidence;
+do not rewrite, replace or invent them.
 
-Score 0-100 on commercial fit for THIS service. Do not score the person.
-"unknown" is the right answer whenever the input does not say.`,
-    "Classify this lead. Return JSON only."
+You do NOT decide identity facts such as market, account type or team size.
+You do NOT calculate a qualification score. Deterministic code owns those jobs.
+
+Classify only these semantic signals:
+
+- estimatedFit:
+  strong = clearly matches this real-estate AI-visibility service;
+  moderate = plausible match but important commercial information is missing;
+  weak = clearly outside the service's target customer/problem;
+  unknown = not enough evidence to judge.
+
+- urgency:
+  immediate = an explicit near-term need such as now, next week or this month;
+  this_quarter = explicitly within the current quarter or roughly 31-90 days;
+  exploratory = explicitly researching, exploring, curious or evaluating;
+  unknown = no timing or intent signal.
+
+- budgetSignal:
+  explicit = a stated amount or explicitly approved budget;
+  implied = willingness or capacity to spend is stated without an amount;
+  none = explicitly says there is no budget;
+  unknown = budget is not discussed.
+
+- authorityMaturity:
+  established = supplied evidence explicitly shows substantial market authority;
+  emerging = supplied evidence explicitly shows some developing authority;
+  minimal = supplied evidence explicitly shows very limited authority;
+  unknown = authority evidence is absent.
+
+- aiVisibilityNeed:
+  high = an explicit AI-visibility problem or clear need is stated;
+  medium = AI visibility is relevant but no strong problem is stated;
+  low = the stated need is clearly unrelated to AI visibility;
+  unknown = there is not enough evidence.
+
+- useCase:
+  a short description supported by the supplied context, otherwise "".
+
+Use "unknown" when evidence is absent. Absence of evidence is not evidence of
+"minimal", "weak", "none", or "low".
+
+recommendedNextStep and reasoning must be grounded only in supplied context.
+Never invent budget, urgency, authority, market facts or business details.`,
+    "Classify the semantic lead signals. Return JSON only."
   ),
 
   draft_outreach: prompt(
@@ -359,14 +418,44 @@ week-to-week movement is noise.`,
 
   summarize_meeting: prompt(
     "summarize_meeting",
-    "summarize-meeting-v1",
+    "summarize-meeting-v3",
     `You turn meeting notes or a transcript into structured decisions, action
 items, open questions and relationship notes.
 
-Attribute an owner only when the notes name one. Do not invent a due date.
-Set containsSensitiveContent to true if the notes include pricing disputes,
-legal matters, personnel issues, client complaints, confidential transaction
-detail, or anything a participant would not want auto-emailed.`,
+FIELD RULES:
+- decisions: include only actual decisions that were made.
+- decisions[].owner: use a person's name ONLY if the notes explicitly say that
+  person owns that decision. Otherwise use the empty string "".
+- actionItems: include only actual tasks someone needs to do.
+- actionItems[].owner: use the named owner only when the notes explicitly assign
+  that action to them. Otherwise use the empty string "".
+- actionItems[].dueDate: copy an explicit due date or relative deadline exactly
+  as stated, such as "Friday" or "tomorrow". If no due date was assigned, use
+  the empty string "". Never output "null", "none", "N/A", "unknown", or an
+  invented date.
+- unresolvedQuestions: preserve explicit open or unresolved questions.
+- relationshipNotes: include only genuine relationship context. Do not move
+  operational facts such as "no due date was set" into relationshipNotes.
+- containsSensitiveContent is a SAFETY GATE.
+  Set it to true if ANY sensitive category appears anywhere in the notes.
+  Sensitive categories include:
+  - any client complaint, dissatisfaction, dispute, accusation, or claim that
+    work was inaccurate, misleading, overstated, incomplete, or wrong;
+  - any pricing, fee, billing, payment, or scope dispute;
+  - any legal matter, legal counsel discussion, or legal dispute;
+  - any personnel or employee issue;
+  - any confidential transaction detail;
+  - anything a participant would not want automatically emailed.
+  A meeting can contain ordinary action items and still be sensitive.
+  When uncertain whether something is sensitive, choose true rather than risking
+  an automatic disclosure.
+- confidence: always provide a number from 0 to 1.
+
+Do not infer ownership from nearby sentences. A person assigned an action is
+not automatically the owner of a separate decision.
+
+Every required field must be present even when its value is an empty array or
+empty string.`,
     "Summarise this meeting. Return JSON only.",
   ),
 
@@ -383,18 +472,115 @@ anything ambiguous — and say why.`,
 
   summarize_support_request: prompt(
     "summarize_support_request",
-    "summarize-support-request-v1",
+    "summarize-support-request-v3",
     `You triage a client support message.
 
-autoResponseAllowed may be true ONLY for: report timing, workflow status,
-approval links, access instructions, published documentation, metric
-definitions, and known integration status.
+The context has two named sources:
+- context.message: the client's inbound message.
+- context.knowledge: approved client facts available for answering it.
 
-It must be false for: strategic advice, pricing, complaints, legal matters,
-privacy matters, attribution disputes, performance guarantees, scope changes,
-and anything touching reputation risk. When it is false, give the escalation
-reason.`,
-    "Triage this support message. Return JSON only."
+Classify ONLY what the client is asking or saying in context.message.
+Do not classify the knowledge packet.
+
+CATEGORY DEFINITIONS:
+
+- report_timing:
+  asks when a report, audit, deliverable, or scheduled report will be ready.
+
+- workflow_status:
+  asks whether work is running, finished, blocked, queued, or in progress.
+
+- approval_request:
+  asks about an approval, approval link, or action needed to approve something.
+
+- access_instructions:
+  asks how to log in, gain access, connect an account, or reach a resource.
+
+- metric_definition:
+  asks what a metric, measurement, score, rate, or reporting term MEANS.
+  Example: "What does recommendation rate mean?" is metric_definition,
+  NOT report_timing.
+
+- integration_status:
+  asks whether a named integration or connected system is connected, active,
+  working, broken, or disconnected.
+
+- strategic_advice:
+  asks what the client should do strategically, including channel allocation,
+  positioning, investment, prioritization, or recommendations.
+
+- pricing:
+  asks about price, fees, retainers, discounts, payment amount, or changing price.
+
+- complaint:
+  expresses dissatisfaction, says something is wrong, reports a service error,
+  or demands correction because the client is unhappy.
+
+- legal:
+  asks for legal interpretation, legal rights, contract interpretation, or
+  legal/compliance advice.
+
+- privacy:
+  asks to disclose, access, share, expose, or use private/confidential data,
+  including information belonging to OTHER CLIENTS.
+  Requests for another client's raw results are privacy, NOT other.
+
+- attribution_dispute:
+  challenges whether our work caused a result, asks for proof of causal credit,
+  disputes attribution, or questions a claimed performance cause.
+  This is NOT integration_status.
+
+- scope_change:
+  asks to add, remove, expand, replace, or materially change contracted work or
+  deliverables.
+
+- other:
+  use only when none of the categories above apply.
+
+CATEGORY PRECEDENCE:
+- A question about the meaning of a metric is metric_definition even if the
+  metric appears in a report.
+- A request for another client's information is privacy.
+- A challenge about whether our work CAUSED a result is attribution_dispute.
+- Do not use "other" when a specific category above applies.
+
+AUTO-RESPONSE POLICY:
+
+autoResponseAllowed may be true ONLY for:
+- report_timing
+- workflow_status
+- approval_request
+- access_instructions
+- metric_definition
+- integration_status
+
+AND only when context.knowledge actually contains the answer.
+
+It must be false for:
+- strategic_advice
+- pricing
+- complaint
+- legal
+- privacy
+- attribution_dispute
+- scope_change
+- performance guarantees
+- reputation risk
+- any question the approved knowledge does not answer
+
+If autoResponseAllowed=true:
+- suggestedResponse must be supported entirely by context.knowledge.
+- escalationReason must be "".
+- Never invent a status, date, link, definition, instruction, or implication.
+- Treat an approved claim as usable unless the supplied context explicitly marks
+  it stale, contradicted, withheld, or otherwise unsafe.
+
+If autoResponseAllowed=false:
+- suggestedResponse must be "".
+- escalationReason must briefly explain why a human must handle it.
+
+Low confidence is preferable to guessing.`,
+    "Triage the client message using only the supplied message and approved knowledge. Return JSON only."
   ),
 
   analyze_renewal_risk: prompt(
@@ -409,16 +595,13 @@ fulfilment operator can actually take.`,
     "Assess renewal risk. Return JSON only.",
   ),
 
+  // Spec 146: the exact v2 text the gold evaluation passed, defined once in
+  // the contract module so production and the evaluator cannot drift.
   detect_contradictions: prompt(
     "detect_contradictions",
-    "detect-contradictions-v1",
-    `You find contradictions within a set of claims about one real-estate
-professional or firm.
-
-A contradiction is two statements that cannot both be true. Differing levels of
-detail, or the same fact stated two ways, are not contradictions. Rate severity
-by how damaging the inconsistency would be if a client or journalist noticed it.`,
-    "Find contradictions. Return JSON only.",
+    DETECT_CONTRADICTIONS_V2_VERSION,
+    DETECT_CONTRADICTIONS_V2_SYSTEM,
+    DETECT_CONTRADICTIONS_V2_PREAMBLE,
   ),
 
   generate_executive_narrative: prompt(

@@ -21,8 +21,14 @@ import { runAgent, type AgentCaller } from "@/lib/ai/agent";
 import { resolve } from "@/lib/automation/nodes/paths";
 import { runModeFor } from "@/lib/automation/testmode";
 import { AUTOMATION_PROMPTS, type AutomationAgentKey } from "@/lib/automation/prompts";
+import {
+  contradictionContextError,
+  contradictionDetectionV2Schema,
+  validateContradictionOutput,
+  type ContradictionContext,
+} from "@/lib/automation/contradictions/contract";
 import { log } from "@/lib/logger";
-import type { NodeHandler, NodeResult } from "@/lib/workflow/types";
+import type { NodeContext, NodeHandler, NodeResult } from "@/lib/workflow/types";
 
 // ---------------------------------------------------------------- schemas
 
@@ -30,16 +36,12 @@ import type { NodeHandler, NodeResult } from "@/lib/workflow/types";
 const confidence = z.number().min(0).max(1);
 
 const leadClassification = z.object({
-  accountType: z.enum(["individual_agent", "team", "brokerage", "developer", "other", "unknown"]),
-  market: z.string().default("unknown"),
-  teamSize: z.enum(["1", "2-10", "11-50", "51-200", "200+", "unknown"]).default("unknown"),
   estimatedFit: z.enum(["strong", "moderate", "weak", "unknown"]),
   useCase: z.string().default(""),
   urgency: z.enum(["immediate", "this_quarter", "exploratory", "unknown"]),
   budgetSignal: z.enum(["explicit", "implied", "none", "unknown"]),
   authorityMaturity: z.enum(["established", "emerging", "minimal", "unknown"]),
   aiVisibilityNeed: z.enum(["high", "medium", "low", "unknown"]),
-  qualificationScore: z.number().min(0).max(100),
   confidence,
   recommendedNextStep: z.string(),
   reasoning: z.string(),
@@ -360,20 +362,6 @@ const renewalRisk = z.object({
   confidence,
 });
 
-const contradictionDetection = z.object({
-  contradictions: z
-    .array(
-      z.object({
-        statementA: z.string(),
-        statementB: z.string(),
-        severity: z.enum(["low", "medium", "high", "critical"]),
-        explanation: z.string(),
-      })
-    )
-    .default([]),
-  confidence,
-});
-
 const executiveNarrative = z.object({
   statements: z
     .array(
@@ -433,7 +421,9 @@ const AGENT_SCHEMAS = {
   draft_meeting_followup: followupDraft,
   summarize_support_request: supportClassification,
   analyze_renewal_risk: renewalRisk,
-  detect_contradictions: contradictionDetection,
+  // Spec 146 v2: `contradictions` is required — an omitted field is a
+  // failure, never a clean profile.
+  detect_contradictions: contradictionDetectionV2Schema,
   generate_executive_narrative: executiveNarrative,
   repurpose_content: repurposedAsset,
   report_prospect_review: reportProspectReview,
@@ -454,6 +444,33 @@ export function implementedAgentKeys(): AutomationAgentKey[] {
   return Object.keys(AGENT_SCHEMAS) as AutomationAgentKey[];
 }
 
+/**
+ * Deterministic checks a LIVE model answer must pass beyond its schema.
+ * `context` is checked before the model is called; `output` after the schema
+ * passes. Any error is terminal — a rejected answer is never read as an empty
+ * one. Test-mode canned outputs never reach a model and keep the schema-only
+ * check (spec 146 §10).
+ */
+interface AgentGuard {
+  context: (context: unknown) => string | null;
+  output: (output: unknown, context: unknown) => string[];
+}
+
+const AGENT_GUARDS: Partial<Record<AutomationAgentKey, AgentGuard>> = {
+  detect_contradictions: {
+    context: contradictionContextError,
+    output: (output, context) => {
+      const result = validateContradictionOutput(output, context as ContradictionContext);
+      return result.ok ? [] : result.errors;
+    },
+  },
+};
+
+/** The guard an agent's live answers pass through, if any. */
+export function agentGuard(key: AutomationAgentKey): AgentGuard | undefined {
+  return AGENT_GUARDS[key];
+}
+
 // ------------------------------------------------------------------ runner
 
 /**
@@ -471,6 +488,76 @@ export function setAgentCallerForTests(caller: AgentCaller | undefined): void {
  * the pinned model with a versioned prompt, validates, and returns the output
  * plus its confidence — which a downstream `ctl.confidence_gate` can route on.
  */
+
+export async function resolveAgentContext(
+  ctx: NodeContext
+): Promise<unknown> {
+  const single =
+    ctx.config.contextPath === undefined
+      ? null
+      : String(ctx.config.contextPath);
+
+  const multiple = ctx.config.contextPaths;
+
+  if (single && multiple !== undefined) {
+    throw new Error(
+      'agent node may use contextPath or contextPaths, not both'
+    );
+  }
+
+  if (multiple !== undefined) {
+    if (
+      multiple === null ||
+      typeof multiple !== "object" ||
+      Array.isArray(multiple)
+    ) {
+      throw new Error(
+        "agent contextPaths must be an object of name -> dotted path"
+      );
+    }
+
+    const resolved: Record<string, unknown> = {};
+
+    for (const [name, rawPath] of Object.entries(
+      multiple as Record<string, unknown>
+    )) {
+      if (
+        typeof rawPath !== "string" ||
+        rawPath.length === 0
+      ) {
+        throw new Error(
+          `agent contextPaths.${name} must be a non-empty dotted path`
+        );
+      }
+
+      resolved[name] = await resolve(ctx, rawPath);
+    }
+
+    return resolved;
+  }
+
+  return single
+    ? await resolve(ctx, single)
+    : ctx.inputs;
+}
+
+/**
+ * The user message an agent node sends: the prompt's preamble, then the
+ * resolved context and parameters as JSON. Exported so a promotion eval sends
+ * exactly what production would (spec 146).
+ */
+export function agentUserMessage(
+  userPreamble: string,
+  context: unknown,
+  parameters: Record<string, unknown>
+): string {
+  return `${userPreamble}\n\n${JSON.stringify(
+    { context: context ?? {}, parameters },
+    null,
+    2
+  )}`;
+}
+
 export function agentNode(key: AutomationAgentKey): NodeHandler {
   return async (ctx): Promise<NodeResult> => {
     const prompt = AUTOMATION_PROMPTS[key];
@@ -505,23 +592,53 @@ export function agentNode(key: AutomationAgentKey): NodeHandler {
     }
 
     // The agent sees exactly what the template hands it, from this run's scope.
-    const contextPath = ctx.config.contextPath === undefined ? null : String(ctx.config.contextPath);
-    const contextData = contextPath ? await resolve(ctx, contextPath) : ctx.inputs;
+    const contextData = await resolveAgentContext(ctx);
     const extra = (ctx.config.params as Record<string, unknown> | undefined) ?? {};
+
+    const guard = AGENT_GUARDS[key];
+    // A run executes the node definitions of the workflow version it started
+    // on, but the handler is current code. A contract-guarded agent therefore
+    // refuses a node pinned to another contract version rather than silently
+    // upgrading an in-flight run (spec 146 §10.4).
+    const pinned = ctx.node.agentVersion;
+    if (guard && pinned !== undefined && pinned !== prompt.version) {
+      return {
+        outcome: "failed_terminal",
+        error: `Node "${ctx.nodeKey}" is pinned to ${pinned}, but this agent now runs ${prompt.version}. Start a new run on the current workflow version.`,
+      };
+    }
+    const contextError = guard?.context(contextData) ?? null;
+    if (contextError) {
+      return { outcome: "failed_terminal", error: contextError };
+    }
 
     try {
       const result = await runAgent({
         agentVersion: prompt.version,
         system: prompt.system,
-        user: `${prompt.userPreamble}\n\n${JSON.stringify(
-          { context: contextData ?? {}, parameters: extra },
-          null,
-          2
-        )}`,
+        user: agentUserMessage(prompt.userPreamble, contextData, extra),
         schema: AGENT_SCHEMAS[key] as z.ZodType<unknown, z.ZodTypeDef, unknown>,
         model: prompt.model,
+        backend: prompt.backend,
         caller: injectedCaller,
       });
+
+      const guardErrors = guard?.output(result.output, contextData) ?? [];
+      if (guardErrors.length > 0) {
+        log("warn", "automation.agent.guard_rejected", {
+          agent: prompt.version,
+          node: ctx.nodeKey,
+          backend: result.backend,
+          model: result.model,
+          errors: guardErrors.slice(0, 5),
+        });
+        return {
+          outcome: "failed_terminal",
+          error: `Agent ${prompt.version} output failed its deterministic guard: ${guardErrors
+            .join("; ")
+            .slice(0, 500)}`,
+        };
+      }
 
       const output = result.output as Record<string, unknown>;
       const observedConfidence =
@@ -531,6 +648,8 @@ export function agentNode(key: AutomationAgentKey): NodeHandler {
         agent: prompt.version,
         node: ctx.nodeKey,
         attempts: result.attempts,
+        backend: result.backend,
+        model: result.model,
         costMicroUsd: result.costMicroUsd,
       });
 

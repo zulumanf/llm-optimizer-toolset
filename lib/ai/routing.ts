@@ -16,6 +16,8 @@
 import { AGENT_MODEL } from "@/lib/ai/agent";
 import { CLASSIFIER_MODEL } from "@/lib/constants";
 import { ClassifiedError } from "@/lib/errors";
+import type { InternalInferenceTarget } from "@/lib/ai/internal-inference";
+import { LOCAL_INTERNAL_TARGETS } from "@/lib/ai/internal/registry";
 
 export const ROUTING_VERSION = "model-routing-v1";
 
@@ -203,4 +205,39 @@ export function modelForTask(task: RoutedTask): string {
     );
   }
   return TIER_MODELS[route.tier];
+}
+
+
+/**
+ * Explicit production migrations to the self-hosted internal inference fleet.
+ *
+ * Tasks appear here only after passing their gold-set promotion gate.
+ * Anything not listed continues on its existing reviewed route until it is
+ * independently evaluated. No silent fallback or bulk migration.
+ */
+export const INTERNAL_TASK_TARGETS: Partial<
+  Record<RoutedTask, InternalInferenceTarget>
+> = {
+  summarize_meeting: LOCAL_INTERNAL_TARGETS.cheap,
+  summarize_support_request: LOCAL_INTERNAL_TARGETS.cheap,
+  knowledge_claim_extraction: LOCAL_INTERNAL_TARGETS.qa,
+  // Spec 146: holdout PASS 2026-10-02 (qwen3:30b, reasoning on by default,
+  // warm p95 41.8 s). The tier stays "frontier": it records the judgment class.
+  detect_contradictions: LOCAL_INTERNAL_TARGETS.reasoning,
+};
+
+export function inferenceTargetForTask(
+  task: RoutedTask
+): InternalInferenceTarget {
+  const migrated = INTERNAL_TASK_TARGETS[task];
+
+  if (migrated) {
+    return migrated;
+  }
+
+  return {
+    backend: "openai",
+    model: modelForTask(task),
+    execution: "paid_api",
+  };
 }

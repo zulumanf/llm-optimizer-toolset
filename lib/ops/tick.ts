@@ -36,6 +36,9 @@ export interface AutomationTickReport {
   assistantTasks: Record<string, unknown>;
   campaignDigest: Record<string, unknown>;
   deliveryQa: Record<string, unknown>;
+  profileChecks: Record<string, unknown>;
+  correctionDrafts: Record<string, unknown>;
+  correctionReconcile: Record<string, unknown>;
 }
 
 /**
@@ -309,6 +312,62 @@ export async function runAutomationTick(
     campaignDigest = { error: "campaign digest failed; dispatch was unaffected" };
   }
 
+  // Profile checks (spec 147): the safety net for the bounded dispatcher —
+  // releases queued checks within the global inference limit and fails any
+  // release that never became a run. Isolated: never fails dispatch.
+  const { profileCorrectionsEnabled } = await import("@/lib/profile-corrections/constants");
+  const correctionsOn = profileCorrectionsEnabled();
+  let profileChecks: Record<string, unknown> = { skipped: correctionsOn ? true : "disabled" };
+  if (correctionsOn) {
+    try {
+      const { dispatchProfileChecks } = await import("@/lib/profile-corrections/dispatch");
+      const report = await dispatchProfileChecks();
+      profileChecks = {
+        limit: report.limit,
+        released: report.released.length,
+        abandoned: report.abandoned.length,
+      };
+    } catch (err) {
+      log("error", "cron.profile_checks_failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      profileChecks = { error: "profile check dispatch failed; dispatch was unaffected" };
+    }
+  }
+
+  // Correction drafts (spec 147 slice 4): start one drafting attempt per
+  // ready_to_draft request — new ones and any backlog alike — and settle
+  // stalled attempts. Isolated: never fails dispatch.
+  let correctionDrafts: Record<string, unknown> = { skipped: correctionsOn ? true : "disabled" };
+  if (correctionsOn) {
+    try {
+      const { dispatchCorrectionDrafts } = await import("@/lib/profile-corrections/drafting");
+      const report = await dispatchCorrectionDrafts();
+      correctionDrafts = { started: report.started.length, settled: report.settled.length, failed: report.failed.length };
+    } catch (err) {
+      log("error", "cron.correction_drafts_failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      correctionDrafts = { error: "correction draft dispatch failed; dispatch was unaffected" };
+    }
+  }
+
+  // Profile-correction reconciliation (spec 147 §8.4): close or reopen
+  // requests whose awaited run can never progress. Database-only; isolated.
+  let correctionReconcile: Record<string, unknown> = { skipped: correctionsOn ? true : "disabled" };
+  if (correctionsOn) {
+    try {
+      const { reconcileProfileCorrections } = await import("@/lib/profile-corrections/reconcile");
+      const report = await reconcileProfileCorrections();
+      correctionReconcile = { moved: report.moved.length, anomalies: report.anomalies.length };
+    } catch (err) {
+      log("error", "cron.correction_reconcile_failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      correctionReconcile = { error: "correction reconciliation failed; dispatch was unaffected" };
+    }
+  }
+
   if ((events.deadLettered as number) > 0 || triggers.failed > 0 || (health.failing as number) > 0) {
     log("warn", "cron.automation.degraded", {
       deadLettered: events.deadLettered,
@@ -345,6 +404,9 @@ export async function runAutomationTick(
     assistantTasks,
     campaignDigest,
     deliveryQa,
+    profileChecks,
+    correctionDrafts,
+    correctionReconcile,
   };
 }
 
@@ -364,7 +426,25 @@ export async function runWeeklyKick(): Promise<Record<string, unknown>> {
   const cycles = await startWeeklyCycles();
   const briefs = await startWeeklyBriefs();
   const baselines = await runWeeklyBaselines();
-  return { ...cycles, briefs, baselines };
+  // Spec 147: queue this week's checks of every live client's confirmed
+  // profile URLs. Idempotent per ISO week; isolated so a failure here never
+  // stops the cycles, briefs or baselines above.
+  let profileChecks: Record<string, unknown>;
+  const { profileCorrectionsEnabled } = await import("@/lib/profile-corrections/constants");
+  if (!profileCorrectionsEnabled()) {
+    profileChecks = { skipped: "disabled" };
+  } else {
+    try {
+      const { startWeeklyProfileChecks } = await import("@/lib/profile-corrections/start");
+      profileChecks = { ...(await startWeeklyProfileChecks()) };
+    } catch (err) {
+      log("error", "cron.weekly_profile_checks_failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      profileChecks = { error: "weekly profile checks failed" };
+    }
+  }
+  return { ...cycles, briefs, baselines, profileChecks };
 }
 
 interface BaselineConfig {

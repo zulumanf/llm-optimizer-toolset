@@ -386,3 +386,75 @@ UPDATE/DELETE, not schema evolution (migration 011 set the precedent).
 | `context_packet_templates` | mirrored from the code registry, the way `agent_definitions` already is | mutable |
 
 Packet access is written to `audit_log`. There is no second audit system.
+
+## Profile checks — migration 120 (spec 147)
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `profile_check_requests` | The durable queue of profile checks. Each row is one client-confirmed profile URL for one window: `week:<ISO Monday>` for the schedule, `day:<UTC date>` for an operator. | Status moves through `queued → released`, `skipped` or `failed`. Deletes are forbidden. |
+
+**Row identity.** `run_idempotency_key` is exactly the engine key of the run a release starts. The bounded dispatcher (`lib/profile-corrections/dispatch.ts`) joins it to `workflow_runs.idempotency_key` for two purposes:
+- to count inference-active work across all clients;
+- to fail releases that never became a run.
+
+**Indexes.**
+- Uniqueness: one `check` per (project, context item, window), and one `recheck` per correction.
+- Scan order: `(status, not_before, created_at)`, which is the dispatcher's oldest-first scan.
+
+**Pending.** `correction_request_id` gains its foreign key when `profile_correction_requests` is created in a later slice.
+
+## Profile correction requests — migration 121 (spec 147)
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `profile_correction_requests` | One deterministic correction request per run (`profile-correction-request-v1`). Each row holds the request, its `request_sha256`, the before-page artifact, the evidence packet and the decision. | Request content is **immutable** (enforced by a trigger). Only the lifecycle columns change (`status`, decision, close). Deletes are forbidden. |
+
+**Constraints and triggers.**
+- **One open request per profile.** A partial unique index on `(project_id, profile_url)` covers the open statuses: `awaiting_approval`, `approved`, `destination_required`, `ready_to_draft` and `sent`.
+- **Tenant consistency.** A `before insert` trigger requires the run, the before-page artifact, the evidence packet, the queue row and the context item all to belong to the request's project.
+
+The same migration adds the foreign key from `profile_check_requests.correction_request_id`.
+
+## Profile correction destinations — migration 122 (spec 147)
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `profile_correction_destinations` | Where one profile's corrections go. Each row records the `kind` (`client_editor` or `publisher`), the recipient, the email, the operator's basis, and `source_url` (required for a publisher). | Append-plus-archive: only `archived_at`, `archived_by` and `archive_reason` may be set, once. Deletes are forbidden. |
+
+**Constraints.** One active row per `(project_id, profile_url)`.
+
+**Changes to `profile_correction_requests`:**
+- It gains `destination_id`. A trigger requires that destination to be active and to belong to the request's own project and profile.
+- It gains `routed_at`.
+- It gains the open status `awaiting_external_approval`. The open-request unique index was rebuilt to include it.
+
+## Profile correction drafts — migration 123 (spec 147)
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `profile_correction_drafts` | One row per Gmail drafting attempt for a correction request. It records the destination, the request hash, the rendered email and its hash, the From address, the connection, the Gmail draft, message and thread ids, and the send confirmation. | Identity is write-once. The email and the Gmail ids are set once. Status moves through `pending → creating → created → sent`, or ends in `failed`, `superseded`, `discarded`, `orphaned` or `outcome_unknown`. Deletes are forbidden. |
+
+**Constraints.**
+- One active attempt (`pending`, `creating` or `created`) per request.
+- A tenant trigger requires the request and the destination to be in the attempt's project.
+
+**Changes to `profile_correction_requests`:**
+- It gains `active_draft_id`, `sent_at`, `sent_confirmed_by`, `sent_approval_id`, `sent_draft_id` and `recheck_due_at`.
+- It gains the open status `awaiting_send_confirmation`.
+- A `sent` request must carry its send time, its draft and its recheck due time.
+
+## Profile correction rechecks — migration 124 (spec 147)
+
+| Table | Purpose | Mutability |
+|---|---|---|
+| `profile_correction_rechecks` | The one recheck result of a sent correction. It records: <ul><li>the page state (`unreachable`, `unchanged`, `previously_seen` or `changed`) and the HTTP status;</li><li>the before and after `source_artifacts`, and the evidence packet;</li><li>the classification of every item, plus any new contradictions;</li><li>the overall result (`corrected`, `still_incorrect`, `needs_review` or `unreachable`);</li><li>`result_version` and `result_sha256`.</li></ul> | **IMMUTABLE**: update and delete are forbidden. |
+
+**Constraints.**
+- One result per correction.
+- A tenant trigger requires the correction, the profile URL, the request hash and the before artifact to match the correction request, and the run, the after artifact, the packet and the queue row to belong to the same project.
+
+**Changes to `profile_correction_requests`:** it gains `recheck_run_id`, `recheck_result_id` and `rechecked_at`. The status moves from `sent` to the result.
+
+## Profile correction draft retries — migration 125 (spec 147)
+
+`profile_correction_drafts` gains three columns: `retry_of` (the uncertain attempt this attempt retries), `retry_requested_by` and `retry_reason`. All three are set together. A unique partial index on `retry_of` allows exactly one retry per uncertain attempt, so an operator-confirmed retry is idempotent at the database.

@@ -72,6 +72,12 @@ const HUMAN_NODES: Record<string, HumanNodeSpec> = {
     defaultArtifactPath: "invoice",
     requiresEvidence: true,
   },
+  confirm_profile_correction_sent: {
+    question:
+      "Did you send exactly this Gmail draft, unchanged, to this recipient? Creating the draft did not send it.",
+    defaultArtifactPath: "draft",
+    requiresEvidence: true,
+  },
   approve_external_submission: {
     question: "Should this submission go to the external body on the client's behalf?",
     defaultArtifactPath: "submission",

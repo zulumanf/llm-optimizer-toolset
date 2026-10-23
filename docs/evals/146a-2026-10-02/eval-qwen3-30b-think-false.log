@@ -1,0 +1,167 @@
+MODEL=qwen3:30b think=false split=holdout fixtures=16 reps=3 dataset=d4c0ec530bf4
+{"ts":"2026-10-02T21:37:11.252Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1716}
+warm-up (ungraded): 1804 ms
+{"ts":"2026-10-02T21:37:12.974Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1667}
+[s1_brokerage_change #1] [critical] PASS 1672ms pairs=0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689
+{"ts":"2026-10-02T21:37:14.663Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1683}
+[s1_brokerage_change #2] [critical] PASS 1688ms pairs=0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689
+{"ts":"2026-10-02T21:37:16.353Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1686}
+[s1_brokerage_change #3] [critical] PASS 1690ms pairs=0ec79540-0173-4fa3-884c-e097ce4d9dd8→086c186f-c164-47ec-89b7-14f82cd3b689
+{"ts":"2026-10-02T21:37:18.679Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":2322}
+[s2_license_number #1] [critical] PASS 2325ms pairs=ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a
+{"ts":"2026-10-02T21:37:20.557Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1874}
+[s2_license_number #2] [critical] PASS 1879ms pairs=ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a
+{"ts":"2026-10-02T21:37:22.473Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1911}
+[s2_license_number #3] [critical] PASS 1916ms pairs=ee553325-d226-4e21-81b0-ce27394bfb4b→e7edb4f1-4e08-46b2-8f19-bbbf183dad8a
+{"ts":"2026-10-02T21:37:26.540Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":4063}
+[s3_same_period_count #1] [critical] FAIL 4067ms pairs=11885c4c-9f01-494b-8356-bdacb898e0a4→fbc99dcd-a799-4358-8c3d-7105d42afc35|ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60","approvedClaimId":"5fd887ad-685f-4ae0-8dcb-36477e0b1e6a","statementA":"Perez Realty Group closed 40 homes in 2025.","statementB":"Perez Realty Group closed 42 homes in 2025.","severity":"high","explanation":"The number of homes closed in 2025 cannot be both 40 and 42."},{"observedClaimId":"11885c4c-9f01-494b-8356-bdacb898e0a4","approvedClaimId":"fbc99dcd-a799-4358-8c3d-7105d42afc35","statementA":"Perez Realty Group serves Jersey City.","statementB":"Perez Realty Group serves Jersey City and Hoboken.","severity":"medium","explanation":"Serving only Jersey City contradicts serving both Jersey City and Hoboken."}],"confidence":0.95}
+{"ts":"2026-10-02T21:37:29.843Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":3297}
+[s3_same_period_count #2] [critical] FAIL 3302ms pairs=11885c4c-9f01-494b-8356-bdacb898e0a4→fbc99dcd-a799-4358-8c3d-7105d42afc35|ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60","approvedClaimId":"5fd887ad-685f-4ae0-8dcb-36477e0b1e6a","statementA":"Perez Realty Group closed 40 homes in 2025.","statementB":"Perez Realty Group closed 42 homes in 2025.","severity":"high","explanation":"The number of homes closed in 2025 cannot be both 40 and 42."},{"observedClaimId":"11885c4c-9f01-494b-8356-bdacb898e0a4","approvedClaimId":"fbc99dcd-a799-4358-8c3d-7105d42afc35","statementA":"Perez Realty Group serves Jersey City.","statementB":"Perez Realty Group serves Jersey City and Hoboken.","severity":"medium","explanation":"Serving only Jersey City contradicts serving both Jersey City and Hoboken."}],"confidence":0.95}
+{"ts":"2026-10-02T21:37:33.122Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":3274}
+[s3_same_period_count #3] [critical] FAIL 3279ms pairs=11885c4c-9f01-494b-8356-bdacb898e0a4→fbc99dcd-a799-4358-8c3d-7105d42afc35|ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60→5fd887ad-685f-4ae0-8dcb-36477e0b1e6a
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"ba6efd7e-4a30-4ef0-8e09-d9dbf194bf60","approvedClaimId":"5fd887ad-685f-4ae0-8dcb-36477e0b1e6a","statementA":"Perez Realty Group closed 40 homes in 2025.","statementB":"Perez Realty Group closed 42 homes in 2025.","severity":"high","explanation":"The number of homes closed in 2025 cannot be both 40 and 42."},{"observedClaimId":"11885c4c-9f01-494b-8356-bdacb898e0a4","approvedClaimId":"fbc99dcd-a799-4358-8c3d-7105d42afc35","statementA":"Perez Realty Group serves Jersey City.","statementB":"Perez Realty Group serves Jersey City and Hoboken.","severity":"medium","explanation":"Serving only Jersey City contradicts serving both Jersey City and Hoboken."}],"confidence":0.95}
+{"ts":"2026-10-02T21:37:35.551Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":2425}
+[t2_ranking_position #1] PASS 2428ms pairs=b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927
+{"ts":"2026-10-02T21:37:37.517Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1963}
+[t2_ranking_position #2] PASS 1966ms pairs=b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927
+{"ts":"2026-10-02T21:37:39.505Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1984}
+[t2_ranking_position #3] PASS 1988ms pairs=b6560c90-5dfb-4dd5-8b6a-cabfdee24e7c→1a6812a5-c655-4fe7-8e23-ba6926e60927
+{"ts":"2026-10-02T21:37:41.672Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":2163}
+[n1_subset_market #1] [critical] FAIL 2166ms pairs=c2a23ee2-03e4-4ecf-882f-3840eaad57cc→7ddeb1de-b3c6-471e-8f43-ba2d88bed3ca
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"c2a23ee2-03e4-4ecf-882f-3840eaad57cc","approvedClaimId":"7ddeb1de-b3c6-471e-8f43-ba2d88bed3ca","statementA":"Perez Realty Group serves Jersey City.","statementB":"Perez Realty Group serves Jersey City and Hoboken.","severity":"medium","explanation":"The observed claim states only Jersey City, while the approved fact includes both Jersey City and Hoboken, making them incompatible as the approved fact is more specific and the observed claim omits Hoboken."}],"confidence":0.9}
+{"ts":"2026-10-02T21:37:43.436Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1761}
+[n1_subset_market #2] [critical] FAIL 1764ms pairs=c2a23ee2-03e4-4ecf-882f-3840eaad57cc→7ddeb1de-b3c6-471e-8f43-ba2d88bed3ca
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"c2a23ee2-03e4-4ecf-882f-3840eaad57cc","approvedClaimId":"7ddeb1de-b3c6-471e-8f43-ba2d88bed3ca","statementA":"Perez Realty Group serves Jersey City.","statementB":"Perez Realty Group serves Jersey City and Hoboken.","severity":"medium","explanation":"The observed claim states only Jersey City, while the approved fact includes both Jersey City and Hoboken, making them incompatible as the approved fact is more specific and the observed claim omits Hoboken."}],"confidence":0.9}
+{"ts":"2026-10-02T21:37:45.200Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1760}
+[n1_subset_market #3] [critical] FAIL 1764ms pairs=c2a23ee2-03e4-4ecf-882f-3840eaad57cc→7ddeb1de-b3c6-471e-8f43-ba2d88bed3ca
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"c2a23ee2-03e4-4ecf-882f-3840eaad57cc","approvedClaimId":"7ddeb1de-b3c6-471e-8f43-ba2d88bed3ca","statementA":"Perez Realty Group serves Jersey City.","statementB":"Perez Realty Group serves Jersey City and Hoboken.","severity":"medium","explanation":"The observed claim states only Jersey City, while the approved fact includes both Jersey City and Hoboken, making them incompatible as the approved fact is more specific and the observed claim omits Hoboken."}],"confidence":0.9}
+{"ts":"2026-10-02T21:37:49.180Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":3977}
+[n2_over_forty #1] [critical] FAIL 3980ms pairs=6862c334-adb7-4877-8740-7c4f09826e2f→864dcb0b-24e2-4ce8-8236-f78975c4ef7f
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"6862c334-adb7-4877-8740-7c4f09826e2f","approvedClaimId":"864dcb0b-24e2-4ce8-8236-f78975c4ef7f","statementA":"Perez Realty Group closed over 40 homes in 2025.","statementB":"Perez Realty Group closed 42 homes in 2025.","severity":"medium","explanation":"The observed claim states 'over 40 homes' while the approved fact states '42 homes', which are incompatible as 'over 40' could include 41, 42, etc., but the approved fact specifies an exact number that is within the range of 'over 40' but the contradiction arises because the approved fact is exact and the observed claim is a range that includes the exact number, but the approved fact is the reference and the observed claim is not a subset but a different representation of the same fact. However, the task states that 'compatible detail or a subset' is not a contradiction, so this should not be a contradiction. Wait, let me re-read the task: 'compatible detail or a subset (Jersey City versus Jersey City and Hoboken; \"over 40\" versus 42; buyer representation versus buyer and seller representation)' — so 'over 40' versus 42 is explicitly listed as not a contradiction. Therefore, this is not a contradiction."}],"confidence":0.9}
+{"ts":"2026-10-02T21:37:52.765Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":3582}
+[n2_over_forty #2] [critical] FAIL 3585ms pairs=6862c334-adb7-4877-8740-7c4f09826e2f→864dcb0b-24e2-4ce8-8236-f78975c4ef7f
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"6862c334-adb7-4877-8740-7c4f09826e2f","approvedClaimId":"864dcb0b-24e2-4ce8-8236-f78975c4ef7f","statementA":"Perez Realty Group closed over 40 homes in 2025.","statementB":"Perez Realty Group closed 42 homes in 2025.","severity":"medium","explanation":"The observed claim states 'over 40 homes' while the approved fact states '42 homes', which are incompatible as 'over 40' could include 41, 42, etc., but the approved fact specifies an exact number that is within the range of 'over 40' but the contradiction arises because the approved fact is exact and the observed claim is a range that includes the exact number, but the approved fact is the reference and the observed claim is not a subset but a different representation of the same fact. However, the task states that 'compatible detail or a subset' is not a contradiction, so this should not be a contradiction. Wait, let me re-read the task: 'compatible detail or a subset (Jersey City versus Jersey City and Hoboken; \"over 40\" versus 42; buyer representation versus buyer and seller representation)' — so 'over 40' versus 42 is explicitly listed as not a contradiction. Therefore, this is not a contradiction."}],"confidence":0.9}
+{"ts":"2026-10-02T21:37:56.398Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":3629}
+[n2_over_forty #3] [critical] FAIL 3633ms pairs=6862c334-adb7-4877-8740-7c4f09826e2f→864dcb0b-24e2-4ce8-8236-f78975c4ef7f
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"6862c334-adb7-4877-8740-7c4f09826e2f","approvedClaimId":"864dcb0b-24e2-4ce8-8236-f78975c4ef7f","statementA":"Perez Realty Group closed over 40 homes in 2025.","statementB":"Perez Realty Group closed 42 homes in 2025.","severity":"medium","explanation":"The observed claim states 'over 40 homes' while the approved fact states '42 homes', which are incompatible as 'over 40' could include 41, 42, etc., but the approved fact specifies an exact number that is within the range of 'over 40' but the contradiction arises because the approved fact is exact and the observed claim is a range that includes the exact number, but the approved fact is the reference and the observed claim is not a subset but a different representation of the same fact. However, the task states that 'compatible detail or a subset' is not a contradiction, so this should not be a contradiction. Wait, let me re-read the task: 'compatible detail or a subset (Jersey City versus Jersey City and Hoboken; \"over 40\" versus 42; buyer representation versus buyer and seller representation)' — so 'over 40' versus 42 is explicitly listed as not a contradiction. Therefore, this is not a contradiction."}],"confidence":0.9}
+{"ts":"2026-10-02T21:37:58.739Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":2337}
+[p1_different_years #1] [critical] FAIL 2341ms pairs=6946fbe8-db97-44b7-8cc6-4b22aab75e15→7c85c57c-fec1-4090-8460-67def2dacadd
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"6946fbe8-db97-44b7-8cc6-4b22aab75e15","approvedClaimId":"7c85c57c-fec1-4090-8460-67def2dacadd","statementA":"Perez Realty Group closed 38 homes in 2024.","statementB":"Perez Realty Group closed 42 homes in 2025.","severity":"high","explanation":"The observed claim states 38 homes closed in 2024, while the approved fact states 42 homes closed in 2025, which are different years and quantities, making them incompatible."}],"confidence":0.9}
+{"ts":"2026-10-02T21:38:00.688Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1945}
+[p1_different_years #2] [critical] FAIL 1948ms pairs=6946fbe8-db97-44b7-8cc6-4b22aab75e15→7c85c57c-fec1-4090-8460-67def2dacadd
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"6946fbe8-db97-44b7-8cc6-4b22aab75e15","approvedClaimId":"7c85c57c-fec1-4090-8460-67def2dacadd","statementA":"Perez Realty Group closed 38 homes in 2024.","statementB":"Perez Realty Group closed 42 homes in 2025.","severity":"high","explanation":"The observed claim states 38 homes closed in 2024, while the approved fact states 42 homes closed in 2025, which are different years and quantities, making them incompatible."}],"confidence":0.9}
+{"ts":"2026-10-02T21:38:02.714Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":2023}
+[p1_different_years #3] [critical] FAIL 2026ms pairs=6946fbe8-db97-44b7-8cc6-4b22aab75e15→7c85c57c-fec1-4090-8460-67def2dacadd
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"6946fbe8-db97-44b7-8cc6-4b22aab75e15","approvedClaimId":"7c85c57c-fec1-4090-8460-67def2dacadd","statementA":"Perez Realty Group closed 38 homes in 2024.","statementB":"Perez Realty Group closed 42 homes in 2025.","severity":"high","explanation":"The observed claim states 38 homes closed in 2024, while the approved fact states 42 homes closed in 2025, which are different years and quantities, making them incompatible."}],"confidence":0.9}
+{"ts":"2026-10-02T21:38:04.986Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":2269}
+[d1_licensed_year #1] PASS 2272ms pairs=b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d
+{"ts":"2026-10-02T21:38:06.834Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1845}
+[d1_licensed_year #2] PASS 1849ms pairs=b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d
+{"ts":"2026-10-02T21:38:08.725Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1888}
+[d1_licensed_year #3] PASS 1890ms pairs=b0ec0a41-4523-4d1e-8030-dae464901c32→6db9caf8-a386-4688-8028-1d8c3d9a5b9d
+{"ts":"2026-10-02T21:38:10.866Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":2137}
+[f1_same_surname #1] [critical] FAIL 2140ms pairs=18c6031b-e4cd-4843-8b60-9195cc80a216→305f6bf8-6a4d-4aa2-816e-ff84e1326963
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"18c6031b-e4cd-4843-8b60-9195cc80a216","approvedClaimId":"305f6bf8-6a4d-4aa2-816e-ff84e1326963","statementA":"Luis Perez is an agent with Douglas Elliman.","statementB":"Ana Perez is affiliated with Compass.","severity":"medium","explanation":"The observed claim refers to Luis Perez with Douglas Elliman, while the approved fact refers to Ana Perez with Compass, indicating different individuals."}],"confidence":0.9}
+{"ts":"2026-10-02T21:38:12.595Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1725}
+[f1_same_surname #2] [critical] FAIL 1728ms pairs=18c6031b-e4cd-4843-8b60-9195cc80a216→305f6bf8-6a4d-4aa2-816e-ff84e1326963
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"18c6031b-e4cd-4843-8b60-9195cc80a216","approvedClaimId":"305f6bf8-6a4d-4aa2-816e-ff84e1326963","statementA":"Luis Perez is an agent with Douglas Elliman.","statementB":"Ana Perez is affiliated with Compass.","severity":"medium","explanation":"The observed claim refers to Luis Perez with Douglas Elliman, while the approved fact refers to Ana Perez with Compass, indicating different individuals."}],"confidence":0.9}
+{"ts":"2026-10-02T21:38:14.336Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1737}
+[f1_same_surname #3] [critical] FAIL 1741ms pairs=18c6031b-e4cd-4843-8b60-9195cc80a216→305f6bf8-6a4d-4aa2-816e-ff84e1326963
+  FAIL [CRITICAL] reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"18c6031b-e4cd-4843-8b60-9195cc80a216","approvedClaimId":"305f6bf8-6a4d-4aa2-816e-ff84e1326963","statementA":"Luis Perez is an agent with Douglas Elliman.","statementB":"Ana Perez is affiliated with Compass.","severity":"medium","explanation":"The observed claim refers to Luis Perez with Douglas Elliman, while the approved fact refers to Ana Perez with Compass, indicating different individuals."}],"confidence":0.9}
+{"ts":"2026-10-02T21:38:16.444Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":2105}
+[r1_rejected_recurring #1] [critical] PASS 2108ms pairs=e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8
+{"ts":"2026-10-02T21:38:18.153Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1706}
+[r1_rejected_recurring #2] [critical] PASS 1709ms pairs=e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8
+{"ts":"2026-10-02T21:38:19.881Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1725}
+[r1_rejected_recurring #3] [critical] PASS 1728ms pairs=e34493f2-688d-4687-8633-f32b3e7c206b→c26c221e-877c-4b6f-8150-6e21ea015ed8
+{"ts":"2026-10-02T21:38:20.527Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":643}
+[r2_approved_equal #1] PASS 645ms pairs=(none)
+{"ts":"2026-10-02T21:38:20.755Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":225}
+[r2_approved_equal #2] PASS 228ms pairs=(none)
+{"ts":"2026-10-02T21:38:20.972Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":214}
+[r2_approved_equal #3] PASS 217ms pairs=(none)
+{"ts":"2026-10-02T21:38:21.706Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":731}
+[o1_no_counterpart #1] [critical] PASS 734ms pairs=(none)
+{"ts":"2026-10-02T21:38:21.930Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":221}
+[o1_no_counterpart #2] [critical] PASS 225ms pairs=(none)
+{"ts":"2026-10-02T21:38:22.149Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":216}
+[o1_no_counterpart #3] [critical] PASS 218ms pairs=(none)
+{"ts":"2026-10-02T21:38:22.900Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":748}
+[w1_observed_disagree #1] [critical] PASS 751ms pairs=(none)
+{"ts":"2026-10-02T21:38:23.123Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":221}
+[w1_observed_disagree #2] [critical] PASS 223ms pairs=(none)
+{"ts":"2026-10-02T21:38:23.338Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":212}
+[w1_observed_disagree #3] [critical] PASS 214ms pairs=(none)
+{"ts":"2026-10-02T21:38:25.428Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":2086}
+[a1_prompt_injection #1] [critical] PASS 2089ms pairs=a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b
+{"ts":"2026-10-02T21:38:27.061Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1630}
+[a1_prompt_injection #2] [critical] PASS 1633ms pairs=a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b
+{"ts":"2026-10-02T21:38:28.724Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1661}
+[a1_prompt_injection #3] [critical] PASS 1663ms pairs=a50718c3-2688-4d67-8f39-19cbe590c99b→2bb5ef4c-b428-4efd-8eef-1d9d93a31c2b
+{"ts":"2026-10-02T21:38:30.710Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1983}
+[a3_stale_approved #1] FAIL 1986ms pairs=60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6
+  FAIL severity of 60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6 in [low,medium]
+  output: {"contradictions":[{"observedClaimId":"60c5045d-b877-48da-8ed6-8c21eaee29af","approvedClaimId":"c08a433b-1ab6-433c-8d45-1bc2bb1b80d6","statementA":"Perez Realty Group has nine agents.","statementB":"Perez Realty Group has six agents.","severity":"high","explanation":"The number of agents in Perez Realty Group cannot be both nine and six."}],"confidence":0.95}
+{"ts":"2026-10-02T21:38:32.273Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1560}
+[a3_stale_approved #2] FAIL 1563ms pairs=60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6
+  FAIL severity of 60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6 in [low,medium]
+  output: {"contradictions":[{"observedClaimId":"60c5045d-b877-48da-8ed6-8c21eaee29af","approvedClaimId":"c08a433b-1ab6-433c-8d45-1bc2bb1b80d6","statementA":"Perez Realty Group has nine agents.","statementB":"Perez Realty Group has six agents.","severity":"high","explanation":"The number of agents in Perez Realty Group cannot be both nine and six."}],"confidence":0.95}
+{"ts":"2026-10-02T21:38:33.855Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":1579}
+[a3_stale_approved #3] FAIL 1581ms pairs=60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6
+  FAIL severity of 60c5045d-b877-48da-8ed6-8c21eaee29af→c08a433b-1ab6-433c-8d45-1bc2bb1b80d6 in [low,medium]
+  output: {"contradictions":[{"observedClaimId":"60c5045d-b877-48da-8ed6-8c21eaee29af","approvedClaimId":"c08a433b-1ab6-433c-8d45-1bc2bb1b80d6","statementA":"Perez Realty Group has nine agents.","statementB":"Perez Realty Group has six agents.","severity":"high","explanation":"The number of agents in Perez Realty Group cannot be both nine and six."}],"confidence":0.95}
+{"ts":"2026-10-02T21:38:40.128Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":6269}
+[a5_buried #1] FAIL 6277ms pairs=55f41ea7-4d88-4469-8423-34208ea004ee→9dd3eff4-64fd-404b-8a64-912e11e4295b|5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65
+  FAIL reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"5c7ae73d-d7f6-4825-88a0-bc0c4e99c617","approvedClaimId":"78700a90-b217-4f31-8dfb-eb4ca1a96a65","statementA":"Perez Realty Group is headquartered in Hoboken.","statementB":"Perez Realty Group is headquartered in Jersey City.","severity":"critical","explanation":"The approved fact states the headquarters is in Jersey City, while the observed claim states it is in Hoboken, which are different locations."},{"observedClaimId":"55f41ea7-4d88-4469-8423-34208ea004ee","approvedClaimId":"9dd3eff4-64fd-404b-8a64-912e11e4295b","statementA":"Perez Realty Group closed over 40 homes in 2025.","statementB":"Perez Realty Group closed 42 homes in 2025.","severity":"high","explanation":"The observed claim states 'over 40' homes, which is a range (41+), while the approved fact states exactly 42 homes, which is a specific number that falls within the range but is not the same as 'over 40' in a strict sense."}],"confidence":0.9}
+{"ts":"2026-10-02T21:38:44.347Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":4211}
+[a5_buried #2] FAIL 4214ms pairs=55f41ea7-4d88-4469-8423-34208ea004ee→9dd3eff4-64fd-404b-8a64-912e11e4295b|5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65
+  FAIL reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"5c7ae73d-d7f6-4825-88a0-bc0c4e99c617","approvedClaimId":"78700a90-b217-4f31-8dfb-eb4ca1a96a65","statementA":"Perez Realty Group is headquartered in Hoboken.","statementB":"Perez Realty Group is headquartered in Jersey City.","severity":"critical","explanation":"The approved fact states the headquarters is in Jersey City, while the observed claim states it is in Hoboken, which are different locations."},{"observedClaimId":"55f41ea7-4d88-4469-8423-34208ea004ee","approvedClaimId":"9dd3eff4-64fd-404b-8a64-912e11e4295b","statementA":"Perez Realty Group closed over 40 homes in 2025.","statementB":"Perez Realty Group closed 42 homes in 2025.","severity":"high","explanation":"The observed claim states 'over 40' homes, which is a range (41+), while the approved fact states exactly 42 homes, which is a specific number that falls within the range but is not the same as 'over 40' in a strict sense."}],"confidence":0.9}
+{"ts":"2026-10-02T21:38:48.528Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":4177}
+[a5_buried #3] FAIL 4180ms pairs=55f41ea7-4d88-4469-8423-34208ea004ee→9dd3eff4-64fd-404b-8a64-912e11e4295b|5c7ae73d-d7f6-4825-88a0-bc0c4e99c617→78700a90-b217-4f31-8dfb-eb4ca1a96a65
+  FAIL reports no pair outside the expected set
+  output: {"contradictions":[{"observedClaimId":"5c7ae73d-d7f6-4825-88a0-bc0c4e99c617","approvedClaimId":"78700a90-b217-4f31-8dfb-eb4ca1a96a65","statementA":"Perez Realty Group is headquartered in Hoboken.","statementB":"Perez Realty Group is headquartered in Jersey City.","severity":"critical","explanation":"The approved fact states the headquarters is in Jersey City, while the observed claim states it is in Hoboken, which are different locations."},{"observedClaimId":"55f41ea7-4d88-4469-8423-34208ea004ee","approvedClaimId":"9dd3eff4-64fd-404b-8a64-912e11e4295b","statementA":"Perez Realty Group closed over 40 homes in 2025.","statementB":"Perez Realty Group closed 42 homes in 2025.","severity":"high","explanation":"The observed claim states 'over 40' homes, which is a range (41+), while the approved fact states exactly 42 homes, which is a specific number that falls within the range but is not the same as 'over 40' in a strict sense."}],"confidence":0.9}
+
+================================
+DETECT CONTRADICTIONS v2 EVAL — qwen3:30b (holdout)
+================================
+runs: 48
+critical runs: 18/33
+critical checks: 45/60
+overall: 120/141 = 85.1%
+recall: 100.0%
+false-positive rate: 37.5%
+severity accuracy: 88.9%
+consistency: 100.0% (critical 100.0%)
+failures: runtime 0, schema 0, validation 0 (total 0)
+latency p50: 1879 ms, p95: 4180 ms
+external API cost: $0 (backend ollama, OPENAI_API_KEY unset)
+gate criticalPassRate (1): FAIL
+gate overallPassRate (0.95): FAIL
+gate recall (0.95): PASS
+gate maxFalsePositiveRate (0.05): FAIL
+gate maxFailures (0): PASS
+gate criticalConsistency (1): PASS
+gate overallConsistency (0.95): PASS
+gate severityAccuracy (0.9): FAIL
+gate maxP95LatencyMs (60000): PASS
+RESULT: FAIL
+EVAL_SUMMARY {"model":"qwen3:30b","think":false,"split":"holdout","warmUpMs":1804,"runs":48,"criticalRunsPassed":18,"criticalRuns":33,"criticalChecksPassed":45,"criticalChecks":60,"checksPassed":120,"checks":141,"overallPassRate":0.851063829787234,"recall":1,"falsePositiveRate":0.375,"severityAccuracy":0.8888888888888888,"consistency":1,"criticalConsistency":1,"failures":{"runtime":0,"schema":0,"validation":0},"p50LatencyMs":1879,"p95LatencyMs":4180,"gates":{"criticalPassRate":false,"overallPassRate":false,"recall":true,"maxFalsePositiveRate":false,"maxFailures":true,"criticalConsistency":true,"overallConsistency":true,"severityAccuracy":false,"maxP95LatencyMs":true},"passed":false}

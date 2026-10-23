@@ -128,6 +128,73 @@ const queryRecords: NodeHandler = async (ctx): Promise<NodeResult> => {
 
 // ------------------------------------------------------------ normalisation
 
+export function normalizeLeadInput(source: Record<string, unknown>) {
+  const cleanText = (value: unknown): string =>
+    typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+
+  const leadId = cleanText(source.leadId);
+  const email =
+    typeof source.email === "string"
+      ? normalizeEmail(source.email)
+      : "";
+  const website =
+    typeof source.website === "string" && source.website.trim().length > 0
+      ? normalizeUrl(source.website)
+      : "";
+
+  const normalized = {
+    leadId,
+    name: cleanText(source.name),
+    email,
+    company: cleanText(source.company),
+    website,
+    market: cleanText(source.market),
+    specialization: cleanText(source.specialization),
+    sourceChannel:
+      cleanText(source.sourceChannel) || "unknown",
+  };
+
+  return {
+    normalized,
+    present: {
+      leadId: normalized.leadId.length > 0,
+      name: normalized.name.length > 0,
+      email: normalized.email.length > 0,
+      company: normalized.company.length > 0,
+      website: normalized.website.length > 0,
+      market: normalized.market.length > 0,
+      specialization:
+        normalized.specialization.length > 0,
+      sourceChannel:
+        normalized.sourceChannel !== "unknown",
+    },
+  };
+}
+
+const normalizeLead: NodeHandler = async (
+  ctx
+): Promise<NodeResult> => {
+  const path = String(ctx.config.sourcePath ?? "");
+  const source = await resolveObject(ctx, path);
+  const result = normalizeLeadInput(source);
+
+  if (
+    !result.normalized.leadId ||
+    !result.normalized.email
+  ) {
+    return {
+      outcome: "failed_terminal",
+      error:
+        "normalize_lead requires both leadId and email",
+    };
+  }
+
+  return {
+    outcome: "succeeded",
+    output: result,
+  };
+};
+
 const normalizeEntity: NodeHandler = async (ctx): Promise<NodeResult> => {
   const path = String(ctx.config.sourcePath ?? "");
   const source = await resolveObject(ctx, path);
@@ -355,6 +422,247 @@ const classifyThreshold: NodeHandler = async (ctx): Promise<NodeResult> => {
   return {
     outcome: "succeeded",
     output: { band: band?.label ?? "unclassified", value, bands },
+  };
+};
+
+
+export const LEAD_QUALIFICATION_SCORE_VERSION =
+  "lead-qualification-v1.0";
+
+export interface LeadQualificationSignals {
+  estimatedFit: "strong" | "moderate" | "weak" | "unknown";
+  urgency: "immediate" | "this_quarter" | "exploratory" | "unknown";
+  budgetSignal: "explicit" | "implied" | "none" | "unknown";
+  authorityMaturity: "established" | "emerging" | "minimal" | "unknown";
+  aiVisibilityNeed: "high" | "medium" | "low" | "unknown";
+  confidence: number;
+}
+
+export const LEAD_QUALIFICATION_WEIGHTS = {
+  estimatedFit: 30,
+  aiVisibilityNeed: 25,
+  budgetSignal: 20,
+  urgency: 15,
+  authorityMaturity: 10,
+} as const;
+
+const LEAD_FIT_FACTORS: Record<
+  LeadQualificationSignals["estimatedFit"],
+  number
+> = {
+  strong: 1,
+  moderate: 0.6,
+  weak: 0.2,
+  unknown: 0,
+};
+
+const LEAD_NEED_FACTORS: Record<
+  LeadQualificationSignals["aiVisibilityNeed"],
+  number
+> = {
+  high: 1,
+  medium: 0.6,
+  low: 0.2,
+  unknown: 0,
+};
+
+const LEAD_BUDGET_FACTORS: Record<
+  LeadQualificationSignals["budgetSignal"],
+  number
+> = {
+  explicit: 1,
+  implied: 0.6,
+  none: 0,
+  unknown: 0,
+};
+
+const LEAD_URGENCY_FACTORS: Record<
+  LeadQualificationSignals["urgency"],
+  number
+> = {
+  immediate: 1,
+  this_quarter: 0.7,
+  exploratory: 0.3,
+  unknown: 0,
+};
+
+const LEAD_AUTHORITY_FACTORS: Record<
+  LeadQualificationSignals["authorityMaturity"],
+  number
+> = {
+  established: 1,
+  emerging: 0.6,
+  minimal: 0.2,
+  unknown: 0,
+};
+
+export function calculateLeadQualification(input: {
+  leadId: string;
+  signals: LeadQualificationSignals;
+}) {
+  const component = (
+    value: string,
+    factor: number,
+    weight: number,
+    evidencePath: string
+  ) => ({
+    value,
+    factor,
+    weight,
+    contribution: factor * weight,
+    evidencePath,
+  });
+
+  const components = {
+    estimatedFit: component(
+      input.signals.estimatedFit,
+      LEAD_FIT_FACTORS[input.signals.estimatedFit],
+      LEAD_QUALIFICATION_WEIGHTS.estimatedFit,
+      "classify.estimatedFit"
+    ),
+    aiVisibilityNeed: component(
+      input.signals.aiVisibilityNeed,
+      LEAD_NEED_FACTORS[input.signals.aiVisibilityNeed],
+      LEAD_QUALIFICATION_WEIGHTS.aiVisibilityNeed,
+      "classify.aiVisibilityNeed"
+    ),
+    budgetSignal: component(
+      input.signals.budgetSignal,
+      LEAD_BUDGET_FACTORS[input.signals.budgetSignal],
+      LEAD_QUALIFICATION_WEIGHTS.budgetSignal,
+      "classify.budgetSignal"
+    ),
+    urgency: component(
+      input.signals.urgency,
+      LEAD_URGENCY_FACTORS[input.signals.urgency],
+      LEAD_QUALIFICATION_WEIGHTS.urgency,
+      "classify.urgency"
+    ),
+    authorityMaturity: component(
+      input.signals.authorityMaturity,
+      LEAD_AUTHORITY_FACTORS[input.signals.authorityMaturity],
+      LEAD_QUALIFICATION_WEIGHTS.authorityMaturity,
+      "classify.authorityMaturity"
+    ),
+  };
+
+  const score = Math.round(
+    Object.values(components).reduce(
+      (sum, item) => sum + item.contribution,
+      0
+    )
+  );
+
+  return {
+    leadId: input.leadId,
+    score,
+    confidence: input.signals.confidence,
+    version: LEAD_QUALIFICATION_SCORE_VERSION,
+    components,
+  };
+}
+
+function leadSignal<T extends string>(
+  value: unknown,
+  allowed: readonly T[]
+): T | null {
+  if (
+    typeof value === "string" &&
+    (allowed as readonly string[]).includes(value)
+  ) {
+    return value as T;
+  }
+
+  return null;
+}
+
+const calculateLeadQualificationNode: NodeHandler = async (
+  ctx
+): Promise<NodeResult> => {
+  const facts = await resolveObject(
+    ctx,
+    String(ctx.config.factsPath ?? "")
+  );
+
+  const rawSignals = await resolveObject(
+    ctx,
+    String(ctx.config.signalsPath ?? "")
+  );
+
+  const leadId =
+    typeof facts.leadId === "string"
+      ? facts.leadId
+      : "";
+
+  if (!leadId) {
+    return {
+      outcome: "failed_terminal",
+      error:
+        "calculate_lead_qualification requires a normalized leadId",
+    };
+  }
+
+  const estimatedFit = leadSignal(
+    rawSignals.estimatedFit,
+    ["strong", "moderate", "weak", "unknown"] as const
+  );
+
+  const urgency = leadSignal(
+    rawSignals.urgency,
+    ["immediate", "this_quarter", "exploratory", "unknown"] as const
+  );
+
+  const budgetSignal = leadSignal(
+    rawSignals.budgetSignal,
+    ["explicit", "implied", "none", "unknown"] as const
+  );
+
+  const authorityMaturity = leadSignal(
+    rawSignals.authorityMaturity,
+    ["established", "emerging", "minimal", "unknown"] as const
+  );
+
+  const aiVisibilityNeed = leadSignal(
+    rawSignals.aiVisibilityNeed,
+    ["high", "medium", "low", "unknown"] as const
+  );
+
+  const confidence =
+    typeof rawSignals.confidence === "number" &&
+    Number.isFinite(rawSignals.confidence) &&
+    rawSignals.confidence >= 0 &&
+    rawSignals.confidence <= 1
+      ? rawSignals.confidence
+      : null;
+
+  if (
+    estimatedFit === null ||
+    urgency === null ||
+    budgetSignal === null ||
+    authorityMaturity === null ||
+    aiVisibilityNeed === null ||
+    confidence === null
+  ) {
+    return {
+      outcome: "failed_terminal",
+      error:
+        "calculate_lead_qualification received invalid semantic signals",
+    };
+  }
+
+  return {
+    outcome: "succeeded",
+    output: calculateLeadQualification({
+      leadId,
+      signals: {
+        estimatedFit,
+        urgency,
+        budgetSignal,
+        authorityMaturity,
+        aiVisibilityNeed,
+        confidence,
+      },
+    }),
   };
 };
 
@@ -670,12 +978,14 @@ export const deterministicNodes: Record<string, NodeHandler> = {
   "det.fetch_record": fetchRecord,
   "det.query_records": queryRecords,
   "det.normalize_entity": normalizeEntity,
+  "det.normalize_lead": normalizeLead,
   "det.map_fields": mapFields,
   "det.deduplicate": deduplicate,
   "det.calculate_metric": calculateMetric,
   "det.compare_periods": comparePeriods,
   "det.classify_threshold": classifyThreshold,
   "det.calculate_priority": calculatePriority,
+  "det.calculate_lead_qualification": calculateLeadQualificationNode,
   "det.calculate_attribution": calculateAttribution,
   "det.hash_artifact": hashArtifact,
   "det.validate_hash": validateHash,

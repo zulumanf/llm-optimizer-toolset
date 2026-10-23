@@ -128,6 +128,37 @@ const profileError = z.object({
   findingId: z.string().optional(),
   severity: z.enum(["low", "medium", "high", "critical"]).default("medium"),
 });
+// Spec 147: one released profile_check_requests row. The project is the
+// event's own projectId (tenant key); the payload names the queue row and the
+// client-confirmed profile it checks.
+const profileCheckRequested = z.object({
+  checkRequestId: z.string().uuid(),
+  contextItemId: z.string().uuid(),
+  profileUrl: z.string().url().refine((u) => /^https?:\/\//i.test(u), "http(s) only"),
+  origin: z.enum(["operator", "schedule"]),
+  window: z.string().min(1),
+});
+
+// Spec 147 slice 3: an approved correction routed to a publisher waits for
+// the external-submission approval before it may be drafted.
+const profileExternalApproval = z.object({
+  correctionRequestId: z.string().uuid(),
+  destinationId: z.string().uuid(),
+});
+
+// Spec 147 slice 4: one drafting attempt for a ready_to_draft correction.
+const profileCorrectionReady = z.object({
+  correctionRequestId: z.string().uuid(),
+  destinationId: z.string().uuid(),
+  draftAttemptId: z.string().uuid(),
+});
+
+// Spec 147 slice 5: a sent correction's 14-day recheck is due.
+const profileRecheckDue = z.object({
+  correctionRequestId: z.string().uuid(),
+  checkRequestId: z.string().uuid(),
+  profileUrl: z.string().url().refine((u) => /^https?:\/\//i.test(u), "http(s) only"),
+});
 
 // --------------------------------------------------------- transaction
 const transactionRef = z.object({
@@ -142,6 +173,10 @@ const leadCreated = z.object({
   email: z.string(),
   company: z.string().default(""),
   sourceChannel: z.string().default("unknown"),
+  name: z.string().default(""),
+  website: z.string().default(""),
+  market: z.string().default(""),
+  specialization: z.string().default(""),
 });
 const leadQualified = z.object({
   leadId: z.string(),
@@ -291,12 +326,32 @@ export const EVENT_CATALOG: EventTypeDefinition[] = [
   def("profile.error_detected", "A public profile contradicts approved facts", profileError),
   def("profile.correction_approved", "A correction was approved for submission", profileError),
   def("profile.correction_verified", "A correction was verified live", profileError),
+  def(
+    "profile.recheck_due",
+    "A sent profile correction is due for its live recheck",
+    profileRecheckDue
+  ),
+  def(
+    "profile.correction_ready",
+    "An approved, routed profile correction is ready for a Gmail draft attempt",
+    profileCorrectionReady
+  ),
+  def(
+    "profile.external_approval_required",
+    "An approved profile correction is routed to a publisher and needs external-submission approval",
+    profileExternalApproval
+  ),
+  def(
+    "profile.check_requested",
+    "A check of a client-confirmed profile URL was released from the queue",
+    profileCheckRequested
+  ),
 
   def("transaction.created", "A transaction was recorded", transactionRef),
   def("transaction.verified", "A transaction was verified against evidence", transactionRef),
 
-  def("lead.created", "An inbound lead arrived", leadCreated),
-  def("lead.qualified", "A lead passed qualification", leadQualified),
+  def("lead.created", "An inbound lead arrived", leadCreated, false),
+  def("lead.qualified", "A lead passed qualification", leadQualified, false),
   def("lead.ai_discovery_reported", "A lead self-reported discovering the client via an AI assistant", leadAiDiscovery),
 
   def("opportunity.created", "A CRM opportunity was created", opportunityRef),

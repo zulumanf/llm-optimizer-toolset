@@ -46,6 +46,7 @@ describe.skipIf(!TEST_URL)("llm call ledger (integration)", () => {
     `;
     expect(row).toBeDefined();
     expect(row!.model).toBe(CLASSIFIER_MODEL);
+    expect(row!.backend).toBe("openai");
     expect(row!.purpose).toBe("ledger_test");
     expect(row!.success).toBe(true);
     expect(Number(row!.attempts)).toBe(1);

@@ -1,0 +1,70 @@
+route: {"backend":"ollama","model":"qwen3:30b","execution":"local"}
+prompt: version=detect-contradictions-v2 backend=ollama model=qwen3:30b
+{"ts":"2026-10-03T00:59:05.756Z","level":"info","event":"workflow.version.published","key":"reputation_profile_correction_v1","version":1,"nodes":16,"edges":16}
+workflow reputation_profile_correction_v1 v1: compare pinned to detect-contradictions-v2, contextPaths {"approvedFacts":"approved_facts","observedClaims":"canonical_extract.claims"}
+{"ts":"2026-10-03T00:59:36.948Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":31139}
+{"ts":"2026-10-03T00:59:36.978Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+warm-up (ungraded): 31200 ms outcome=succeeded
+{"ts":"2026-10-03T01:00:04.151Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":27154}
+{"ts":"2026-10-03T01:00:04.157Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[01] c01_brokerage run=4e0ff0df-99e8-47db-a7ab-89c0a370c55b ollama/qwen3:30b 27170ms outcome=succeeded validation=passed branch=severity pairs=1d01b4b9-7f49-4b32-8ec2-a96d93597c9b→645b96b0-c9e7-4f1d-8755-bab13923c762:critical cost=0 CORRECT
+{"ts":"2026-10-03T01:00:23.187Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":19014}
+{"ts":"2026-10-03T01:00:23.192Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[02] c02_license run=4e97fb96-1489-4814-a62c-5527320cdbe0 ollama/qwen3:30b 19029ms outcome=succeeded validation=passed branch=severity pairs=8b509efb-97af-40a4-8e38-e9b6c22183a4→4253d34d-bd8d-41ab-8915-40c07c9933d9:critical cost=0 CORRECT
+{"ts":"2026-10-03T01:00:39.957Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":16753}
+{"ts":"2026-10-03T01:00:39.962Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[03] c03_count_same_year run=5a646095-6301-47dc-975e-972854117119 ollama/qwen3:30b 16763ms outcome=succeeded validation=passed branch=severity pairs=4637a7e5-fb12-4f15-84c0-634abc1afce3→bf2629ca-f858-481a-88f5-54a11c07f9f0:high cost=0 CORRECT
+{"ts":"2026-10-03T01:01:29.067Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":49085}
+{"ts":"2026-10-03T01:01:29.091Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[04] c04_volume_magnitude run=ec955ccf-98df-42ac-9e81-54d2a12fdef1 ollama/qwen3:30b 49121ms outcome=succeeded validation=passed branch=severity pairs=c93d6e81-d1af-44d5-85cd-59f68ed40da2→b7160fc0-44bf-4e18-8ce2-d00ab0958ea4:high cost=0 CORRECT
+{"ts":"2026-10-03T01:01:54.646Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":25532}
+{"ts":"2026-10-03T01:01:54.652Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[05] c05_licensed_year run=06c8cc16-f853-4f15-a3d0-8232384866a8 ollama/qwen3:30b 25548ms outcome=succeeded validation=passed branch=severity pairs=a0c5ff16-3489-49c2-87b9-c4ea2db4672f→3d63858e-f72b-4fe3-8f9c-784ab095929f:critical cost=0 CORRECT
+{"ts":"2026-10-03T01:02:19.476Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":24807}
+{"ts":"2026-10-03T01:02:19.481Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[06] c06_founded_year run=58a4f67d-d3d1-4fa8-8939-88a5b8413cf3 ollama/qwen3:30b 24821ms outcome=succeeded validation=passed branch=severity pairs=60bd74de-272a-4873-8d7b-b4a0ecaaf242→5a3db45a-5af1-4c12-8c79-f28f54b6d96b:critical cost=0 CORRECT
+{"ts":"2026-10-03T01:02:47.787Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":28290}
+{"ts":"2026-10-03T01:02:47.792Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[07] c07_rejected_recurring run=a6d78292-30b1-4148-bf18-ad228f7bb844 ollama/qwen3:30b 28305ms outcome=succeeded validation=passed branch=severity pairs=97f8908c-19ef-4f80-83b6-3ca4cb963e3a→66047e6f-da13-41c7-8b23-e5376401ec8d:critical cost=0 CORRECT
+{"ts":"2026-10-03T01:03:56.244Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":68435}
+{"ts":"2026-10-03T01:03:56.275Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[08] c08_superseded_recurring run=c46ca0ab-3e48-492c-9c9d-762b9c90d7b2 ollama/qwen3:30b 68476ms outcome=succeeded validation=passed branch=severity pairs=d7b51010-4656-4324-82b3-935258b17a24→c01ae51e-bcc7-4c22-8e55-02aab28cb0f0:critical cost=0 CORRECT
+{"ts":"2026-10-03T01:04:41.420Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":45119}
+{"ts":"2026-10-03T01:04:41.452Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[09] c09_market_negation run=78f055bc-8fd7-4582-8639-44f13dd513a3 ollama/qwen3:30b 45162ms outcome=succeeded validation=passed branch=severity pairs=98ea1991-2921-4cd9-8dfd-b9a7f5b72372→8a51c5e9-8275-4e4a-8abc-8981a4921c75:medium cost=0 CORRECT
+{"ts":"2026-10-03T01:05:48.738Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":67249}
+{"ts":"2026-10-03T01:05:48.772Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[10] c10_ranking run=f7eab681-6bae-4537-9ba4-f23271cd5b0d ollama/qwen3:30b 67306ms outcome=succeeded validation=passed branch=severity pairs=da530a69-2060-4aa3-8f48-f3dfb16b2173→38073549-bd02-43c5-89e6-ec5e2d233687:high cost=0 CORRECT
+{"ts":"2026-10-03T01:07:06.415Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":77612}
+{"ts":"2026-10-03T01:07:06.443Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[11] c11_buried_award run=1cea3d9a-878b-4924-a2ba-218ae8764db2 ollama/qwen3:30b 77654ms outcome=succeeded validation=passed branch=severity pairs=842bf5ba-53c5-4bfe-8c40-8fba56a4e6ec→5e100b51-0662-4aab-85a3-ce827ea7f9b5:high cost=0 CORRECT
+{"ts":"2026-10-03T01:07:55.791Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":49308}
+{"ts":"2026-10-03T01:07:55.826Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[12] c12_clean_page run=af3d94e7-7a6e-42fe-b1a8-1229196b6551 ollama/qwen3:30b 49353ms outcome=succeeded validation=passed branch=no_error pairs=(none) cost=0 CORRECT
+{"ts":"2026-10-03T01:08:24.022Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":28161}
+{"ts":"2026-10-03T01:08:24.026Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[13] c13_approved_equal run=d82a975f-2b59-45c4-b270-38a538c4950a ollama/qwen3:30b 28179ms outcome=succeeded validation=passed branch=no_error pairs=(none) cost=0 CORRECT
+{"ts":"2026-10-03T01:08:59.523Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":35479}
+{"ts":"2026-10-03T01:08:59.556Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[14] c14_subset_market run=e17f9083-fd32-40cd-9cf5-12c2d3d41749 ollama/qwen3:30b 35520ms outcome=succeeded validation=passed branch=no_error pairs=(none) cost=0 CORRECT
+{"ts":"2026-10-03T01:09:42.752Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":43172}
+{"ts":"2026-10-03T01:09:42.785Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[15] c15_more_than run=9105e39a-8dfb-4a73-8838-edf6d4af9261 ollama/qwen3:30b 43215ms outcome=succeeded validation=passed branch=no_error pairs=(none) cost=0 CORRECT
+{"ts":"2026-10-03T01:10:09.549Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":26743}
+{"ts":"2026-10-03T01:10:09.557Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[16] c16_different_period run=7de81eed-7064-479c-a0b0-c46e3671ec42 ollama/qwen3:30b 26757ms outcome=succeeded validation=passed branch=no_error pairs=(none) cost=0 CORRECT
+{"ts":"2026-10-03T01:10:57.667Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":48081}
+{"ts":"2026-10-03T01:10:57.744Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[17] c17_asof_only run=9fb9ee0c-2515-41fb-a551-01a6d85578c8 ollama/qwen3:30b 48182ms outcome=succeeded validation=passed branch=no_error pairs=(none) cost=0 CORRECT
+{"ts":"2026-10-03T01:11:33.123Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":35329}
+{"ts":"2026-10-03T01:11:33.162Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[18] c18_same_surname run=1e1de27d-b71c-4b5d-a971-99f4ffcb92a8 ollama/qwen3:30b 35386ms outcome=succeeded validation=passed branch=no_error pairs=(none) cost=0 CORRECT
+{"ts":"2026-10-03T01:12:42.127Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":68922}
+{"ts":"2026-10-03T01:12:42.175Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[19] c19_team_vs_agent run=809d831c-4874-4d7d-80ad-364554760d32 ollama/qwen3:30b 68989ms outcome=succeeded validation=passed branch=no_error pairs=(none) cost=0 CORRECT
+{"ts":"2026-10-03T01:13:27.875Z","level":"info","event":"agent.run","agent":"detect-contradictions-v2","backend":"ollama","model":"qwen3:30b","attempts":1,"costMicroUsd":0,"durationMs":45535}
+{"ts":"2026-10-03T01:13:27.937Z","level":"info","event":"automation.agent","agent":"detect-contradictions-v2","node":"compare","attempts":1,"backend":"ollama","model":"qwen3:30b","costMicroUsd":0}
+[20] c20_omission run=9dd79363-c03e-4313-baa4-4c0e79375481 ollama/qwen3:30b 45679ms outcome=succeeded validation=passed branch=no_error pairs=(none) cost=0 CORRECT
+
+CANARY_SUMMARY {"stopReason":null,"runsCompleted":20,"correct":20,"falsePositives":0,"falseNegatives":0,"validatorFailures":0,"runtimeFailures":0,"p50LatencyMs":35520,"p95LatencyMs":68989,"maxLatencyMs":77654,"warmUpMs":31200,"ledger":[{"backend":"ollama","model":"qwen3:30b","costMicroUsd":0,"calls":20,"allSuccess":true}]}
+exit=0

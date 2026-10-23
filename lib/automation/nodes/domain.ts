@@ -26,6 +26,8 @@ import {
   type OutreachClaim,
 } from "@/lib/outreach/sequences";
 import { runModeFor } from "@/lib/automation/testmode";
+import { extractCanonicalProfileClaims } from "@/lib/automation/nodes/claim-extraction";
+import { profileCorrectionNodes } from "@/lib/automation/nodes/profile-correction";
 import { prepareAuditRefreshCandidates } from "@/lib/prospects/refresh";
 import type { NodeHandler, NodeResult } from "@/lib/workflow/types";
 
@@ -948,6 +950,8 @@ const hashMessage: NodeHandler = async (ctx): Promise<NodeResult> => {
 export const domainNodes: Record<string, NodeHandler> = {
   "dom.prepare_audit_refresh": prepareAuditRefresh,
   "dom.build_evidence_packet": buildPacket,
+  "dom.extract_canonical_claims": extractCanonicalProfileClaims,
+  ...profileCorrectionNodes,
   "dom.build_prospect_evidence": buildProspectEvidence,
   "dom.start_outreach_sequence": startSequence,
   "dom.draft_outreach_message": draftMessage,

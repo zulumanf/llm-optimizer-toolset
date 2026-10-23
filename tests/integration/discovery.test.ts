@@ -105,7 +105,7 @@ describe.skipIf(!TEST_URL)("external source discovery (integration)", () => {
       object: "Jersey City",
       originalWording: "Harbour Line Group opened a second office in Jersey City in 2025.",
       normalizedWording: "Harbour Line Group opened a second office in Jersey City in 2025.",
-      category: "operations",
+      category: "market",
       asOf: null,
       value: null,
       locator: "",

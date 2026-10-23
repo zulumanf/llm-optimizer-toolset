@@ -28,6 +28,13 @@ import {
 } from "@/lib/automation/dispatch";
 import { sweepConnections } from "@/lib/connectors/health";
 import { log } from "@/lib/logger";
+import { dispatchProfileChecks } from "@/lib/profile-corrections/dispatch";
+import { dispatchCorrectionDrafts } from "@/lib/profile-corrections/drafting";
+import {
+  PROFILE_CHECK_DISPATCH_JOB,
+  profileCorrectionsEnabled,
+  PROFILE_DRAFT_DISPATCH_JOB,
+} from "@/lib/profile-corrections/constants";
 
 export const handlers: Record<
   string,
@@ -190,6 +197,28 @@ export const handlers: Record<
   // dispatchers on the same slot produce one run.
   dispatch_triggers: async () => {
     await runTriggerDispatch();
+  },
+  // Release queued profile checks within the global inference bound (spec
+  // 147). Re-enqueues itself while due work waits; a capacity check and the
+  // release share one advisory-locked transaction, so any number of these
+  // running together never over-release.
+  [PROFILE_CHECK_DISPATCH_JOB]: async () => {
+    // Spec 158: opt-in. A job queued before the flag was turned off
+    // completes without work and is not re-enqueued.
+    if (!profileCorrectionsEnabled()) {
+      log("info", "profile_corrections.disabled", { job: PROFILE_CHECK_DISPATCH_JOB });
+      return;
+    }
+    await dispatchProfileChecks();
+  },
+  // Start one Gmail drafting attempt per ready_to_draft correction (spec 147
+  // slice 4). Advisory-locked and idempotent; the tick also runs it.
+  [PROFILE_DRAFT_DISPATCH_JOB]: async () => {
+    if (!profileCorrectionsEnabled()) {
+      log("info", "profile_corrections.disabled", { job: PROFILE_DRAFT_DISPATCH_JOB });
+      return;
+    }
+    await dispatchCorrectionDrafts();
   },
   // Probe every connection. Prevents the silent-failure mode where a connector
   // broke weeks ago and reporting has been quietly incomplete since.

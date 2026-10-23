@@ -3769,3 +3769,15 @@ A found contradiction now becomes a persisted correction request, built and veri
 - **Reply-first copy is built from structured fields.** `findingOutreachObservation` renders from metrics, competitor names and signal labels per finding kind; the audit-page `explanation` is never pasted. The template is now `reply-first-email-v2`, and v1 keeps its analytics label. The mismatch template version is deliberately NOT bumped: `qaDraft`, the campaign ledger and follow-ups key on it, and team copy is byte-identical. Only the individual wording ("you") changes.
 - **The postal-address gate is structural, not legal.** It requires at least two parts, with a number in the first (street number or PO Box). It runs when the identity is saved, at draft creation, at approval, at scheduling and at send. Existing identity rows are not rewritten; they fail closed until an admin enters a complete address.
 - **Audit expiry: existing policy kept and now pinned by tests.** A body linking an audit that expires within 7 days, or links an audit no longer published, refuses at approval and at send. Expiry is never extended automatically.
+
+
+## 2026-10-21 — Lineage hardening before 142–147 reach main (spec 158)
+
+The lineage review found the 142–147 code sound, and found contractual measurement untouched. It also found the code unsafe to merge as it stood. This spec makes the following decisions:
+
+- **Unattended third-party contact is opt-in.** Profile checks, correction drafting and reconciliation run only with `PROFILE_CORRECTIONS_ENABLED=true`. Every entry point (weekly kick, tick, job handlers, start action) checks the same helper. Off is the default because merging code must not, by itself, start fetching clients' third-party profiles on the next worker boot.
+- **Automatic retries are bounded.** After 3 failed draft attempts, automatic drafting stops for that request, and an operator re-arms it through the existing audited manual-retry path. The failed attempt is superseded, never deleted.
+- **SSRF classification parses addresses.** IPv6 literals are expanded and classified, so IPv4-mapped, IPv4-compatible, NAT64 and 6to4 embeddings are judged as their IPv4 address. CGNAT, benchmarking, documentation, multicast and reserved ranges are refused. Names are judged only by the reserved suffixes and by their resolved addresses, not by text prefix. DNS-rebinding pinning stays out of scope: it needs a dispatcher dependency.
+- **Ollama requests are bounded and authenticated.** A 280 s abort fails closed. A remote host must be https and have `OLLAMA_API_KEY` (release 151's `ollamaRequestHeaders`, reused verbatim to avoid divergence).
+- **The measurement/internal-inference boundary is enforced by a test, not by coincidence.** Measurement tasks can never be in `INTERNAL_TASK_TARGETS`, and measurement modules may not import the internal router. The routing table is pinned.
+- **Migrations go before code**, as written in `docs/deployment.md`, because a web-only deploy does not migrate and migration 119 guards the spend ledger.

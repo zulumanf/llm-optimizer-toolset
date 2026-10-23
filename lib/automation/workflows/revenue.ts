@@ -338,14 +338,14 @@ export const inboundLeadWorkflow = defineWorkflow({
   ],
   acceptanceCriteria: [
     "A duplicate submission does not create a second lead or a second CRM contact.",
-    "Deterministic inputs are computed before the agent classifies.",
+    "Explicit lead facts are normalized before semantic classification, and the final qualification score is deterministic.",
     "A below-threshold confidence routes to human review instead of auto-responding.",
     "No protected or sensitive personal characteristic is inferred or stored.",
     "A qualified lead produces a CRM opportunity; an unqualified one does not.",
   ],
   nodes: [
     trigger("entry", "domain_event", "Lead received"),
-    step("normalize", "det.normalize_entity", "Validate and normalise the fields", {
+    step("normalize", "det.normalize_lead", "Validate and normalise the lead facts", {
       sourcePath: "payload",
     }),
     step("dedupe_check", "det.query_records", "Check for an existing lead", {
@@ -359,11 +359,8 @@ export const inboundLeadWorkflow = defineWorkflow({
     fetch("enrich", "crm.fetch_contacts", "Enrich from the CRM", {
       params: { limit: 10 },
     }),
-    step("deterministic_score", "det.calculate_priority", "Compute the deterministic inputs", {
-      sourcePath: "normalize.normalized",
-    }),
     agent("classify", "classify_lead", "Classify the lead semantically", {
-      contextPath: "normalize",
+      contextPath: "normalize.normalized",
     }),
     control(
       "confidence",
@@ -372,8 +369,17 @@ export const inboundLeadWorkflow = defineWorkflow({
       { confidencePath: "classify.confidence", threshold: 0.7 },
       { confidenceThreshold: 0.7 }
     ),
+    step(
+      "qualification_score",
+      "det.calculate_lead_qualification",
+      "Calculate the qualification score",
+      {
+        factsPath: "normalize.normalized",
+        signalsPath: "classify",
+      }
+    ),
     control("qualified", "ctl.condition", "Is the lead qualified?", {
-      path: "classify.qualificationScore",
+      path: "qualification_score.score",
       comparator: "gte",
       value: 60,
     }),
@@ -386,7 +392,7 @@ export const inboundLeadWorkflow = defineWorkflow({
     ),
     step("publish_qualified", "dom.publish_event", "Publish lead.qualified", {
       eventType: "lead.qualified",
-      payloadPath: "classify",
+      payloadPath: "qualification_score",
     }),
     act(
       "draft_response",
@@ -411,10 +417,10 @@ export const inboundLeadWorkflow = defineWorkflow({
     edge("normalize", "suppression_check"),
     edge("dedupe_check", "enrich"),
     edge("suppression_check", "enrich", { required: false }),
-    edge("enrich", "deterministic_score"),
-    edge("deterministic_score", "classify"),
+    edge("enrich", "classify"),
     edge("classify", "confidence"),
-    edge("confidence", "qualified"),
+    edge("confidence", "qualification_score"),
+    edge("qualification_score", "qualified"),
     branch("qualified", "crm_contact", true),
     edge("crm_contact", "publish_qualified"),
     edge("publish_qualified", "draft_response"),
