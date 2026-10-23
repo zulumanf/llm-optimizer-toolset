@@ -26,7 +26,7 @@ import {
   UnblockDialog,
   UpdateSentDialog,
 } from "@/components/engagements/controls";
-import { activateExclusivity, freezeBaseline, markActive, pauseMarketOutreach } from "@/app/projects/[id]/engagement/actions";
+import { activateExclusivity, markActive, pauseMarketOutreach } from "@/app/projects/[id]/engagement/actions";
 import { sql } from "@/db/client";
 import { getProject } from "@/db/projects";
 import { getCurrentUser } from "@/lib/auth";
@@ -236,7 +236,8 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
             <BillingDialog projectId={id} engagementId={e.id} defaultAmount={e.monthlyFeeUsd} />
             <MarketDefinitionDialog projectId={id} engagementId={e.id} current={e.marketDefinition} marketName={e.marketName} />
             {e.exclusivityStatus === "reserved" && <ActionButton label="Activate exclusivity" onClick={activateExclusivity.bind(null, id, { engagementId: e.id })} />}
-            {!baseline && <ActionButton label="Freeze baseline" onClick={freezeBaseline.bind(null, id, { engagementId: e.id })} />}
+            {/* Spec 154: locking the baseline is gated (explicit run, accepted protocol, readiness) on the delivery page. */}
+            <Link href={`/projects/${id}/delivery`} className="text-sm underline-offset-2 hover:underline">{baseline ? "Client delivery" : "Lock baseline (delivery)"}</Link>
           </>
         }
       >
@@ -382,7 +383,7 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
             </p>
           </div>
         ) : (
-          <EmptyState message="No frozen baseline. Freeze it from the pre-sale benchmark run (corrected evidence) before any work starts." />
+          <EmptyState message="No locked baseline. Lock it on the delivery page once the client has approved the questions and accepted the measurement protocol." />
         )}
         <ul className="mt-3 space-y-2 text-sm">
           {view.measurements.filter((m) => m.role !== "baseline").map((m) => (

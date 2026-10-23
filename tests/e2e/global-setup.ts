@@ -49,5 +49,21 @@ export default function globalSetup(): void {
       PGCONNECT_TIMEOUT: "10",
     },
   });
+  // Spec 154: two synthetic retained clients (pending + mid-delivery).
+  console.log("[e2e-setup] seeding the client-delivery rehearsal…");
+  execSync(`npx tsx --tsconfig tsconfig.json scripts/client-delivery-rehearsal.ts`, {
+    cwd: ROOT,
+    stdio: "inherit",
+    timeout: 240_000,
+    env: {
+      ...process.env,
+      DATABASE_URL: E2E_DB,
+      AUTH_MODE: "dev",
+      ALLOW_MOCK_PROVIDER: "1",
+      QA_SOURCE_LINK_CHECKS: "off",
+      PGCONNECT_TIMEOUT: "10",
+      REHEARSAL_STATE_FILE: join(__dirname, ".delivery-state.json"),
+    },
+  });
   console.log("[e2e-setup] done");
 }

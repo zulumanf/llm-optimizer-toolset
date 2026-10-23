@@ -17,6 +17,7 @@ tsconfig.tsbuildinfo
 var/
 .next-e2e/
 tests/e2e/.seed-state.json
+tests/e2e/.delivery-state.json
 playwright-report/
 test-results/
 

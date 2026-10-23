@@ -78,9 +78,15 @@ const INTENTIONAL_SHELLS = new Map<string, string>([
   ["app/report/[slug]/answers/page.tsx", "private report appendix (spec 134) — renders the appendix"],
   ["app/report/[slug]/walkthrough/page.tsx", "private report scheduling page (spec 134) — renders the scheduling page"],
   ["app/portal/page.tsx", "client portal landing — the portal carries its own shell (spec 031)"],
-  ["app/portal/[projectId]/page.tsx", "client portal overview — portal shell (specs 031/085)"],
-  ["app/portal/[projectId]/work/page.tsx", "client portal — portal shell"],
-  ["app/portal/[projectId]/reports/page.tsx", "client portal — portal shell"],
+  ["app/portal/[projectId]/(dashboard)/page.tsx", "client portal overview — portal shell (specs 031/085)"],
+  ["app/portal/[projectId]/(dashboard)/work/page.tsx", "client portal — portal shell"],
+  ["app/portal/[projectId]/(dashboard)/reports/page.tsx", "client portal — portal shell"],
+  ["app/portal/[projectId]/(dashboard)/results/page.tsx", "client portal — portal shell (spec 154)"],
+  ["app/portal/[projectId]/(dashboard)/plan/page.tsx", "client portal — portal shell (spec 154)"],
+  ["app/portal/[projectId]/(dashboard)/approvals/page.tsx", "client portal — portal shell (spec 154)"],
+  ["app/portal/[projectId]/(dashboard)/answers/[responseId]/page.tsx", "client portal — portal shell (spec 154)"],
+  ["app/portal/[projectId]/(dashboard)/approvals/questions/page.tsx", "client portal — question review (spec 155)"],
+  ["app/portal/[projectId]/welcome/page.tsx", "client onboarding — centred single column, no navigation (spec 155)"],
   ["app/login/page.tsx", "auth screen — renders before any workspace exists"],
 ]);
 

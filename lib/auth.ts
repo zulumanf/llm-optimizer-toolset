@@ -34,6 +34,13 @@ export function isStaff(user: { role: Role }): boolean {
   return STAFF_ROLES.includes(user.role);
 }
 
+/** Roles belonging to a client's own team (portal accounts). */
+export const CLIENT_ROLES: Role[] = ["client_viewer", "client_validator"];
+
+export function isClient(user: { role: Role }): boolean {
+  return CLIENT_ROLES.includes(user.role);
+}
+
 export interface CurrentUser {
   id: string;
   email: string;
@@ -211,4 +218,24 @@ export async function assertProjectAccess(
   const visible = await visibleProjectIds(user);
   if (visible === null) return; // staff — unrestricted by design
   if (!visible.includes(projectId)) throw new ProjectAccessError();
+}
+
+/**
+ * The only client write gate (spec 155): a client account answering for its
+ * own granted project — confirming onboarding details or reviewing proposed
+ * questions. Staff are refused on purpose: a decision made through the portal
+ * is the client's own, and staff record client decisions from the channel the
+ * client used, on the delivery page. Everything else stays `assertCanWrite`.
+ */
+export async function assertClientRespondent(
+  user: CurrentUser,
+  projectId: string
+): Promise<void> {
+  if (!isClient(user)) {
+    throw new ClassifiedError(
+      "forbidden",
+      "Only the client can confirm this. Record the client's decision on the delivery page."
+    );
+  }
+  await assertProjectAccess(user, projectId);
 }

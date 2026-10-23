@@ -15,8 +15,8 @@ import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
 import { addContextItem, confirmMarketDefinition, getEngagement, listContextItems } from "@/lib/engagements/service";
 
-import { ENTITY_TYPES, type EntityType, type OnboardingPrefill } from "@/lib/engagements/constants";
-export { ENTITY_TYPES, type EntityType, type OnboardingPrefill };
+import { ENTITY_TYPES, MIN_VALUE_LABEL_PREFIX, type EntityType, type OnboardingPrefill } from "@/lib/engagements/constants";
+export { ENTITY_TYPES, MIN_VALUE_LABEL_PREFIX, type EntityType, type OnboardingPrefill };
 
 /** Known facts first: prospect row, canonical company, primary contact. */
 export async function onboardingPrefill(engagementId: string): Promise<OnboardingPrefill | null> {
@@ -64,6 +64,15 @@ export async function onboardingPrefill(engagementId: string): Promise<Onboardin
   };
 }
 
+
+/** Spec 154: the latest client-confirmed minimum property value, if any. */
+export function minPropertyValueFrom(items: { kind: string; value: Record<string, unknown>; createdAt: Date }[]): number | null {
+  const found = items
+    .filter((x) => x.kind === "client_focus" && typeof x.value.minPropertyValueUsd === "number")
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+  return found ? (found.value.minPropertyValueUsd as number) : null;
+}
+
 /** Fields that must be present before delivery can begin. */
 export const INTAKE_REQUIRED_FIELDS = [
   "legalName",
@@ -99,6 +108,19 @@ const intakeSchema = z.object({
   requiresClientApproval: z.string().trim().max(1000).default(""),
   terminology: z.array(z.string().trim().min(1).max(120)).max(30).default([]),
   competitorsConfirmed: z.array(z.string().trim().min(1).max(200)).max(10).default([]),
+  // Spec 154 — optional; never required to complete the intake.
+  /** Ideal customer segments in the client's words ("Sellers, $300K–$499K"). */
+  customerSegments: z.array(z.string().trim().min(1).max(200)).max(12).default([]),
+  /** Minimum estimated property value the engagement targets (USD). */
+  minPropertyValueUsd: z.number().int().positive().max(1_000_000_000).nullable().default(null),
+  /** Neighborhoods in priority order (first = most important). */
+  neighborhoods: z.array(z.string().trim().min(1).max(120)).max(40).default([]),
+  /** Surrounding communities whose inclusion the client confirmed. */
+  surroundingMarkets: z.array(z.string().trim().min(1).max(120)).max(30).default([]),
+  /** Name variants the client confirms refer to them (verified before the baseline). */
+  nameVariants: z.array(z.string().trim().min(2).max(200)).max(30).default([]),
+  /** Who may approve public-facing changes. Never a password. */
+  approvers: z.array(z.object({ name: z.string().trim().min(1).max(200), email: z.string().trim().email().max(320).optional() })).max(5).default([]),
 });
 export type OnboardingIntake = z.infer<typeof intakeSchema>;
 
@@ -155,6 +177,15 @@ export async function completeOnboardingIntake(user: CurrentUser, raw: unknown):
     const accessStatus = i.websiteControl === "client_can_delegate" ? "requested" : i.websiteControl === "client_applies_changes" ? "not_needed" : "requested";
     await add({ kind: "access", label: "Website / content (delegated editor)", provenance: "client_confirmed", accessStatus, value: { control: i.websiteControl, weCanChangeDirectly: i.weCanChangeDirectly || null, requiresClientApproval: i.requiresClientApproval || null, implementationContact: i.implementationContact || null } });
     if (i.terminology.length > 0) await add({ kind: "note", label: `Key terminology: ${i.terminology.join(", ")}`, provenance: "client_confirmed", value: { terminology: i.terminology } });
+    // Spec 154: the measurement-shaping facts, as client-confirmed context.
+    // Name variants are recorded, NOT written to the company record: alias
+    // changes alter counting and are applied deliberately before the baseline.
+    for (const seg of i.customerSegments) await add({ kind: "client_focus", label: `Segment: ${seg}`, provenance: "client_priority", value: { segment: seg } });
+    if (i.minPropertyValueUsd !== null) await add({ kind: "client_focus", label: `${MIN_VALUE_LABEL_PREFIX}${i.minPropertyValueUsd.toLocaleString("en-US")}`, provenance: "client_confirmed", value: { minPropertyValueUsd: i.minPropertyValueUsd } });
+    for (const [rank, n] of i.neighborhoods.entries()) await add({ kind: "priority_area", label: n, provenance: "client_priority", value: { type: "neighborhood", rank: rank + 1 } });
+    for (const m of i.surroundingMarkets) await add({ kind: "priority_area", label: `Surrounding: ${m}`, provenance: "client_confirmed", value: { type: "surrounding_market", name: m } });
+    for (const v of i.nameVariants) await add({ kind: "identity", label: `Name variant: ${v}`, provenance: "client_confirmed", value: { nameVariant: v } });
+    for (const a of i.approvers) await add({ kind: "identity", label: `Approver: ${a.name}`, provenance: "client_confirmed", value: { role: "approver", name: a.name, email: a.email ?? null } });
     return ok({ engagementId: e.id, itemsCreated: created, missing: [] });
   } catch (err) {
     return fail(err);

@@ -22,6 +22,8 @@ export interface ParsedPromptRow {
   tier: number | null;
   /** null when the operator supplied the category explicitly. */
   suggestedByRule: string | null;
+  /** Spec 154: optional segment attributes (CSV only), frozen with the prompt. */
+  segment?: { audience: string | null; priceTier: string | null; neighborhood: string | null; propertyType: string | null };
 }
 
 export interface RejectedRow {
@@ -38,7 +40,7 @@ export interface PromptImportParse {
 }
 
 const CATEGORY_SET = new Set<string>(PROMPT_CATEGORIES);
-const HEADER_COLUMNS = new Set(["text", "category", "language", "tier"]);
+const HEADER_COLUMNS = new Set(["text", "category", "language", "tier", "audience", "price_tier", "neighborhood", "property_type"]);
 
 function buildRow(
   line: number,
@@ -119,7 +121,7 @@ export function parsePromptImport(
     if (unknown.length > 0) {
       throw new ClassifiedError(
         "validation",
-        `Unknown header column(s): ${unknown.join(", ")}. Supported: text, category, language, tier.`
+        `Unknown header column(s): ${unknown.join(", ")}. Supported: text, category, language, tier, audience, price_tier, neighborhood, property_type.`
       );
     }
     const col = (name: string) => header.indexOf(name);
@@ -141,7 +143,11 @@ export function parsePromptImport(
         brandNames
       );
       if ("reason" in outcome) rejected.push(outcome);
-      else rows.push(outcome);
+      else {
+        const attr = (name: string) => at(col(name)).trim() || null;
+        const segment = { audience: attr("audience"), priceTier: attr("price_tier"), neighborhood: attr("neighborhood"), propertyType: attr("property_type") };
+        rows.push(Object.values(segment).some((v) => v !== null) ? { ...outcome, segment } : outcome);
+      }
     });
   } else {
     const lines = raw.split(/\r?\n/);

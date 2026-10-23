@@ -3815,3 +3815,35 @@ paid work no one requested. Medina's baseline needs the worker.
 - **Not fixed here, and recorded as blockers for enabling outreach:** G3
   (follow-up send window), G4 (handoff side effects in SHADOW) and G7
   (workflow send path without the 148/150 gates).
+
+## 2026-10-21 — Spec 154: client onboarding and 90-day delivery
+
+- **Built on spec 131, not on spec 151.** The work lives on `feat/154-client-onboarding-delivery` from `ca48d67`, so Medina's go-live does not depend on reviewing the unmerged platform-v2 branch. The migration is numbered **140**, so it never collides with 119–125 (spec 147) or 126–134 (spec 151).
+- **The baseline freeze is now gated (repairs audit P0-01).** `freezeBaseline` requires:
+  - an explicit run;
+  - an accepted protocol, with the same question version and provider;
+  - every agreed name variant present on the company record;
+  - 0 unparsed answers, 0 pending reviews and 0 copied captures.
+  Keyword-fallback rows and failed cells are warnings that need an explicit acknowledgement. The old default (the prospect's pre-sale run) is gone. The spec-131 shared-market case is still possible, but only by citing that run's question version in a client-approved protocol.
+- **The protocol freezes on acceptance, enforced by a database trigger.** It cannot be re-accepted after the baseline is locked: success criteria never change mid-term.
+- **Approvals bind to wording.** A task decision snapshots the after-state and URL. Changing either afterwards resets approval to `required`. Older decisions have no snapshot and keep their previous behaviour.
+- **The client sees snapshot numbers only.** Engaged clients get the delivery overview. Project `scores` (audit P1-06) are never shown to them. No snapshot → "pending", never 0%. Intervals: Wilson for a single rate, Newcombe for a difference, both labelled as treating answers as independent.
+- **Client roles stay read-only.** No safe self-service write path exists yet, so decisions are operator-recorded with actor, channel and timestamp, and the client can see the trail.
+- **Name variants from the intake are recorded, never auto-applied** to the company record. Applying them changes counting, so the operator does it deliberately before the baseline run.
+- **External tools (e.g. Ahrefs Brand Radar) are manual imports.** No API was verified, so there is no client. Imports are hashed, immutable, hidden from the client until `verified`, never blended into our numbers, and carry no cost field.
+- **No new email or calendar infrastructure.** Updates are drafted from records; the operator sends them and then clicks "mark sent", which freezes the update and feeds the existing cadence signal.
+- **No code path decides a fee.** The Day-90 review states the agreed criteria and that people decide the outcome.
+
+## 2026-10-21 — Clients answer for themselves, through one narrow gate (spec 155)
+
+Spec 131/154 kept client roles read-only because no safe write path existed. A done-for-you client still has to confirm their priorities and review the proposed questions, and "reply by email" makes a two-minute task a week-long one. This entry amends the 131 decision, deliberately and narrowly:
+
+- **One client write gate: `assertClientRespondent` (client role + project grant).** It is used by exactly two services: `lib/engagements/client-onboarding.ts` (confirm/correct onboarding details) and `lib/engagements/client-question-review.ts` (per-question review and the set decision). `assertCanWrite` is unchanged; every other write stays staff-only. **Staff are refused by the client gate**, so nobody can "approve" for a client through the portal. Staff keep recording channel decisions on the delivery page.
+- **The engagement comes from the granted project, never from client input.** Client actions take a `projectId` only.
+- **No parallel onboarding system.** `client_onboardings` is working state (what we prepared, what the client changed, which step they reached). The outcome lands in the existing ledgers: client-provenance context items, written through the single `insertContextItem` now shared with `addContextItem`, and an `intake` decision with `channel = 'portal'`. Spec 154's journey sees "details confirmed" with no new rule.
+- **Commercially sensitive answers are recorded, not applied.** The client's market wording never rewrites `market_definition` or exclusivity. The operator sees a flag when it differs. Contacts become identity items; the engagement row is not rewritten.
+- **The freeze gate respects the portal.** `acceptProtocol`, and staff `recordSubjectDecision(approved)` on a question set, refuse while any question's latest portal decision is an edit or removal request. The fix is a revised version, not an override.
+- **Portal actions do not use the staff runner** (P1-13 made it staff-only). `app/portal/[projectId]/actions.ts` has its own wrapper that replaces `internal` errors with one plain sentence and logs the detail.
+- **Every portal layout gates itself (`lib/portal/gate.ts`).** Next.js renders nested layouts in parallel, so a parent layout's `notFound()` does not stop a child layout. When the portal split into `(dashboard)` and `welcome`, the dashboard layout streamed an ungranted project's name to a client. This was caught by rendering as a client, fixed, and is now guarded by `tests/unit/portal-layout-gates.test.ts`.
+- **The workspace shell no longer wraps `/portal`** (same rule as `/audit`). A client never sees the internal top bar, and a staff preview matches exactly, with a one-line "Staff preview" note.
+- **`DEV_USER_ROLE` accepts `client_viewer`**, so the portal can be driven as a client locally. Dev auth is still refused in production.
