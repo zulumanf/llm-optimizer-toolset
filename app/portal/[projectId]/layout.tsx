@@ -1,16 +1,11 @@
-import { notFound, redirect } from "next/navigation";
-import { signOut } from "@/app/login/actions";
-import { PortalTabs } from "@/components/portal/portal-tabs";
-import {
-  assertProjectAccess,
-  getCurrentUser,
-  NotAuthenticatedError,
-  ProjectAccessError,
-} from "@/lib/auth";
-import { getProject } from "@/db/projects";
+import Link from "next/link";
+import { isStaff } from "@/lib/auth";
+import { portalGate } from "@/lib/portal/gate";
 
-/** The portal's own shell (spec 031): project gate + minimal client nav.
- * Same 404-on-denial rule as the internal workspace. */
+/** The portal's outer frame (spec 031): gate + staff-preview note. The
+ * chrome lives one level down — the dashboard shell (`(dashboard)/layout.tsx`)
+ * and the navigation-free onboarding (`welcome/`, spec 155). Each re-gates:
+ * layouts render in parallel, so this one is not a boundary for its children. */
 export default async function PortalProjectLayout({
   children,
   params,
@@ -19,44 +14,18 @@ export default async function PortalProjectLayout({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  try {
-    const user = await getCurrentUser();
-    await assertProjectAccess(user, projectId);
-  } catch (err) {
-    if (err instanceof NotAuthenticatedError) redirect("/login");
-    if (err instanceof ProjectAccessError) notFound();
-    throw err;
-  }
-  const project = await getProject(projectId);
-  if (!project) notFound();
-
-  const tabs = [
-    { href: `/portal/${projectId}`, label: "Overview" },
-    { href: `/portal/${projectId}/work`, label: "Work" },
-    { href: `/portal/${projectId}/reports`, label: "Reports" },
-  ];
+  const { user } = await portalGate(projectId);
 
   return (
-    <div className="mx-auto max-w-5xl p-4 sm:p-6">
-      <header className="mb-6 border-b pb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              AI Visibility Program
-            </p>
-            <h1 className="text-2xl font-semibold">{project.name}</h1>
-          </div>
-          <form action={signOut}>
-            <button
-              type="submit"
-              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-            >
-              Sign out
-            </button>
-          </form>
-        </div>
-        <PortalTabs tabs={tabs} />
-      </header>
+    <div className="min-h-dvh bg-muted/30">
+      {isStaff(user) && (
+        <p className="border-b bg-background px-4 py-1.5 text-center text-xs text-muted-foreground">
+          Staff preview — this is what the client sees.{" "}
+          <Link href={`/projects/${projectId}/delivery`} className="underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Back to the workspace
+          </Link>
+        </p>
+      )}
       {children}
     </div>
   );

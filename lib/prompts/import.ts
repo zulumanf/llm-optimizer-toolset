@@ -80,12 +80,13 @@ export async function importPrompts(
         seen.add(key);
         await tx`
           insert into prompts (prompt_set_id, text, category, language,
-            position, tier, source)
+            position, tier, source, audience, price_tier, neighborhood, property_type)
           values (
             ${setId}, ${row.text}, ${row.category}, ${row.language},
             (select coalesce(max(position), 0) + 1 from prompts
               where prompt_set_id = ${setId} and archived_at is null),
-            ${row.tier}, 'import'
+            ${row.tier}, 'import', ${row.segment?.audience ?? null}, ${row.segment?.priceTier ?? null},
+            ${row.segment?.neighborhood ?? null}, ${row.segment?.propertyType ?? null}
           )
         `;
         added += 1;
