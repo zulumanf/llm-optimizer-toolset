@@ -6,7 +6,7 @@ export default function PortalLoading() {
     <div className="space-y-4" role="status" aria-live="polite">
       <span className="sr-only">Loading your program…</span>
       <Skeleton className="h-4 w-64" />
-      <Skeleton className="h-6 w-80" />
+      <Skeleton className="h-6 w-full max-w-80" />
       <Skeleton className="h-24 w-full" />
       <div className="grid gap-4 md:grid-cols-2">
         <Skeleton className="h-40 w-full" />
