@@ -6,6 +6,7 @@ import { AUDIT_VIEW_PUBLISH_QA_WINDOW_MINUTES } from "@/lib/prospects/constants"
  */
 import "server-only";
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import type { AuditSnapshot } from "@/lib/prospects/service";
 
 export interface ProspectDetail {
@@ -337,6 +338,7 @@ export async function linkableRuns(companyId: string): Promise<LinkableRun[]> {
     from runs r
     join projects p on p.id = r.project_id
     join scores s on s.run_id = r.id and s.company_id = ${companyId}
+      and s.scoring_version = ${READ_SCORING_VERSION}
     where r.status in ('completed', 'partial')
     order by r.started_at desc
     limit 25

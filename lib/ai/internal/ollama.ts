@@ -178,3 +178,37 @@ export const ollamaCaller: InternalInferenceCaller = async ({
     },
   };
 };
+
+/** Reachability window for the operator health probe (spec 151 D2). */
+export const OLLAMA_HEALTH_TIMEOUT_MS = 2500;
+
+export interface OllamaHealth {
+  baseUrl: string;
+  reachable: boolean;
+  installedModels: string[];
+  missingModels: string[];
+  error: string | null;
+}
+
+/**
+ * Is the internal inference host this process would use reachable, and does
+ * it hold every model a promoted task routes to? Read-only (`/api/tags`).
+ * Promoted tasks FAIL CLOSED when it is not — there is deliberately no
+ * proprietary fallback — so this is surfaced to the operator instead.
+ */
+export async function ollamaHealth(requiredModels: string[]): Promise<OllamaHealth> {
+  const baseUrl = ollamaBaseUrl();
+  try {
+    const res = await fetch(`${baseUrl}/api/tags`, {
+      headers: ollamaRequestHeaders(baseUrl),
+      signal: AbortSignal.timeout(OLLAMA_HEALTH_TIMEOUT_MS),
+    });
+    if (!res.ok) return { baseUrl, reachable: false, installedModels: [], missingModels: requiredModels, error: `HTTP ${res.status}` };
+    const body = (await res.json()) as { models?: { name?: string; model?: string }[] };
+    const installed = (body.models ?? []).map((m) => m.name ?? m.model ?? "").filter(Boolean);
+    const missing = requiredModels.filter((r) => !installed.some((i) => i === r || i === `${r}:latest`));
+    return { baseUrl, reachable: true, installedModels: installed, missingModels: missing, error: null };
+  } catch (err) {
+    return { baseUrl, reachable: false, installedModels: [], missingModels: requiredModels, error: err instanceof ClassifiedError ? err.message : err instanceof Error ? err.name : "unknown" };
+  }
+}

@@ -145,6 +145,22 @@ be invented for the public name.
 
 A week-over-week delta is **notable** when `|Δ| ≥ 0.10` on a rate metric with `N ≥ 30` per side, and consistent in direction across ≥ 2 providers. Everything else is reported as "within noise". No p-values in v1.0 — repetitions and honesty about noise first; proper inference is a future version.
 
+## Measurement v2 — instruments, intervals, cohorts (scoring v1.2, spec 151)
+
+Full design: `docs/engineering/measurement-v2.md`. The rules that change numbers:
+
+- **Instrument.** `(provider, requested model id, location context, sampling)`. The requested id already pins the snapshot and the `+search` mode. Each instrument is scored separately in `score_estimates`.
+- **No blending.** A provider-level row in `scores` exists only when that provider ran exactly one instrument in the run. `all` is the unweighted mean across instruments.
+- **Answer scope.** `scores` keeps the v1.1 all-valid-answers scope. `score_estimates` uses the **organic** scope: answers to prompts that name the company (name or alias, whole word) are excluded, and the count is stored as `excluded_echo`.
+- **Cohort.** When the project has a frozen competitor cohort, only cohort companies are scored, and share of voice counts mentions among cohort companies only. Without a cohort, behaviour is v1.1 (`cohort_id` is null).
+- **Owned citations.** Recomputed at scoring time with the dot-boundary rule (`domainBelongsTo`). `notacme.com` never counts for `acme.com`.
+- **Intervals.** Every binomial rate carries two intervals:
+  - a Wilson 95% interval (assumes independent answers);
+  - a 95% percentile bootstrap that resamples **prompts**: 2,000 draws, seeded from (run, company, metric, instrument), so it is reproducible. It is null below 5 distinct prompts.
+
+  Share of voice carries no interval. These are statistical intervals, never classifier confidence.
+- **Change.** A paired, prompt-level difference with the same bootstrap (`lib/stats`). Intervention verdicts use difference-in-differences against pre-registered controls (`docs/engineering/intervention-experiments.md`). The v1.0 rule below remains in older views until they migrate.
+
 ## Reporting rules
 
 - Every displayed score shows: value, sample size `N`, scoring version, coverage (valid cells / attempted cells).
@@ -156,6 +172,7 @@ A week-over-week delta is **notable** when `|Δ| ≥ 0.10` on a rate metric with
 | Version | Date | Change |
 |---|---|---|
 | v1.0 | 2026-07-27 | Initial methodology. |
+| v1.2 | 2026-10-16 | Spec 151. The changes:<br>• per-instrument `score_estimates` with Wilson and prompt-clustered intervals;<br>• provider rows only for single-instrument providers, and `all` = mean across instruments;<br>• frozen-cohort share-of-voice denominators;<br>• dot-boundary owned citations;<br>• echo exclusion in estimates (organic scope).<br>Every metric formula is unchanged. v1.1 rows are untouched; historical runs gain v1.2 rows only through `scripts/rescore.ts`, a deployment step. Expected consequence: views pinned to the current version are empty for a run until it is rescored. |
 | v1.1 | 2026-07-31 | Added stored `first_position_rate` and `top_three_rate` (denominator `N`, no minimum-cell rule, outside the Authority composite). Authority weights and every v1.0 formula unchanged. v1.0 and v1.1 scores must never be compared in UI or reports (standing cross-version rule); v1.0 rows are never recomputed. Expected consequence: the first report after the bump shows deltas as not-comparable/insufficient against v1.0 baselines — that is the versioning model working, not a data problem. |
 
 ## Authority magnitude factors (authority-v2, spec 078)

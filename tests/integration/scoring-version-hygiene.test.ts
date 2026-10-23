@@ -33,6 +33,9 @@ describe.skipIf(!TEST_URL)("scoring-version hygiene (integration)", () => {
   });
 
   beforeEach(async () => {
+    // Release 151: readers follow scoring_state; these fixtures write the
+    // current SCORING_VERSION, so read it.
+    await sql`update scoring_state set read_version = 'v1.2' where id = 1`;
     await sql.unsafe("truncate scores, runs, prompt_set_versions, prompt_sets, competitors, companies, projects cascade");
 
     const [project] = await sql`
@@ -51,6 +54,7 @@ describe.skipIf(!TEST_URL)("scoring-version hygiene (integration)", () => {
   });
 
   afterAll(async () => {
+    await sql`update scoring_state set read_version = 'v1.1' where id = 1`;
     await sql.end();
   });
 

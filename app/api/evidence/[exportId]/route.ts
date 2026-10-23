@@ -4,10 +4,12 @@
  */
 import { readFile } from "node:fs/promises";
 import { NextResponse } from "next/server";
+import { ClassifiedError } from "@/lib/errors";
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { assertProjectAccess, getCurrentUser } from "@/lib/auth";
-import { artifactPath } from "@/lib/evidence/storage";
+import { EVIDENCE_ROOT } from "@/lib/evidence/storage";
+import { ensureLocal } from "@/lib/storage/content-addressed";
 import { recordArtifactAccessAsync } from "@/lib/security/access-log";
 
 export async function GET(
@@ -39,7 +41,17 @@ export async function GET(
   } catch {
     return NextResponse.json({ error: "Export not found" }, { status: 404 });
   }
-  const bytes = await readFile(artifactPath(row.storageKey as string));
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(await ensureLocal(EVIDENCE_ROOT, row.storageKey as string));
+  } catch (err) {
+    // Missing everywhere → 404; object store unreachable/refused → 503.
+    const notFound = err instanceof ClassifiedError && err.kind === "not_found";
+    return NextResponse.json(
+      { error: notFound ? "Export file not found" : "Export storage is unavailable; try again shortly" },
+      { status: notFound ? 404 : 503 }
+    );
+  }
 
   // Taking a copy of a client's raw evidence off the platform is an access
   // event, not just a read (docs/10). Non-blocking: a download must not fail

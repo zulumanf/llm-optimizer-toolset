@@ -571,7 +571,7 @@ export const ASSISTANT_TOOLS: AssistantToolDef[] = [
   {
     name: "bootstrap_market_benchmark",
     description:
-      "Create (or find) an installed launch's benchmark project with a frozen prompt set. Returns project_id, prompt_set_version_id, prompt count, and a suggestedProviders config copied from the most recent completed run — THE step between install_market_pack and estimate_benchmark_run; tell the operator to review the prompts before confirming a run.",
+      "Create (or find) an installed launch's benchmark project with a frozen prompt set. Returns project_id, prompt_set_version_id, prompt count, and a suggestedProviders config — the project's pinned measurement instrument (spec 151; the named default on first use) — THE step between install_market_pack and estimate_benchmark_run; tell the operator to review the prompts before confirming a run.",
     tier: "direct",
     schema: z.object({ launch_id: uuid, cap: z.number().int().min(4).max(200).optional() }),
     run: async (user, input) =>

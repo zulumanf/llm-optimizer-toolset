@@ -10,7 +10,7 @@ import {
   type DrilldownMetric,
 } from "@/lib/evidence/observations";
 import { verifyRunIntegrity } from "@/lib/evidence/integrity";
-import { SCORING_VERSION } from "@/lib/constants";
+import { scoringState } from "@/db/scores";
 import { formatDate } from "@/lib/format";
 import { EvidenceTools } from "@/components/evidence/evidence-tools";
 import { requireProjectStaffPage } from "@/lib/security/page-gates";
@@ -44,12 +44,13 @@ export default async function EvidencePage({
     : "mention_rate";
   const filter = search.filter ?? "all";
 
+  const readVersion = (await scoringState()).readVersion;
   const result = await drilldown({
     runId,
     metric,
     companyId: search.company,
     provider: search.provider,
-    scoringVersion: SCORING_VERSION,
+    scoringVersion: readVersion,
   });
   if (!result) notFound();
 
@@ -105,7 +106,7 @@ export default async function EvidencePage({
           <span className="mt-1 block text-xs">
             Every eligible observation is listed below — the {result.numerator}{" "}
             positives and the {result.denominator - result.numerator} negatives.
-            Scoring {SCORING_VERSION} ·{" "}
+            Scoring {readVersion} ·{" "}
             {run.startedAt ? formatDate(run.startedAt) : ""}
             {result.storedValue != null && (
               <>

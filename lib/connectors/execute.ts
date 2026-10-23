@@ -91,6 +91,34 @@ async function recordTestAction(args: {
 export async function executeCapability<T = unknown>(
   args: ExecuteCapabilityInput
 ): Promise<CapabilityOutcome<T>> {
+  // ---- 0. Content publishing gate (release 151) ---------------------------
+  // Every CMS write must carry an approved, validator-passed content asset
+  // and send exactly its approved text — whichever workflow is calling.
+  // Checked first — before provider resolution, fixtures or test mode — so
+  // no path reaches a CMS without it.
+  {
+    const { CONTENT_PUBLISHING_CAPABILITIES, checkPublishable } = await import("@/lib/content/publish-gate");
+    if (CONTENT_PUBLISHING_CAPABILITIES.has(args.capability)) {
+      const gate = await checkPublishable({ capability: args.capability, projectId: args.projectId, payload: args.input });
+      if (!gate.ok) {
+        await sql.begin((tx) =>
+          raiseException(tx, {
+            projectId: args.projectId,
+            workflowRunId: args.workflowRunId ?? null,
+            nodeRunId: args.nodeRunId ?? null,
+            kind: "evidence_conflict",
+            severity: "high",
+            summary: `${args.capability} refused: ${gate.reason}`,
+            recommendedAction:
+              "Publish through the content pipeline (draft → verify → approve), then reference the approved asset.",
+          })
+        );
+        const failure = executionFailure<T>({ error: gate.reason, errorCode: gate.code, retryable: false });
+        return { ...failure, provider: args.provider ?? providersFor(args.capability)[0] ?? "unknown", connectionId: null };
+      }
+    }
+  }
+
   // ---- 1. Which provider? -------------------------------------------------
   const candidates = args.provider ? [args.provider] : providersFor(args.capability);
   if (candidates.length === 0) {

@@ -1,3 +1,4 @@
+import { MeasurementSectionView } from "@/components/reports/measurement-section";
 import { PageHeader, PageShell } from "@/components/layout/page";
 import { notFound } from "next/navigation";
 import { sql } from "@/db/client";
@@ -148,6 +149,8 @@ export default async function ReportPage({
           )}
         </section>
       )}
+
+      {body.measurement && <MeasurementSectionView m={body.measurement} />}
 
       {(body.categoryOwnership?.length ?? 0) > 0 && (
         <section className="mb-6">

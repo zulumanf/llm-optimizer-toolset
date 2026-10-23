@@ -14,7 +14,7 @@
  *            the revision-1 judgment is kept only where the answer text
  *            corroborates it (lib/parsing/precedence.ts adjudicateOffline);
  *            pairs with no classifier judgment become not_classified.
- *            npx tsx scripts/mention-revision-3.ts judge [--runs id,id] --out data/internal/mention-revision-3/<name>.json
+ *            npx tsx scripts/mention-revision-3.ts judge [--runs id,id] --out .local-data/internal/mention-revision-3/<name>.json
  *   apply  — inserts the artifact's rows as new mention revisions into the
  *            target database (idempotent per pair):
  *            npx tsx scripts/mention-revision-3.ts apply --artifact <file> [--db <url>]

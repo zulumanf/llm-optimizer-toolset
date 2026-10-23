@@ -1,4 +1,5 @@
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 
 export type ProjectStatus = "active" | "archived";
 
@@ -50,6 +51,7 @@ export async function listPortfolio(opts: {
         join runs r on r.id = s.run_id
         where r.project_id = p.id and s.company_id = subject.id
           and s.metric = 'authority_score' and s.provider = 'all'
+          and s.scoring_version = ${READ_SCORING_VERSION}
         order by r.started_at desc limit 1) as authority_score,
       last_run.label as last_run_label,
       last_run.status as last_run_status,

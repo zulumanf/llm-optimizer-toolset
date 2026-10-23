@@ -46,6 +46,9 @@ describe.skipIf(!TEST_URL)("outcome measurement sweep (integration)", () => {
   });
 
   beforeEach(async () => {
+    // Release 151: readers follow scoring_state; these fixtures write the
+    // current SCORING_VERSION, so read it.
+    await sql`update scoring_state set read_version = 'v1.2' where id = 1`;
     await sql.unsafe(
       `truncate audit_log, action_outcomes, scores, runs,
        prompt_set_versions, prompts, prompt_sets, companies, projects cascade`
@@ -53,6 +56,7 @@ describe.skipIf(!TEST_URL)("outcome measurement sweep (integration)", () => {
   });
 
   afterAll(async () => {
+    await sql`update scoring_state set read_version = 'v1.1' where id = 1`;
     await sql.end();
   });
 

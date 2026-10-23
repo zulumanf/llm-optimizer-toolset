@@ -16,6 +16,10 @@ const SURFACES: { path: string; h1: string | RegExp }[] = [
   { path: "/workflows", h1: /Workflows/i },
   { path: "/automation", h1: /Automation/i },
   { path: "/agents", h1: /Agent/i },
+  // Spec 151 surfaces
+  { path: "/operations", h1: "Operations" },
+  { path: "/evaluation", h1: "Classifier check" },
+  { path: "/organizations", h1: "Brokerages" },
   { path: "/companies", h1: /Companies/i },
   { path: "/exclusivity", h1: /Exclusivity/i },
   { path: "/notifications", h1: /Notifications|Inbox/i },

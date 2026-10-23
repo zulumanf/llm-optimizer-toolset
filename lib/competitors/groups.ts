@@ -11,6 +11,7 @@
  * arithmetic the drill-down uses.
  */
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { CURRENT_REVISION } from "@/db/mentions";
 
 const GROUPING_RELATIONSHIPS = ["works_for", "brokerage", "affiliated_with"];
@@ -92,6 +93,7 @@ export async function relationshipGroups(
     const rates = await sql`
       select company_id, value, sample_size from scores
       where run_id = ${latestRun.id} and metric = 'mention_rate'
+        and scoring_version = ${READ_SCORING_VERSION}
         and provider = 'all' and company_id = any(${memberIds})
     `;
     for (const member of group.members) {

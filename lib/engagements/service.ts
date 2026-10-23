@@ -7,6 +7,7 @@
  * or billing engine.
  */
 import { z } from "zod";
+import { freezeCohortTx } from "@/lib/measurement/service";
 import { sql } from "@/db/client";
 import type { TransactionSql } from "@/db/client";
 import { paymentTermsDefault, pricingPolicy, resolveEngagementPricing, usdToCents } from "@/lib/pricing/policy";
@@ -1093,6 +1094,10 @@ export async function freezeBaseline(user: CurrentUser, raw: unknown): Promise<A
           ${tx.json(snapshot as never)}, now(), ${user.id})
         returning id
       `;
+      // Spec 151 A5: the scored share-of-voice universe freezes with the
+      // baseline, so later registry growth cannot move this client's
+      // denominators. Idempotent when membership is unchanged.
+      await freezeCohortTx(tx, e.projectId, "engagement baseline frozen", user.id);
       await writeAudit(tx, {
         userId: user.id,
         action: "engagement.baseline_frozen",

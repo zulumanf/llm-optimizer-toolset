@@ -6,7 +6,7 @@
  * never drift from what the measurement core published.
  */
 import { sql } from "@/db/client";
-import { SCORING_VERSION } from "@/lib/constants";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { PROMPT_ECHO_EXCLUDED, PROMPT_NAMES_COMPANY } from "@/lib/scoring/prompt-echo";
 import type { BenchmarkEntityMetrics, AbsenceEvidence } from "@/lib/prospects/findings";
 import { CURRENT_REVISION } from "@/db/mentions";
@@ -79,7 +79,7 @@ export async function scoredEntities(runId: string): Promise<BenchmarkEntityMetr
     select s.id as score_id, s.company_id, c.name, s.metric, s.value, s.sample_size
     from scores s join companies c on c.id = s.company_id
     where s.run_id = ${runId} and s.provider = 'all'
-      and s.scoring_version = ${SCORING_VERSION}
+      and s.scoring_version = ${READ_SCORING_VERSION}
   `;
   const byCompany = new Map<string, BenchmarkEntityMetrics>();
   for (const row of rows) {

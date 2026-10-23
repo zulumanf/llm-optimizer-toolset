@@ -1,6 +1,6 @@
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { getSubjectCompany } from "@/db/companies";
-import { SCORING_VERSION } from "@/lib/constants";
 import { CURRENT_REVISION } from "@/db/mentions";
 
 export interface TrendPoint {
@@ -29,7 +29,7 @@ export async function authorityTrend(projectId: string): Promise<TrendPoint[]> {
     join runs r on r.id = s.run_id
     where r.project_id = ${projectId} and s.company_id = ${subject.id}
       and s.metric = 'authority_score'
-      and s.scoring_version = ${SCORING_VERSION}
+      and s.scoring_version = ${READ_SCORING_VERSION}
     order by r.started_at asc
   `;
 }
@@ -63,7 +63,7 @@ export async function selfTiles(projectId: string): Promise<SelfTile[]> {
       select distinct r.id, r.started_at
       from runs r join scores s on s.run_id = r.id
       where r.project_id = ${projectId}
-        and s.scoring_version = ${SCORING_VERSION}
+        and s.scoring_version = ${READ_SCORING_VERSION}
       order by r.started_at desc limit 2
     ),
     ranked as (
@@ -74,7 +74,7 @@ export async function selfTiles(projectId: string): Promise<SelfTile[]> {
     from scores s
     join ranked on ranked.id = s.run_id
     where s.company_id = ${subject.id} and s.provider = 'all'
-      and s.scoring_version = ${SCORING_VERSION}
+      and s.scoring_version = ${READ_SCORING_VERSION}
   `;
   const latest = rows.filter((r) => r.rn === "1" || Number(r.rn) === 1);
   const previous = new Map(
@@ -113,7 +113,7 @@ export async function subjectScoreHistory(
     from scores s
     join runs r on r.id = s.run_id
     where r.project_id = ${projectId} and s.company_id = ${subject.id}
-      and s.provider = 'all' and s.scoring_version = ${SCORING_VERSION}
+      and s.provider = 'all' and s.scoring_version = ${READ_SCORING_VERSION}
     order by r.started_at asc
   `;
 }

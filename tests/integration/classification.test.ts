@@ -250,7 +250,7 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
     const scores = await sql`
       select c.name, s.metric, s.provider, s.value, s.sample_size
       from scores s join companies c on c.id = s.company_id
-      where s.run_id = ${runId}
+      where s.run_id = ${runId} and s.scoring_version = 'v1.1'
       order by c.name, s.metric, s.provider
     `;
     // 2 companies × 6 metrics (rates, first/top-three v1.1, SoV, authority)
@@ -467,6 +467,7 @@ describe.skipIf(!TEST_URL)("classification (integration)", () => {
       select c.is_self, s.value from scores s
       join companies c on c.id = s.company_id
       where s.run_id = ${runId} and s.metric = 'mention_rate' and s.provider = 'mock'
+        and s.scoring_version = 'v1.1'
     `;
     // 2 valid responses, 1 mentions each company → rate 0.5
     for (const row of rates) expect(Number(row.value)).toBeCloseTo(0.5);

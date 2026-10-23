@@ -4,6 +4,7 @@
  * bound to; changing a version never mutates a historical artifact.
  */
 import { join } from "node:path";
+import { artifactRoot } from "@/lib/storage/root";
 
 export const VIDEO_TEMPLATE_VERSION = "video-template-v1";
 export const VIDEO_JOB_TYPE = "render_video_walkthrough";
@@ -28,7 +29,7 @@ export const VIDEO_STEP_TIMEOUT_MS = 120_000;
 export const VIDEO_STORAGE_PREFIX = "video-walkthrough";
 export const VIDEO_AUDIO_STORAGE_PREFIX = "video-narration";
 /** Reusable assets (the recorded founder intro) live outside evidence. */
-export const VIDEO_ASSET_ROOT = join(process.cwd(), "var", "video-assets");
+export const VIDEO_ASSET_ROOT = join(artifactRoot(), "video-assets");
 
 export interface FounderIntroAsset {
   version: string;

@@ -17,7 +17,7 @@ zero qualifying audit views.)
 | B | First State Home Team | 2 opens, 0m — scanner |
 | B | Toni & The Schrockstars Team | 0 opens |
 
-Copy: `scripts/wil-t2-ab-drafts.json`. Arm A = current follow-up style with
+Copy: `.local-data/campaign-inputs/wil-t2-ab-drafts.json`. Arm A = current follow-up style with
 naked branded URL + "nothing to log into, nothing to download". Arm B = no
 URL; finding stated in body; CTA is reply "show me" → paste three transcript
 answers into the thread. All counts match the QA-gated touch-1 bodies.

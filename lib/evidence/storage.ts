@@ -5,11 +5,12 @@
  * storage + signed URLs arrive with the Supabase milestone.
  */
 import { join } from "node:path";
+import { artifactRoot } from "@/lib/storage/root";
 import { sql } from "@/db/client";
 import { ClassifiedError } from "@/lib/errors";
 import { resolveStoragePath, writeImmutable } from "@/lib/storage/content-addressed";
 
-export const EVIDENCE_ROOT = join(process.cwd(), "var", "evidence");
+export const EVIDENCE_ROOT = join(artifactRoot(), "evidence");
 
 export function artifactPath(storageKey: string): string {
   return resolveStoragePath(EVIDENCE_ROOT, storageKey);

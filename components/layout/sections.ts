@@ -30,6 +30,7 @@ import {
   Settings,
   ShieldAlert,
   Swords,
+  TrendingUp,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -49,6 +50,9 @@ export const PROJECT_SECTIONS: ProjectSection[] = [
   // The paying client's one page: commercial state, onboarding, work,
   // baseline vs remeasurement, renewal (spec 131).
   { path: "/engagement", label: "Engagement", icon: Handshake },
+  // One prioritized, approvable list across every finding engine, plus the
+  // onboarding checklist and experiment plans (spec 151).
+  { path: "/optimization", label: "Optimize", icon: TrendingUp },
   { path: "/knowledge", label: "Knowledge", icon: BookOpen },
   { path: "/prompts", label: "Prompts", icon: MessageSquareText },
   { path: "/runs", label: "Runs", icon: PlayCircle },
@@ -105,7 +109,7 @@ export const PROJECT_NAV_GROUPS: NavGroup[] = [
   { label: "Overview", paths: ["", "/engagement", "/plan", "/knowledge"] },
   { label: "Measure", paths: ["/prompts", "/runs"] },
   { label: "Findings", paths: ["/gaps", "/competitors"] },
-  { label: "Act", paths: ["/content", "/tasks", "/reports", "/activity"] },
+  { label: "Act", paths: ["/optimization", "/content", "/tasks", "/reports", "/activity"] },
   { label: null, paths: ["/settings"] },
 ];
 

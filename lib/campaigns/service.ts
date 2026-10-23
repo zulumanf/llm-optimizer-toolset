@@ -7,6 +7,7 @@
  */
 import { z } from "zod";
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany } from "@/db/companies";
 import {
@@ -131,7 +132,7 @@ async function latestSubjectMetrics(
   const rows = await sql`
     select metric, value, scoring_version from scores
     where run_id = ${run.id} and company_id = ${subject.id}
-      and provider = 'all'
+      and provider = 'all' and scoring_version = ${READ_SCORING_VERSION}
   `;
   if (rows.length === 0) return null;
   return {

@@ -1,5 +1,6 @@
 /** Report snapshot shapes (spec 006). The body is fully self-contained:
  * everything a published report renders comes from here, never live tables. */
+import type { MeasurementSection } from "@/lib/reports/measurement-v2";
 
 export interface SnapshotScore {
   scoreId: string;
@@ -138,5 +139,8 @@ export interface ReportBody {
   coverage: SnapshotCoverage;
   program: SnapshotProgram;
   categoryOwnership: SnapshotCategoryOwnership[];
+  /** Spec 151 C7: per-model estimates with intervals, change, MDE,
+   * experiments, outcomes, next actions. Absent on pre-v2 report bodies. */
+  measurement?: MeasurementSection;
   narrative: Record<NarrativeSection, string>;
 }

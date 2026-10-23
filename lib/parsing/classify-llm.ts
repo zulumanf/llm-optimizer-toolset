@@ -17,6 +17,7 @@ import { CONFIDENCE_REVIEW_THRESHOLD } from "@/lib/constants";
 import { modelForTask } from "@/lib/ai/routing";
 import type { Sentiment } from "@/lib/constants";
 import {
+  domainBelongsTo,
   scanAliases,
   extractUrls,
   urlDomain,
@@ -247,7 +248,7 @@ ${responseText}
 
     // Deterministic where determinism is possible (docs/12)
     const citedUrls = company.domain
-      ? urls.filter((u) => urlDomain(u)?.endsWith(company.domain as string))
+      ? urls.filter((u) => domainBelongsTo(urlDomain(u), company.domain))
       : [];
     const fallbackPosition =
       listItems.find((item) => scanAliases(item.text, [company]).length > 0)

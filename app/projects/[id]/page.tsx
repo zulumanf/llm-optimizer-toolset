@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject } from "@/db/projects";
 import { getCurrentUser } from "@/lib/auth";
-import { SCORING_VERSION } from "@/lib/constants";
+import { scoringState } from "@/db/scores";
 import {
   authorityTrend,
   selfTiles,
@@ -67,7 +67,7 @@ export default async function ProjectDashboardPage({
 }) {
   await requireProjectStaffPage((await params).id);
   const { id } = await params;
-  const [project, user] = await Promise.all([getProject(id), getCurrentUser()]);
+  const [project, user, scoring] = await Promise.all([getProject(id), getCurrentUser(), scoringState()]);
   if (!project) notFound();
 
   const [tiles, trend, comparison, latestScores, health, scoredRunId] =
@@ -162,7 +162,7 @@ export default async function ProjectDashboardPage({
               ? authority.value - authority.previousValue
               : null
           }
-          sub={authority ? `N=${authority.sampleSize} · ${SCORING_VERSION}` : "no scored runs"}
+          sub={authority ? `N=${authority.sampleSize} · ${scoring.readVersion}` : "no scored runs"}
         />
         <StatTile
           label="Recommendation rate"

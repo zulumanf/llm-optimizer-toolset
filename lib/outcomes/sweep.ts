@@ -11,8 +11,8 @@
  * Traffic/leads/pipeline stay null until a real data source exists.
  */
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { getSubjectCompany } from "@/db/companies";
-import { SCORING_VERSION } from "@/lib/constants";
 import { measureAction, OUTCOME_MATERIALITY_THRESHOLD } from "@/lib/outcomes/graph";
 import { log } from "@/lib/logger";
 
@@ -67,7 +67,7 @@ async function snapshotNearest(
     select r.id from runs r
     where r.project_id = ${projectId}
       and exists (select 1 from scores s
-        where s.run_id = r.id and s.scoring_version = ${SCORING_VERSION})
+        where s.run_id = r.id and s.scoring_version = ${READ_SCORING_VERSION})
       and ${direction === "before"
         ? sql`r.started_at < ${moment}`
         : sql`r.started_at > ${moment}`}
@@ -79,7 +79,7 @@ async function snapshotNearest(
     select value from scores
     where run_id = ${run.id} and company_id = ${companyId}
       and metric = 'mention_rate' and provider = 'all'
-      and scoring_version = ${SCORING_VERSION}
+      and scoring_version = ${READ_SCORING_VERSION}
   `;
   const [cites] = await sql`
     select count(*)::int as count

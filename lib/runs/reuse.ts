@@ -11,6 +11,7 @@
 import { sql } from "@/db/client";
 import { CAPTURE_REUSE_WINDOW_HOURS } from "@/lib/constants";
 import type { Cell } from "@/lib/runs/cells";
+import { extractServedModel } from "@/lib/ai/served-model";
 
 export interface ReusableCapture {
   id: string;
@@ -21,6 +22,9 @@ export interface ReusableCapture {
   tokensOut: number | null;
   requestParams: unknown;
   shapeRecognized: boolean | null;
+  /** When the source answer was actually produced (spec 151 A1). */
+  capturedAt: Date;
+  servedModel: string | null;
 }
 
 export async function findReusableCapture(
@@ -30,7 +34,9 @@ export async function findReusableCapture(
   if (cell.provider === "mock") return null;
   const rows = await sql`
     select r.id, r.raw_payload, r.response_text, r.refusal, r.tokens_in,
-      r.tokens_out, r.request_params, r.shape_recognized
+      r.tokens_out, r.request_params, r.shape_recognized,
+      coalesce(r.captured_at, r.requested_at) as captured_at, r.served_model,
+      r.provider
     from responses r
     join runs source_run on source_run.id = r.run_id
     where md5(r.prompt_text) = md5(${cell.promptText})
@@ -57,5 +63,9 @@ export async function findReusableCapture(
     tokensOut: (row.tokensOut as number | null) ?? null,
     requestParams: row.requestParams,
     shapeRecognized: (row.shapeRecognized as boolean | null) ?? null,
+    capturedAt: row.capturedAt as Date,
+    servedModel:
+      (row.servedModel as string | null) ??
+      extractServedModel(row.provider as string, row.rawPayload),
   };
 }

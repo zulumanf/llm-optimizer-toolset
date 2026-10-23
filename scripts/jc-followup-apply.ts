@@ -1,6 +1,6 @@
 /**
  * JC batch-1 follow-ups (prepared 2026-08-24 for the 2026-08-25 AM batch).
- * Reads scripts/jc-followup-drafts.json (hand-written per-prospect bodies —
+ * Reads .local-data/campaign-inputs/jc-followup-drafts.json (hand-written per-prospect bodies —
  * every number matches the prospect's live published audit snapshot).
  *
  *   --create    create followup_email drafts bound to the primary contact
@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   const [u] = await sql`select id, email, name, role from users where email = 'zulumanf@gmail.com'`;
   if (!u) throw new Error("operator user not found");
   const user: CurrentUser = { id: u.id as string, email: u.email as string, name: u.name as string, role: u.role as CurrentUser["role"] };
-  const drafts = JSON.parse(readFileSync("scripts/jc-followup-drafts.json", "utf8")) as FollowupRow[];
+  const drafts = JSON.parse(readFileSync(".local-data/campaign-inputs/jc-followup-drafts.json", "utf8")) as FollowupRow[];
 
   let slot = 0;
   for (const d of drafts) {

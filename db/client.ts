@@ -36,3 +36,34 @@ if (process.env.NODE_ENV !== "production") {
 
 export type Sql = typeof sql;
 export type { TransactionSql } from "postgres";
+
+/**
+ * A dedicated single-connection client for SESSION advisory locks (release
+ * 151). Lock holders (job execution, run execution, scheduler tick) keep a
+ * session open for minutes; if that session dies, the connection must never
+ * return to the shared pool — postgres.js 3.4.x hands a dead pooled
+ * connection to the next borrower (ECONNRESET, or an uncatchable TypeError
+ * from its own write timer; reproduced in tests/integration/job-fencing).
+ * Each lock holder opens one of these and destroys it when done.
+ */
+export function createLockClient(): ReturnType<typeof postgres> {
+  return postgres(getEnv().DATABASE_URL, {
+    onnotice: () => {},
+    max: 1,
+    // Both timers OFF: postgres.js recycles a connection after a random
+    // 30–60 min `max_lifetime` (verified in its source), which would end the
+    // session and silently release a lock held by a long benchmark run.
+    idle_timeout: 0,
+    max_lifetime: 0,
+    connection: { TimeZone: "UTC", application_name: "rf-lock" },
+  });
+}
+
+/** Close a lock client without waiting on a dead socket. */
+export async function destroyLockClient(client: ReturnType<typeof postgres>): Promise<void> {
+  try {
+    await client.end({ timeout: 0 });
+  } catch {
+    // already gone
+  }
+}

@@ -1,0 +1,72 @@
+name: Monthly restore drill
+
+# Release 151. INERT until BACKUPS_ENABLED=true. Downloads the newest
+# encrypted backup, restores it into a throwaway Postgres inside the runner,
+# and verifies integrity, row counts and the scoring cutover invariants.
+# Nothing is written to production; the restored copy is destroyed with the
+# runner. Duration is printed for the RTO record.
+on:
+  schedule:
+    - cron: "41 9 3 * *" # 3rd of each month
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  drill:
+    if: vars.BACKUPS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:${{ vars.PG_SERVER_VERSION || '17' }}
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install PostgreSQL client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq "postgresql-client-${{ vars.PG_CLIENT_VERSION || '17' }}"
+      - name: Fetch newest backup
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+        run: |
+          latest=$(aws s3 ls "s3://$BACKUP_S3_BUCKET/postgres/" --endpoint-url "$BACKUP_S3_ENDPOINT" | sort | tail -1 | awk '{print $4}')
+          test -n "$latest" || { echo "no backup found"; exit 1; }
+          aws s3 cp "s3://$BACKUP_S3_BUCKET/postgres/$latest" "$RUNNER_TEMP/$latest" --endpoint-url "$BACKUP_S3_ENDPOINT" --only-show-errors
+          echo "ARTIFACT=$RUNNER_TEMP/$latest" >> "$GITHUB_ENV"
+      - name: Restore and verify
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_DB_PORT: "5432"
+        run: |
+          start=$(date +%s)
+          bash scripts/restore.sh "$ARTIFACT" restore_drill
+          echo "restore took $(( $(date +%s) - start ))s"
+          export DATABASE_URL=postgres://postgres:postgres@localhost:5432/restore_drill
+          npx tsx scripts/migrate.ts status
+          npx tsx scripts/scoring-cutover.ts status
+          npx tsx scripts/scoring-cutover.ts verify || echo "::warning::cutover verify reports gaps (expected before Gate 3)"
+          psql "$DATABASE_URL" -Atc "select 'responses', count(*) from responses union all select 'mentions', count(*) from mentions union all select 'scores', count(*) from scores union all select 'backup_runs', count(*) from backup_runs"

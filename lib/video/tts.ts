@@ -140,9 +140,11 @@ export async function synthesizeCached(
 ): Promise<NarrationFile> {
   const wavKey = `${prefix}/${seg.key}.wav`;
   const metaKey = `${prefix}/${seg.key}.json`;
-  const { resolveStoragePath } = await import("@/lib/storage/content-addressed");
-  const wavPath = resolveStoragePath(root, wavKey);
-  const metaPath = resolveStoragePath(root, metaKey);
+  const { ensureLocalIfStored, resolveStoragePath } = await import("@/lib/storage/content-addressed");
+  // Fetch a narration another container already paid for (object store)
+  // before ever calling the TTS provider again (release 151).
+  const wavPath = (await ensureLocalIfStored(root, wavKey)) ?? resolveStoragePath(root, wavKey);
+  const metaPath = (await ensureLocalIfStored(root, metaKey)) ?? resolveStoragePath(root, metaKey);
   if (existsSync(wavPath) && existsSync(metaPath)) {
     const meta = JSON.parse(await readFile(metaPath, "utf8")) as Omit<NarrationFile, "cached" | "wavPath" | "key">;
     return { ...meta, key: seg.key, wavPath, cached: true };

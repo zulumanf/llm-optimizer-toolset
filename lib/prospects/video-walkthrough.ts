@@ -498,8 +498,9 @@ async function compileContext(row: VideoArtifactRow): Promise<{ input: VideoWalk
 async function resolveIntroAsset(version: string, root: string): Promise<{ ok: true; path: string; asset: FounderIntroAsset } | { ok: false; reason: string }> {
   const asset = version === FIXTURE_FOUNDER_INTRO_VERSION ? fixtureIntroAsset() : FOUNDER_INTRO_ASSETS[version];
   if (!asset) return { ok: false, reason: `FOUNDER_INTRO_UNKNOWN: ${version}` };
-  const path = join(root, asset.file);
-  if (!existsSync(path)) return { ok: false, reason: `FOUNDER_INTRO_MISSING: ${asset.version} not present on this worker` };
+  const { ensureLocalIfStored } = await import("@/lib/storage/content-addressed");
+  const path = (await ensureLocalIfStored(root, asset.file)) ?? join(root, asset.file);
+  if (!existsSync(path)) return { ok: false, reason: `FOUNDER_INTRO_MISSING: ${asset.version} not present on this worker or in object storage` };
   if (asset.sha256) {
     const actual = sha256Of(await readFile(path));
     if (actual !== asset.sha256) return { ok: false, reason: `FOUNDER_INTRO_CHECKSUM: ${asset.version} does not match the registry` };
@@ -540,7 +541,10 @@ async function renderOrReuse(deps: RenderDeps, scenes: PlannedScene[], storageKe
   const { artifactPath } = await import("@/lib/evidence/storage");
   const canonicalPath = artifactPath(storageKey);
   const [existingRow] = await sql`select id, sha256 from evidence_artifacts where storage_key = ${storageKey}`;
-  if (existingRow && existsSync(canonicalPath)) {
+  // Another container may hold the canonical bytes (object store): fetch
+  // them rather than re-render (release 151).
+  const { ensureLocalIfStored } = await import("@/lib/storage/content-addressed");
+  if (existingRow && (await ensureLocalIfStored(EVIDENCE_ROOT, storageKey)) !== null) {
     const bytes = await readFile(canonicalPath);
     const probe = await deps.probe.probe(canonicalPath);
     return { path: canonicalPath, sha256: sha256Of(bytes), storedSha256: existingRow.sha256 as string, sizeBytes: bytes.length, probe, renderMs: 0, overflow: [] as string[], reused: true, evidenceArtifactId: existingRow.id as string };

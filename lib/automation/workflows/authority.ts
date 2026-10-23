@@ -167,18 +167,31 @@ export const contentProductionWorkflowV2 = defineWorkflow({
       { artifactPath: "draft", evidenceIdsPath: "packet.evidenceIds" },
       { riskLevel: "high", approvalRole: "admin" }
     ),
+    // Release 151 consolidation: what reaches the CMS is never this
+    // workflow's agent draft (an internal research artifact). It is the
+    // approved, validator- and fact-verified lib/content asset, re-checked
+    // by the same gate the connector boundary enforces.
+    step("canonical_content", "dom.canonical_publish_input", "Use the approved, verified content asset", {
+      mode: "draft",
+      assetIdPath: "entry.payload.contentAssetId",
+    }),
     act(
       "cms_draft",
       "cms.create_draft",
       "Create the CMS draft",
-      { inputPath: "draft" },
+      { inputPath: "canonical_content" },
       { riskLevel: "medium" }
     ),
+    step("publish_input", "dom.canonical_publish_input", "Bind the approved asset and approval to publication", {
+      mode: "publish",
+      assetIdPath: "entry.payload.contentAssetId",
+      draftPath: "cms_draft",
+    }),
     act(
       "publish",
       "cms.publish_approved_asset",
       "Publish the approved asset",
-      { inputPath: "cms_draft", actionType: "cms_public_publishing" },
+      { inputPath: "publish_input", actionType: "cms_public_publishing" },
       { riskLevel: "critical" }
     ),
     // Verify the page is actually live. "We called the publish endpoint" is not
@@ -223,8 +236,10 @@ export const contentProductionWorkflowV2 = defineWorkflow({
     branch("claims_ok", "block_publication", false),
     branch("claims_ok", "internal_approval", true),
     edge("internal_approval", "client_approval"),
-    edge("client_approval", "cms_draft"),
-    edge("cms_draft", "publish"),
+    edge("client_approval", "canonical_content"),
+    edge("canonical_content", "cms_draft"),
+    edge("cms_draft", "publish_input"),
+    edge("publish_input", "publish"),
     edge("publish", "verify_live"),
     edge("verify_live", "record_outcome"),
     edge("record_outcome", "schedule_remeasure"),

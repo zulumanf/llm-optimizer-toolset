@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { writeAudit } from "@/db/audit";
 import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
@@ -530,6 +531,7 @@ export async function interventionVerdictSummaries(
     from intervention_runs ir
     join scores s on s.run_id = ir.run_id
     where ir.intervention_id = ${interventionId} and s.company_id = ${subject.id}
+      and s.scoring_version = ${READ_SCORING_VERSION}
   `;
   const toInput = (r: (typeof scoreRows)[number]): ScoreInput => ({
     scoreId: r.scoreId as string,
@@ -598,6 +600,7 @@ export async function interventionView(
         join scores s on s.run_id = ir.run_id
         where ir.intervention_id = ${interventionId}
           and s.company_id = ${subject.id}
+          and s.scoring_version = ${READ_SCORING_VERSION}
       `
     : [];
   const toInput = (r: (typeof scoreRows)[number]): ScoreInput => ({
@@ -626,7 +629,7 @@ export async function interventionView(
       ) as scoring_versions
     from intervention_runs ir
     join runs r on r.id = ir.run_id
-    left join scores s on s.run_id = r.id
+    left join scores s on s.run_id = r.id and s.scoring_version = ${READ_SCORING_VERSION}
     where ir.intervention_id = ${interventionId}
     group by ir.role, ir.offset_label, r.id, r.providers,
       r.prompt_set_version_id, r.started_at

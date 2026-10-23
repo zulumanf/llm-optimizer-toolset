@@ -90,7 +90,9 @@ describe.skipIf(!TEST_URL)("city prospecting pipeline (integration)", () => {
     }
   }
 
+  const previousDefault = process.env.MEASUREMENT_DEFAULT_INSTRUMENT;
   beforeAll(async () => {
+    process.env.MEASUREMENT_DEFAULT_INSTRUMENT = JSON.stringify([{ provider: "mock", model: "mock-model", repetitions: 3 }]);
     ({ sql } = await import("@/db/client"));
     pipeline = await import("@/lib/prospects/city-pipeline");
     registry = await import("@/lib/prospects/providers/registry");
@@ -151,13 +153,17 @@ describe.skipIf(!TEST_URL)("city prospecting pipeline (integration)", () => {
   });
 
   afterAll(async () => {
+    if (previousDefault === undefined) delete process.env.MEASUREMENT_DEFAULT_INSTRUMENT;
+    else process.env.MEASUREMENT_DEFAULT_INSTRUMENT = previousDefault;
     registry.setProspectSourceForTests("perplexity", null as never);
     await sql.end();
   });
 
   it("refuses a run whose estimate exceeds the confirmed budget — nothing spends", async () => {
-    // Newest completed run carries an expensively-priced real model; the
-    // pipeline copies that config, estimates, and must refuse the $0.01 cap.
+    // The market's default instrument is an expensively-priced real model
+    // (spec 151: pinned default, overridden here); the pipeline estimates it
+    // and must refuse the $0.01 cap.
+    process.env.MEASUREMENT_DEFAULT_INSTRUMENT = JSON.stringify([{ provider: "anthropic", model: "claude-opus-5", repetitions: 4 }]);
     await seedCompletedRun(
       [{ provider: "anthropic", model: "claude-opus-5", repetitions: 4 }],
       "11111111-0000-4000-8000-000000000001"
@@ -176,10 +182,12 @@ describe.skipIf(!TEST_URL)("city prospecting pipeline (integration)", () => {
     expect(row?.error).toMatch(/exceeds the confirmed budget/);
     const [runs] = await sql`select count(*)::int as n from runs where label like 'City prospecting%'`;
     expect(runs?.n).toBe(0);
+    process.env.MEASUREMENT_DEFAULT_INSTRUMENT = JSON.stringify([{ provider: "mock", model: "mock-model", repetitions: 3 }]);
   });
 
   it("walks A→Z: discovery → gated seeding → budgeted benchmark → scoring", async () => {
-    // A newer completed run with the mock provider becomes the copied config.
+    // Spec 151: the market pins the default instrument; in tests the default
+    // is overridden to the mock (previously: the newest run anywhere was copied).
     await seedCompletedRun(
       [{ provider: "mock", model: "mock-model", repetitions: 3 }],
       "11111111-0000-4000-8000-000000000011"

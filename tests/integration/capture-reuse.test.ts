@@ -177,6 +177,19 @@ describe.skipIf(!TEST_URL)("shared market captures (integration)", () => {
     `;
     expect(origin?.runId).toBe(a.runId);
 
+    // Spec 151 A1: a copy states when its answer was PRODUCED (the source's
+    // capture time), never the moment it was copied.
+    const times = await sql`
+      select copy.captured_at as copy_captured, src.requested_at as src_requested,
+        copy.requested_at as copy_requested
+      from responses copy join responses src on src.id = copy.reused_from
+      where copy.run_id = ${b.runId}
+    `;
+    expect(times).toHaveLength(2);
+    for (const t of times) {
+      expect((t.copyCaptured as Date).getTime()).toBe((t.srcRequested as Date).getTime());
+    }
+
     // Classification ran against B's OWN company set and scoring produced
     // rows for B's subject — one capture, N company sets (the audit's rule).
     const [score] = await sql`

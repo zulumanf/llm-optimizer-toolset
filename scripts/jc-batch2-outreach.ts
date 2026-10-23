@@ -1,6 +1,6 @@
 /**
  * JC batch 2 outreach (2026-08-21). Runs AFTER scripts/jc-batch2-findings.ts
- * --apply. Reads scripts/jc-batch2-contacts.json (publicly sourced emails,
+ * --apply. Reads .local-data/campaign-inputs/jc-batch2-contacts.json (publicly sourced emails,
  * each with its source page in notes) and, per prospect:
  *   --contacts  add the primary contact (skipped if the prospect already has
  *               a contact with an email)
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
   const [u] = await sql`select id, email, name, role from users where email = 'zulumanf@gmail.com'`;
   if (!u) throw new Error("operator user not found");
   const user: CurrentUser = { id: u.id as string, email: u.email as string, name: u.name as string, role: u.role as CurrentUser["role"] };
-  const contacts = JSON.parse(readFileSync("scripts/jc-batch2-contacts.json", "utf8")) as ContactRow[];
+  const contacts = JSON.parse(readFileSync(".local-data/campaign-inputs/jc-batch2-contacts.json", "utf8")) as ContactRow[];
 
   const rows = await sql`
     select p.id, p.business_name,

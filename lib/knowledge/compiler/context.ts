@@ -11,6 +11,7 @@
  * agent reads.
  */
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { RECENT_CHANGES_WINDOW_DAYS } from "@/lib/knowledge/constants";
 import { assessFreshness } from "@/lib/knowledge/freshness";
 import { resolveInstructions } from "@/lib/knowledge/instructions/service";
@@ -103,6 +104,7 @@ async function loadClientKnowledge(projectId: string, now: Date): Promise<Client
       join companies c on c.id = s.company_id
       join projects p on p.id = r.project_id
       where r.project_id = ${projectId} and c.id = p.subject_company_id
+        and s.scoring_version = ${READ_SCORING_VERSION}
       order by s.computed_at desc limit 20
     `,
     sql`

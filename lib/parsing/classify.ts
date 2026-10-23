@@ -11,6 +11,7 @@
 import type { Sentiment } from "@/lib/constants";
 import { CONFIDENCE_REVIEW_THRESHOLD } from "@/lib/constants";
 import {
+  domainBelongsTo,
   scanAliases,
   extractUrls,
   urlDomain,
@@ -97,7 +98,7 @@ export function classifyResponse(
     else if (negative) sentiment = "negative";
 
     const citedUrls = company?.domain
-      ? urls.filter((u) => urlDomain(u)?.endsWith(company.domain as string))
+      ? urls.filter((u) => domainBelongsTo(urlDomain(u), company.domain))
       : [];
 
     // Heuristic certainty: explicit signals are trustworthy; inferred

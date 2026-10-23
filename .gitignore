@@ -25,3 +25,9 @@ test-results/
 
 # Licensed source data (purchased datasets) — never tracked
 .local-data/
+
+# Spec 151 D2: campaign contact/draft inputs and raw answer dumps live in
+# .local-data/ (above); never re-add them under scripts/ or data/internal/.
+scripts/*-contacts.json
+scripts/*-drafts.json
+data/internal/

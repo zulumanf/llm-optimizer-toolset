@@ -40,13 +40,27 @@ export type MigrateDirection = "up" | "down" | "status";
  * closes its own single connection; throws on failure. `log` receives the
  * same lines the CLI prints.
  */
+/** Session advisory lock key: one migration runner per database at a time.
+ * The worker image migrates on boot, so two workers starting together would
+ * otherwise race to apply the same file (release 151). */
+const MIGRATION_LOCK_KEY = 727_274_151;
+
+export interface MigrateOptions {
+  /** Allow a down section to drop tables that still hold rows (release 151
+   * guard: every spec-151 down refuses by default when data would be lost). */
+  allowDestructiveDown?: boolean;
+}
+
 export async function migrate(
   direction: MigrateDirection,
   url: string,
-  log: (line: string) => void = console.log
+  log: (line: string) => void = console.log,
+  options: MigrateOptions = {}
 ): Promise<void> {
   const sql = postgres(url, { max: 1, onnotice: () => {} });
   try {
+    // max: 1 → one connection, so this session lock covers every statement.
+    await sql`select pg_advisory_lock(${MIGRATION_LOCK_KEY})`;
     await sql`create table if not exists schema_migrations (
       name text primary key,
       applied_at timestamptz not null default now()
@@ -99,12 +113,16 @@ export async function migrate(
       }
       const { down } = parseMigration(last);
       await sql.begin(async (tx) => {
+        if (options.allowDestructiveDown) {
+          await tx`select set_config('rf.allow_destructive_down', 'on', true)`;
+        }
         await tx.unsafe(down);
         await tx`delete from schema_migrations where name = ${last}`;
       });
       log(`reverted ${last}`);
     }
   } finally {
+    await sql`select pg_advisory_unlock(${MIGRATION_LOCK_KEY})`.catch(() => undefined);
     await sql.end();
   }
 }
@@ -112,7 +130,7 @@ export async function migrate(
 async function main(): Promise<void> {
   const direction = process.argv[2];
   if (direction !== "up" && direction !== "down" && direction !== "status") {
-    console.error("Usage: tsx scripts/migrate.ts up|down|status [--db <url>]");
+    console.error("Usage: tsx scripts/migrate.ts up|down|status [--db <url>] [--allow-destructive-down]");
     process.exit(1);
   }
   const dbFlagIdx = process.argv.indexOf("--db");
@@ -122,7 +140,9 @@ async function main(): Promise<void> {
     console.error("DATABASE_URL is not set (and no --db flag given)");
     process.exit(1);
   }
-  await migrate(direction, url);
+  await migrate(direction, url, console.log, {
+    allowDestructiveDown: process.argv.includes("--allow-destructive-down"),
+  });
 }
 
 // Only run the CLI when executed directly (tsx/node); importing this module

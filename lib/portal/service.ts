@@ -6,6 +6,7 @@
  * SQL, not in the rendering.
  */
 import { sql } from "@/db/client";
+import { READ_SCORING_VERSION } from "@/db/scores";
 import { getSubjectCompany } from "@/db/companies";
 import { authorityTrend, type TrendPoint } from "@/db/dashboard";
 import { assertProjectAccess, type CurrentUser } from "@/lib/auth";
@@ -73,6 +74,7 @@ export async function portalOverview(
         from scores
         where run_id = ${latest.id} and company_id = ${subject.id}
           and provider = 'all' and metric = any(${HEADLINE_METRICS})
+          and scoring_version = ${READ_SCORING_VERSION}
         order by array_position(${HEADLINE_METRICS}::text[], metric)
       `
     : [];
@@ -81,6 +83,7 @@ export async function portalOverview(
     from runs r
     join scores s on s.run_id = r.id and s.company_id = ${subject.id}
       and s.provider = 'all' and s.metric = 'recommendation_rate'
+      and s.scoring_version = ${READ_SCORING_VERSION}
     where r.project_id = ${projectId}
     order by r.started_at asc limit 1
   `;
@@ -150,7 +153,7 @@ export async function portalCompetitive(
     from scores s
     join companies c on c.id = s.company_id
     where s.run_id = ${latest.id} and s.provider = 'all'
-      and s.metric = 'recommendation_rate'
+      and s.metric = 'recommendation_rate' and s.scoring_version = ${READ_SCORING_VERSION}
       and (s.company_id = ${subject.id} or s.company_id in
         (select company_id from competitors where project_id = ${projectId}))
     order by s.value desc
