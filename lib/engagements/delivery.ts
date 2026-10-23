@@ -483,40 +483,79 @@ const acceptSchema = z.object({
  * required field stated, and no locked baseline (success criteria never
  * change after the starting point is measured).
  */
+/**
+ * Why this draft protocol cannot be accepted now (spec 154 rules, shared by
+ * the staff path and the client's portal approval — spec 155 R3). Empty when
+ * it can. The question-set approval itself is checked by each caller: staff
+ * look for a recorded approval; the portal records one in the same
+ * transaction from per-question approvals of the exact wording.
+ */
+export async function protocolAcceptanceBlockers(e: EngagementRow, p: ProtocolRow): Promise<string[]> {
+  const blockers: string[] = [];
+  if (p.status !== "draft") blockers.push(`Protocol v${p.version} is already ${p.status}.`);
+  const baseline = (await listMeasurements(e.id)).find((m) => m.role === "baseline" && m.status === "frozen");
+  if (baseline) blockers.push("The baseline is locked. The agreed protocol cannot change during this term.");
+  const { openPortalRequests } = await import("@/lib/engagements/client-question-review");
+  const open = await openPortalRequests(p.promptSetVersionId);
+  if (open > 0) blockers.push(`The client asked for changes to ${open} question(s) in the portal. Import a revised version instead.`);
+  const missing = protocolMissing(p);
+  if (missing.length > 0) blockers.push(`The protocol still needs: ${missing.join(", ")}.`);
+  return blockers;
+}
+
+export async function loadProtocol(protocolId: string): Promise<ProtocolRow & { engagementId: string } | null> {
+  const [row] = await sql`select * from engagement_protocols where id = ${protocolId}`;
+  return row ? { ...mapProtocol(row), engagementId: row.engagementId as string } : null;
+}
+
+/**
+ * Freeze the protocol as accepted, inside the caller's transaction. Locks the
+ * row and re-checks it is still a draft, so two concurrent acceptances cannot
+ * both succeed. One implementation for staff-recorded and portal acceptance.
+ */
+export async function acceptProtocolInTx(
+  tx: TransactionSql,
+  actor: { userId: string; clientActor: string; channel: (typeof DECISION_CHANNELS)[number]; note: string },
+  e: EngagementRow,
+  p: ProtocolRow
+): Promise<void> {
+  const [locked] = await tx`select status from engagement_protocols where id = ${p.id} for update`;
+  if (locked?.status !== "draft") throw new ClassifiedError("conflict", `Protocol v${p.version} is no longer a draft.`);
+  await tx`update engagement_protocols set status = 'superseded' where engagement_id = ${e.id} and status = 'accepted'`;
+  await tx`
+    update engagement_protocols set status = 'accepted', accepted_at = now(), accepted_by_name = ${actor.clientActor},
+      accepted_channel = ${actor.channel}, accepted_recorded_by = ${actor.userId}, updated_at = now()
+    where id = ${p.id}
+  `;
+  await tx`
+    insert into engagement_client_decisions (engagement_id, project_id, subject_kind, subject_ref, decision, channel, client_actor, note, snapshot, recorded_by)
+    values (${e.id}, ${e.projectId}, 'protocol', ${p.id}, 'approved', ${actor.channel}, ${actor.clientActor}, ${actor.note},
+      ${tx.json({ protocolId: p.id, version: p.version, promptSetVersionId: p.promptSetVersionId, successCriteria: p.successCriteria } as never)}, ${actor.userId})
+  `;
+  await writeAudit(tx, { userId: actor.userId, action: "engagement.protocol_accepted", entity: "client_engagement", entityId: e.id, projectId: e.projectId, detail: plain({ protocolId: p.id, version: p.version, clientActor: actor.clientActor, channel: actor.channel }) });
+}
+
 export async function acceptProtocol(user: CurrentUser, raw: unknown): Promise<ActionResult<{ protocolId: string }>> {
   const parsed = acceptSchema.safeParse(raw);
   if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
   const i = parsed.data;
   try {
     assertCanWrite(user);
-    const [row] = await sql`select * from engagement_protocols where id = ${i.protocolId}`;
-    if (!row) return fail(new ClassifiedError("not_found", "Protocol not found."));
-    const p = mapProtocol(row);
+    const p = await loadProtocol(i.protocolId);
+    if (!p) return fail(new ClassifiedError("not_found", "Protocol not found."));
+    const e = await loadEngagement(p.engagementId);
+    // The original order: not a draft → baseline locked → question set not
+    // approved → open portal requests → missing fields.
     if (p.status !== "draft") return fail(new ClassifiedError("conflict", `Protocol v${p.version} is already ${p.status}.`));
-    const e = await loadEngagement(row.engagementId as string);
-    const baseline = (await listMeasurements(e.id)).find((m) => m.role === "baseline" && m.status === "frozen");
-    if (baseline) return fail(new ClassifiedError("conflict", "The baseline is locked. The agreed protocol cannot change during this term."));
+    const blockers = await protocolAcceptanceBlockers(e, p);
+    const locked = blockers.find((b) => /baseline is locked/.test(b));
+    if (locked) return fail(new ClassifiedError("conflict", locked));
     const latestOnSet = (await listSubjectDecisions(e.id, "question_set")).find((d) => d.subjectRef === p.promptSetVersionId);
     if (latestOnSet?.decision !== "approved") {
       return fail(new ClassifiedError("validation", "The client has not approved the question set this protocol cites. Record that approval first."));
     }
-    await assertNoOpenPortalRequests(p.promptSetVersionId);
-    const missing = protocolMissing(p);
-    if (missing.length > 0) return fail(new ClassifiedError("validation", `The protocol still needs: ${missing.join(", ")}.`));
-    await sql.begin(async (tx) => {
-      await tx`update engagement_protocols set status = 'superseded' where engagement_id = ${e.id} and status = 'accepted'`;
-      await tx`
-        update engagement_protocols set status = 'accepted', accepted_at = now(), accepted_by_name = ${i.clientActor},
-          accepted_channel = ${i.channel}, accepted_recorded_by = ${user.id}, updated_at = now()
-        where id = ${p.id}
-      `;
-      await tx`
-        insert into engagement_client_decisions (engagement_id, project_id, subject_kind, subject_ref, decision, channel, client_actor, note, snapshot, recorded_by)
-        values (${e.id}, ${e.projectId}, 'protocol', ${p.id}, 'approved', ${i.channel}, ${i.clientActor}, ${i.note},
-          ${tx.json({ protocolId: p.id, version: p.version, promptSetVersionId: p.promptSetVersionId, successCriteria: p.successCriteria } as never)}, ${user.id})
-      `;
-      await audit(tx, user, e, "engagement.protocol_accepted", { protocolId: p.id, version: p.version, clientActor: i.clientActor, channel: i.channel });
-    });
+    if (blockers.length > 0) return fail(new ClassifiedError("validation", blockers[0]!));
+    await sql.begin((tx) => acceptProtocolInTx(tx, { userId: user.id, clientActor: i.clientActor, channel: i.channel, note: i.note }, e, p));
     return ok({ protocolId: p.id });
   } catch (err) {
     return fail(err);
@@ -1356,7 +1395,7 @@ export async function deliveryState(projectId: string, today = todayIso()): Prom
     portalGrants: Number(grants?.n ?? 0),
     welcomeSent: updates.some((u) => u.kind === "welcome" && u.status === "sent"),
     intakeConfirmed,
-    questionSet: questionSet ? { versionId: questionSet.versionId, questionCount: questionSet.questions.length, approved: qsDecision?.decision === "approved", changesRequested: qsDecision?.decision === "changes_requested" || qsDecision?.decision === "rejected" } : null,
+    questionSet: questionSet ? { versionId: questionSet.versionId, questionCount: questionSet.questions.length, approved: qsDecision?.decision === "approved", reviewed: qsDecision?.decision === "acknowledged", changesRequested: qsDecision?.decision === "changes_requested" || qsDecision?.decision === "rejected" } : null,
     protocol: accepted ? { status: "accepted", questionSetApproved: true } : draft ? { status: "draft", questionSetApproved: qsDecision?.decision === "approved" } : null,
     baselineFrozen: measurements.some((m) => m.role === "baseline" && m.status === "frozen"),
     roadmapPublished: Boolean(roadmap && ["approved", "active", "completed"].includes(roadmap.status)),

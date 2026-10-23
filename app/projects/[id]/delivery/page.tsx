@@ -27,6 +27,7 @@ import { onboardingDefaults, onboardingForEngagement } from "@/lib/engagements/c
 import { changedFields, effective, marketDiffers, primaryFocusLabel, type PreparedPriorities } from "@/lib/engagements/client-onboarding-rules";
 import { operatorReviewSummary } from "@/lib/engagements/client-question-review";
 import { getProject } from "@/db/projects";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 import { deliveryState } from "@/lib/engagements/delivery";
 import { PLAN_PHASES, PROTOCOL_DEFAULTS, WORK_STATE_LABELS, currentStep, rateView, type StepState } from "@/lib/engagements/delivery-rules";
 import { baselineReadiness } from "@/lib/engagements/measurement";
@@ -50,6 +51,7 @@ const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
  * derived from rows; every action is gated in the service, not here.
  */
 export default async function DeliveryPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();
@@ -91,7 +93,7 @@ export default async function DeliveryPage({ params }: { params: Promise<{ id: s
   const [onboarding, onboardingInitial, portalReview] = await Promise.all([
     onboardingForEngagement(e.id),
     onboardingDefaults(e.id),
-    s.questionSet ? operatorReviewSummary(s.questionSet) : Promise.resolve(null),
+    s.questionSet ? operatorReviewSummary(s.questionSet, e.id) : Promise.resolve(null),
   ]);
   const onboardingChanged = onboarding?.clientPriorities ? changedFields(onboarding.preparedPriorities as Record<string, unknown>, onboarding.clientPriorities as Record<string, unknown>) : [];
   const onboardingShown = onboarding ? { priorities: effective<PreparedPriorities>(onboarding.preparedPriorities, onboarding.clientPriorities), contacts: effective(onboarding.preparedContacts, onboarding.clientContacts) } : null;
@@ -184,7 +186,7 @@ export default async function DeliveryPage({ params }: { params: Promise<{ id: s
         {portalReview && s.questionSet && portalReview.reviewed > 0 && (
           <div className="mt-4 space-y-1 text-sm">
             <p className="font-medium">Portal question review · v{s.questionSet.version}</p>
-            <p className="tabular-nums text-muted-foreground">{portalReview.reviewed} of {s.questionSet.questions.length} reviewed · {portalReview.counts.approved} approved · {portalReview.counts.edit_requested} edit requested · {portalReview.counts.removed} removal</p>
+            <p className="tabular-nums text-muted-foreground">{portalReview.reviewed} of {s.questionSet.questions.length} reviewed · {portalReview.counts.approved} approved · {portalReview.counts.carried} carried (unchanged wording) · {portalReview.counts.edit_requested} edit requested · {portalReview.counts.removed} removal</p>
             {portalReview.requests.length > 0 && (
               <ul className="list-disc space-y-0.5 pl-5">
                 {portalReview.requests.map((r) => <li key={r.text}>{r.decision === "removed" ? "Remove" : "Edit"}: {r.text}{r.comment ? ` — “${r.comment}”` : ""}</li>)}

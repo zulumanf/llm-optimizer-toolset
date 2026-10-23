@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { SectionCard, dayText } from "@/components/portal/delivery-blocks";
 import { WORK_STATE_LABELS, type WorkState } from "@/lib/engagements/delivery-rules";
 import { formatDate } from "@/lib/format";
+import { requirePortalPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ const STATE_VARIANT: Record<WorkState, "default" | "secondary" | "outline" | "de
 /** The client's 90-day plan (spec 154): published plans only, by phase,
  * with owner, date, why, dependencies and proof of delivery. */
 export default async function PortalPlanPage({ params }: { params: Promise<{ projectId: string }> }) {
+  await requirePortalPage((await params).projectId);
   const { projectId } = await params;
   const plan = await portalPlan(await getCurrentUser(), projectId);
   if (!plan) {

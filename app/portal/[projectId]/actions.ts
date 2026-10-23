@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentUser, type CurrentUser } from "@/lib/auth";
+import { assertClientApprover, getCurrentUser, type CurrentUser } from "@/lib/auth";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import { log } from "@/lib/logger";
 import * as onboarding from "@/lib/engagements/client-onboarding";
@@ -11,14 +11,19 @@ import { ONBOARDING_COPY } from "@/lib/portal/client-copy";
 /**
  * The portal's only server actions (spec 155). Deliberately NOT the staff
  * action runner: these are client-callable. Each service re-checks
- * `assertClientRespondent` (client role + project grant) and resolves the
+ * `assertClientApprover` (the client approver + project grant) and resolves the
  * engagement from the project itself. Unexpected failures never reach the
  * client as technical text.
  */
 async function respond<T>(projectId: string, fn: (user: CurrentUser) => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
   let result: ActionResult<T>;
   try {
-    result = await fn(await getCurrentUser());
+    const user = await getCurrentUser();
+    // The client gate runs FIRST, before any input is parsed (spec 156): a
+    // viewer, staff, or another project's approver learns nothing about the
+    // input shape. Each service re-checks it (defence in depth).
+    await assertClientApprover(user, projectId);
+    result = await fn(user);
   } catch (err) {
     result = fail(err);
   }
@@ -50,4 +55,10 @@ export async function approveRemainingQuestions(projectId: string, versionId: st
 }
 export async function submitQuestionReview(projectId: string, versionId: string) {
   return respond(projectId, (u) => review.submitQuestionReview(u, { projectId, versionId }));
+}
+export async function submitDetailCorrection(projectId: string, priorities: unknown, contacts: unknown) {
+  return respond(projectId, (u) => onboarding.submitDetailCorrection(u, { projectId, priorities, contacts }));
+}
+export async function approveMeasurementPlan(projectId: string, versionId: string, protocolId: string, confirm: boolean) {
+  return respond(projectId, (u) => review.approveMeasurementPlan(u, { projectId, versionId, protocolId, confirm }));
 }

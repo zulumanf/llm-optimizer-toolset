@@ -9,7 +9,7 @@
  * snapshot → "pending", never 0%.
  */
 import { sql } from "@/db/client";
-import { assertProjectAccess, ProjectAccessError, type CurrentUser } from "@/lib/auth";
+import { assertProjectAccess, isClient, isClientApprover, ProjectAccessError, type CurrentUser } from "@/lib/auth";
 import { engagementForProject, listContextItems, listMeasurements, type MeasurementRow } from "@/lib/engagements/service";
 import {
   deliveryState,
@@ -75,6 +75,8 @@ export interface ClientTodo {
   key: string;
   label: string;
   href: string;
+  /** Only the client's approver can do this (viewers see it as status). */
+  approverOnly: boolean;
 }
 
 export interface ClientResultsSummary {
@@ -96,6 +98,8 @@ export interface ClientOverview {
   steps: ClientStep[];
   currentStep: ClientStep | null;
   todos: ClientTodo[];
+  /** A read-only client account (spec 155 R2): approver-only items are status, not actions. */
+  viewer: boolean;
   results: ClientResultsSummary;
   latestUpdate: { id: string; kind: string; sentAt: Date; periodEnd: string | null; sections: { title: string; lines: string[] }[] } | null;
   plan: { published: boolean; phases: (PhaseProgress & PhaseWindow)[]; completed: number; total: number };
@@ -169,19 +173,22 @@ export async function portalDeliveryOverview(user: CurrentUser, projectId: strin
   const todos: ClientTodo[] = [];
   // Only what genuinely needs the client, each pointing at where they act.
   // A question review the client already sent is on us, not on them.
-  if (onboarding?.status === "ready") todos.push({ key: "details", label: "Confirm your business details (about 2 minutes)", href: `${base}/welcome` });
-  if (review && !review.locked && !review.submitted) todos.push({ key: "questions", label: questionReviewTodo(review.remaining, review.total), href: `${base}/approvals/questions` });
+  if (onboarding?.status === "ready") todos.push({ key: "details", label: "Confirm your business details (about 2 minutes)", href: `${base}/welcome`, approverOnly: true });
+  if (review && !review.locked && !review.submitted) todos.push({ key: "questions", label: questionReviewTodo(review.remaining, review.total), href: `${base}/approvals/questions`, approverOnly: true });
+  // Spec 155 R3: the binding step, once the review is complete and the plan is ready.
+  if (review?.plan?.ready) todos.push({ key: "plan", label: "Approve your measurement plan", href: `${base}/approvals/measurement`, approverOnly: true });
   for (const s of journey) {
     if (!((s.state === "current" || s.state === "blocked") && s.clientAction)) continue;
-    if (s.key === "questions") continue;
+    // Questions and the plan are handled above, from the review itself.
+    if (s.key === "questions" || s.key === "protocol") continue;
     if (s.key === "details") {
-      if (!onboarding) todos.push({ key: s.key, label: s.clientAction, href: `${base}/approvals#details` });
+      if (!onboarding) todos.push({ key: s.key, label: s.clientAction, href: `${base}/approvals#details`, approverOnly: false });
     } else {
-      todos.push({ key: s.key, label: s.clientAction, href: `${base}/approvals#${s.key}` });
+      todos.push({ key: s.key, label: s.clientAction, href: `${base}/approvals#${s.key}`, approverOnly: false });
     }
   }
-  if (approvalTasks.length > 0) todos.push({ key: "approvals", label: `${approvalTasks.length} proposed change(s) need your approval.`, href: `${base}/approvals#changes` });
-  if (Number(accessOpen?.n ?? 0) > 0) todos.push({ key: "access", label: "Give us delegated editor access where we asked (never a password).", href: `${base}/approvals#details` });
+  if (approvalTasks.length > 0) todos.push({ key: "approvals", label: `${approvalTasks.length} proposed change(s) need your approval.`, href: `${base}/approvals#changes`, approverOnly: false });
+  if (Number(accessOpen?.n ?? 0) > 0) todos.push({ key: "access", label: "Give us delegated editor access where we asked (never a password).", href: `${base}/approvals#details`, approverOnly: false });
   const sent = state.updates.filter((u) => u.status === "sent" && u.kind !== "welcome");
   const latest = sent[0] ?? state.updates.find((u) => u.status === "sent") ?? null;
   const published = Boolean(state.roadmap && ["approved", "active", "completed"].includes(state.roadmap.status));
@@ -226,6 +233,7 @@ export async function portalDeliveryOverview(user: CurrentUser, projectId: strin
     steps,
     currentStep: current,
     todos,
+    viewer: isClient(user) && !isClientApprover(user),
     results,
     latestUpdate: latest ? { id: latest.id, kind: latest.kind, sentAt: latest.sentAt!, periodEnd: latest.periodEnd, sections: latest.body.sections } : null,
     plan: {
@@ -463,6 +471,8 @@ export interface ClientChangeRequest {
 
 export interface ClientApprovals {
   details: { label: string; confirmed: boolean }[];
+  /** Spec 155 R5: the current confirmed details (latest intake decision). */
+  confirmedDetails: (import("@/lib/engagements/client-onboarding").ConfirmedDetails & { canCorrect: boolean }) | null;
   questionSet: (Omit<ProposedQuestionSet, "decision" | "setId"> & { status: "awaiting" | "approved" | "changes_requested"; segments: { priceTier: string; count: number }[] }) | null;
   protocol: { version: number; status: string; providerLabel: string; model: string; geographicContext: string; repetitions: number; baselineWindow: string; finalWindow: string; recommendationRubric: string; comparisonRules: string; caveats: string; adjudication: string; successCriteria: string; nameVariants: string[]; externalSources: string; acceptedAt: Date | null; acceptedByName: string | null } | null;
   changes: ClientChangeRequest[];
@@ -504,10 +514,15 @@ export async function portalApprovals(user: CurrentUser, projectId: string): Pro
     : [];
   const statusOf = (a: string): ClientChangeRequest["status"] => (a === "approved" ? "approved" : a === "rejected" ? "declined" : a === "edit_requested" ? "edit_requested" : "waiting");
   const decisions = await listSubjectDecisions(e.id);
+  const { currentClientDetails, onboardingForEngagement } = await import("@/lib/engagements/client-onboarding");
+  const [confirmed, onboardingRow] = await Promise.all([currentClientDetails(e.id), onboardingForEngagement(e.id)]);
   const segCounts = new Map<string, number>();
   for (const q of qs?.questions ?? []) segCounts.set(q.priceTier ?? "Unspecified", (segCounts.get(q.priceTier ?? "Unspecified") ?? 0) + 1);
   return {
     details,
+    confirmedDetails: confirmed
+      ? { ...confirmed, canCorrect: isClientApprover(user) && onboardingRow?.status === "completed" && ["onboarding", "active"].includes(e.stage) }
+      : null,
     questionSet: qs
       ? {
           setName: qs.setName,

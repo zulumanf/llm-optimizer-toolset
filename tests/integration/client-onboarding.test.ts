@@ -19,7 +19,9 @@ const FIXTURE = readFileSync(join(__dirname, "..", "fixtures", "client-delivery"
 
 const operator: CurrentUser = { id: "00000000-0000-4000-8000-000000000401", email: "op@test.local", name: "Operator", role: "operator" };
 const admin: CurrentUser = { id: "00000000-0000-4000-8000-000000000001", email: "admin@test.local", name: "Admin", role: "admin" };
-const client: CurrentUser = { id: "00000000-0000-4000-8000-000000000002", email: "lucia@lumina.example.test", name: "Lucia Synthetic", role: "client_viewer" };
+// Spec 155 R2: the approver acts; a viewer on the same project only reads.
+const client: CurrentUser = { id: "00000000-0000-4000-8000-000000000002", email: "lucia@lumina.example.test", name: "Lucia Synthetic", role: "client_validator" };
+const viewer: CurrentUser = { id: "00000000-0000-4000-8000-0000000000bb", email: "elias@lumina.example.test", name: "Elias Synthetic", role: "client_viewer" };
 const otherClient: CurrentUser = { id: "00000000-0000-4000-8000-0000000000aa", email: "other@elsewhere.example.test", name: "Other Client", role: "client_validator" };
 
 const SCOPE = "AI recommendation diagnosis, evidence improvements, implementation of high-confidence changes, monitoring, remeasurement on the same instrument.";
@@ -62,7 +64,8 @@ describe.skipIf(!TEST_URL)("client self-service onboarding (integration, spec 15
 
   async function roles() {
     await sql`update users set role = 'operator' where id = ${operator.id}`;
-    await sql`update users set role = 'client_viewer', name = ${client.name}, email = ${client.email} where id = ${client.id}`;
+    await sql`update users set role = 'client_validator', name = ${client.name}, email = ${client.email} where id = ${client.id}`;
+    await sql`update users set role = 'client_viewer', name = ${viewer.name}, email = ${viewer.email} where id = ${viewer.id}`;
     await sql`update users set role = 'client_validator' where id = ${otherClient.id}`;
   }
 
@@ -256,12 +259,37 @@ describe.skipIf(!TEST_URL)("client self-service onboarding (integration, spec 15
     expect((await portal.portalDeliveryOverview(client, projectId))!.todos.some((t) => t.key === "questions")).toBe(false);
 
     // The client changes their mind: approve it after all, then send again.
+    // R3: a complete review is feedback ("acknowledged"), never an approval.
     unwrap(await review.reviewQuestions(client, { projectId, versionId, items: [{ promptId: q2.promptId, decision: "approved" }] }));
-    expect(unwrap(await review.submitQuestionReview(client, { projectId, versionId })).decision).toBe("approved");
+    expect(unwrap(await review.submitQuestionReview(client, { projectId, versionId })).decision).toBe("acknowledged");
+    expect((await delivery.listSubjectDecisions(engagementId, "question_set"))[0]).toMatchObject({ decision: "acknowledged", channel: "portal", subjectRef: versionId });
+    // So the staff path still cannot accept the protocol on it.
+    expect((await delivery.acceptProtocol(operator, { protocolId: draft.protocolId, clientActor: "Lucia", channel: "email" })).ok).toBe(false);
+
+    // The binding step needs a complete protocol; until then it is not offered.
+    r = (await review.portalQuestionReview(client, projectId))!;
+    expect(r.plan?.ready).toBe(false);
+    unwrap(await delivery.saveProtocolDraft(operator, { engagementId, promptSetVersionId: versionId, provider: "mock", model: "mock-model", geographicContext: "Albuquerque (synthetic)", repetitions: 3, baselineWindow: "Week 1", finalWindow: "Week 13", successCriteria: "Synthetic criteria", entityAliases: ["Lumina Realty"] }));
+    r = (await review.portalQuestionReview(client, projectId))!;
+    expect(r.plan).toMatchObject({ protocolId: draft.protocolId, ready: true, blockers: [] });
+    expect((await portal.portalDeliveryOverview(client, projectId))!.todos.find((t) => t.key === "plan")?.href).toBe(`/portal/${projectId}/approvals/measurement`);
+
+    // Approving requires the explicit confirmation; staff and viewers cannot.
+    expect((await review.approveMeasurementPlan(client, { projectId, versionId, protocolId: draft.protocolId, confirm: false })).ok).toBe(false);
+    expect((await review.approveMeasurementPlan(operator, { projectId, versionId, protocolId: draft.protocolId, confirm: true })).ok).toBe(false);
+    expect((await review.approveMeasurementPlan(viewer, { projectId, versionId, protocolId: draft.protocolId, confirm: true })).ok).toBe(false);
+    unwrap(await review.approveMeasurementPlan(client, { projectId, versionId, protocolId: draft.protocolId, confirm: true }));
+
+    // One transaction: the exact version approved (hash-pinned) AND the protocol accepted by the client.
     const set = (await delivery.listSubjectDecisions(engagementId, "question_set"))[0]!;
-    expect(set).toMatchObject({ decision: "approved", channel: "portal", subjectRef: versionId });
-    expect(set.snapshot).toMatchObject({ versionId, questionCount: 64, approved: 64 });
+    expect(set).toMatchObject({ decision: "approved", channel: "portal", subjectRef: versionId, recordedBy: client.id });
+    expect(set.snapshot).toMatchObject({ versionId, questionCount: 64, protocolId: draft.protocolId, direct: 64, carried: 0 });
     expect(typeof set.snapshot.contentSha256).toBe("string");
+    const accepted = (await delivery.listProtocols(engagementId)).find((x) => x.id === draft.protocolId)!;
+    expect(accepted).toMatchObject({ status: "accepted", acceptedChannel: "portal" });
+    expect(accepted.acceptedByName).toContain(client.email);
+    // A second approval is refused (the version is locked, the protocol no longer a draft).
+    expect((await review.approveMeasurementPlan(client, { projectId, versionId, protocolId: draft.protocolId, confirm: true })).ok).toBe(false);
 
     // Locked once approved; the trail is append-only.
     r = (await review.portalQuestionReview(client, projectId))!;
@@ -307,5 +335,126 @@ describe.skipIf(!TEST_URL)("client self-service onboarding (integration, spec 15
     const row = (await onb.onboardingForEngagement(engagementId))!;
     expect(row.clientPriorities).toBeNull();
     expect(row.prioritiesConfirmedAt).toBeNull();
+  });
+  it("R2: a viewer reads but cannot confirm, review or approve; only the approver is routed into onboarding", async () => {
+    const { projectId, engagementId } = await signedClient({ pay: true });
+    await sql`insert into user_project_access (user_id, project_id) values (${viewer.id}, ${projectId}) on conflict do nothing`;
+    await prepare(engagementId);
+    unwrap(await onb.markOnboardingReady(operator, { engagementId }));
+    const imported = unwrap(await delivery.importClientQuestions(operator, { engagementId, setName: "Seller questions", content: FIXTURE }));
+    const versionId = imported.versionId!;
+
+    expect(await onb.onboardingPending(viewer, projectId)).toBe(false);
+    expect(await onb.onboardingPending(client, projectId)).toBe(true);
+    const v = (await onb.portalOnboarding(viewer, projectId))!;
+    expect(v).toMatchObject({ canRespond: false, readOnlyReason: "viewer" });
+    const r = (await review.portalQuestionReview(viewer, projectId))!;
+    expect(r).toMatchObject({ canRespond: false, readOnlyReason: "viewer", total: 64 });
+    const o = (await portal.portalDeliveryOverview(viewer, projectId))!;
+    expect(o.viewer).toBe(true);
+    expect(o.todos.find((t) => t.key === "questions")?.approverOnly).toBe(true);
+
+    const q = r.groups[0]!.questions[0]!;
+    for (const write of [
+      onb.saveOnboardingPriorities(viewer, { projectId, priorities: PRIORITIES }),
+      onb.confirmOnboardingPriorities(viewer, { projectId }),
+      review.reviewQuestions(viewer, { projectId, versionId, items: [{ promptId: q.promptId, decision: "approved" }] }),
+      review.approveRemainingQuestions(viewer, { projectId, versionId, segment: null }),
+      review.submitQuestionReview(viewer, { projectId, versionId }),
+    ]) {
+      const res = await write;
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error).toMatchObject({ kind: "forbidden", message: "Only your designated approver can confirm this." });
+    }
+    const [count] = await sql`select count(*)::int as n from client_question_reviews`;
+    expect(count!.n).toBe(0);
+    expect((await onb.onboardingForEngagement(engagementId))!.prioritiesConfirmedAt).toBeNull();
+  });
+
+  it("R4: after a revision only identical wording carries its approval; reworded questions need a fresh decision", async () => {
+    const { projectId, engagementId } = await signedClient({ pay: true });
+    const v1 = unwrap(await delivery.importClientQuestions(operator, { engagementId, setName: "Seller questions v1", content: FIXTURE })).versionId!;
+    const r1 = (await review.portalQuestionReview(client, projectId))!;
+    const target = r1.groups[0]!.questions[1]!;
+    // v1: everything approved except one edit request; the review goes back to us.
+    unwrap(await review.reviewQuestions(client, { projectId, versionId: v1, items: [{ promptId: target.promptId, decision: "edit_requested", comment: "Say 'list my home'." }] }));
+    unwrap(await review.approveRemainingQuestions(client, { projectId, versionId: v1, segment: null }));
+    expect(unwrap(await review.submitQuestionReview(client, { projectId, versionId: v1 })).decision).toBe("changes_requested");
+
+    // RF rewords that one question and imports v2.
+    const reworded = target.text.replace(/sell/i, "list");
+    expect(reworded).not.toBe(target.text);
+    const v2Csv = FIXTURE.replace(target.text, reworded);
+    const v2 = unwrap(await delivery.importClientQuestions(operator, { engagementId, setName: "Seller questions v2", content: v2Csv })).versionId!;
+    expect(v2).not.toBe(v1);
+
+    let r2 = (await review.portalQuestionReview(client, projectId))!;
+    expect(r2.versionId).toBe(v2);
+    expect(r2.counts.carried).toBe(63);
+    expect(r2.remaining).toBe(1);
+    const fresh = r2.groups.flatMap((g) => g.questions).find((q) => q.text === reworded)!;
+    expect(fresh).toMatchObject({ carried: false, revised: true, decision: null });
+    expect(r2.groups.flatMap((g) => g.questions).filter((q) => q.carried).every((q) => !q.revised)).toBe(true);
+
+    // The plan cannot be approved while the reworded question is undecided.
+    const draft = unwrap(await delivery.saveProtocolDraft(operator, { engagementId, promptSetVersionId: v2, provider: "mock", model: "mock-model", geographicContext: "Albuquerque (synthetic)", repetitions: 3, baselineWindow: "Week 1", finalWindow: "Week 13", successCriteria: "Synthetic criteria", entityAliases: ["Lumina Realty"] }));
+    const early = await review.approveMeasurementPlan(client, { projectId, versionId: v2, protocolId: draft.protocolId, confirm: true });
+    expect(early.ok).toBe(false);
+    if (!early.ok) expect(early.error.message).toMatch(/1 question\(s\) are not approved for their exact wording/);
+
+    // Batch approval only touches the one undecided question; then the plan is approvable.
+    expect(unwrap(await review.approveRemainingQuestions(client, { projectId, versionId: v2, segment: null })).recorded).toBe(1);
+    r2 = (await review.portalQuestionReview(client, projectId))!;
+    expect(r2.remaining).toBe(0);
+    expect(r2.plan?.ready).toBe(true);
+    unwrap(await review.approveMeasurementPlan(client, { projectId, versionId: v2, protocolId: draft.protocolId, confirm: true }));
+    const set = (await delivery.listSubjectDecisions(engagementId, "question_set")).find((d) => d.subjectRef === v2 && d.decision === "approved")!;
+    expect(set.snapshot).toMatchObject({ direct: 1, carried: 63 });
+    // v1 never became approved.
+    expect((await delivery.listSubjectDecisions(engagementId, "question_set")).some((d) => d.subjectRef === v1 && d.decision === "approved")).toBe(false);
+  });
+
+  it("R5: a correction after onboarding is a new version; the original confirmation is untouched", async () => {
+    const { projectId, engagementId } = await signedClient({ pay: true });
+    await prepare(engagementId, { primaryEmail: "lucia@lumina.example.test", approverIsPrimary: true, approverName: "", approverEmail: "" });
+    unwrap(await onb.markOnboardingReady(operator, { engagementId }));
+    // Before completion a correction is refused (finish onboarding first).
+    expect((await onb.submitDetailCorrection(client, { projectId, priorities: PRIORITIES, contacts: { primaryName: "Lucia Synthetic", primaryEmail: "lucia@lumina.example.test", approverIsPrimary: true, approverName: "", approverEmail: "" } })).ok).toBe(false);
+    unwrap(await onb.confirmOnboardingPriorities(client, { projectId }));
+    const v = (await onb.portalOnboarding(client, projectId))!;
+    unwrap(await onb.completeClientOnboarding(client, { projectId, contacts: v.contacts }));
+    const before = (await onb.currentClientDetails(engagementId))!;
+    expect(before.detailsVersion).toBe(1);
+    const rowBefore = await sql`select * from client_onboardings where engagement_id = ${engagementId}`;
+
+    // No change → refused; a viewer → refused.
+    const same = await onb.submitDetailCorrection(client, { projectId, priorities: before.priorities, contacts: before.contacts });
+    expect(same.ok).toBe(false);
+    if (!same.ok) expect(same.error.message).toBe("Nothing changed.");
+    expect((await onb.submitDetailCorrection(viewer, { projectId, priorities: { ...before.priorities, market: "Rio Rancho" }, contacts: before.contacts })).ok).toBe(false);
+
+    const res = unwrap(await onb.submitDetailCorrection(client, { projectId, priorities: { ...before.priorities, minPropertyValueUsd: 400_000, market: "Albuquerque and Rio Rancho" }, contacts: before.contacts }));
+    expect(res.detailsVersion).toBe(2);
+    expect([...res.changed].sort()).toEqual(["market", "minPropertyValueUsd"]);
+    const after = (await onb.currentClientDetails(engagementId))!;
+    expect(after).toMatchObject({ detailsVersion: 2, priorities: { minPropertyValueUsd: 400_000, market: "Albuquerque and Rio Rancho" } });
+    // Both versions are kept; the onboarding row is byte-identical.
+    expect((await delivery.listSubjectDecisions(engagementId, "intake")).length).toBe(2);
+    expect(await sql`select * from client_onboardings where engagement_id = ${engagementId}`).toEqual(rowBefore);
+    // The new minimum is what the question checks use; the market is recorded, never applied.
+    const { minPropertyValueFrom } = await import("@/lib/engagements/onboarding-intake");
+    expect(minPropertyValueFrom(await eng.listContextItems(engagementId))).toBe(400_000);
+    expect((await eng.getEngagement(engagementId))!.marketDefinition).toBeNull();
+  });
+
+  it("R2: grants list both client roles, so offboarding revokes an approver too", async () => {
+    const { projectId } = await signedClient({ pay: true });
+    await sql`insert into user_project_access (user_id, project_id) values (${viewer.id}, ${projectId}) on conflict do nothing`;
+    const { listPortalGrants } = await import("@/lib/portal/invite");
+    const grants = await listPortalGrants(projectId);
+    expect(grants.map((g) => [g.email, g.role]).sort()).toEqual([
+      [viewer.email, "client_viewer"],
+      [client.email, "client_validator"],
+    ].sort());
   });
 });

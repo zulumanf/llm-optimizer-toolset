@@ -52,7 +52,7 @@ export function DeliveryOverview({ o, projectId }: { o: ClientOverview; projectI
             {o.todos.map((t) => (
               <li key={t.key}>
                 <Link href={t.href} className="inline-flex min-h-11 items-center rounded-sm font-medium underline underline-offset-4 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  {t.label}
+                  {o.viewer && t.approverOnly ? `Waiting for your approver: ${t.label.charAt(0).toLowerCase()}${t.label.slice(1)}` : t.label}
                 </Link>
               </li>
             ))}

@@ -101,3 +101,67 @@ Returning midway resumes at the first unconfirmed step with the working copy int
 ## Out of scope
 
 Inviting collaborators from the portal; email sending; the `client_validator` distinction; client approval of task changes and protocol in the portal (still recorded by staff from the client's channel); spec 152 commercial fields.
+
+---
+
+## Amendment 2026-10-23 — reconciliation with spec 156 and the owner's review
+
+This amendment applies when 154/155 are rebased onto `main` with spec 156 (page and server-action authorization) in force. Where it conflicts with the sections above, **it wins**.
+
+### R1 — Permission classification
+
+Every page and action is classified. Exceptions carry a reason, held in `tests/helpers/authz-exemptions.ts`.
+
+| Surface | Class | Gate (first statement) |
+|---|---|---|
+| `/projects/[id]/delivery` (page) | STAFF_ONLY | `requireProjectStaffPage(id)` |
+| `app/projects/[id]/delivery/actions.ts` (all) | STAFF_ONLY | the shared staff runner (`makeActionRunner`, which asserts staff) |
+| `/portal/[id]` and everything under it, including `welcome` | CLIENT_VIEWER read (granted project), plus a staff preview | `requirePortalPage(id)`: session, then grant (404), then project |
+| `app/portal/[projectId]/actions.ts` (all) | **CLIENT_VALIDATOR** on the granted project only. Refused for viewers, refused for staff, refused for other projects. | the portal wrapper, then `assertClientApprover` |
+
+The portal stops relying on its service layer alone. Every portal page also gates itself first, under the same rule as internal pages (spec 156: layouts are not a boundary).
+
+### R2 — Viewers are read-only; approvers act
+
+- **One client gate.** `assertClientApprover(user, projectId)` replaces `assertClientRespondent`. It requires `client_validator` and a grant.
+- **`client_viewer` performs no portal writes.** A viewer sees the onboarding and the question list read-only, with "Your approver confirms these."
+- **Invites can create approvers.** `inviteClientViewer` takes a role (`client_viewer` | `client_validator`, admin only). `listPortalGrants` lists both roles.
+- `DEV_USER_ROLE` accepts `client_validator` (dev only).
+
+### R3 — Review is informal; approving the measurement plan is binding
+
+- **"Send my review" never records an approval.** It writes a `question_set` decision of `changes_requested` (if any edit or removal is open) or `acknowledged` (everything approved). Neither satisfies the protocol gate.
+- **The binding approval is `approveMeasurementPlan`** (validator, explicit confirmation dialog). It shows the exact final question version, the question count, the definition of a recommendation, the method (instrument, repetitions, windows) and the success criteria. In one transaction it records an `approved` `question_set` decision on that version (portal channel, content-hash snapshot) and accepts the cited draft protocol, with the client as `accepted_by_name`, channel `portal`, and the client user as `accepted_recorded_by`. It is refused if:
+  - the protocol does not cite the current proposed version;
+  - any question on that version lacks an approval for its exact wording (R4);
+  - any portal request is open;
+  - the protocol is incomplete;
+  - a baseline is locked.
+- **The staff path** (`recordSubjectDecision` / `acceptProtocol` from email or a call) is unchanged, and still refused while portal requests are open.
+
+### R4 — Approval binds to the wording the client saw
+
+- A per-question approval belongs to a version and a prompt.
+- **Carry-forward:** on a newer version of the same engagement, a question counts as approved only if an earlier version had an `approved` decision for **identical normalised text** (`normalizePromptText`). The view marks it "Approved earlier (unchanged wording)".
+- **Revised wording** is marked "Revised — please review" and needs a fresh decision.
+
+### R5 — Corrections after onboarding are versioned
+
+- **The completed onboarding row stays immutable.**
+- `submitDetailCorrection` (validator) records a new `intake` decision (portal) with `snapshot.version = n + 1`, the full corrected priorities and contacts, and the changed fields. It adds client-provenance context items for changed values only.
+- The market is still recorded, never applied (decision 5).
+- The portal shows the current confirmed details: the latest `intake` decision.
+
+### R6 — Tests (spec 156 suites extended, not weakened)
+
+- **Static page test:** every `app/portal/[projectId]/**/page.tsx` must call `requirePortalPage(` as its first statement. The broad portal exemption narrows to `/portal` (the grant list, which reads only through `visibleProjectIds`).
+- **Static action test:**
+  - a local wrapper that delegates to a gating runner counts as a gating runner, so delegation is followed transitively;
+  - client-callable actions must be listed in `CLIENT_ACTIONS`, with an audience and a reason, and must go through the portal wrapper.
+- **Runtime action suite:** every `CLIENT_VALIDATOR` action is refused, with zero writes and zero side effects, for:
+  - `client_viewer` on the granted project (refused by the client gate);
+  - `client_validator` on an ungranted project (`not_found`);
+  - staff.
+
+  Success for a validator on the granted project is covered by the integration suite.
+- **The read sweep** covers the new pages unchanged (0 leaks expected).

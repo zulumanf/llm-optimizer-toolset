@@ -213,7 +213,9 @@ export interface JourneyInput {
   portalGrants: number;
   welcomeSent: boolean;
   intakeConfirmed: boolean;
-  questionSet: { versionId: string; questionCount: number; approved: boolean; changesRequested: boolean } | null;
+  /** `reviewed`: the client sent a complete portal review with nothing open
+   * (spec 155 R3) — their binding approval comes with the measurement plan. */
+  questionSet: { versionId: string; questionCount: number; approved: boolean; reviewed?: boolean; changesRequested: boolean } | null;
   protocol: { status: "draft" | "accepted"; questionSetApproved: boolean } | null;
   baselineFrozen: boolean;
   roadmapPublished: boolean;
@@ -261,13 +263,13 @@ export function deliveryJourney(i: JourneyInput): JourneyStep[] {
   const qs = i.questionSet;
   add({
     key: "questions",
-    clientLabel: "Approve the questions we will measure",
-    operatorLabel: "Question set imported, frozen and approved by the client",
-    done: Boolean(qs?.approved),
+    clientLabel: "Review the questions we will measure",
+    operatorLabel: "Question set imported, frozen and reviewed by the client",
+    done: Boolean(qs?.approved || qs?.reviewed),
     blocked: Boolean(qs?.changesRequested && !qs.approved),
-    detail: qs ? `${qs.questionCount} questions proposed; ${qs.approved ? "approved" : qs.changesRequested ? "changes requested" : "awaiting the client's review"}.` : "No question set proposed yet.",
-    operatorAction: qs ? (qs.changesRequested ? "Revise the questions, import a new version and share it again." : "Send the question review and record the client's decision.") : "Import the client-reviewed questions (CSV) and freeze them as the proposed version.",
-    clientAction: qs && !qs.approved ? "Review the proposed questions and reply with approval or changes." : null,
+    detail: qs ? `${qs.questionCount} questions proposed; ${qs.approved ? "approved" : qs.reviewed ? "reviewed (approval comes with the measurement plan)" : qs.changesRequested ? "changes requested" : "awaiting the client's review"}.` : "No question set proposed yet.",
+    operatorAction: qs ? (qs.changesRequested ? "Revise the questions, import a new version and share it again." : "Ask the client to review the questions in the portal (or record their decision from email).") : "Import the client-reviewed questions (CSV) and freeze them as the proposed version.",
+    clientAction: qs && !qs.approved && !qs.reviewed ? "Review the proposed questions." : null,
   });
   const protocolAccepted = i.protocol?.status === "accepted";
   add({
@@ -276,8 +278,8 @@ export function deliveryJourney(i: JourneyInput): JourneyStep[] {
     operatorLabel: "Measurement protocol accepted",
     done: protocolAccepted,
     detail: protocolAccepted ? "Protocol accepted and frozen." : i.protocol ? "Draft protocol waiting for acceptance." : "No protocol drafted yet.",
-    operatorAction: i.protocol ? "Share the protocol and record the client's acceptance." : "Draft the measurement protocol over the approved question set.",
-    clientAction: i.protocol && !protocolAccepted ? "Review the measurement plan and confirm it." : null,
+    operatorAction: i.protocol ? "The client approves the plan in the portal (or record their acceptance from email)." : "Draft the measurement protocol over the reviewed question set.",
+    clientAction: i.protocol && !protocolAccepted ? "Approve your measurement plan." : null,
   });
   add({
     key: "baseline",

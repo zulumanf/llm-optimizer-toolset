@@ -17,6 +17,7 @@ import {
   type TrendDatum,
 } from "@/components/charts/authority-trend";
 import { formatDate } from "@/lib/format";
+import { requirePortalPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,7 @@ export default async function PortalOverviewPage({
 }: {
   params: Promise<{ projectId: string }>;
 }) {
+  await requirePortalPage((await params).projectId);
   const { projectId } = await params;
   const user = await getCurrentUser();
   // Spec 155: a client's first visit lands on the onboarding, not the dashboard.

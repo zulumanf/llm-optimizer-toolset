@@ -6,6 +6,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { Caveats, IntervalText, NoEngagement, PendingResults, RateStatement, SectionCard, pctText } from "@/components/portal/delivery-blocks";
 import { formatDate } from "@/lib/format";
 import type { SegmentRow } from "@/lib/engagements/delivery-rules";
+import { requirePortalPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,7 @@ const CHANGE_LABEL = { gained: "Now recommended", lost: "No longer recommended",
  * measurement, segments, competitors and every question with its original
  * answers. External tools appear separately and are never blended in. */
 export default async function PortalResultsPage({ params }: { params: Promise<{ projectId: string }> }) {
+  await requirePortalPage((await params).projectId);
   const { projectId } = await params;
   const r = await portalResults(await getCurrentUser(), projectId);
   if (!r) return <NoEngagement />;
