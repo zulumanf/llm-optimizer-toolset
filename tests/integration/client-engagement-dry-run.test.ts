@@ -20,6 +20,7 @@ import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
 import { seedProspect, type PipelineModules } from "../helpers/prospect-fixtures";
 import { unwrap } from "../helpers/result";
+import { agreeAndFreeze } from "../helpers/engagement-protocol";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -185,11 +186,11 @@ describe.skipIf(!TEST_URL)("client engagement dry run (integration)", () => {
     expect(secret.ok).toBe(false);
 
     // -------------------------------------------------------- baseline frozen
-    const frozen = unwrap(await eng.freezeBaseline(operator, { engagementId: e0.id, provider: "mock" }));
+    const frozen = unwrap(await agreeAndFreeze(operator, e0.id, { provider: "mock" }));
     expect(frozen.snapshot.answerCount).toBe(6);
     expect(frozen.snapshot.subject.recommendedCount).toBeGreaterThan(0);
     expect(frozen.snapshot.questions.every((q) => q.responseIds.length === 3)).toBe(true);
-    const twice = await eng.freezeBaseline(operator, { engagementId: e0.id, provider: "mock" });
+    const twice = await eng.freezeBaseline(operator, { engagementId: e0.id, runId: f.runId, provider: "mock", acknowledgeWarnings: true });
     expect(twice.ok).toBe(false);
     // Immutable: no UPDATE of the snapshot, no DELETE.
     await expect(sql`update engagement_measurements set snapshot = '{}'::jsonb where id = ${frozen.measurementId}`).rejects.toThrow(/immutable/);

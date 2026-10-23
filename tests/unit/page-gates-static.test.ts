@@ -21,7 +21,7 @@ const EXEMPT: { pattern: RegExp; reason: string }[] = [
   { pattern: /^app\/\(marketing\)\//, reason: "public marketing site" },
   { pattern: /^app\/login\/page\.tsx$/, reason: "sign-in screen" },
   { pattern: /^app\/report\/\[slug\]\//, reason: "prospect report, gated by its own report session (spec 134)" },
-  { pattern: /^app\/portal\//, reason: "client portal; every read goes through lib/portal/service.ts, which asserts project access per call" },
+  { pattern: /^app\/portal\/page\.tsx$/, reason: "portal landing: lists only the caller's own grants (visibleProjectIds) and redirects a single grant into its project" },
 ];
 
 function pages(dir: string): string[] {
@@ -59,6 +59,10 @@ describe("page-level authorization (spec 156)", () => {
   it("every internal page awaits its gate as its first statement", () => {
     const offenders = internal.filter((rel) => {
       const first = firstStatement(readFileSync(join(ROOT, rel), "utf8"));
+      // Spec 155 R1: every page of one client's portal gates itself too.
+      if (rel.startsWith("app/portal/[projectId]/")) {
+        return !(first && /^await requirePortalPage\(\(await params\)\.projectId\)$/.test(first));
+      }
       const project = rel.startsWith("app/projects/[id]/");
       return project
         ? !(first && /^await requireProjectStaffPage\(\(await params\)\.id\)$/.test(first))

@@ -2,8 +2,13 @@
  * Client portal invites (spec 031 follow-up). Provisioning is the ONLY
  * legal path to a client login: the auth callback refuses any Supabase
  * account without a users row, so an invite is (1) create the auth user,
- * (2) create the users row as client_viewer, (3) grant exactly one
+ * (2) create the users row with a CLIENT role, (3) grant exactly one
  * project. Admin-only — handing a client a login is an owner decision.
+ *
+ * Spec 155 R2: `client_viewer` reads; `client_validator` is the client's
+ * designated approver (confirms onboarding, reviews questions, approves the
+ * measurement plan). The role is per account, so an approver approves on
+ * every project they are granted.
  *
  * Requires AUTH_MODE=supabase: under dev auth there is no identity
  * provider to invite into, and pretending otherwise would fabricate an
@@ -26,7 +31,10 @@ const inviteSchema = z.object({
   projectId: z.string().uuid(),
   email: z.string().trim().toLowerCase().email(),
   name: z.string().trim().min(1).max(120),
+  role: z.enum(["client_viewer", "client_validator"]).default("client_viewer"),
 });
+
+const CLIENT_ROLE_VALUES = ["client_viewer", "client_validator"];
 
 export async function inviteClientViewer(
   user: CurrentUser,
@@ -44,7 +52,7 @@ export async function inviteClientViewer(
     const [existingUser] = await sql`
       select id, role, active from users where lower(email) = ${input.email}
     `;
-    if (existingUser && existingUser.role !== "client_viewer") {
+    if (existingUser && !CLIENT_ROLE_VALUES.includes(existingUser.role as string)) {
       // Never silently downgrade or cross-purpose a staff account.
       return fail(
         new ClassifiedError(
@@ -60,6 +68,19 @@ export async function inviteClientViewer(
       // Granting an existing client account needs no identity provider.
       userId = existingUser.id as string;
       existing = true;
+      if (existingUser.role !== input.role) {
+        // An explicit, audited role change (e.g. making a viewer the approver).
+        await sql.begin(async (tx) => {
+          await tx`update users set role = ${input.role}, updated_at = now() where id = ${userId}`;
+          await writeAudit(tx, {
+            userId: user.id,
+            action: "portal.client_role_changed",
+            entity: "user",
+            entityId: userId,
+            detail: { email: input.email, from: existingUser.role, to: input.role },
+          });
+        });
+      }
     } else {
       if (getEnv().AUTH_MODE !== "supabase") {
         return fail(
@@ -86,7 +107,7 @@ export async function inviteClientViewer(
       userId = created.data.user.id;
       await sql`
         insert into users (id, email, name, role)
-        values (${userId}, ${input.email}, ${input.name}, 'client_viewer')
+        values (${userId}, ${input.email}, ${input.name}, ${input.role})
         on conflict (id) do nothing
       `;
     }
@@ -102,7 +123,7 @@ export async function inviteClientViewer(
         action: "portal.invite_client",
         entity: "user",
         entityId: userId,
-        detail: { email: input.email, projectId: input.projectId, existing },
+        detail: { email: input.email, projectId: input.projectId, existing, role: input.role },
       });
     });
     return ok({ userId, existing });
@@ -113,12 +134,14 @@ export async function inviteClientViewer(
 
 /** Everyone with portal access to this project — for the settings view. */
 export async function listPortalGrants(projectId: string): Promise<
-  { userId: string; email: string; name: string; active: boolean }[]
+  { userId: string; email: string; name: string; active: boolean; role: string }[]
 > {
+  // Both client roles: offboarding (closeEngagement) revokes every grant
+  // listed here, so an approver must never be missing from it.
   const rows = await sql`
-    select u.id, u.email, u.name, u.active
+    select u.id, u.email, u.name, u.active, u.role
     from user_project_access a join users u on u.id = a.user_id
-    where a.project_id = ${projectId} and u.role = 'client_viewer'
+    where a.project_id = ${projectId} and u.role = any(${CLIENT_ROLE_VALUES}::text[])
     order by u.email asc
   `;
   return rows.map((r) => ({
@@ -126,6 +149,7 @@ export async function listPortalGrants(projectId: string): Promise<
     email: r.email as string,
     name: r.name as string,
     active: Boolean(r.active),
+    role: r.role as string,
   }));
 }
 

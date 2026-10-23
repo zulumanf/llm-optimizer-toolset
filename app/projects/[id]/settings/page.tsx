@@ -93,8 +93,10 @@ export default async function ProjectSettingsPage({
       <div className="mt-6 rounded-md border p-4">
         <p className="mb-1 text-sm font-medium">Client portal access</p>
         <p className="mb-3 text-xs text-muted-foreground">
-          Client accounts are read-only and see only this program&apos;s
-          portal — never the internal workspace. Invites are admin-only.
+          Client accounts see only this program&apos;s portal — never the
+          internal workspace. Viewers are read-only; an approver confirms
+          onboarding details, reviews the questions and approves the
+          measurement plan. Invites are admin-only.
         </p>
         {grants.length > 0 && (
           <ul className="mb-3 space-y-2 text-sm">
@@ -104,7 +106,7 @@ export default async function ProjectSettingsPage({
                 className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground"
               >
                 <span>
-                  {g.name} · {g.email}
+                  {g.name} · {g.email} · {g.role === "client_validator" ? "approver" : "viewer"}
                   {!g.active && " · deactivated"}
                 </span>
                 {currentUser.role === "admin" && (

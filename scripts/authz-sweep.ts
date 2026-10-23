@@ -107,8 +107,11 @@ async function main() {
       const hits = Object.values(CANARIES).filter((c) => body.includes(c));
       if (hits.length > 0) leaks += 1;
       // The client's own portal must still render its own program.
-      const ownPortal = which === "granted" && path.startsWith("/portal/");
-      const portalBroken = ownPortal && (!body.includes(GRANTED_NAME) || body.includes("NEXT_HTTP_ERROR_FALLBACK;404"));
+      // Pages addressed by a random sub-id (an answer that does not exist)
+      // must 404, and a redirect within the client's own portal is healthy.
+      const ownPortal = which === "granted" && path.startsWith("/portal/") && !path.includes(RANDOM);
+      const ownRedirect = new RegExp(`NEXT_REDIRECT;[a-z]+;/portal/${GRANTED}[;"]`).test(body);
+      const portalBroken = ownPortal && !ownRedirect && (!body.includes(GRANTED_NAME) || body.includes("NEXT_HTTP_ERROR_FALLBACK;404"));
       if (portalBroken) brokenPortal += 1;
       console.log(`${hits.length > 0 ? "LEAK" : portalBroken ? "BROKEN" : "ok  "} ${status} ${which.padEnd(7)} ${path}${hits.length > 0 ? ` ${hits.join(",")}` : ""}`);
     }

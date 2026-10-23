@@ -35,7 +35,9 @@ export function AppShell({
     setDrawerOpen(false);
   }, [pathname]);
 
-  if (pathname.startsWith("/audit") || pathname.startsWith("/report/") || isMarketingPath(pathname)) {
+  // The client portal carries its own chrome (specs 031/155): a client must
+  // never see the workspace's top bar, and a staff preview must match it.
+  if (pathname.startsWith("/audit") || pathname.startsWith("/report/") || pathname.startsWith("/portal") || isMarketingPath(pathname)) {
     return <main className="min-h-dvh">{children}</main>;
   }
   return (

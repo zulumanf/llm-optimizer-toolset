@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { onboardingPending } from "@/lib/engagements/client-onboarding";
 import {
   nextMondayIso,
   portalCompetitive,
@@ -7,12 +9,15 @@ import {
   portalWork,
 } from "@/lib/portal/service";
 import { PortalEngagementBlock } from "@/components/portal/engagement-block";
+import { DeliveryOverview } from "@/components/portal/delivery-overview";
+import { portalDeliveryOverview } from "@/lib/portal/delivery";
 import { getCurrentUser } from "@/lib/auth";
 import {
   AuthorityTrendChart,
   type TrendDatum,
 } from "@/components/charts/authority-trend";
 import { formatDate } from "@/lib/format";
+import { requirePortalPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +37,15 @@ export default async function PortalOverviewPage({
 }: {
   params: Promise<{ projectId: string }>;
 }) {
+  await requirePortalPage((await params).projectId);
   const { projectId } = await params;
   const user = await getCurrentUser();
+  // Spec 155: a client's first visit lands on the onboarding, not the dashboard.
+  if (await onboardingPending(user, projectId)) redirect(`/portal/${projectId}/welcome`);
+  // Spec 154: a retained client sees the delivery overview, whose numbers
+  // come only from frozen engagement snapshots (never project `scores`).
+  const delivery = await portalDeliveryOverview(user, projectId);
+  if (delivery) return <DeliveryOverview o={delivery} projectId={projectId} />;
   const [overview, rivals, work, engagement] = await Promise.all([
     portalOverview(user, projectId),
     portalCompetitive(user, projectId),

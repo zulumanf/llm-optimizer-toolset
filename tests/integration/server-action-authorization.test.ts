@@ -32,7 +32,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { CurrentUser, Role } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
-import { ACTION_ALLOW_LIST, ACTION_EXCLUDED_DIRS } from "../helpers/authz-exemptions";
+import { ACTION_ALLOW_LIST, ACTION_EXCLUDED_DIRS, CLIENT_ACTIONS } from "../helpers/authz-exemptions";
 import { truncateAll } from "../helpers/db";
 
 const probe = vi.hoisted(() => ({
@@ -40,6 +40,7 @@ const probe = vi.hoisted(() => ({
   queries: 0,
   authDepth: 0,
   staffDenials: [] as string[],
+  clientGateDenials: [] as string[],
   queriesAtFirstDenial: null as number | null,
 }));
 
@@ -77,6 +78,18 @@ vi.mock("@/lib/auth", async (importOriginal) => {
     assertCanWrite: staffGate("assertCanWrite", actual.assertCanWrite),
     assertRole: staffGate("assertRole", actual.assertRole),
     assertProjectAccess: authRead(actual.assertProjectAccess),
+    assertClientApprover: async (...a: Parameters<typeof actual.assertClientApprover>) => {
+      probe.authDepth += 1;
+      try {
+        await actual.assertClientApprover(...a);
+      } catch (err) {
+        probe.clientGateDenials.push("assertClientApprover");
+        probe.queriesAtFirstDenial ??= probe.queries;
+        throw err;
+      } finally {
+        probe.authDepth -= 1;
+      }
+    },
     visibleProjectIds: authRead(actual.visibleProjectIds),
   };
 });
@@ -132,6 +145,7 @@ const ALLOW_LIST = ACTION_ALLOW_LIST;
 const REFUSAL_KINDS = ["forbidden", "not_found"];
 const CLIENT_ID = "00000000-0000-4000-8000-00000000a002";
 const GRANTED = "5eed0156-0000-4000-8000-0000000a0001";
+const UNGRANTED = "5eed0156-0000-4000-8000-0000000b0002";
 
 function serverActionFiles(dir: string): string[] {
   if (EXCLUDED_DIRS.includes(dir)) return [];
@@ -180,6 +194,7 @@ describe.skipIf(!TEST_URL)("server-action authorization: clients cannot invoke s
     await seedTestActors(raw as never);
     await raw`insert into projects (id, name) values (${GRANTED}, 'Granted client (synthetic)') on conflict (id) do nothing`;
     await raw`insert into user_project_access (user_id, project_id) values (${CLIENT_ID}, ${GRANTED}) on conflict do nothing`;
+    await raw`insert into projects (id, name) values (${UNGRANTED}, 'Other client (synthetic)') on conflict (id) do nothing`;
     // Statement-level probes: fire once per write statement, even when it
     // matches no row or its transaction rolls back (sequences never roll back).
     await raw.unsafe(`
@@ -227,6 +242,7 @@ describe.skipIf(!TEST_URL)("server-action authorization: clients cannot invoke s
   async function measured(fn: (...args: unknown[]) => unknown) {
     probe.queries = 0;
     probe.staffDenials = [];
+    probe.clientGateDenials = [];
     probe.queriesAtFirstDenial = null;
     external.length = 0;
     const before = await mutationCount();
@@ -234,7 +250,7 @@ describe.skipIf(!TEST_URL)("server-action authorization: clients cannot invoke s
     // Let fire-and-forget work settle so it is attributed to this call.
     await new Promise((r) => setTimeout(r, 25));
     const writes = (await mutationCount()) - before;
-    return { outcome, writes, queriesBeforeGate: probe.queriesAtFirstDenial, staffDenials: [...probe.staffDenials], external: [...external], queries: probe.queries };
+    return { outcome, writes, queriesBeforeGate: probe.queriesAtFirstDenial, staffDenials: [...probe.staffDenials], clientGateDenials: [...probe.clientGateDenials], external: [...external], queries: probe.queries };
   }
 
   it("finds the action modules", () => {
@@ -278,7 +294,7 @@ describe.skipIf(!TEST_URL)("server-action authorization: clients cannot invoke s
         for (const [name, value] of Object.entries(mod)) {
           if (typeof value !== "function") continue;
           const key = `${rel}:${name}`;
-          if (key in ALLOW_LIST) continue;
+          if (key in ALLOW_LIST || key in CLIENT_ACTIONS) continue;
           checked += 1;
           const m = await measured(value as (...args: unknown[]) => unknown);
           const problems: string[] = [];
@@ -296,4 +312,39 @@ describe.skipIf(!TEST_URL)("server-action authorization: clients cannot invoke s
       expect(failures).toEqual([]);
     }, 300_000);
   }
+  /** Client actions take the project id first; pad the rest with inputs. */
+  const clientArgs = (fn: (...args: unknown[]) => unknown, projectId: string): unknown[] =>
+    [projectId, ...Array.from({ length: Math.max(0, fn.length - 1) }, () => ({ projectId, id: projectId }))];
+
+  it("client actions (spec 155 R1/R2): refused for viewers, other projects and staff — gate first, no write, no side effect", async () => {
+    const callers: { label: string; role: Role; id: string; projectId: string; expect: "client_gate" | "not_found" }[] = [
+      { label: "client_viewer on its own project", role: "client_viewer", id: CLIENT_ID, projectId: GRANTED, expect: "client_gate" },
+      { label: "client_validator on an ungranted project", role: "client_validator", id: CLIENT_ID, projectId: UNGRANTED, expect: "not_found" },
+      { label: "staff (operator)", role: "operator", id: "00000000-0000-4000-8000-000000000401", projectId: GRANTED, expect: "client_gate" },
+    ];
+    const failures: string[] = [];
+    let checked = 0;
+    for (const c of callers) {
+      await raw`update users set role = ${c.role} where id = ${c.id}`;
+      probe.actor = { id: c.id, email: "caller@example.test", name: "Caller", role: c.role };
+      for (const key of Object.keys(CLIENT_ACTIONS)) {
+        const [file, name] = key.split(":");
+        const mod = (await import(join(ROOT, file!))) as Record<string, (...args: unknown[]) => unknown>;
+        const fn = mod[name!]!;
+        const m = await measured(() => fn(...clientArgs(fn, c.projectId)));
+        checked += 1;
+        const problems: string[] = [];
+        if (!m.outcome.refused) problems.push(`not refused (${m.outcome.detail})`);
+        if (c.expect === "client_gate" && m.clientGateDenials.length === 0) problems.push("the client approver gate did not refuse it");
+        if (c.expect === "not_found" && !/not_found|Project not found/.test(m.outcome.detail)) problems.push(`expected not_found (${m.outcome.detail})`);
+        if (m.queriesBeforeGate !== null && m.queriesBeforeGate > 0) problems.push(`${m.queriesBeforeGate} query(ies) before the gate`);
+        if (m.writes > 0) problems.push(`${m.writes} write statement(s)`);
+        if (m.external.length > 0) problems.push(`side effect: ${m.external.join("; ")}`);
+        if (problems.length > 0) failures.push(`${c.label} → ${key} — ${problems.join(" | ")}`);
+      }
+    }
+    await raw`update users set role = 'client_viewer' where id = ${CLIENT_ID}`;
+    expect(checked).toBe(Object.keys(CLIENT_ACTIONS).length * callers.length);
+    expect(failures).toEqual([]);
+  }, 300_000);
 });

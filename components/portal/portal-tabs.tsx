@@ -12,7 +12,7 @@ export function PortalTabs({
 }) {
   const pathname = usePathname();
   return (
-    <nav className="mt-3 flex gap-4 text-sm">
+    <nav aria-label="Program sections" className="-mx-4 mt-3 flex gap-x-5 overflow-x-auto px-4 py-1 text-sm sm:mx-0 sm:px-1">
       {tabs.map((tab) => {
         const active =
           pathname === tab.href ||
@@ -24,8 +24,8 @@ export function PortalTabs({
             aria-current={active ? "page" : undefined}
             className={
               active
-                ? "border-b-2 border-foreground pb-1 font-medium text-foreground"
-                : "pb-1 text-muted-foreground hover:text-foreground"
+                ? "shrink-0 whitespace-nowrap border-b-2 border-foreground pb-1 font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                : "shrink-0 whitespace-nowrap pb-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             }
           >
             {tab.label}

@@ -180,3 +180,6 @@ export interface OnboardingPrefill {
   /** Which fields came from a verified record (operator sees provenance). */
   prefilled: string[];
 }
+
+/** Spec 154: label prefix of the minimum-value context item (one per value). */
+export const MIN_VALUE_LABEL_PREFIX = "Minimum property value: $";
