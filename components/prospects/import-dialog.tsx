@@ -22,8 +22,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ContactProvenanceChoice } from "@/components/prospects/contact-provenance-choice";
 import { importProspects } from "@/app/prospects/actions";
-import { PROVENANCE_LABELS } from "@/lib/prospects/constants";
+import {
+  DEFAULT_CONTACT_ENTRY_PROVENANCE,
+  PROVENANCE_LABELS,
+  type ContactEntryProvenance,
+} from "@/lib/prospects/constants";
 
 interface ImportReport {
   created: number;
@@ -38,6 +43,9 @@ export function ImportDialog({ launches }: { launches: { id: string; name: strin
   const [launchId, setLaunchId] = useState<string>(launches[0]?.id ?? "");
   const [csv, setCsv] = useState("");
   const [provenance, setProvenance] = useState<string>("publicly_sourced");
+  const [emailProvenance, setEmailProvenance] = useState<ContactEntryProvenance>(
+    DEFAULT_CONTACT_ENTRY_PROVENANCE
+  );
   const [sourceUrl, setSourceUrl] = useState("");
   const [report, setReport] = useState<ImportReport | null>(null);
 
@@ -47,6 +55,7 @@ export function ImportDialog({ launches }: { launches: { id: string; name: strin
         launchId,
         csv,
         provenance,
+        emailProvenance,
         sourceUrl: sourceUrl || undefined,
       });
       if (result.ok) {
@@ -63,7 +72,10 @@ export function ImportDialog({ launches }: { launches: { id: string; name: strin
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) setReport(null);
+        if (!next) {
+          setReport(null);
+          setEmailProvenance(DEFAULT_CONTACT_ENTRY_PROVENANCE);
+        }
       }}
     >
       <DialogTrigger asChild>
@@ -93,7 +105,7 @@ export function ImportDialog({ launches }: { launches: { id: string; name: strin
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Provenance for imported facts</Label>
+              <Label>Provenance for imported facts (except emails)</Label>
               <Select value={provenance} onValueChange={setProvenance}>
                 <SelectTrigger>
                   <SelectValue />
@@ -117,6 +129,12 @@ export function ImportDialog({ launches }: { launches: { id: string; name: strin
               placeholder="https://therealdeal.com/…"
             />
           </div>
+          <ContactProvenanceChoice
+            name="import-email-provenance"
+            legend="Email addresses in this file"
+            value={emailProvenance}
+            onChange={setEmailProvenance}
+          />
           <div className="space-y-1.5">
             <Label htmlFor="import-csv">CSV (header row required)</Label>
             <Textarea

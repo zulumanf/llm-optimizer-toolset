@@ -1,17 +1,22 @@
 /**
  * Benchmark provider preflight (2026-09-14): the cheapest reliable check of
  * whether a benchmark run could execute — never a full benchmark call.
- * OpenAI: the existing 1-token quota probe (billing refusals fail it,
- * transient faults do not). Perplexity: a 1-token `sonar` call; an
- * exhausted quota is refused before any spend. The verdict is cached in
+ * Each provider gets one 1-token completion; an exhausted quota is refused
+ * before any spend. The verdict is cached in
  * .local-data/supply/provider-status.json for PREFLIGHT_TTL_MINUTES so a
  * blocked provider is not hammered. Never changes billing.
+ *
+ * Fails closed: AVAILABLE only on an authenticated 2xx. A missing key, any
+ * non-2xx (401/403/402/429/5xx…) or a network fault is NOT available. (The
+ * run-start billing probe in lib/ai/openai.ts is deliberately lenient about
+ * transient faults; it is not used here, because a preflight that says
+ * "available" without proof is worse than no preflight.)
  *
  * Run: npx tsx scripts/provider-preflight.ts [--force]
  */
 import "dotenv/config";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { probeOpenAIQuota } from "@/lib/ai/openai";
+import { OPENAI_PROBE_MODEL } from "@/lib/ai/openai";
 import { classifyProviderError, PROVIDER_OPERATOR_ACTIONS as ACTIONS, type ProviderState, type ProviderStatus } from "@/lib/ai/provider-state";
 
 export { classifyProviderError };
@@ -19,35 +24,70 @@ export type { ProviderState, ProviderStatus };
 
 export const PREFLIGHT_TTL_MINUTES = 30;
 const STATUS_FILE = ".local-data/supply/provider-status.json";
+const REASON_MAX_CHARS = 300;
+const HTTP_FORBIDDEN = 403;
+const HTTP_BAD_REQUEST = 400;
+const OUTPUT_LIMIT_REACHED = /max_tokens or model output limit was reached/i;
 
+export interface ProbeDeps {
+  env: Record<string, string | undefined>;
+  fetch: typeof fetch;
+  now: () => Date;
+}
 
-/** Pure: map a provider error to the provider-agnostic state. */
+const defaultDeps = (): ProbeDeps => ({ env: process.env, fetch: globalThis.fetch, now: () => new Date() });
 
+/** Preflight-only state for a non-2xx answer: 403 is a credential/permission
+ * refusal (the shared classifier would call it retryable). Everything else
+ * uses the shared classification — none of it is AVAILABLE. */
+export function preflightStateFor(status: number, message: string): ProviderState {
+  if (status === HTTP_FORBIDDEN) return "AUTH_ERROR";
+  const state = classifyProviderError({ status, message });
+  return state === "AVAILABLE" ? "RETRYABLE_ERROR" : state;
+}
 
-async function probePerplexity(): Promise<ProviderStatus> {
-  const key = process.env.PERPLEXITY_API_KEY;
-  const at = new Date().toISOString();
-  if (!key) return { provider: "perplexity", state: "AUTH_ERROR", reason: "PERPLEXITY_API_KEY not set", observedAt: at, operatorAction: ACTIONS.AUTH_ERROR };
+/** One 1-token completion against an OpenAI-compatible endpoint. */
+async function probeCompletion(
+  provider: string,
+  keyName: string,
+  url: string,
+  body: Record<string, unknown>,
+  deps: ProbeDeps
+): Promise<ProviderStatus> {
+  const at = deps.now().toISOString();
+  const status = (state: ProviderState, reason: string | null): ProviderStatus => ({
+    provider, state, reason, observedAt: at, operatorAction: ACTIONS[state],
+  });
+  const key = deps.env[keyName];
+  if (!key) return status("AUTH_ERROR", `${keyName} not set`);
   try {
-    const res = await fetch("https://api.perplexity.ai/chat/completions", {
-      method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "sonar", max_tokens: 1, messages: [{ role: "user", content: "ok" }] }),
+    const res = await deps.fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
-    if (res.ok) return { provider: "perplexity", state: "AVAILABLE", reason: null, observedAt: at, operatorAction: null };
-    const text = (await res.text()).slice(0, 300);
-    const state = classifyProviderError({ status: res.status, message: text });
-    return { provider: "perplexity", state, reason: `HTTP ${res.status}: ${text}`, observedAt: at, operatorAction: ACTIONS[state] };
+    if (res.ok) return status("AVAILABLE", null);
+    const text = (await res.text()).slice(0, REASON_MAX_CHARS);
+    // A reasoning model can spend the 1-token probe budget before emitting
+    // output. That refusal comes after auth and billing were accepted, so it
+    // proves availability; nothing else in the 4xx range does.
+    if (res.status === HTTP_BAD_REQUEST && OUTPUT_LIMIT_REACHED.test(text)) {
+      return status("AVAILABLE", "authenticated; probe stopped at its 1-token output cap");
+    }
+    return status(preflightStateFor(res.status, text), `HTTP ${res.status}: ${text}`);
   } catch (e) {
-    return { provider: "perplexity", state: "RETRYABLE_ERROR", reason: (e as Error).message, observedAt: at, operatorAction: ACTIONS.RETRYABLE_ERROR };
+    return status("RETRYABLE_ERROR", (e as Error).message);
   }
 }
 
-async function probeOpenAI(): Promise<ProviderStatus> {
-  const at = new Date().toISOString();
-  const r = await probeOpenAIQuota();
-  if (r.ok) return { provider: "openai", state: "AVAILABLE", reason: null, observedAt: at, operatorAction: null };
-  const state = classifyProviderError({ status: 429, message: r.reason });
-  return { provider: "openai", state, reason: r.reason ?? null, observedAt: at, operatorAction: ACTIONS[state] };
+export function probePerplexity(deps: ProbeDeps = defaultDeps()): Promise<ProviderStatus> {
+  return probeCompletion("perplexity", "PERPLEXITY_API_KEY", "https://api.perplexity.ai/chat/completions",
+    { model: "sonar", max_tokens: 1, messages: [{ role: "user", content: "ok" }] }, deps);
+}
+
+export function probeOpenAI(deps: ProbeDeps = defaultDeps()): Promise<ProviderStatus> {
+  return probeCompletion("openai", "OPENAI_API_KEY", "https://api.openai.com/v1/chat/completions",
+    { model: OPENAI_PROBE_MODEL, max_completion_tokens: 1, messages: [{ role: "user", content: "ok" }] }, deps);
 }
 
 export function readCachedStatus(now = new Date()): ProviderStatus[] | null {

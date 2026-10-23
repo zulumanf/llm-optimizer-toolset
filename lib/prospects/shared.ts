@@ -10,6 +10,8 @@ import { ClassifiedError } from "@/lib/errors";
 import { detectConflicts, type MarketNode } from "@/lib/exclusivity/detect";
 import { loadAgreementInputs } from "@/lib/exclusivity/service";
 import {
+  isSendReadyProvenance,
+  SEND_READY_CONTACT_PROVENANCE,
   todayIso,
   type ConflictStatus,
   type ProspectStage,
@@ -65,6 +67,77 @@ export async function lockProspect(tx: TransactionSql, prospectId: string): Prom
     select ${PROSPECT_COLUMNS} from prospects where id = ${prospectId} for update
   `;
   return requireProspect(rows[0] as ProspectRow | undefined);
+}
+
+export interface ResolvedRecipient {
+  email: string | null;
+  phone: string | null;
+  /** Provenance of the email the send would actually use — the contact's
+   * own when the contact carries the email, else the prospect's
+   * field_provenance.email. Null when unknown. */
+  emailProvenance: string | null;
+  /** Set when the draft's contact cannot be used at all. */
+  contactBlocked: string | null;
+}
+
+/**
+ * The one recipient resolution for every outreach gate (spec 148): approval,
+ * schedule, record-sent and transmission read the SAME address and the SAME
+ * provenance. A contact that does not belong to this prospect is blocked —
+ * another prospect's verified contact can never satisfy this one.
+ */
+export async function resolveRecipient(
+  tx: TransactionSql,
+  prospect: ProspectRow,
+  contactId: string | null
+): Promise<ResolvedRecipient> {
+  let email = prospect.email;
+  let phone = prospect.phone;
+  let emailProvenance: string | null = null;
+  if (email) {
+    const [row] = await tx`
+      select field_provenance->>'email' as provenance from prospects where id = ${prospect.id}
+    `;
+    emailProvenance = (row?.provenance as string | null) ?? null;
+  }
+  if (contactId) {
+    const [contact] = await tx`
+      select prospect_id, name, email, phone, provenance, do_not_contact, archived_at
+      from prospect_contacts where id = ${contactId}
+    `;
+    if (contact && contact.prospectId !== prospect.id) {
+      return { email, phone, emailProvenance, contactBlocked: "The draft's contact belongs to a different prospect." };
+    }
+    if (!contact || contact.archivedAt) {
+      return { email, phone, emailProvenance, contactBlocked: "The draft's contact has been removed." };
+    }
+    if (contact.doNotContact) {
+      return { email, phone, emailProvenance, contactBlocked: `Contact "${contact.name}" is flagged do-not-contact.` };
+    }
+    if (contact.email) {
+      email = contact.email as string;
+      emailProvenance = (contact.provenance as string | null) ?? null;
+    }
+    phone = (contact.phone as string | null) ?? phone;
+  }
+  return { email, phone, emailProvenance, contactBlocked: null };
+}
+
+/** Spec 148 verdict: a recipient email must carry send-ready provenance.
+ * No email means nothing to be wrong about — the channel's own
+ * recipient_email check decides whether one is needed. Fails closed on
+ * ai_inferred, estimated, manual, null and any unknown label. */
+export function recipientEmailProvenanceVerdict(
+  r: Pick<ResolvedRecipient, "email" | "emailProvenance">
+): { passed: boolean; detail: string } {
+  if (!r.email) return { passed: true, detail: "no recipient email to verify" };
+  if (isSendReadyProvenance(r.emailProvenance)) {
+    return { passed: true, detail: `recipient email provenance "${r.emailProvenance}"` };
+  }
+  return {
+    passed: false,
+    detail: `Verify this contact before sending — the recipient email's provenance is "${r.emailProvenance ?? "unknown"}"; only ${SEND_READY_CONTACT_PROVENANCE.join(" or ")} addresses can be approved or sent.`,
+  };
 }
 
 /** Non-locking twin of lockProspect for read-only assembly phases that run
@@ -130,6 +203,7 @@ export interface PrimaryFindingRow {
   id: string;
   prospectId: string;
   benchmarkId: string;
+  kind: string;
   title: string;
   explanation: string;
   metrics: Record<string, unknown>;
@@ -142,7 +216,7 @@ export async function getPrimaryFinding(
   prospectId: string
 ): Promise<PrimaryFindingRow> {
   const rows = await tx`
-    select id, prospect_id, benchmark_id, title, explanation, metrics,
+    select id, prospect_id, benchmark_id, kind, title, explanation, metrics,
       response_ids, competitor_company_ids
     from prospect_findings
     where prospect_id = ${prospectId} and is_primary and status = 'approved'

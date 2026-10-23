@@ -226,7 +226,7 @@ describe.skipIf(!TEST_URL)("evidence release verification (integration)", () => 
   it("send-time gate: a claim whose frozen run is gone is refused with deterministic reasons on the ledger (gate v3)", async () => {
     const { setSenderIdentity } = await import("@/lib/outreach/sender-identity");
     unwrap(await setSenderIdentity(admin, { senderName: "Dana Operator", companyName: "AVOS Agency LLC", postalAddress: "123 Grand St, Jersey City, NJ 07302", replyToEmail: "dana@avos.agency" }));
-    const contact = unwrap(await m.svc.addContact(operator, { prospectId, name: "Ryan Ogle", email: "ryan@blu.example", isPrimary: true }));
+    const contact = unwrap(await m.svc.addContact(operator, { prospectId, name: "Ryan Ogle", email: "ryan@blu.example", isPrimary: true, provenance: "publicly_sourced" }));
     const gone = { ...snapshot(2), runId: "36000000-0000-4000-8000-00000000dead" };
     const [d] = await sql`
       insert into outreach_drafts (prospect_id, finding_id, channel, contact_id, version, subject, body, generated_by, evidence_snapshot, status, approved_by, approved_at, created_by)
@@ -242,7 +242,7 @@ describe.skipIf(!TEST_URL)("evidence release verification (integration)", () => 
     const [ledger] = await sql`select allowed, gate_verdict from prospect_outreach_sends where draft_id = ${d!.id}`;
     expect(ledger!.allowed).toBe(false);
     const verdict = ledger!.gateVerdict as { version: string; checks: { name: string; passed: boolean; detail: string }[] };
-    expect(verdict.version).toBe("prospect-send-gate-v3");
+    expect(verdict.version).toBe("prospect-send-gate-v4");
     const release = verdict.checks.find((c) => c.name === "evidence_release_verified")!;
     expect(release.passed).toBe(false);
     expect(release.detail).toContain('"version":"evidence-release-v1"');

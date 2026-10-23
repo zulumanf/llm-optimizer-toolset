@@ -23,6 +23,25 @@ export interface SenderIdentity {
   replyToEmail: string;
 }
 
+/** Shown whenever the postal-address gate refuses. */
+export const INCOMPLETE_POSTAL_ADDRESS_MESSAGE =
+  "The sender postal address is incomplete: enter the full street address or PO Box (for example \"123 Main St, Jersey City, NJ 07302\"). City and state alone are not a physical postal address.";
+
+/**
+ * Conservative structural check (spec 150), NOT legal validation: at least
+ * two comma/line-separated parts, and the first part carries a number (the
+ * street number or PO Box). Rejects "Brooklyn, NY", "NY", "" and
+ * "Brooklyn, NY 11201" (no street or box). Never guesses or fills one in.
+ */
+export function isCompletePostalAddress(address: string | null | undefined): boolean {
+  const parts = (address ?? "")
+    .split(/[,\n]/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (parts.length < 2) return false;
+  return /\d/.test(parts[0]!);
+}
+
 export async function getActiveSenderIdentity(): Promise<SenderIdentity | null> {
   const [row] = await sql`
     select id, sender_name, company_name, postal_address, reply_to_email
@@ -45,7 +64,8 @@ const identitySchema = z.object({
     .string()
     .trim()
     .min(10, "A real physical postal address is required (CAN-SPAM §7704(a)(5)).")
-    .max(300),
+    .max(300)
+    .refine(isCompletePostalAddress, INCOMPLETE_POSTAL_ADDRESS_MESSAGE),
   replyToEmail: z.string().trim().toLowerCase().email(),
 });
 

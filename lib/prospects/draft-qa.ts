@@ -6,7 +6,12 @@
  * (subjective quality stays with the audit sense-check, spec 077).
  */
 import { sql } from "@/db/client";
-import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
+import {
+  getActiveSenderIdentity,
+  INCOMPLETE_POSTAL_ADDRESS_MESSAGE,
+  isCompletePostalAddress,
+} from "@/lib/outreach/sender-identity";
+import { resolveFindingEvidence, unsupportedProviderMentions } from "@/lib/prospects/finding-evidence";
 import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
 import {
   MISMATCH_TEMPLATE_VERSION,
@@ -96,6 +101,55 @@ export interface DraftQaInput {
    * "N of M" denominators must equal ITS answer count, not the published
    * audit's sample (a mismatch draft counts one provider's answers). */
   evidence?: { denominator: number } | null;
+  /** Spec 150: prospects.prospect_type — an individual is never a team. */
+  prospectType?: string | null;
+}
+
+/** Spec 150: audit-page framing that must never reach an outreach email. */
+export const AUDIT_PROSE_LEAKS = [
+  "Both measurements are shown with their sources",
+  "the contrast is the observation",
+  "Separately, across",
+  "What AI relies on",
+  "Lead with the verified authority signal",
+] as const;
+/** Raw lowercase provider ids (a display name is always capitalised). */
+const RAW_PROVIDER_ID_RE = /\b(openai|perplexity|anthropic|gemini)\b/;
+/** snake_case / JSON keys such as recommendation_rate or "sample_size": */
+const INTERNAL_LABEL_RE = /\b[a-z]+_[a-z0-9_]+\b|"[a-zA-Z_]+"\s*:/;
+/** Curly placeholders such as {prospect_reference}. */
+const CURLY_PLACEHOLDER_RE = /\{[a-zA-Z_]+\}/;
+const URL_OR_EMAIL_RE = /https?:\/\/\S+|\S+@\S+/g;
+
+/** Pure: copy that leaked from templates, the audit page or internal data. */
+export function lintOutreachLeakage(subject: string, body: string): DraftQaIssue[] {
+  const issues: DraftQaIssue[] = [];
+  const text = `${subject}\n${body}`.replace(URL_OR_EMAIL_RE, " ");
+  const leak = AUDIT_PROSE_LEAKS.find((p) => text.toLowerCase().includes(p.toLowerCase()));
+  if (leak) issues.push({ check: "copy_leakage", detail: `body carries audit-page prose ("${leak}") — outreach copy must be written for email.` });
+  const raw = text.match(RAW_PROVIDER_ID_RE);
+  if (raw) issues.push({ check: "copy_leakage", detail: `body uses the raw provider id "${raw[1]}" — use the provider's display name.` });
+  const label = text.match(INTERNAL_LABEL_RE);
+  if (label) issues.push({ check: "copy_leakage", detail: `body carries an internal label ("${label[0]}").` });
+  const curly = text.match(CURLY_PLACEHOLDER_RE);
+  if (curly) issues.push({ check: "artifacts", detail: `body carries an unfilled placeholder ("${curly[0]}").` });
+  return issues;
+}
+
+/** Pure: entity wording must match the prospect type (spec 150). */
+export function lintEntityWording(body: string, prospectType: string | null | undefined): DraftQaIssue[] {
+  if (prospectType === "individual_agent") {
+    // Lowercase plural "teams" describes the cohort the recipient is put in
+    // ("several leading Jersey City teams"); proper names ("The VIP Team")
+    // are singular and capitalised, so they do not trip this.
+    if (/\byour team\b/i.test(body) || /^Your team:/m.test(body) || /\bteams\b/.test(body)) {
+      return [{ check: "entity_wording", detail: "the prospect is an individual agent but the email calls them a team." }];
+    }
+  }
+  if (prospectType === "team" && /^You:/m.test(body)) {
+    return [{ check: "entity_wording", detail: 'the prospect is a team but the email labels them "You:".' }];
+  }
+  return [];
 }
 
 export function qaDraftContent(input: DraftQaInput): DraftQaIssue[] {
@@ -118,6 +172,12 @@ export function qaDraftContent(input: DraftQaInput): DraftQaIssue[] {
   if (input.senderPostalAddress && !body.includes(input.senderPostalAddress)) {
     add("compliance_footer", "body is missing the sender postal address.");
   }
+  // Spec 150: the configured address must itself be complete — presence of
+  // an incomplete string in the body proves nothing.
+  if (!isCompletePostalAddress(input.senderPostalAddress)) {
+    add("sender_postal_address", INCOMPLETE_POSTAL_ADDRESS_MESSAGE);
+  }
+  issues.push(...lintOutreachLeakage(subject, body), ...lintEntityWording(body, input.prospectType));
   // The public-domain rule (cohort 001 directive): the visible signature
   // block must show the public website, never the operator-console host.
   // Scoped to the footer — a reply-first BODY may legitimately carry an
@@ -298,7 +358,8 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
   const [row] = await sql`
     select d.subject, d.body, d.prospect_id, d.contact_id,
       d.prompt_version, d.evidence_snapshot,
-      p.team_leader, p.brokerage_affiliation,
+      d.finding_id, d.sequence_id, d.reply_to_id, d.send_intent_key,
+      p.team_leader, p.brokerage_affiliation, p.prospect_type,
       c.name as contact_name, c.email as contact_email,
       a.access_token, a.expires_at,
       a.snapshot->'keyFinding'->'metrics'->>'sampleSize' as sample_size,
@@ -355,6 +416,28 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
       });
     mismatchIssues.push(...claimIssues);
   }
+  // Spec 150: a cold first-touch email stands on its finding. Re-resolved
+  // here, so approval AND every send (scheduled included) re-check it — an
+  // older draft is never grandfathered. Follow-ups, replies and fulfillment
+  // drafts carry their own evidence gates (specs 127/128/137).
+  const coldFirstTouch = !row.sequenceId && !row.replyToId && !row.sendIntentKey;
+  if (coldFirstTouch) {
+    const verdict = await resolveFindingEvidence(
+      (row.findingId as string | null) ?? null,
+      row.prospectId as string
+    );
+    if (!verdict.ok) {
+      mismatchIssues.push({ check: "finding_evidence", detail: `${verdict.detail} (${verdict.code})` });
+    } else {
+      const unsupported = unsupportedProviderMentions((row.body as string) ?? "", verdict.evidence.validProviders);
+      if (unsupported.length > 0) {
+        mismatchIssues.push({
+          check: "provider_attribution",
+          detail: `body names ${unsupported.join(", ")}, which returned no valid answers in the finding's benchmark (valid: ${verdict.evidence.providerNames.join(", ")}).`,
+        });
+      }
+    }
+  }
   return mismatchIssues.concat(qaDraftContent({
     subject: (row.subject as string | null) ?? null,
     body: (row.body as string) ?? "",
@@ -373,5 +456,6 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
     senderReplyTo: identity?.replyToEmail ?? null,
     senderPostalAddress: identity?.postalAddress ?? null,
     evidence: snapshot ? { denominator: snapshot.answerCount } : null,
+    prospectType: (row.prospectType as string | null) ?? null,
   }));
 }

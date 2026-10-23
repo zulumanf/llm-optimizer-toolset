@@ -120,6 +120,9 @@ export const openaiProvider: AIProvider = {
   },
 };
 
+/** The cheapest pinned model, used only for 1-token availability probes. */
+export const OPENAI_PROBE_MODEL = "gpt-5.4-mini-2026-03-17";
+
 /**
  * Pre-flight billing probe (spec 117): one ~zero-cost real completion.
  * /v1/models answers even with an exhausted balance (verified live
@@ -129,7 +132,7 @@ export const openaiProvider: AIProvider = {
 export async function probeOpenAIQuota(): Promise<{ ok: boolean; reason?: string }> {
   try {
     await getClient().chat.completions.create({
-      model: "gpt-5.4-mini-2026-03-17",
+      model: OPENAI_PROBE_MODEL,
       messages: [{ role: "user", content: "ok" }],
       max_completion_tokens: 1,
     });

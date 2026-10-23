@@ -15,6 +15,7 @@ import {
   BROKERAGE_SEND_CAP_30D,
   MISMATCH_TEMPLATE_VERSION,
   MISMATCH_THRESHOLDS,
+  SEND_READY_CONTACT_PROVENANCE,
   type ProvenanceLabel,
 } from "@/lib/prospects/constants";
 import { EVIDENCE_RELEASE_VERSION } from "@/lib/prospects/evidence-release";
@@ -29,8 +30,9 @@ export const T1_COHORT_TARGET = { min: 75, max: 100 } as const;
  * (lib/prospects/market-policy.ts); re-exported for the cohort scripts. */
 export { PROTECTED_MARKET_NAMES } from "@/lib/prospects/market-policy";
 
-/** Contact provenance that can carry a Touch 1 (spec 042 labels). */
-export const SEND_READY_CONTACT_PROVENANCE: readonly ProvenanceLabel[] = ["verified", "publicly_sourced"];
+/** Contact provenance that can carry a Touch 1 — the canonical rule lives in
+ * constants (spec 148: the outreach gates share it). */
+export { SEND_READY_CONTACT_PROVENANCE };
 
 /** Local parts that address a role or a shared inbox, never the named
  * decision-maker. A Touch 1 needs a person; these fail closed. */

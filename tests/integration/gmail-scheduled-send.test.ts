@@ -211,6 +211,7 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
         name: "Ana Rivera",
         email: "ana@riverateam.com",
         isPrimary: true,
+        provenance: "publicly_sourced",
       })
     );
     const { benchmarkId } = unwrap(
@@ -291,7 +292,7 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
       version: string;
       checks: { name: string; passed: boolean }[];
     };
-    expect(verdict.version).toBe("prospect-send-gate-v3");
+    expect(verdict.version).toBe("prospect-send-gate-v4");
     const cap = verdict.checks.find((c) => c.name === "daily_send_cap");
     expect(cap?.passed).toBe(true);
 
