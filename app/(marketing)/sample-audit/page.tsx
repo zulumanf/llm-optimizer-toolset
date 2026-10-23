@@ -9,7 +9,7 @@ import type { Metadata } from "next";
 import { JsonLd } from "@/components/marketing/json-ld";
 import { breadcrumbLd, marketingMetadata } from "@/lib/marketing/seo";
 import Link from "next/link";
-import { Newsreader } from "next/font/google";
+import { newsreader as serif } from "@/components/fonts";
 import {
   ShareBar,
   DataPoint,
@@ -19,11 +19,6 @@ import {
   Eyebrow,
 } from "@/components/marketing/ui";
 
-const serif = Newsreader({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  style: ["normal", "italic"],
-});
 
 export const metadata: Metadata = marketingMetadata("/sample-audit");
 

@@ -5,11 +5,10 @@
  */
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Newsreader } from "next/font/google";
+import { newsreader as serif } from "@/components/fonts";
 import { WalkthroughForm } from "@/components/audit/walkthrough-form";
 import { groupSlotsByDay, walkthroughContextForAudit, walkthroughSlots, WALKTHROUGH_MINUTES } from "@/lib/prospects/walkthrough";
 
-const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500"] });
 
 export default async function WalkthroughPage({ auditId, reportSlug }: { auditId: string; reportSlug: string }) {
   // Spec 134: rendered only under /report/<slug>/walkthrough after the session check.
