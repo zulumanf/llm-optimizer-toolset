@@ -18,12 +18,14 @@ import { formatDate } from "@/lib/format";
 import { runStatusVariant } from "@/components/runs/status";
 import { ProjectTabs } from "@/components/layout/project-tabs";
 import { listReviewQueue } from "@/db/mentions";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export default async function RunsPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

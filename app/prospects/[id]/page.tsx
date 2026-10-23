@@ -103,6 +103,7 @@ import { prospectIntent, prospectTimeline } from "@/lib/prospects/dashboard";
 import { AuditEngagementSection } from "@/components/prospects/audit-engagement";
 import { CommercialPanel } from "@/components/engagements/commercial-panel";
 import { commercialStateForProspect } from "@/lib/engagements/commercial";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 const rate = (v: number | null): string =>
   v === null ? "not measured" : `${Math.round(v * 100)}%`;
@@ -112,6 +113,7 @@ export default async function ProspectDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireStaffPage();
   const { id } = await params;
   const prospect = await getProspectDetail(id);
   if (!prospect) notFound();

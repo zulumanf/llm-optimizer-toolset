@@ -11,10 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { AutomationNav } from "@/components/automation/nav";
 import { EmptyState } from "@/components/automation/empty-state";
 import { ReplayDeadLetterButton } from "@/components/automation/replay-dead-letter";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
 export default async function EventsPage() {
+  await requireStaffPage();
   const [events, deadLetters, stats, subscriptions] = await Promise.all([
     listEvents({ limit: 60 }),
     listDeadLetters(40),

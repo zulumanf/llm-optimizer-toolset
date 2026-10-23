@@ -17,7 +17,7 @@
  * old or new (every newer field is guarded).
  */
 import Link from "next/link";
-import { Newsreader } from "next/font/google";
+import { newsreader as serif } from "@/components/fonts";
 import { ChevronRight } from "lucide-react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
@@ -48,7 +48,6 @@ import {
   latestLinkHealth,
 } from "@/lib/evidence/link-health";
 
-const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500"], style: ["normal", "italic"] });
 
 /** In-table micro-bar: absolute 0–100 scale, neutral ink, empty track for
  * zero (never a fake minimum width — the empty track IS the finding).

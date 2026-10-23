@@ -33,6 +33,7 @@ import {
   PROFILE_CHECK_RELEASE_TIMEOUT_MINUTES,
   PROFILE_CORRECTION_READY_EVENT,
   PROFILE_DRAFT_BATCH,
+  PROFILE_DRAFT_MAX_AUTO_ATTEMPTS,
   PROFILE_DRAFT_RETRY_MINUTES,
   profileDraftIdempotencyKey,
   profileDraftRunKey,
@@ -49,7 +50,7 @@ export async function dispatchCorrectionDrafts(): Promise<DraftDispatchReport> {
   const report = await sql.begin(async (tx) => {
     await lockDraftDispatch(tx);
     const settled = await settleStalledDraftAttempts(tx, PROFILE_CHECK_RELEASE_TIMEOUT_MINUTES);
-    const candidates = await readyForDrafting(tx, PROFILE_DRAFT_BATCH, PROFILE_DRAFT_RETRY_MINUTES);
+    const candidates = await readyForDrafting(tx, PROFILE_DRAFT_BATCH, PROFILE_DRAFT_RETRY_MINUTES, PROFILE_DRAFT_MAX_AUTO_ATTEMPTS);
 
     const started: DraftDispatchReport["started"] = [];
     const failed: DraftDispatchReport["failed"] = [];

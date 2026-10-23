@@ -2,7 +2,7 @@
 
 import { makeActionRunner } from "@/lib/actions/run";
 import { fail, type ActionResult } from "@/lib/actions/result";
-import { getCurrentUser } from "@/lib/auth";
+import { assertRole, getCurrentUser } from "@/lib/auth";
 import * as service from "@/lib/runs/service";
 
 const run = makeActionRunner(["/projects", "layout"]);
@@ -24,7 +24,7 @@ export async function estimateRun(
   input: unknown
 ): Promise<ActionResult<import("@/lib/runs/cells").RunEstimate>> {
   try {
-    await getCurrentUser();
+    assertRole(await getCurrentUser(), "operator");
     return await service.estimateRunForVersion(input);
   } catch (err) {
     return fail(err);

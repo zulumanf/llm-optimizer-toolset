@@ -11,6 +11,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getExecutiveBrief } from "@/db/control-tower";
 import { Badge } from "@/components/ui/badge";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export default async function BriefPage({
 }: {
   params: Promise<{ briefId: string }>;
 }) {
+  await requireStaffPage();
   const { briefId } = await params;
   const brief = await getExecutiveBrief(briefId);
   if (!brief) notFound();

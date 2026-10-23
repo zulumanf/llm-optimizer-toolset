@@ -10,7 +10,9 @@ const envSchema = z
     AUTH_MODE: z.enum(["dev", "supabase"]).default("dev"),
     DEV_USER_EMAIL: z.string().email().default("dev@avos.local"),
     DEV_USER_NAME: z.string().min(1).default("Dev User"),
-    DEV_USER_ROLE: z.enum(["admin", "operator"]).default("admin"),
+    // client_viewer: run the app as a client locally (spec 156 authorization
+    // sweep). Dev auth itself is refused in production (devAuthRefusalReason).
+    DEV_USER_ROLE: z.enum(["admin", "operator", "client_viewer"]).default("admin"),
     // Provider keys and cron secret are optional at boot; the features that
     // need them fail with a classified error when missing (lib/ai adapters)
     ANTHROPIC_API_KEY: z.string().optional(),
@@ -60,6 +62,8 @@ const envSchema = z
     VIDEO_WALKTHROUGH_MODE: z.string().optional(),
     VIDEO_WALKTHROUGH_KILL_SWITCH: z.string().optional(),
     VIDEO_WALKTHROUGH_RELEASE_KILL_SWITCH: z.string().optional(),
+    // Spec 158: profile checks + correction drafting are opt-in ("true").
+    PROFILE_CORRECTIONS_ENABLED: z.string().optional(),
     VIDEO_DISTRIBUTION: z.string().optional(),
     VIDEO_TTS_PROVIDER: z.string().optional(),
     VIDEO_ALLOW_FIXTURE_INTRO: z.string().optional(),

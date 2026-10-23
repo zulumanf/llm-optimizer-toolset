@@ -21,12 +21,14 @@ import {
 import { runStatusVariant } from "@/components/runs/status";
 import { RunControls } from "@/components/runs/run-controls";
 import { RunLiveRefresh } from "@/components/runs/run-live-refresh";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export default async function RunDetailPage({
   params,
 }: {
   params: Promise<{ id: string; runId: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id: projectId, runId } = await params;
   const [project, run] = await Promise.all([getProject(projectId), getRun(runId)]);
   if (!project || !run || run.projectId !== projectId) notFound();

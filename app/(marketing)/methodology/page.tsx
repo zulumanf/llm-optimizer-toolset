@@ -9,11 +9,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { JsonLd } from "@/components/marketing/json-ld";
 import { breadcrumbLd, marketingMetadata } from "@/lib/marketing/seo";
-import { Newsreader } from "next/font/google";
+import { newsreader as serif } from "@/components/fonts";
 import { CheckVisibilityCta, Eyebrow } from "@/components/marketing/ui";
 import { marketingPage } from "@/lib/marketing/constants";
 
-const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500"] });
 
 export const metadata: Metadata = marketingMetadata("/methodology");
 

@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CampaignTransitions } from "@/components/campaigns/campaign-transitions";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default async function CampaignDetailPage({
 }: {
   params: Promise<{ id: string; campaignId: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id, campaignId } = await params;
   const detail = await campaignDetail(campaignId);
   if (!detail || detail.projectId !== id) notFound();

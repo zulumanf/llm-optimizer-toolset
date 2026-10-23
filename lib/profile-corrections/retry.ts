@@ -33,6 +33,7 @@ import { firstZodMessage } from "@/lib/service-helpers";
 import {
   PROFILE_CORRECTION_READY_EVENT,
   PROFILE_CORRECTION_STATUS,
+  PROFILE_DRAFT_MAX_AUTO_ATTEMPTS,
   PROFILE_DRAFT_STATUS,
   profileDraftIdempotencyKey,
   profileDraftRunKey,
@@ -98,10 +99,23 @@ export async function retryProfileCorrectionDraft(
       const existing = await retryOfAttempt(tx, attempt.id);
       if (existing) return { draftAttemptId: existing.id, retriedAttemptId: attempt.id, created: false };
 
-      if (!(RETRYABLE_ATTEMPT_STATUSES as readonly string[]).includes(attempt.status)) {
+      // Spec 158: a FAILED attempt is retryable by hand only once automatic
+      // drafting has stopped for this request (the failure cap); below the
+      // cap the dispatcher still retries it on its own.
+      const [failures] = await tx`
+        select count(*)::int as n from profile_correction_drafts
+        where correction_request_id = ${row.id} and status = ${PROFILE_DRAFT_STATUS.failed}
+      `;
+      const capped = Number(failures?.n ?? 0) >= PROFILE_DRAFT_MAX_AUTO_ATTEMPTS;
+      const retryable: readonly string[] = capped
+        ? [...RETRYABLE_ATTEMPT_STATUSES, PROFILE_DRAFT_STATUS.failed]
+        : RETRYABLE_ATTEMPT_STATUSES;
+      if (!retryable.includes(attempt.status)) {
         throw new ClassifiedError(
           "conflict",
-          `Draft attempt ${attempt.id} is ${attempt.status}; only an attempt with an unknown outcome or an orphaned draft needs a manual retry.`
+          attempt.status === PROFILE_DRAFT_STATUS.failed
+            ? `Draft attempt ${attempt.id} failed, but automatic drafting retries it until ${PROFILE_DRAFT_MAX_AUTO_ATTEMPTS} attempts have failed.`
+            : `Draft attempt ${attempt.id} is ${attempt.status}; only an attempt with an unknown outcome, an orphaned draft, or a request that reached the failure cap needs a manual retry.`
         );
       }
       if (row.status !== PROFILE_CORRECTION_STATUS.readyToDraft) {
@@ -121,7 +135,7 @@ export async function retryProfileCorrectionDraft(
       if (notApproved) throw new ClassifiedError("conflict", `The request can no longer be drafted: ${notApproved}.`);
 
       const superseded = await setDraftStatus(tx, attempt.id, {
-        from: RETRYABLE_ATTEMPT_STATUSES,
+        from: retryable,
         to: PROFILE_DRAFT_STATUS.superseded,
         reason: `operator confirmed no usable Gmail draft exists: ${input.reason}`,
       });

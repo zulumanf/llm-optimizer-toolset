@@ -52,11 +52,44 @@ Production minimums:
 Some internal tasks run on self-hosted open-weight models, through `lib/ai/internal/ollama.ts`. The mapping from task to model lives in `INTERNAL_TASK_TARGETS` in `lib/ai/routing.ts`. These tasks never fall back to a paid provider: when Ollama is down, the task fails closed.
 
 - **The worker needs `OLLAMA_URL`** pointing at the inference host. It defaults to `http://127.0.0.1:11434`. The web process does not call Ollama.
+- **Production host:** Francisco's Mac behind an authenticating proxy and Tailscale Funnel, `https://rf-ollama.tail390f0b.ts.net`. Setup, key handling, rotation, kill switch and failure modes: `ops/inference-host/README.md`.
+- **A remote host must be https with `OLLAMA_API_KEY`** (sent as a bearer token; spec 158). A plain-http or keyless remote `OLLAMA_URL` is refused before any request. Every request is aborted after `OLLAMA_REQUEST_TIMEOUT_MS` (280 s) and fails closed.
+- **No host = four features off, not wrong.** Without a reachable host, `summarize_meeting`, `summarize_support_request`, `knowledge_claim_extraction` (source uploads, discovery) and `detect_contradictions` fail closed. Provisioning the host is an operator decision to make before deploying the 142–147 lineage. Contractual measurement never uses Ollama (`tests/unit/measurement-provider-boundary.test.ts`).
 - **The models must be pulled** on the inference host: `qwen3:8b`, `qwen3:30b` and `gpt-oss:20b` (`LOCAL_INTERNAL_TARGETS` in `lib/ai/internal/registry.ts`).
 - **Keep `qwen3:30b` resident.** `detect_contradictions` (spec 146) passed its promotion gate of warm p95 ≤ 60 s, measured at 41.8 s. That figure assumes the model is already loaded, because a cold load added about 7 s of model loading on the evaluation host. Ollama unloads idle models after 5 minutes by default, and profile-correction runs are infrequent. So on the **Ollama server** (not in the app's env), set `OLLAMA_KEEP_ALIVE` to keep the model loaded, for example `-1` for indefinitely, or a duration longer than the gap between runs.
   - Give the host enough memory for the resident models together. `qwen3:30b` Q4_K_M used about 22 GB.
   - Check residency with `ollama ps`.
   - The `compare` node's 300 s timeout still covers a cold load after a restart, but cold calls don't meet the latency figure the route was promoted on.
+
+## Migrations before code (spec 158)
+
+The worker image applies migrations when it boots (`Dockerfile.worker`). A
+**web-only** deploy does not. So when a release includes migrations, apply
+them before any process runs code that expects them:
+
+1. `npx tsx scripts/migrate.ts status --db "$PRODUCTION_DATABASE_URL"`. Note the pending list.
+2. `npx tsx scripts/migrate.ts up --db "$PRODUCTION_DATABASE_URL"`. Run it from an operator machine; do not start the worker for this.
+3. Only then deploy web (and the worker, if the release intends it to run).
+
+Releases that need this: the 142–147 lineage (migrations 119–125). Migration 119 adds
+`llm_calls.backend` and `duration_ms`. Code ahead of it fails every AI-usage
+ledger write, including OpenAI measurement spend, and the daily spend cap then
+undercounts. The ledger logs `llm_ledger.write_failed` at error level. If that
+event appears after a deploy, a migration was skipped.
+
+Starting the worker is a separate decision, not a deploy step. On boot it runs a
+full scheduler tick that can transmit overdue approved outreach (see the
+measurement/outreach isolation spec before starting it).
+
+## Before the next production deploy (main at 22c4a5b or later)
+
+`main` now contains the 156 authorization fix, the 148/150 outreach hardening and the 142–147 lineage with spec 158. None of it is deployed. Decide and do these in order:
+
+1. **Migrations 119–125 first.** Apply them with `scripts/migrate.ts up` against production before any code ships (see "Migrations before code" above). **Done 2026-10-23 ~17:00 EDT**, after a verified encrypted backup (193 tables, 2,343,056 rows matched). Production: pending none.
+2. **Ollama: decided (2026-10-23): Francisco's Mac via Tailscale Funnel** (`ops/inference-host/README.md`). On the Railway **worker** service, set `OLLAMA_URL=https://rf-ollama.tail390f0b.ts.net` and `OLLAMA_API_KEY` (from the Mac's Keychain; see the README). While the Mac is asleep or offline, meeting summaries, support triage, claim extraction and contradiction detection fail closed. Contractual measurement is unaffected. Nothing calls it until the worker runs again.
+3. **Leave `PROFILE_CORRECTIONS_ENABLED` unset.** Unset means profile checks and correction drafting stay off.
+4. **Deploy the web service only. The worker stays stopped.** On boot it runs a full tick that can send overdue approved outreach. Starting it waits for the measurement/outreach isolation spec.
+5. **After deploying, run the authorization smoke test in spec 156.** Until that passes, the fix is in code but not proven in production. Historical exposure stays **unknown** until the production account and log review is done.
 
 ## Scheduling
 

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { assertRole, getCurrentUser } from "@/lib/auth";
+import { assertCanWrite, assertRole, getCurrentUser } from "@/lib/auth";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import {
   onboardClient as onboard,
@@ -15,6 +15,7 @@ export async function onboardClient(
 ): Promise<ActionResult<OnboardingResult>> {
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
     const result = await onboard(user, input);
     if (result.ok) revalidatePath("/projects", "layout");
     return result;

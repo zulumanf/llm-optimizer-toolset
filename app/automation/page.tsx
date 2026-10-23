@@ -20,6 +20,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AutomationNav } from "@/components/automation/nav";
 import { EmptyState } from "@/components/automation/empty-state";
 import { StateBadge } from "@/components/automation/state-badge";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,7 @@ function Tile({
 }
 
 export default async function AutomationDashboardPage() {
+  await requireStaffPage();
   const [business, metrics, runs, exceptions, events, triggers, stats] = await Promise.all([
     businessMetrics(),
     workflowMetrics(),

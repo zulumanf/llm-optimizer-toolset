@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { sql } from "@/db/client";
 import { enqueueJob } from "@/db/jobs";
-import { getCurrentUser } from "@/lib/auth";
+import { assertCanWrite, getCurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import * as svc from "@/lib/claims/service";
@@ -51,6 +51,7 @@ export async function uploadSource(
 ): Promise<ActionResult<{ sourceArtifactId: string; duplicate: boolean }>> {
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) {
       return fail(new ClassifiedError("validation", "Choose a file to upload."));
@@ -95,13 +96,13 @@ export async function requestClaimExtraction(
 ): Promise<ActionResult<{ queued: boolean }>> {
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user); // queueing extraction spends tokens
     const parsed = z
       .object({ sourceArtifactId: z.string().uuid(), projectId: z.string().uuid() })
       .safeParse(input);
     if (!parsed.success) {
       return fail(new ClassifiedError("validation", "Invalid source id."));
     }
-    void user; // authenticated staff (layout gate); artifact ownership checked below
     const [artifact] = await sql`
       select project_id from source_artifacts
       where id = ${parsed.data.sourceArtifactId}

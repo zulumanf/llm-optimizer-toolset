@@ -20,6 +20,7 @@ import {
   ManageOpportunityDialog,
   PresenceCheckButton,
 } from "@/components/citations/opportunity-controls";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 function parseFilters(params: Record<string, string | string[] | undefined>): GapFilters {
   const one = (v: string | string[] | undefined): string | undefined =>
@@ -72,6 +73,7 @@ export default async function CitationsPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const rawParams = await searchParams;
   const project = await getProject(id);

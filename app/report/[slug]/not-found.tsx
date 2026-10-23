@@ -4,9 +4,8 @@
  * slugs, revoked reports and expired sessions — it names no prospect and
  * reveals nothing about whether a report exists.
  */
-import { Newsreader } from "next/font/google";
+import { newsreader as serif } from "@/components/fonts";
 
-const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500"] });
 
 export default function PrivateReportState() {
   return (

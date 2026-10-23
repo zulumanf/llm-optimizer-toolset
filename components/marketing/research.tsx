@@ -5,12 +5,11 @@
  * no client interaction required to read anything.
  */
 import Link from "next/link";
-import { Newsreader } from "next/font/google";
+import { newsreader as serif } from "@/components/fonts";
 import { Eyebrow } from "@/components/marketing/ui";
 import { MARKETING_PAGES, marketingPage } from "@/lib/marketing/constants";
 import { PUBLIC_DATASET_VERSION } from "@/lib/marketing/public-dataset";
 
-const serif = Newsreader({ subsets: ["latin"], weight: ["400", "500"] });
 
 export function ArticleShell({
   path,

@@ -20,6 +20,7 @@ import { GraphView } from "@/components/automation/graph-view";
 import { StateBadge } from "@/components/automation/state-badge";
 import { EmptyState } from "@/components/automation/empty-state";
 import { StartRunForm } from "@/components/automation/start-run-form";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,7 @@ export default async function WorkflowDetailPage({
 }: {
   params: Promise<{ key: string }>;
 }) {
+  await requireStaffPage();
   const { key } = await params;
   const workflow = AUTOMATION_WORKFLOWS.find((w) => w.key === key);
   if (!workflow) notFound();

@@ -21,6 +21,7 @@ import {
 import type { InterventionStatus } from "@/lib/attribution/lifecycle";
 import type { ComparabilityGrade } from "@/lib/attribution/comparability";
 import { formatDate } from "@/lib/format";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 function comparabilityBadge(grade: ComparabilityGrade) {
   switch (grade) {
@@ -55,6 +56,7 @@ export default async function InterventionPage({
 }: {
   params: Promise<{ id: string; interventionId: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id: projectId, interventionId } = await params;
   const project = await getProject(projectId);
   const [intervention] = await sql`

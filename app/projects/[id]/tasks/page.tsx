@@ -6,6 +6,7 @@ import { listActiveStaffUsers } from "@/db/users";
 import { listProjectTasks } from "@/lib/tasks/service";
 import { TaskCard } from "@/components/tasks/task-card";
 import { ProjectTabs } from "@/components/layout/project-tabs";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 const COLUMNS = [
   { status: "suggested", title: "Suggested" },
@@ -19,6 +20,7 @@ export default async function TasksPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

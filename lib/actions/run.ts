@@ -7,7 +7,7 @@
  * states its targets.
  */
 import { revalidatePath } from "next/cache";
-import { getCurrentUser, type CurrentUser } from "@/lib/auth";
+import { assertCanWrite, getCurrentUser, type CurrentUser } from "@/lib/auth";
 import { fail, type ActionResult } from "@/lib/actions/result";
 
 /** A path, optionally with the revalidation type revalidatePath accepts. */
@@ -21,6 +21,13 @@ export type RevalidateTarget = string | [string, "layout" | "page"];
  */
 export type DynamicTargets = (data: unknown) => RevalidateTarget[];
 
+/**
+ * Staff-only by construction (P1-13): the runner refuses client accounts
+ * before the wrapped service sees the input, so a service that validates
+ * first and checks the role second cannot be probed by a client either.
+ * Client-callable actions (the portal) must not use this runner — they
+ * gate on their own project grant.
+ */
 export function makeActionRunner(
   ...targets: (RevalidateTarget | DynamicTargets)[]
 ) {
@@ -29,6 +36,7 @@ export function makeActionRunner(
   ): Promise<ActionResult<T>> {
     try {
       const user = await getCurrentUser();
+      assertCanWrite(user);
       const result = await fn(user);
       if (result.ok) {
         for (const target of targets) {

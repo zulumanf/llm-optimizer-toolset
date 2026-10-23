@@ -6,7 +6,7 @@
  */
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Newsreader } from "next/font/google";
+import { newsreader as serif } from "@/components/fonts";
 import { AuditDemo } from "@/components/marketing/audit-demo";
 import { RequestForm } from "@/components/marketing/request-form";
 import { JsonLd } from "@/components/marketing/json-ld";
@@ -24,11 +24,6 @@ import {
   ConfidenceBadge,
 } from "@/components/marketing/ui";
 
-const serif = Newsreader({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  style: ["normal", "italic"],
-});
 
 export const metadata: Metadata = marketingMetadata("/home");
 

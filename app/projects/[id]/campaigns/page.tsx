@@ -15,6 +15,7 @@ import {
 import { CampaignFormDialog } from "@/components/campaigns/campaign-form-dialog";
 import { formatDate } from "@/lib/format";
 import { ProjectTabs } from "@/components/layout/project-tabs";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export default async function CampaignsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

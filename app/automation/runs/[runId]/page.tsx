@@ -24,6 +24,7 @@ import { StateBadge } from "@/components/automation/state-badge";
 import { EmptyState } from "@/components/automation/empty-state";
 import { ApprovalDecision } from "@/components/approvals/approval-decision";
 import { RetryNodeButton } from "@/components/automation/retry-node-button";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,7 @@ export default async function RunDetailPage({
 }: {
   params: Promise<{ runId: string }>;
 }) {
+  await requireStaffPage();
   const { runId } = await params;
 
   let run;

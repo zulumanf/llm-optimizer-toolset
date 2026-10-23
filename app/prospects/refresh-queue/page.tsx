@@ -1,6 +1,7 @@
 import { EmptyState, PageHeader, PageShell, Section } from "@/components/layout/page";
 import { RefreshCard } from "@/components/prospects/refresh-card";
 import { listAuditRefreshCandidates } from "@/lib/prospects/refresh";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
  * page only collects the operator's judgment and acknowledgments.
  */
 export default async function RefreshQueuePage() {
+  await requireStaffPage();
   const items = await listAuditRefreshCandidates();
   const byLaunch = new Map<string, typeof items>();
   for (const item of items) {

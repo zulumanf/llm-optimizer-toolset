@@ -5,12 +5,14 @@ import { getProject } from "@/db/projects";
 import { listReviewQueue } from "@/db/mentions";
 import { ReviewQueue } from "@/components/review/review-queue";
 import { ProjectTabs } from "@/components/layout/project-tabs";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export default async function ReviewPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

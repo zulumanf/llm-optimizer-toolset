@@ -18,12 +18,14 @@ import { InterventionVisibilityToggle } from "@/components/attribution/intervent
 import { InterventionStatusBadge } from "@/components/attribution/intervention-status";
 import type { InterventionStatus } from "@/lib/attribution/lifecycle";
 import { ProjectTabs } from "@/components/layout/project-tabs";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export default async function InterventionsPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

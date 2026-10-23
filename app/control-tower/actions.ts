@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sql } from "@/db/client";
-import { assertProjectAccess, assertRole, getCurrentUser } from "@/lib/auth";
+import { assertCanWrite, assertProjectAccess, assertRole, getCurrentUser } from "@/lib/auth";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { ClassifiedError } from "@/lib/errors";
 import { generateExecutiveBrief } from "@/lib/reports/executive";
@@ -76,6 +76,7 @@ export async function acknowledgeDrift(input: unknown) {
   // modules already imported at the top of this file (cleanup 2026-08-18).
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
     const { acknowledgeDriftSignal } = await import("@/lib/drift/detect");
     const result = await acknowledgeDriftSignal(user, input);
     if (result.ok) revalidatePath("/control-tower");

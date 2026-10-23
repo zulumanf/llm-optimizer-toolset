@@ -32,7 +32,9 @@ import {
   PROFILE_CHECK_BLOCK,
   PROFILE_CHECK_ORIGINS,
   PROFILE_CHECK_SKIP,
+  PROFILE_CORRECTIONS_DISABLED_MESSAGE,
   profileCheckRunKey,
+  profileCorrectionsEnabled,
   type ProfileCheckBlockReason,
   type ProfileCheckOrigin,
   type ProfileCheckSkipReason,
@@ -111,6 +113,10 @@ export async function startProfileChecks(
       await assertProjectAccess(user, projectId);
     } else {
       assertCanWrite(user);
+    }
+    // Spec 158: opt-in; refused after the authorization gate.
+    if (!profileCorrectionsEnabled()) {
+      throw new ClassifiedError("conflict", PROFILE_CORRECTIONS_DISABLED_MESSAGE);
     }
 
     const window = profileCheckWindow(origin, now);

@@ -14,12 +14,14 @@ import {
 } from "@/components/ui/table";
 import { SetFormDialog } from "@/components/prompts/set-form-dialog";
 import { formatDate } from "@/lib/format";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export default async function PromptSetsPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

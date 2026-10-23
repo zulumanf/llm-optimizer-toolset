@@ -3357,6 +3357,14 @@ Public claims and the public dataset read the highest VERIFIED revision of each 
 
 **Queue.** The 617 paused parse jobs are classified by `scripts/paused-jobs-release.ts` before any resume; only NO_OP and ENTITY_RESOLUTION_ONLY categories may be released without a fresh provider preflight, in bounded batches.
 
+## 2026-10-21 — Pages gate themselves; layouts are not a boundary (spec 156, P0 hotfix)
+Next.js renders a route's layouts and page concurrently. When a layout throws `redirect()`/`notFound()`, the page has still rendered, and its RSC payload is still in the response. A production build of `main`, swept as a `client_viewer`, returned other clients' project data on 31 routes: `/work` (every client's tasks and project ids), `/control-tower`, `/exclusivity`, 27 `/projects/<other>/*` pages, and the client's own internal tasks. The browser meanwhile showed a 404 or a redirect. The `/projects/[id]` layout's comment ("impossible for a new page to forget") was the wrong mental model.
+- **Every internal page awaits its gate as its first statement:** `requireProjectStaffPage(id)` under `/projects/[id]`, `requireStaffPage()` elsewhere. "First statement" is the rule because it is checkable statically (`tests/unit/page-gates-static.test.ts`): nothing can be read before the gate if nothing runs before it. Layout checks remain as defence in depth.
+- **Exemptions are a named list with reasons:** marketing, login, the spec-134 report session, and the portal, whose service layer asserts access per read. That last one is verified by the sweep.
+- **`scripts/authz-sweep.ts` makes the evidence reproducible.** It plants canaries in a local sandbox and greps every page's raw response body, not the rendered page.
+- **Exposure requires a production account with a client role.** Whether one exists is an operator check against production, outside this change.
+- **The write side ships in the same hotfix (P1-13).** A client account could start, cancel, retry or decide workflows, start test automation runs (642 write statements as `client_viewer` in the runtime suite), suppress contacts, stop sequences and queue claim extraction on any project's source. The shared action runner now asserts staff before the wrapped action, and hand-written actions assert immediately after `getCurrentUser()`. A refusal counts only if it comes from a staff gate: the runtime suite rejects a "refusal" that is really a validation error or a missed lookup. It also detects attempted writes with statement-level triggers on a sequence, which survive rollbacks and zero-row statements. A structural test fails any new action that parses, queries or awaits before an unconditional gate.
+
 ## 2026-09-23 — Profile correction extracts canonically: URL ingestion, test-mode and unchanged-page safe stops (spec 145B)
 
 The reputation profile correction workflow replaced the weak `extract_claims` agent with `dom.extract_canonical_claims` (`ingestSource` → `extractClaimsFromSource`; claims land `proposed`; `detect_contradictions` receives `observedClaims` and `approvedFacts` as separate `contextPaths`).
@@ -3793,3 +3801,15 @@ A found contradiction now becomes a persisted correction request, built and veri
 - **Object-store write-once uses a conditional PUT (`If-None-Match: *`)**, not HEAD-then-PUT. Why: two racing writers could both see 404. 412/409 means "already present"; sha256 metadata is then compared. Downloads without RF's sha256 metadata are refused.
 - **`releaseClaim` always returns the attempt** a deferred claim added, even when the real executor's heartbeat has re-asserted the lease first. Why: otherwise a lock-deferred claim silently consumed one of the job's attempts (observed as a 1-in-10 flake).
 - **Worker shutdown closes the pool with a bound** (`sql.end({ timeout: 10 })`). Why: an unbounded `end()` waits forever after a reserved connection died (reproduced).
+
+
+## 2026-10-21 — Lineage hardening before 142–147 reach main (spec 158)
+
+The lineage review found the 142–147 code sound, and found contractual measurement untouched. It also found the code unsafe to merge as it stood. This spec makes the following decisions:
+
+- **Unattended third-party contact is opt-in.** Profile checks, correction drafting and reconciliation run only with `PROFILE_CORRECTIONS_ENABLED=true`. Every entry point (weekly kick, tick, job handlers, start action) checks the same helper. Off is the default because merging code must not, by itself, start fetching clients' third-party profiles on the next worker boot.
+- **Automatic retries are bounded.** After 3 failed draft attempts, automatic drafting stops for that request, and an operator re-arms it through the existing audited manual-retry path. The failed attempt is superseded, never deleted.
+- **SSRF classification parses addresses.** IPv6 literals are expanded and classified, so IPv4-mapped, IPv4-compatible, NAT64 and 6to4 embeddings are judged as their IPv4 address. CGNAT, benchmarking, documentation, multicast and reserved ranges are refused. Names are judged only by the reserved suffixes and by their resolved addresses, not by text prefix. DNS-rebinding pinning stays out of scope: it needs a dispatcher dependency.
+- **Ollama requests are bounded and authenticated.** A 280 s abort fails closed. A remote host must be https and have `OLLAMA_API_KEY` (release 151's `ollamaRequestHeaders`, reused verbatim to avoid divergence).
+- **The measurement/internal-inference boundary is enforced by a test, not by coincidence.** Measurement tasks can never be in `INTERNAL_TASK_TARGETS`, and measurement modules may not import the internal router. The routing table is pinned.
+- **Migrations go before code**, as written in `docs/deployment.md`, because a web-only deploy does not migrate and migration 119 guards the spend ledger.

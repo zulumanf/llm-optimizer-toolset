@@ -12,6 +12,17 @@ import { truncateAll } from "../helpers/db";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 
+// Spec 158: profile corrections are opt-in (unset = off). These suites test
+// the feature itself, so they run with it explicitly enabled; the disabled
+// behaviour and the draft-retry cap are covered at the end of
+// profile-correction-drafts.test.ts.
+beforeAll(() => {
+  vi.stubEnv("PROFILE_CORRECTIONS_ENABLED", "true");
+});
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
+
 const operator: CurrentUser = {
   id: "00000000-0000-4000-8000-000000000901",
   email: "op@test.local",

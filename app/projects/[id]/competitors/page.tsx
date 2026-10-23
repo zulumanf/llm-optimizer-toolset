@@ -31,6 +31,7 @@ import { citationProfilesForProject } from "@/lib/competitors/citation-profiles"
 import { AddCompetitorDialog } from "@/components/competitors/add-competitor-dialog";
 import { CompetitorRowControls } from "@/components/competitors/competitor-row-controls";
 import { CandidatePanel } from "@/components/competitors/candidate-panel";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 const CANDIDATE_MIN_HITS = 3;
 
@@ -63,6 +64,7 @@ export default async function CompetitorsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

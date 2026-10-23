@@ -15,6 +15,7 @@ import {
 import { AUTOMATION_WORKFLOWS } from "@/lib/automation/workflows";
 import { ApprovalDecision } from "@/components/approvals/approval-decision";
 import { Badge } from "@/components/ui/badge";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ function runHref(definitionKey: string, runId: string): string {
 }
 
 export default async function ApprovalsPage() {
+  await requireStaffPage();
   const [pending, decided] = await Promise.all([
     pendingApprovalsAcrossRuns(),
     recentApprovalDecisions(10),

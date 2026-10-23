@@ -7,6 +7,7 @@ import { listAllModels, mockProviderAllowed } from "@/lib/ai/registry";
 import { getEnv } from "@/lib/env";
 import type { ProviderId } from "@/lib/ai/types";
 import { NewRunForm, type VersionOption } from "@/components/runs/new-run-form";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 /** Providers whose API keys are configured — these default to enabled in the
  * form so runs don't start with cells doomed to auth failures. No key and no
@@ -28,6 +29,7 @@ export default async function NewRunPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project || project.status !== "active") notFound();

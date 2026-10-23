@@ -10,6 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
  * overdue first, then priority — the view that replaces opening ten
  * kanban pages to answer "what do we owe whom this week". */
 export default async function WorkBoardPage() {
+  await requireStaffPage();
   const tasks = await listOpenTasksAcrossProjects();
   const overdue = tasks.filter((t) => t.overdue);
 

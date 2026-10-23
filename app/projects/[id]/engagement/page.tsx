@@ -38,6 +38,7 @@ import { commercialStateForProject, commercialStateForProspect } from "@/lib/eng
 import { onboardingPrefill } from "@/lib/engagements/onboarding-intake";
 import { daysBetween, todayIso } from "@/lib/engagements/rules";
 import { formatDate } from "@/lib/format";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,7 @@ const STAGE_VARIANT: Record<string, "default" | "secondary" | "outline" | "destr
  * hopping screens. Derived from canonical rows; nothing here is typed "done".
  */
 export default async function EngagementPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const [project, user] = await Promise.all([getProject(id), getCurrentUser()]);
   if (!project) notFound();
