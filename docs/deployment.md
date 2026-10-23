@@ -42,6 +42,7 @@ Production minimums:
 Some internal tasks run on self-hosted open-weight models, through `lib/ai/internal/ollama.ts`. The mapping from task to model lives in `INTERNAL_TASK_TARGETS` in `lib/ai/routing.ts`. These tasks never fall back to a paid provider: when Ollama is down, the task fails closed.
 
 - **The worker needs `OLLAMA_URL`** pointing at the inference host. It defaults to `http://127.0.0.1:11434`. The web process does not call Ollama.
+- **Production host:** Francisco's Mac behind an authenticating proxy and Tailscale Funnel, `https://rf-ollama.tail390f0b.ts.net`. Setup, key handling, rotation, kill switch and failure modes: `ops/inference-host/README.md`.
 - **A remote host must be https with `OLLAMA_API_KEY`** (sent as a bearer token; spec 158). A plain-http or keyless remote `OLLAMA_URL` is refused before any request. Every request is aborted after `OLLAMA_REQUEST_TIMEOUT_MS` (280 s) and fails closed.
 - **No host = four features off, not wrong.** Without a reachable host, `summarize_meeting`, `summarize_support_request`, `knowledge_claim_extraction` (source uploads, discovery) and `detect_contradictions` fail closed. Provisioning the host is an operator decision to make before deploying the 142–147 lineage. Contractual measurement never uses Ollama (`tests/unit/measurement-provider-boundary.test.ts`).
 - **The models must be pulled** on the inference host: `qwen3:8b`, `qwen3:30b` and `gpt-oss:20b` (`LOCAL_INTERNAL_TARGETS` in `lib/ai/internal/registry.ts`).
@@ -75,7 +76,7 @@ measurement/outreach isolation spec before starting it).
 `main` now contains the 156 authorization fix, the 148/150 outreach hardening and the 142–147 lineage with spec 158. None of it is deployed. Decide and do these in order:
 
 1. **Migrations 119–125 first.** Apply them with `scripts/migrate.ts up` against production before any code ships (see "Migrations before code" above).
-2. **Ollama: provision it, or accept four features off.** Without a reachable host, these fail closed: meeting summaries, support triage, claim extraction (source uploads, discovery) and contradiction detection. Contractual measurement is unaffected. If the host is remote, it must be https and have `OLLAMA_API_KEY`. *Decision owner: Francisco. Status: open.*
+2. **Ollama: decided (2026-10-23): Francisco's Mac via Tailscale Funnel** (`ops/inference-host/README.md`). On the Railway **worker** service, set `OLLAMA_URL=https://rf-ollama.tail390f0b.ts.net` and `OLLAMA_API_KEY` (from the Mac's Keychain; see the README). While the Mac is asleep or offline, meeting summaries, support triage, claim extraction and contradiction detection fail closed. Contractual measurement is unaffected. Nothing calls it until the worker runs again.
 3. **Leave `PROFILE_CORRECTIONS_ENABLED` unset.** Unset means profile checks and correction drafting stay off.
 4. **Deploy the web service only. The worker stays stopped.** On boot it runs a full tick that can send overdue approved outreach. Starting it waits for the measurement/outreach isolation spec.
 5. **After deploying, run the authorization smoke test in spec 156.** Until that passes, the fix is in code but not proven in production. Historical exposure stays **unknown** until the production account and log review is done.

@@ -1,0 +1,64 @@
+# Recommended First — authenticating proxy in front of the local Ollama.
+# Deny by default: only the two endpoints the app uses, only with the
+# bearer key (read from the macOS Keychain by start-proxy.sh at launch).
+# Local-only listener; the Cloudflare Tunnel is the only path in.
+{
+	admin off
+	auto_https off
+	log {
+		output file {$HOME}/Library/Logs/rf-ollama/proxy.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+		format json
+	}
+}
+
+# Any Host header (Funnel forwards the public *.ts.net name); still bound to
+# loopback only, so the tunnel is the only way in.
+http://:11435 {
+	bind 127.0.0.1
+	log {
+		output file {$HOME}/Library/Logs/rf-ollama/access.log {
+			roll_size 10MiB
+			roll_keep 10
+		}
+		format json
+	}
+
+	@chat {
+		method POST
+		path /api/chat
+		header Authorization "Bearer {$RF_OLLAMA_KEY}"
+	}
+	@version {
+		method GET
+		path /api/version
+		header Authorization "Bearer {$RF_OLLAMA_KEY}"
+	}
+
+	handle @chat {
+		request_body {
+			max_size 8MB
+		}
+		reverse_proxy 127.0.0.1:11434 {
+			header_up Host 127.0.0.1:11434
+			header_up -Authorization
+			header_up -Origin
+			transport http {
+				response_header_timeout 290s
+			}
+		}
+	}
+	handle @version {
+		reverse_proxy 127.0.0.1:11434 {
+			header_up Host 127.0.0.1:11434
+			header_up -Authorization
+			header_up -Origin
+		}
+	}
+	handle {
+		header Content-Type application/json
+		respond `{"error":"unauthorized"}` 401
+	}
+}
