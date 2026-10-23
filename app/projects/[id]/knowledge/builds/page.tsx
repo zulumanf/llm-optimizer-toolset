@@ -4,6 +4,7 @@ import { getProject } from "@/db/projects";
 import { listBuilds, buildItems } from "@/db/knowledge";
 import { Badge } from "@/components/ui/badge";
 import { KnowledgeLayerNav } from "@/components/knowledge/layer-nav";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export default async function BuildsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

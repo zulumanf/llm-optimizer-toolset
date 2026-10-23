@@ -7,6 +7,7 @@ import { readActivePage, readPageProvenance } from "@/lib/knowledge/compiler/com
 import { getDependencies } from "@/lib/knowledge/build/planner";
 import { Badge } from "@/components/ui/badge";
 import { KnowledgeLayerNav } from "@/components/knowledge/layer-nav";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export default async function WikiPageDetail({
 }: {
   params: Promise<{ id: string; slug: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id, slug } = await params;
   const project = await getProject(id);
   if (!project) notFound();

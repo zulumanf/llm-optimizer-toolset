@@ -4,11 +4,13 @@ import { listWorkflowRuns } from "@/db/control-tower";
 import { WORKFLOW_TEMPLATES } from "@/lib/workflow/templates";
 import { validateGraph } from "@/lib/workflow/graph";
 import { StateBadge } from "@/components/automation/state-badge";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
 
 export default async function WorkflowsPage() {
+  await requireStaffPage();
   const runs = await listWorkflowRuns({ limit: 50 });
 
   return (

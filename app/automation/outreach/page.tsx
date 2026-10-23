@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AutomationNav } from "@/components/automation/nav";
 import { EmptyState } from "@/components/automation/empty-state";
 import { StopSequenceButton } from "@/components/automation/stop-sequence-button";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ const STOP_LABEL: Record<string, string> = {
 };
 
 export default async function OutreachPage() {
+  await requireStaffPage();
   const [sequences, suppressions, messageStats] = await Promise.all([
     sql`
       select s.id, s.subject_kind, s.subject_ref, s.recipient_email, s.recipient_name,

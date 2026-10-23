@@ -10,7 +10,7 @@
 import { revalidatePath } from "next/cache";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
-import { assertProjectAccess, assertRole, getCurrentUser } from "@/lib/auth";
+import { assertCanWrite, assertProjectAccess, assertRole, getCurrentUser } from "@/lib/auth";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { ClassifiedError } from "@/lib/errors";
 import * as triggerStore from "@/db/triggers";
@@ -44,6 +44,7 @@ export async function startAutomationRun(input: {
 }): Promise<ActionResult<{ runId: string; mode: string }>> {
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
     if (input.mode === "live") assertRole(user, "admin");
     await ensureAutomationReady();
 
@@ -124,6 +125,7 @@ export async function retryAutomationNode(
 ): Promise<ActionResult<{ retried: boolean }>> {
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
     await ensureAutomationReady();
     await retryNode(nodeRunId, user.id);
     revalidatePath("/automation");
@@ -139,6 +141,7 @@ export async function cancelAutomationRun(input: {
 }): Promise<ActionResult<{ cancelled: boolean }>> {
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
     if (input.reason.trim().length < 3) {
       throw new ClassifiedError("validation", "A cancellation reason is required.");
     }
@@ -297,6 +300,7 @@ export async function suppressContact(input: {
 }): Promise<ActionResult<{ suppressed: boolean; alreadySuppressed: boolean }>> {
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
     const result = await sql.begin((tx) =>
       suppress(tx, {
         scope: input.scope,
@@ -338,6 +342,7 @@ export async function stopOutreachSequence(input: {
 }): Promise<ActionResult<{ stopped: boolean }>> {
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
     const result = await sql.begin((tx) =>
       stopSequence(tx, {
         sequenceId: input.sequenceId,

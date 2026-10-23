@@ -13,8 +13,10 @@ import {
 } from "@/components/ui/table";
 import { CompanyFormDialog } from "@/components/companies/company-form-dialog";
 import { CompanyRowControls } from "@/components/companies/company-row-controls";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export default async function CompaniesPage() {
+  await requireStaffPage();
   const [companies, user] = await Promise.all([listCompanies(), getCurrentUser()]);
   const hasSelf = companies.some((c) => c.isSelf);
 

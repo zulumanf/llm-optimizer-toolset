@@ -18,6 +18,7 @@ import {
   ActivatePlanItemButton,
   DropPlanItemButton,
 } from "@/components/plans/plan-item-actions";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,7 @@ export default async function PlanPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

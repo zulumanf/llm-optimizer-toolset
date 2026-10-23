@@ -12,6 +12,7 @@ import { validateAutomationDefinition } from "@/lib/automation/runtime";
 import { workflowMetrics } from "@/lib/automation/metrics";
 import { Badge } from "@/components/ui/badge";
 import { AutomationNav } from "@/components/automation/nav";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ const DOMAIN_ORDER = [
 ] as const;
 
 export default async function AutomationWorkflowsPage() {
+  await requireStaffPage();
   const metrics = await workflowMetrics();
   const metricsByKey = new Map(metrics.map((m) => [m.workflowKey, m]));
 

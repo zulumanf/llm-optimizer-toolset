@@ -8,6 +8,7 @@ import { UploadSource } from "@/components/knowledge/upload-source";
 import { DiscoverExternalButton } from "@/components/knowledge/discover-external-button";
 import { listDiscoveryRuns } from "@/db/discovery";
 import { ExtractClaimsButton } from "@/components/knowledge/extract-claims-button";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export default async function SourcesPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

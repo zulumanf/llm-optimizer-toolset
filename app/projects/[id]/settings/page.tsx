@@ -12,12 +12,14 @@ import { ClientInviteForm } from "@/components/settings/client-invite-form";
 import { BaselineSettingsForm } from "@/components/settings/baseline-settings-form";
 import { PortfolioFieldsForm } from "@/components/settings/portfolio-fields-form";
 import type { ProviderConfig } from "@/lib/runs/cells";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export default async function ProjectSettingsPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

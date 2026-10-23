@@ -9,6 +9,7 @@ import { ScanButton } from "@/components/technical/scan-button";
 import { FindingActions } from "@/components/technical/finding-actions";
 import { formatDate } from "@/lib/format";
 import { SEVERITY_VARIANT } from "@/lib/ui/variants";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 const BAND_LABELS: Record<string, string> = {
   do_now: "Do now",
@@ -23,6 +24,7 @@ export default async function TechnicalPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();

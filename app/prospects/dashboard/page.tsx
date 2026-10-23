@@ -69,6 +69,7 @@ import {
   type IntentLabel,
   type ProspectIntent,
 } from "@/lib/prospects/intent";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -229,6 +230,7 @@ export default async function ProspectingDashboardPage({
 }: {
   searchParams: Promise<Filters>;
 }) {
+  await requireStaffPage();
   const filters = await searchParams;
   const now = new Date();
   const view = filters.view === "analyze" ? "analyze" : "operate";

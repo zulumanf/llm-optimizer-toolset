@@ -19,6 +19,7 @@ import { listReportDeliveries } from "@/lib/reports/service";
 import { reportPreflight } from "@/lib/qa/preflight";
 import { NARRATIVE_SECTIONS, type ReportBody } from "@/lib/reports/types";
 import { formatDate } from "@/lib/format";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 const SECTION_TITLES: Record<string, string> = {
   summary: "Summary",
@@ -32,6 +33,7 @@ export default async function ReportPage({
 }: {
   params: Promise<{ id: string; reportId: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id: projectId, reportId } = await params;
   const project = await getProject(projectId);
   const [report] = await sql`

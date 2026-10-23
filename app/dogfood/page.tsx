@@ -22,6 +22,7 @@ import { subjectScoreHistory, citationSupport } from "@/db/dashboard";
 import { valuableVisibility } from "@/lib/prospects/benchmark";
 import { runCoverage } from "@/lib/scoring/coverage";
 import { formatDate } from "@/lib/format";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 function pct(value: number | null | undefined): string {
   return value === null || value === undefined
@@ -37,6 +38,7 @@ interface RunRow {
 }
 
 export default async function DogfoodPage() {
+  await requireStaffPage();
   const project = await getInternalProject();
 
   if (!project) {

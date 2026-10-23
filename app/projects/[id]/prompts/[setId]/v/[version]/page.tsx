@@ -6,12 +6,14 @@ import { diffVersions } from "@/lib/prompts/diff";
 import { Badge } from "@/components/ui/badge";
 import { DuplicateSetDialog } from "@/components/prompts/duplicate-set-dialog";
 import { formatDate } from "@/lib/format";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export default async function VersionPage({
   params,
 }: {
   params: Promise<{ id: string; setId: string; version: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id: projectId, setId, version: versionParam } = await params;
   const versionNumber = Number.parseInt(versionParam, 10);
   if (!Number.isInteger(versionNumber) || versionNumber < 1) notFound();

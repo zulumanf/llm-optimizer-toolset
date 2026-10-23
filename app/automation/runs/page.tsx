@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { AutomationNav } from "@/components/automation/nav";
 import { StateBadge } from "@/components/automation/state-badge";
 import { EmptyState } from "@/components/automation/empty-state";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function AutomationRunsPage({
 }: {
   searchParams: Promise<{ mode?: string }>;
 }) {
+  await requireStaffPage();
   const { mode } = await searchParams;
   const filter = mode === "live" || mode === "test" ? mode : undefined;
   const runs = await recentRuns({ mode: filter, limit: 100 });

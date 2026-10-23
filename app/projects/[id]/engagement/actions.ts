@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentUser } from "@/lib/auth";
+import { assertCanWrite, getCurrentUser } from "@/lib/auth";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import * as engagements from "@/lib/engagements/service";
 import * as tasks from "@/lib/tasks/service";
@@ -15,6 +15,7 @@ async function run<T>(
 ): Promise<ActionResult<T>> {
   try {
     const user = await getCurrentUser();
+    assertCanWrite(user);
     const result = await fn(user);
     if (result.ok) {
       revalidatePath(`/projects/${projectId}/engagement`);

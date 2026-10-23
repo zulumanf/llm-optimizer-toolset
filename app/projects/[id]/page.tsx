@@ -21,6 +21,7 @@ import {
 } from "@/components/charts/authority-trend";
 import { AuthorityBarChart } from "@/components/charts/authority-bar";
 import { formatDate } from "@/lib/format";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 function StatTile({
   label,
@@ -64,6 +65,7 @@ export default async function ProjectDashboardPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id } = await params;
   const [project, user] = await Promise.all([getProject(id), getCurrentUser()]);
   if (!project) notFound();

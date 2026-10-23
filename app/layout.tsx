@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { inter, jetbrainsMono } from "@/components/fonts";
 import { Toaster } from "sonner";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AssistantGate } from "@/components/assistant/assistant-gate";
@@ -9,11 +9,6 @@ import "./globals.css";
 // Internal tool: every view reads live data, nothing is statically prerendered
 export const dynamic = "force-dynamic";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-});
 
 export const metadata: Metadata = {
   title: "AI Visibility OS",

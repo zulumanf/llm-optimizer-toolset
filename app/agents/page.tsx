@@ -3,6 +3,7 @@ import { PageHeader, PageShell } from "@/components/layout/page";
 import { AGENTS } from "@/lib/agents/registry";
 import { agentMetrics } from "@/lib/automation/metrics";
 import { Badge } from "@/components/ui/badge";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ const DOMAIN_LABEL: Record<string, string> = {
 };
 
 export default async function AgentRegistryPage() {
+  await requireStaffPage();
   const byDomain = new Map<string, typeof AGENTS>();
   for (const agent of AGENTS) {
     byDomain.set(agent.domain, [...(byDomain.get(agent.domain) ?? []), agent]);

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ApprovalDecision } from "@/components/approvals/approval-decision";
 import { RunGraph } from "@/components/workflows/run-graph";
 import { StateBadge } from "@/components/automation/state-badge";
+import { requireStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export default async function WorkflowRunPage({
 }: {
   params: Promise<{ runId: string }>;
 }) {
+  await requireStaffPage();
   const { runId } = await params;
   const detail = await workflowRunDetail(runId);
   if (!detail) notFound();

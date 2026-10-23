@@ -5,6 +5,7 @@ import { sql } from "@/db/client";
 import { explainPacket } from "@/lib/knowledge/context/builder";
 import { Badge } from "@/components/ui/badge";
 import { KnowledgeLayerNav } from "@/components/knowledge/layer-nav";
+import { requireProjectStaffPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default async function PacketInspector({
 }: {
   params: Promise<{ id: string; packetId: string }>;
 }) {
+  await requireProjectStaffPage((await params).id);
   const { id, packetId } = await params;
   const project = await getProject(id);
   if (!project) notFound();
