@@ -3,7 +3,8 @@
  * discovery-supplied URL (docs/10 · audit 2026-08-01 §H.1). One policy,
  * imported everywhere, instead of per-caller fetch calls:
  *
- * - http(s) only; private/link-local hosts refused (string check);
+ * - http(s) only; private, reserved and link-local addresses refused — IP
+ *   literals are parsed and classified in every notation (spec 158);
  * - the hostname is DNS-resolved and every address must be public — a public
  *   name pointing at 169.254.169.254 is refused (best-effort: the classic
  *   resolve-then-connect race is documented, not solved);
@@ -21,27 +22,95 @@ import { ClassifiedError } from "@/lib/errors";
 
 export const MAX_REDIRECTS_DEFAULT = 5;
 
+/** Dotted-quad IPv4 → four octets, or null. */
+function parseIPv4(host: string): [number, number, number, number] | null {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!m) return null;
+  const octets = [m[1], m[2], m[3], m[4]].map(Number) as [number, number, number, number];
+  return octets.every((o) => o <= 255) ? octets : null;
+}
+
+/** IPv6 literal (any notation: `::` compression, embedded dotted quad, zone
+ * id) → eight 16-bit groups, or null when it is not a valid IPv6 address. */
+function parseIPv6(host: string): number[] | null {
+  let h = host.split("%")[0]!;
+  if (!h.includes(":")) return null;
+  const tail = /^(.*:)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(h);
+  if (tail) {
+    const v4 = parseIPv4(tail[2]!);
+    if (!v4) return null;
+    h = `${tail[1]}${((v4[0] << 8) | v4[1]).toString(16)}:${((v4[2] << 8) | v4[3]).toString(16)}`;
+  }
+  const halves = h.split("::");
+  if (halves.length > 2) return null;
+  const parts = (s: string) => (s === "" ? [] : s.split(":"));
+  const head = parts(halves[0]!);
+  const rest = halves.length === 2 ? parts(halves[1]!) : [];
+  const missing = 8 - head.length - rest.length;
+  if (halves.length === 1 ? head.length !== 8 : missing < 1) return null;
+  const groups = [...head, ...Array(halves.length === 2 ? missing : 0).fill("0"), ...rest];
+  if (groups.length !== 8 || !groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return null;
+  return groups.map((g) => parseInt(g, 16));
+}
+
+function privateIPv4([a, b, c]: [number, number, number, number]): boolean {
+  return (
+    a === 0 || // "this network"
+    a === 10 ||
+    (a === 100 && b >= 64 && b <= 127) || // CGNAT 100.64/10
+    a === 127 ||
+    (a === 169 && b === 254) || // link-local, cloud metadata
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 0 && c === 0) || // IETF protocol assignments
+    (a === 192 && b === 0 && c === 2) || // TEST-NET-1
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) || // benchmarking 198.18/15
+    (a === 198 && b === 51 && c === 100) || // TEST-NET-2
+    (a === 203 && b === 0 && c === 113) || // TEST-NET-3
+    a >= 224 // multicast 224/4, reserved 240/4, broadcast
+  );
+}
+
+const v4From = (hi: number, lo: number): [number, number, number, number] => [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff];
+
+function privateIPv6(g: number[]): boolean {
+  const zeros = (from: number, to: number) => g.slice(from, to).every((x) => x === 0);
+  if (zeros(0, 8)) return true; // ::
+  if (zeros(0, 7) && g[7] === 1) return true; // ::1
+  // IPv4-mapped (::ffff:a.b.c.d, in ANY notation) and IPv4-compatible (::a.b.c.d)
+  if (zeros(0, 5) && g[5] === 0xffff) return privateIPv4(v4From(g[6]!, g[7]!));
+  if (zeros(0, 6)) return privateIPv4(v4From(g[6]!, g[7]!));
+  if (g[0] === 0x64 && g[1] === 0xff9b && zeros(2, 6)) return privateIPv4(v4From(g[6]!, g[7]!)); // NAT64
+  if (g[0] === 0x2002) return privateIPv4(v4From(g[1]!, g[2]!)); // 6to4
+  if ((g[0]! & 0xfe00) === 0xfc00) return true; // unique local fc00::/7
+  if ((g[0]! & 0xffc0) === 0xfe80) return true; // link-local fe80::/10
+  if ((g[0]! & 0xffc0) === 0xfec0) return true; // site-local fec0::/10
+  if ((g[0]! & 0xff00) === 0xff00) return true; // multicast
+  if (g[0] === 0x2001 && g[1] === 0x0db8) return true; // documentation
+  if (g[0] === 0x2001 && g[1] === 0x0000) return true; // Teredo
+  return false;
+}
+
+/**
+ * True when `hostname` (a URL hostname or a resolved address) must not be
+ * fetched. IP literals are PARSED and classified (spec 158): the WHATWG URL
+ * parser rewrites `[::ffff:169.254.169.254]` to `[::ffff:a9fe:a9fe]`, which a
+ * string check missed. Names are judged only by the reserved suffixes; any
+ * other name is decided by its resolved addresses (assertPublicUrl).
+ */
 export function isPrivateHost(hostname: string): boolean {
-  let host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  // IPv4-mapped IPv6 (::ffff:10.0.0.1) must be judged as its IPv4 self.
-  if (host.startsWith("::ffff:")) host = host.slice("::ffff:".length);
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal")) {
     return true;
   }
-  if (host === "::" || host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80")) {
-    return true;
+  const v4 = parseIPv4(host);
+  if (v4) return privateIPv4(v4);
+  if (host.includes(":")) {
+    const v6 = parseIPv6(host);
+    // An unparseable "IPv6" literal is refused rather than guessed at.
+    return v6 ? privateIPv6(v6) : true;
   }
-  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-  if (!ipv4) return false;
-  const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168)
-  );
+  return false;
 }
 
 export type LookupImpl = (

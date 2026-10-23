@@ -33,6 +33,39 @@ export function ollamaBaseUrl(): string {
   return (process.env.OLLAMA_URL?.trim() || DEFAULT_OLLAMA_URL).replace(/\/+$/, "");
 }
 
+/** Spec 158: every chat request is aborted after this long, so a hung or
+ * cold-loading server fails closed instead of outliving the engine's own
+ * node timeout (300 s for the slowest route) and racing its retry. */
+export const OLLAMA_REQUEST_TIMEOUT_MS = 280_000;
+
+const LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\]|::1)$/;
+
+/**
+ * Request headers for the inference host (verbatim from release 151). A
+ * HOSTED Ollama — the same open-weight models on a GPU box, keeping the
+ * internal-model boundary — must sit behind an authenticating proxy:
+ * `OLLAMA_API_KEY` is sent as a bearer token. A key is never sent over plain
+ * http to a remote host, and a remote host without a key is refused rather
+ * than called unauthenticated.
+ */
+export function ollamaRequestHeaders(baseUrl = ollamaBaseUrl(), env: Record<string, string | undefined> = process.env): Record<string, string> {
+  const url = new URL(baseUrl);
+  const local = LOCAL_HOST_RE.test(url.hostname);
+  const key = env.OLLAMA_API_KEY?.trim();
+  if (!local) {
+    if (url.protocol !== "https:") {
+      throw new ClassifiedError("internal", "A remote OLLAMA_URL must use https.");
+    }
+    if (!key) {
+      throw new ClassifiedError("internal", "A remote OLLAMA_URL requires OLLAMA_API_KEY (an unauthenticated public inference host is refused).");
+    }
+  }
+  return {
+    "content-type": "application/json",
+    ...(key ? { authorization: `Bearer ${key}` } : {}),
+  };
+}
+
 const nsToMs = (ns: number | undefined): number | undefined =>
   typeof ns === "number" ? Math.round(ns / 1_000_000) : undefined;
 
@@ -67,15 +100,16 @@ export const ollamaCaller: InternalInferenceCaller = async ({
   }
 
   const baseUrl = ollamaBaseUrl();
+  // Refuses an unauthenticated or plain-http remote host before any request.
+  const headers = ollamaRequestHeaders(baseUrl);
 
   let response: Response;
 
   try {
     response = await fetch(`${baseUrl}/api/chat`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
+      headers,
+      signal: AbortSignal.timeout(OLLAMA_REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
         model,
         stream: false,
@@ -94,9 +128,11 @@ export const ollamaCaller: InternalInferenceCaller = async ({
   } catch (err) {
     throw new ClassifiedError(
       "internal",
-      `Ollama is unavailable at ${baseUrl}: ${
-        err instanceof Error ? err.message : "unknown connection error"
-      }`
+      err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")
+        ? `Ollama did not answer within ${OLLAMA_REQUEST_TIMEOUT_MS} ms at ${baseUrl}.`
+        : `Ollama is unavailable at ${baseUrl}: ${
+            err instanceof Error ? err.message : "unknown connection error"
+          }`
     );
   }
 
