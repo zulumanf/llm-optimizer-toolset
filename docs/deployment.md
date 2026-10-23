@@ -70,6 +70,16 @@ Starting the worker is a separate decision, not a deploy step. On boot it runs a
 full scheduler tick that can transmit overdue approved outreach (see the
 measurement/outreach isolation spec before starting it).
 
+## Before the next production deploy (main at 22c4a5b or later)
+
+`main` now contains the 156 authorization fix, the 148/150 outreach hardening and the 142–147 lineage with spec 158. None of it is deployed. Decide and do these in order:
+
+1. **Migrations 119–125 first.** Apply them with `scripts/migrate.ts up` against production before any code ships (see "Migrations before code" above).
+2. **Ollama: provision it, or accept four features off.** Without a reachable host, these fail closed: meeting summaries, support triage, claim extraction (source uploads, discovery) and contradiction detection. Contractual measurement is unaffected. If the host is remote, it must be https and have `OLLAMA_API_KEY`. *Decision owner: Francisco. Status: open.*
+3. **Leave `PROFILE_CORRECTIONS_ENABLED` unset.** Unset means profile checks and correction drafting stay off.
+4. **Deploy the web service only. The worker stays stopped.** On boot it runs a full tick that can send overdue approved outreach. Starting it waits for the measurement/outreach isolation spec.
+5. **After deploying, run the authorization smoke test in spec 156.** Until that passes, the fix is in code but not proven in production. Historical exposure stays **unknown** until the production account and log review is done.
+
 ## Scheduling
 
 Point any cron at (bearer `CRON_SECRET`, POST):
