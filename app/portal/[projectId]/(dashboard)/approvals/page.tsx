@@ -5,6 +5,8 @@ import { portalApprovals } from "@/lib/portal/delivery";
 import { Badge } from "@/components/ui/badge";
 import { NoEngagement, SectionCard } from "@/components/portal/delivery-blocks";
 import { formatDate } from "@/lib/format";
+import { DetailsCorrection } from "@/components/portal/details-correction";
+import { requirePortalPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,7 @@ const REPLY = "Review your customer questions right here. For the changes we pro
  * the full decision trail. Read-only — decisions are recorded by us from the
  * channel you used. */
 export default async function PortalApprovalsPage({ params }: { params: Promise<{ projectId: string }> }) {
+  await requirePortalPage((await params).projectId);
   const { projectId } = await params;
   const v = await portalApprovals(await getCurrentUser(), projectId);
   if (!v) return <NoEngagement />;
@@ -89,7 +92,7 @@ export default async function PortalApprovalsPage({ params }: { params: Promise<
         )}
       </SectionCard>
 
-      <SectionCard title="How success is measured" id="protocol">
+      <SectionCard title="How success is measured" id="protocol" action={{ href: `/portal/${projectId}/approvals/measurement`, label: v.protocol?.status === "accepted" ? "View the plan" : "Review the plan" }}>
         {!v.protocol ? (
           <p className="text-sm text-muted-foreground">We will share the measurement plan after the questions are agreed.</p>
         ) : (
@@ -118,6 +121,18 @@ export default async function PortalApprovalsPage({ params }: { params: Promise<
           </div>
         )}
       </SectionCard>
+
+      {v.confirmedDetails && (
+        <SectionCard title="Your details" id="your-details">
+          <DetailsCorrection
+            projectId={projectId}
+            detailsVersion={v.confirmedDetails.detailsVersion}
+            priorities={v.confirmedDetails.priorities}
+            contacts={v.confirmedDetails.contacts}
+            canCorrect={v.confirmedDetails.canCorrect}
+          />
+        </SectionCard>
+      )}
 
       <SectionCard title="Details we have on file" id="details">
         {v.details.length === 0 ? (

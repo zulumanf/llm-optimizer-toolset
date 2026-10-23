@@ -1,6 +1,6 @@
 import { signOut } from "@/app/login/actions";
 import { PortalTabs } from "@/components/portal/portal-tabs";
-import { portalGate } from "@/lib/portal/gate";
+import { requirePortalPage } from "@/lib/security/page-gates";
 import { engagementForProject } from "@/lib/engagements/service";
 import { portalTabs } from "@/lib/portal/client-copy";
 
@@ -16,7 +16,7 @@ export default async function PortalDashboardLayout({
 }) {
   const { projectId } = await params;
   // Its own gate: the parent layout's notFound() does not stop this one.
-  const { project } = await portalGate(projectId);
+  const { project } = await requirePortalPage(projectId);
   const engaged = Boolean(await engagementForProject(projectId));
 
   return (

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { isStaff } from "@/lib/auth";
-import { portalGate } from "@/lib/portal/gate";
+import { requirePortalPage } from "@/lib/security/page-gates";
 
 /** The portal's outer frame (spec 031): gate + staff-preview note. The
  * chrome lives one level down — the dashboard shell (`(dashboard)/layout.tsx`)
@@ -14,7 +14,7 @@ export default async function PortalProjectLayout({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const { user } = await portalGate(projectId);
+  const { user } = await requirePortalPage(projectId);
 
   return (
     <div className="min-h-dvh bg-muted/30">

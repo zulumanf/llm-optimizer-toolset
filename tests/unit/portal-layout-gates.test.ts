@@ -21,10 +21,10 @@ function layouts(dir: string): string[] {
 }
 
 describe("portal layouts gate themselves", () => {
-  it("every [projectId] layout calls portalGate", () => {
+  it("every [projectId] layout calls requirePortalPage", () => {
     const found = layouts(PORTAL);
     expect(found.length).toBeGreaterThanOrEqual(2);
-    const ungated = found.filter((f) => !/portalGate\(/.test(readFileSync(f, "utf8"))).map((f) => relative(ROOT, f));
+    const ungated = found.filter((f) => !/requirePortalPage\(/.test(readFileSync(f, "utf8"))).map((f) => relative(ROOT, f));
     expect(ungated).toEqual([]);
   });
 });

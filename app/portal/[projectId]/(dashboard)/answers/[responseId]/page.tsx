@@ -3,12 +3,14 @@ import { notFound } from "next/navigation";
 import { getCurrentUser, ProjectAccessError } from "@/lib/auth";
 import { portalAnswer } from "@/lib/portal/delivery";
 import { formatDate } from "@/lib/format";
+import { requirePortalPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
 /** One stored answer, verbatim (spec 154). Readable only when it is evidence
  * behind this client's own frozen measurement — anything else is a 404. */
 export default async function PortalAnswerPage({ params }: { params: Promise<{ projectId: string; responseId: string }> }) {
+  await requirePortalPage((await params).projectId);
   const { projectId, responseId } = await params;
   let answer;
   try {

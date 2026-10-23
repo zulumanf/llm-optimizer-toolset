@@ -3,7 +3,7 @@
  *
  * - Operator (assertCanWrite): prepare the draft from records, mark it ready.
  *   Ready is refused before the commercial gate (stage onboarding/active).
- * - Client (assertClientRespondent): save corrections, confirm priorities,
+ * - Client (assertClientApprover): save corrections, confirm priorities,
  *   confirm contacts. The engagement is always resolved from the project the
  *   client is granted — never from client-supplied ids.
  *
@@ -16,7 +16,7 @@ import { sql } from "@/db/client";
 import type { TransactionSql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany } from "@/db/companies";
-import { assertCanWrite, assertClientRespondent, assertProjectAccess, isClient, type CurrentUser } from "@/lib/auth";
+import { assertCanWrite, assertClientApprover, assertProjectAccess, isClient, isClientApprover, type CurrentUser } from "@/lib/auth";
 import { ClassifiedError } from "@/lib/errors";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { firstZodMessage } from "@/lib/service-helpers";
@@ -200,7 +200,7 @@ export async function markOnboardingReady(user: CurrentUser, raw: unknown): Prom
 
 /** Resolve the client's engagement + open onboarding from the project. */
 async function clientContext(user: CurrentUser, projectId: string): Promise<EngagementRow> {
-  await assertClientRespondent(user, projectId);
+  await assertClientApprover(user, projectId);
   const e = await engagementForProject(projectId);
   if (!e || !stageOpen(e)) throw new ClassifiedError("not_found", "There is nothing to confirm right now.");
   return e;
@@ -310,6 +310,7 @@ export async function completeClientOnboarding(user: CurrentUser, raw: unknown):
       const changedContacts = changedFields(row.preparedContacts as Record<string, unknown>, final as Record<string, unknown>);
       const snapshot = {
         version: CLIENT_ONBOARDING_VERSION,
+        detailsVersion: 1,
         priorities,
         contacts: final,
         changedFromPrepared: { priorities: changedPriorities, contacts: changedContacts },
@@ -331,6 +332,91 @@ export async function completeClientOnboarding(user: CurrentUser, raw: unknown):
   }
 }
 
+// -------------------------------------------- versioned corrections (R5)
+
+export interface ConfirmedDetails {
+  /** 1 = the onboarding confirmation; each correction adds one. */
+  detailsVersion: number;
+  priorities: OnboardingPriorities;
+  contacts: OnboardingContacts;
+  decidedAt: Date;
+  clientActor: string;
+  decisionId: string;
+}
+
+/** The client's current confirmed details: the latest `intake` decision. */
+export async function currentClientDetails(engagementId: string): Promise<ConfirmedDetails | null> {
+  const [d] = await sql`
+    select id, snapshot, decided_at, client_actor from engagement_client_decisions
+    where engagement_id = ${engagementId} and subject_kind = 'intake' and decision = 'approved'
+      and snapshot ? 'priorities' and snapshot ? 'contacts'
+    order by decided_at desc, id desc limit 1
+  `;
+  if (!d) return null;
+  const snap = d.snapshot as { detailsVersion?: number; priorities: OnboardingPriorities; contacts: OnboardingContacts };
+  return { detailsVersion: snap.detailsVersion ?? 1, priorities: snap.priorities, contacts: snap.contacts, decidedAt: d.decidedAt as Date, clientActor: d.clientActor as string, decisionId: d.id as string };
+}
+
+const correctionSchema = z.object({ projectId: idSchema, priorities: prioritiesSchema, contacts: contactsSchema });
+
+/**
+ * A correction after onboarding (spec 155 R5). The completed onboarding row
+ * stays immutable; the correction is a NEW `intake` decision (portal) with
+ * the next details version, the full corrected values and what changed,
+ * plus client-provenance context items for the new values. The market is
+ * recorded, never applied to the engagement.
+ */
+export async function submitDetailCorrection(user: CurrentUser, raw: unknown): Promise<ActionResult<{ detailsVersion: number; changed: string[] }>> {
+  const parsed = correctionSchema.safeParse(raw);
+  if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  try {
+    const e = await clientContext(user, parsed.data.projectId);
+    const row = await onboardingForEngagement(e.id);
+    if (row?.status !== "completed") throw new ClassifiedError("conflict", "Please finish confirming your details first.");
+    const final: OnboardingContacts = { ...parsed.data.contacts };
+    if (final.approverIsPrimary) {
+      final.approverName = "";
+      final.approverEmail = "";
+    }
+    const check = validateFinalContacts(final);
+    if (!check.ok) throw new ClassifiedError("validation", check.message);
+    const priorities = parsed.data.priorities;
+    const result = await sql.begin(async (tx) => {
+      // Serialise corrections per engagement so versions never collide.
+      await tx`select id from client_engagements where id = ${e.id} for update`;
+      const current = await currentClientDetails(e.id);
+      if (!current) throw new ClassifiedError("conflict", "Please finish confirming your details first.");
+      const changedP = changedFields(current.priorities as Record<string, unknown>, priorities as Record<string, unknown>).map(String);
+      const changedC = changedFields(current.contacts as Record<string, unknown>, final as Record<string, unknown>).map(String);
+      if (changedP.length + changedC.length === 0) throw new ClassifiedError("validation", "Nothing changed.");
+      const existing = await tx`select kind, label from engagement_context_items where engagement_id = ${e.id}`;
+      const have = (kind: string, label: string) => existing.some((x) => x.kind === kind && (x.label as string).toLowerCase() === label.toLowerCase());
+      for (const item of onboardingContextItems(priorities, final, e.marketName)) {
+        if (!have(item.kind, item.label)) await insertContextItem(tx, user.id, { engagementId: e.id, ...item });
+      }
+      const detailsVersion = current.detailsVersion + 1;
+      const snapshot = {
+        version: CLIENT_ONBOARDING_VERSION,
+        detailsVersion,
+        priorities,
+        contacts: final,
+        changedFromPrevious: { priorities: changedP, contacts: changedC },
+        previousDecisionId: current.decisionId,
+        marketDiffersFromEngagement: marketDiffers(priorities.market, e.marketName),
+      };
+      await tx`
+        insert into engagement_client_decisions (engagement_id, project_id, subject_kind, subject_ref, decision, channel, client_actor, note, snapshot, recorded_by)
+        values (${e.id}, ${e.projectId}, 'intake', ${row.id}, 'approved', 'portal', ${clientActorOf(user)}, ${`Correction v${detailsVersion}`}, ${tx.json(snapshot as never)}, ${user.id})
+      `;
+      await audit(tx, user.id, e, "engagement.client_details_corrected", { ...snapshot, channel: "portal" });
+      return { detailsVersion, changed: [...changedP, ...changedC] };
+    });
+    return ok(result);
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 // ---------------------------------------------------------------- reads
 
 export interface OnboardingView {
@@ -341,8 +427,10 @@ export interface OnboardingView {
   contacts: OnboardingContacts;
   /** Contact facts we do not have and must ask for. */
   missing: ContactField[];
-  /** False for staff previews: the actions are the client's alone. */
+  /** True only for the client's approver; staff previews and viewers read. */
   canRespond: boolean;
+  /** Why the screens are read-only, when they are. */
+  readOnlyReason: "staff_preview" | "viewer" | "closed" | null;
 }
 
 /**
@@ -365,13 +453,16 @@ export async function portalOnboarding(user: CurrentUser, projectId: string): Pr
     priorities: effective<PreparedPriorities>(row.preparedPriorities, row.clientPriorities),
     contacts,
     missing: missingContactFields(row.preparedContacts),
-    canRespond: isClient(user) && stageOpen(e) && row.status === "ready",
+    canRespond: isClientApprover(user) && stageOpen(e) && row.status === "ready",
+    readOnlyReason: !isClient(user) ? "staff_preview" : !isClientApprover(user) ? "viewer" : stageOpen(e) && row.status === "ready" ? null : "closed",
   };
 }
 
 /** True when a client should be sent to the onboarding before the dashboard. */
 export async function onboardingPending(user: CurrentUser, projectId: string): Promise<boolean> {
-  if (!isClient(user)) return false;
+  // Only the approver is routed into onboarding; a viewer lands on the
+  // dashboard (and can open the onboarding read-only).
+  if (!isClientApprover(user)) return false;
   const v = await portalOnboarding(user, projectId);
   return Boolean(v && v.status === "ready");
 }

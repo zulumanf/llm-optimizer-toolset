@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { inviteClient } from "@/app/projects/actions";
 
 export function ClientInviteForm({ projectId }: { projectId: string }) {
@@ -13,10 +14,12 @@ export function ClientInviteForm({ projectId }: { projectId: string }) {
   const [pending, startTransition] = useTransition();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  // Spec 155 R2: read-only by default; the approver is a deliberate choice.
+  const [role, setRole] = useState<"client_viewer" | "client_validator">("client_viewer");
 
   const submit = () => {
     startTransition(async () => {
-      const result = await inviteClient({ projectId, email, name });
+      const result = await inviteClient({ projectId, email, name, role });
       if (result.ok) {
         toast.success(
           result.data.existing
@@ -54,6 +57,18 @@ export function ClientInviteForm({ projectId }: { projectId: string }) {
           placeholder="Full name"
           className="w-48"
         />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="invite-role">Access</Label>
+        <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
+          <SelectTrigger id="invite-role" className="w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="client_viewer">Viewer (read-only)</SelectItem>
+            <SelectItem value="client_validator">Approver (confirms and approves)</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <Button
         size="sm"

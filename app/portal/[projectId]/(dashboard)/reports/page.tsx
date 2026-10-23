@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { SectionCard, dayText } from "@/components/portal/delivery-blocks";
 import { formatDate } from "@/lib/format";
+import { requirePortalPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ const KIND_LABEL: Record<string, string> = { welcome: "Welcome", weekly: "Weekly
  * notes and action items, and published reports. Drafts never appear. The
  * CSV/HTML downloads ride the existing project-scoped routes. */
 export default async function PortalReportsPage({ params }: { params: Promise<{ projectId: string }> }) {
+  await requirePortalPage((await params).projectId);
   const { projectId } = await params;
   const user = await getCurrentUser();
   const [reports, updates] = await Promise.all([portalReports(user, projectId), portalUpdates(user, projectId)]);

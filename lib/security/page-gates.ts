@@ -17,6 +17,7 @@
  * Pages-only module: redirect()/notFound() throw outside a request context.
  */
 import { notFound, redirect } from "next/navigation";
+import { getProject } from "@/db/projects";
 import {
   assertProjectAccess,
   getCurrentUser,
@@ -51,4 +52,25 @@ export async function requireProjectStaffPage(projectId: string): Promise<Curren
   }
   if (!isStaff(user)) redirect(`/portal/${projectId}`);
   return user;
+}
+
+/**
+ * The client portal for one project (specs 031, 155): signed in, granted
+ * (else 404 — never confirm another client's project exists), and the project
+ * exists. Clients AND staff (preview) pass; what each may DO is decided by the
+ * action gates, not here. Every portal layout and page calls this first.
+ */
+export async function requirePortalPage(projectId: string): Promise<{ user: CurrentUser; project: NonNullable<Awaited<ReturnType<typeof getProject>>> }> {
+  let user: CurrentUser;
+  try {
+    user = await getCurrentUser();
+    await assertProjectAccess(user, projectId);
+  } catch (err) {
+    if (err instanceof NotAuthenticatedError) redirect("/login");
+    if (err instanceof ProjectAccessError) notFound();
+    throw err;
+  }
+  const project = await getProject(projectId);
+  if (!project) notFound();
+  return { user, project };
 }

@@ -221,21 +221,30 @@ export async function assertProjectAccess(
 }
 
 /**
- * The only client write gate (spec 155): a client account answering for its
- * own granted project — confirming onboarding details or reviewing proposed
- * questions. Staff are refused on purpose: a decision made through the portal
- * is the client's own, and staff record client decisions from the channel the
- * client used, on the delivery page. Everything else stays `assertCanWrite`.
+ * The only client write gate (spec 155 R2): the client's designated approver
+ * (`client_validator`) acting on their own granted project — confirming
+ * onboarding details, reviewing proposed questions, approving the
+ * measurement plan. `client_viewer` is read-only and is refused here; staff
+ * are refused on purpose (a portal decision is the client's own — staff
+ * record client decisions from the channel the client used, on the delivery
+ * page). Everything else stays `assertCanWrite`.
  */
-export async function assertClientRespondent(
+export async function assertClientApprover(
   user: CurrentUser,
   projectId: string
 ): Promise<void> {
-  if (!isClient(user)) {
+  if (user.role !== "client_validator") {
     throw new ClassifiedError(
       "forbidden",
-      "Only the client can confirm this. Record the client's decision on the delivery page."
+      isClient(user)
+        ? "Only your designated approver can confirm this."
+        : "Only the client's approver can confirm this. Record the client's decision on the delivery page."
     );
   }
   await assertProjectAccess(user, projectId);
+}
+
+/** True for the account allowed to act in the portal (read-only otherwise). */
+export function isClientApprover(user: { role: Role }): boolean {
+  return user.role === "client_validator";
 }

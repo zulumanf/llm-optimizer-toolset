@@ -77,7 +77,9 @@ export function OnboardingFlow({ projectId, view }: { projectId: string; view: O
       </div>
 
       {!view.canRespond && step !== "done" && (
-        <p className="mb-6 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{COPY.previewNote}</p>
+        <p className="mb-6 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+          {view.readOnlyReason === "viewer" ? COPY.viewerNote : COPY.previewNote}
+        </p>
       )}
 
       {step === "priorities" && (

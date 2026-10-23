@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -52,10 +53,25 @@ export function QuestionReview({ projectId, view }: { projectId: string; view: Q
         <h2 className="text-lg font-medium">{COPY.title}</h2>
         <p className="mt-2 text-muted-foreground">{COPY.why}</p>
         {view.canRespond && <p className="mt-2 text-sm text-muted-foreground">{COPY.how}</p>}
+        {view.readOnlyReason && !view.locked && (
+          <p className="mt-3 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+            {view.readOnlyReason === "viewer" ? COPY.viewerNote : COPY.previewNote}
+          </p>
+        )}
       </div>
 
       {view.locked && <p className="rounded-md bg-muted px-4 py-3 text-sm">{COPY.locked}</p>}
       {!view.locked && view.submitted?.decision === "changes_requested" && <p className="rounded-md bg-muted px-4 py-3 text-sm">{COPY.changesSent}</p>}
+      {!view.locked && view.submitted?.decision === "acknowledged" && (
+        <div className="rounded-md bg-muted px-4 py-3 text-sm">
+          <p>{COPY.reviewSent}</p>
+          {view.plan?.ready && (
+            <Link href={`/portal/${projectId}/approvals/measurement`} className="mt-2 inline-flex min-h-11 items-center rounded-sm font-medium underline underline-offset-4 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              Review and approve your measurement plan
+            </Link>
+          )}
+        </div>
+      )}
 
       <div className="rounded-lg border bg-background px-5 py-4 sm:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -85,13 +101,13 @@ export function QuestionReview({ projectId, view }: { projectId: string; view: Q
           )}
         </div>
         {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
-        {view.canRespond && !done && <p className="mt-3 text-xs text-muted-foreground">Your choices are saved as you go.</p>}
+        {view.canRespond && <p className="mt-3 text-xs text-muted-foreground">{done ? COPY.sendHint : `Your choices are saved as you go. ${COPY.sendHint}`}</p>}
       </div>
 
       {view.groups.map((g, n) => {
-        const left = g.questions.filter((q) => !q.decision).length;
+        const left = g.questions.filter((q) => !q.decision && !q.carried).length;
         // Compact by default: only the first group with work left is open.
-        const firstOpen = view.groups.findIndex((x) => x.questions.some((q) => !q.decision));
+        const firstOpen = view.groups.findIndex((x) => x.questions.some((q) => !q.decision && !q.carried));
         return (
           <details key={g.segment} open={n === (firstOpen === -1 ? 0 : firstOpen)} className="group rounded-lg border bg-background">
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-lg px-5 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-6 [&::-webkit-details-marker]:hidden">
@@ -137,6 +153,8 @@ function QuestionRow({ projectId, versionId, q, canRespond }: { projectId: strin
         <div className="min-w-0">
           <p className={q.decision === "removed" ? "text-muted-foreground line-through" : undefined}>{q.text}</p>
           {q.neighborhood && <p className="mt-0.5 text-xs text-muted-foreground">{q.neighborhood}</p>}
+          {!q.decision && q.carried && <p className="mt-1 text-sm text-muted-foreground">{COPY.carried}</p>}
+          {!q.decision && !q.carried && q.revised && <p className="mt-1 text-sm font-medium">{COPY.revised}</p>}
           {q.decision && !asking && (
             <p className="mt-1 text-sm text-muted-foreground">
               {q.decision === "removed" ? "Marked for removal" : DECISION_LABEL[q.decision]}
@@ -146,7 +164,7 @@ function QuestionRow({ projectId, versionId, q, canRespond }: { projectId: strin
         </div>
         {canRespond && !asking && (
           <div className="mt-2 flex shrink-0 flex-wrap gap-1.5 sm:mt-0" role="group" aria-label="Your decision on this question">
-            <Choice active={q.decision === "approved"} disabled={pending} onClick={() => decide("approved", "")}>Approve</Choice>
+            <Choice active={q.decision === "approved" || (!q.decision && q.carried)} disabled={pending} onClick={() => decide("approved", "")}>Approve</Choice>
             <Choice active={q.decision === "edit_requested"} disabled={pending} onClick={() => setAsking("edit_requested")}>Request edit</Choice>
             <Choice active={q.decision === "removed"} disabled={pending} onClick={() => setAsking("removed")}>Remove</Choice>
           </div>

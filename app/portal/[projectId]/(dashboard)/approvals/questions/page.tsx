@@ -2,11 +2,13 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { portalQuestionReview } from "@/lib/engagements/client-question-review";
 import { QuestionReview } from "@/components/portal/question-review";
+import { requirePortalPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
 /** Customer-question review (spec 155): a dashboard task, not onboarding. */
 export default async function PortalQuestionReviewPage({ params }: { params: Promise<{ projectId: string }> }) {
+  await requirePortalPage((await params).projectId);
   const { projectId } = await params;
   const view = await portalQuestionReview(await getCurrentUser(), projectId);
   return (
