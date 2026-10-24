@@ -7,6 +7,7 @@
  *
  * Nothing in this module sends anything or calls an AI provider.
  */
+import { OUTBOUND_DISABLED_MESSAGE, outboundSendsEnabled } from "@/lib/ops/mode";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { sql } from "@/db/client";
@@ -2360,6 +2361,12 @@ export async function sendProspectDraft(
   try {
     assertCanWrite(user);
     const channel = getEmailChannel(input.channel); // throws for guarded mock
+    // Spec 159: the global switch, before any read or ledger write. A
+    // 'manual' record (the human already sent it themselves) transmits
+    // nothing and stays allowed; executeCapability enforces it again.
+    if (channel.transmits && !outboundSendsEnabled()) {
+      throw new ClassifiedError("forbidden", OUTBOUND_DISABLED_MESSAGE);
+    }
     // Spec 127: a follow-up touch re-verifies its sequence right before it
     // leaves — replies (local + live Gmail threads), bounces, DNC, sync
     // freshness, evidence, unchanged engagement. Runs BEFORE the gate

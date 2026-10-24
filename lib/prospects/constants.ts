@@ -574,6 +574,10 @@ export const SCHEDULED_SEND_MAX_ATTEMPTS = 3;
  * mid-dispatch. Such a draft is never auto-retried — the mail may have
  * left — it parks for a human to verify in the Gmail Sent folder. */
 export const SCHEDULED_SEND_STALE_CLAIM_MINUTES = 15;
+/** Spec 159: a scheduled send more than this overdue (e.g. after the worker
+ * or outbound sending was off) parks for reconfirmation instead of going out
+ * late — the circumstances behind the confirmation may have changed. */
+export const SCHEDULED_SEND_MAX_LATENESS_HOURS = 24;
 
 /**
  * Acquisition control panel (Analyze tab). Deterministic thresholds — the
