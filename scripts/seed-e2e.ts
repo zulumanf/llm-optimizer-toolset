@@ -28,7 +28,9 @@ const unwrap = <T,>(
 async function drainJobs(): Promise<void> {
   let idleStreak = 0;
   for (let i = 0; i < 400 && idleStreak < 3; i += 1) {
-    const outcome = await dispatchOnce("e2e-seed");
+    // Every job type (null): this seeds a disposable synthetic E2E database,
+    // not production — spec 159's measurement-only default is for real workers.
+    const outcome = await dispatchOnce("e2e-seed", null);
     if (outcome.status === "idle") {
       idleStreak += 1;
       await new Promise((r) => setTimeout(r, 150));

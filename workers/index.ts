@@ -22,6 +22,7 @@ import { bootstrapWorkflows } from "@/lib/workflow/templates";
 import { ensureAutomationReady } from "@/lib/automation/dispatch";
 import { runAutomationTick, runWeeklyKick, tickDue } from "@/lib/ops/tick";
 import { dispatchOnce, handlers } from "@/workers/core";
+import { automationMode, claimableJobTypes, outboundSendsEnabled, skippedForMeasurement } from "@/lib/ops/mode";
 import { log } from "@/lib/logger";
 
 const WORKER_ID = `worker-${randomUUID().slice(0, 8)}`;
@@ -38,7 +39,14 @@ let shuttingDown = false;
 
 async function main(): Promise<void> {
   const identity = { version: runningVersion(), handlers: Object.keys(handlers).sort() };
-  log("info", "worker.start", { workerId: WORKER_ID, ...identity });
+  // Spec 159: say out loud what this process may do.
+  log("info", "worker.start", {
+    workerId: WORKER_ID,
+    ...identity,
+    automationMode: automationMode(),
+    claimableJobTypes: claimableJobTypes() ?? "all",
+    outboundSends: outboundSendsEnabled() ? "enabled" : "off",
+  });
   await beatHeartbeat(WORKER_ID, 0, identity);
   // Publish workflow definitions before claiming any job: a tick that finds
   // no published version cannot do anything useful.
@@ -62,12 +70,14 @@ async function main(): Promise<void> {
       try {
         const report = await runAutomationTick({ includeHealth });
         const weekly = await runWeeklyKick();
-        log("info", "worker.tick", {
-          triggersFired: report.triggers.fired,
-          triggersFailed: report.triggers.failed,
-          weekly: weekly as never,
-          includeHealth,
-        });
+        log("info", "worker.tick", skippedForMeasurement(report)
+          ? { skipped: report.skipped }
+          : {
+              triggersFired: report.triggers.fired,
+              triggersFailed: report.triggers.failed,
+              weekly: weekly as never,
+              includeHealth,
+            });
       } catch (err) {
         log("error", "worker.tick_failed", {
           error: err instanceof Error ? err.message : "unknown",

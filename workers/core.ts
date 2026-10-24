@@ -5,6 +5,7 @@
  * loading, signals, polling cadence, stale-lease sweeps; this module owns
  * what a single claim-dispatch-settle step does.
  */
+import { claimableJobTypes } from "@/lib/ops/mode";
 import { claimNextJob, completeJob, failJob } from "@/db/jobs";
 import { executeRun } from "@/lib/runs/execute";
 import { parseResponse } from "@/lib/parsing/service";
@@ -242,8 +243,13 @@ export type DispatchOutcome =
  * step: an unknown type or a thrown handler fails the job (requeue with
  * backoff until JOB_MAX_ATTEMPTS, then dead-letter); success completes it.
  */
-export async function dispatchOnce(workerId: string): Promise<DispatchOutcome> {
-  const job = await claimNextJob(workerId);
+export async function dispatchOnce(
+  workerId: string,
+  // Spec 159: measurement-only unless AUTOMATION_MODE=full — the default
+  // lives here, in the one dispatch step, so no caller can forget it.
+  jobTypes: readonly string[] | null = claimableJobTypes()
+): Promise<DispatchOutcome> {
+  const job = await claimNextJob(workerId, jobTypes);
   if (!job) return { status: "idle" };
 
   log("info", "worker.job.claimed", { jobId: job.id, type: job.type });
