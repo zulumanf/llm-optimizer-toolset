@@ -3781,3 +3781,37 @@ The lineage review found the 142–147 code sound, and found contractual measure
 - **Ollama requests are bounded and authenticated.** A 280 s abort fails closed. A remote host must be https and have `OLLAMA_API_KEY` (release 151's `ollamaRequestHeaders`, reused verbatim to avoid divergence).
 - **The measurement/internal-inference boundary is enforced by a test, not by coincidence.** Measurement tasks can never be in `INTERNAL_TASK_TARGETS`, and measurement modules may not import the internal router. The routing table is pinned.
 - **Migrations go before code**, as written in `docs/deployment.md`, because a web-only deploy does not migrate and migration 119 guards the spend ledger.
+
+## 2026-10-24 — Measurement and outreach are separate switches, both off by default (spec 159)
+
+The production worker had to stay stopped because its first boot would send
+every overdue approved email, re-enable every event subscription, and start
+paid work no one requested. Medina's baseline needs the worker.
+
+- **Two opt-in switches, read at call time.**
+  - `AUTOMATION_MODE` defaults to `measurement_only`: the worker claims only
+    measurement job types, and the tick, weekly kick and cron routes do
+    nothing. Only the exact value `full` means full; a typo stays safe.
+  - `OUTBOUND_SENDS_ENABLED` must be exactly `"true"` for anything
+    consequential to leave the building.
+- **Gates live in the one shared implementation, not in the callers:**
+  `dispatchOnce` (its default job list), `runAutomationTick` /
+  `runWeeklyKick` / `runWeeklyBaselines`, and `executeCapability` for every
+  consequential capability. Worker, cron routes, workflows, assistant and
+  scripts can't bypass them.
+  - `sendProspectDraft` and `drainScheduledSends` also refuse early, for a
+    clear message and so that nothing is written or parked while off.
+  - Recording a `manual` send is not outbound, so it stays allowed.
+- **The test suite pins the old behaviour** in `tests/setup.ts`, and the
+  spec 159 tests delete both variables. This was chosen over threading
+  flags through ~3,300 existing tests: those tests describe behaviour inside
+  full mode and stay correct there.
+- **Late sends are parked, not sent.** After 24 h a confirmed send's
+  circumstances may have changed. The stale-claim check runs first, so a
+  possibly-sent message is never treated as unsent.
+- **Bootstrap may disable but never enable** an existing trigger or
+  subscription (`existing AND declared`). An operator's "off" now survives
+  restarts. Templates and webhooks are still forced off.
+- **Not fixed here, and recorded as blockers for enabling outreach:** G3
+  (follow-up send window), G4 (handoff side effects in SHADOW) and G7
+  (workflow send path without the 148/150 gates).
