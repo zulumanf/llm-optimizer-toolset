@@ -135,6 +135,8 @@ export async function upsertSubscription(
     acceptedVersions: number[];
     enabled: boolean;
     createdBy: string | null;
+    /** Spec 159: a code bootstrap may disable an existing subscription, never enable it. */
+    bootstrap?: boolean;
   }
 ): Promise<string> {
   const [row] = await tx`
@@ -153,7 +155,9 @@ export async function upsertSubscription(
       idempotency_template = excluded.idempotency_template,
       autonomy_note = excluded.autonomy_note,
       accepted_versions = excluded.accepted_versions,
-      enabled = excluded.enabled
+      enabled = case when ${args.bootstrap === true}::boolean
+        then event_subscriptions.enabled and excluded.enabled
+        else excluded.enabled end
     returning id
   `;
   return row!.id as string;

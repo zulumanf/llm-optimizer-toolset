@@ -46,8 +46,11 @@ export interface RegisterTriggerResult {
  */
 export async function registerTrigger(
   input: CreateTriggerInput,
-  now: Date = new Date()
+  now: Date = new Date(),
+  /** Spec 159: code bootstrap — may disable, never re-enable, an existing trigger. */
+  opts: { bootstrap?: boolean } = {}
 ): Promise<RegisterTriggerResult> {
+  const bootstrap = opts.bootstrap === true;
   if (input.kind === "schedule") {
     if (!input.cron) {
       throw new ClassifiedError("validation", "A schedule trigger requires a cron expression.");
@@ -68,7 +71,7 @@ export async function registerTrigger(
         `Cron expression "${input.cron}" has no occurrence within the search horizon.`
       );
     }
-    const triggerId = await sql.begin((tx) => store.upsertTrigger(tx, { ...input, nextRunAt: next }));
+    const triggerId = await sql.begin((tx) => store.upsertTrigger(tx, { ...input, nextRunAt: next, bootstrap }));
     return { triggerId, nextRunAt: next };
   }
 
@@ -90,7 +93,7 @@ export async function registerTrigger(
     const cron = input.cron ?? "*/15 * * * *";
     const next = nextOccurrence(parseCron(cron), now, input.timezone ?? "UTC");
     const triggerId = await sql.begin((tx) =>
-      store.upsertTrigger(tx, { ...input, cron, nextRunAt: next })
+      store.upsertTrigger(tx, { ...input, cron, nextRunAt: next, bootstrap })
     );
     return { triggerId, nextRunAt: next };
   }
@@ -105,7 +108,7 @@ export async function registerTrigger(
     }
   }
 
-  const triggerId = await sql.begin((tx) => store.upsertTrigger(tx, { ...input, nextRunAt: null }));
+  const triggerId = await sql.begin((tx) => store.upsertTrigger(tx, { ...input, nextRunAt: null, bootstrap }));
   return { triggerId, nextRunAt: null };
 }
 

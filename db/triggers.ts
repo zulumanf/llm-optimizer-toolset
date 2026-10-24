@@ -52,7 +52,12 @@ function toTrigger(row: Record<string, unknown>): AutomationTrigger {
 
 export async function upsertTrigger(
   tx: Tx,
-  input: CreateTriggerInput & { nextRunAt?: Date | null }
+  input: CreateTriggerInput & {
+    nextRunAt?: Date | null;
+    /** Spec 159: a code bootstrap may disable an existing row, never enable
+     * it — an operator's "off" survives every worker restart. */
+    bootstrap?: boolean;
+  }
 ): Promise<string> {
   const [row] = await tx`
     insert into automation_triggers (
@@ -76,7 +81,9 @@ export async function upsertTrigger(
       project_id = excluded.project_id,
       name = excluded.name,
       description = excluded.description,
-      enabled = excluded.enabled,
+      enabled = case when ${input.bootstrap === true}::boolean
+        then automation_triggers.enabled and excluded.enabled
+        else excluded.enabled end,
       config = excluded.config,
       cron = excluded.cron,
       timezone = excluded.timezone,

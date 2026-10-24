@@ -71,7 +71,7 @@ async function installTriggers(
           cron: declaration.cron,
           timezone: declaration.timezone ?? "UTC",
           missedRunPolicy: declaration.missedRunPolicy ?? "run_once",
-        });
+        }, undefined, { bootstrap: true });
         triggers += 1;
       } else if (declaration.kind === "threshold") {
         await registerTrigger({
@@ -88,7 +88,7 @@ async function installTriggers(
           lookbackDays: declaration.lookbackDays,
           minimumSample: declaration.minimumSample,
           cron: declaration.cron ?? "*/30 * * * *",
-        });
+        }, undefined, { bootstrap: true });
         triggers += 1;
       } else if (declaration.kind === "domain_event") {
         await sql.begin((tx) =>
@@ -103,6 +103,8 @@ async function installTriggers(
             acceptedVersions: [1],
             enabled: true,
             createdBy: null,
+            // Spec 159: an operator-disabled subscription stays disabled.
+            bootstrap: true,
           })
         );
         subscriptions += 1;
@@ -118,7 +120,7 @@ async function installTriggers(
           // creating it enabled would accept unsigned traffic.
           enabled: false,
           config: { eventType: declaration.eventType, provider: declaration.provider },
-        });
+        }, undefined, { bootstrap: true });
         triggers += 1;
       }
       // Manual triggers need no installation — they are a server action.
