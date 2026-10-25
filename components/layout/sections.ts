@@ -27,6 +27,7 @@ import {
   Map as MapIcon,
   MessageSquareText,
   PlayCircle,
+  Route,
   Settings,
   ShieldAlert,
   Swords,
@@ -49,6 +50,8 @@ export const PROJECT_SECTIONS: ProjectSection[] = [
   // The paying client's one page: commercial state, onboarding, work,
   // baseline vs remeasurement, renewal (spec 131).
   { path: "/engagement", label: "Engagement", icon: Handshake },
+  // Spec 154: the guided client journey, welcome to Day 90.
+  { path: "/delivery", label: "Delivery", icon: Route },
   { path: "/knowledge", label: "Knowledge", icon: BookOpen },
   { path: "/prompts", label: "Prompts", icon: MessageSquareText },
   { path: "/runs", label: "Runs", icon: PlayCircle },
@@ -102,7 +105,7 @@ export interface NavGroup {
 }
 
 export const PROJECT_NAV_GROUPS: NavGroup[] = [
-  { label: "Overview", paths: ["", "/engagement", "/plan", "/knowledge"] },
+  { label: "Overview", paths: ["", "/engagement", "/delivery", "/plan", "/knowledge"] },
   { label: "Measure", paths: ["/prompts", "/runs"] },
   { label: "Findings", paths: ["/gaps", "/competitors"] },
   { label: "Act", paths: ["/content", "/tasks", "/reports", "/activity"] },

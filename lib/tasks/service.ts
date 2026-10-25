@@ -637,6 +637,24 @@ export async function updateTaskProvenance(
       if (i.clientApprovalRequired === true && approval === "approved") approval = "required";
       if (i.clientApprovalRequired === false) approval = "not_required";
       const pick = <T,>(next: T | undefined, current: T): T => (next === undefined ? current : next);
+      // Spec 154: an approval binds to the exact wording and URL the client
+      // saw. Changing either after a wording-bound approval asks again.
+      const nextAfter = pick(i.afterState, task.afterState as string | null);
+      const nextUrl = pick(i.targetUrl, task.targetUrl as string | null);
+      let approvalResetReason: string | null = null;
+      if (approval === "approved") {
+        const [bound] = await tx`
+          select wording_snapshot, target_url_snapshot from task_client_decisions
+          where task_id = ${i.taskId} and decision = 'approved'
+          order by decided_at desc limit 1
+        `;
+        const wording = (bound?.wordingSnapshot as string | null) ?? null;
+        const url = (bound?.targetUrlSnapshot as string | null) ?? null;
+        if ((wording !== null && wording !== nextAfter) || (url !== null && url !== nextUrl)) {
+          approval = "required";
+          approvalResetReason = "Approved wording or URL changed; the client must approve the new version.";
+        }
+      }
       await tx`
         update tasks set
           observation = ${pick(i.observation, task.observation as string | null)},
@@ -658,7 +676,7 @@ export async function updateTaskProvenance(
         entity: "task",
         entityId: i.taskId,
         projectId: task.projectId as string,
-        detail: JSON.parse(JSON.stringify({ ...i, clientApproval: approval })) as Record<string, never>,
+        detail: JSON.parse(JSON.stringify({ ...i, clientApproval: approval, approvalResetReason, before: { afterState: task.afterState, targetUrl: task.targetUrl, clientApproval: task.clientApproval } })) as Record<string, never>,
       });
     });
     return ok({ taskId: i.taskId });
@@ -722,6 +740,8 @@ const decisionSchema = z.object({
   decision: z.enum(CLIENT_DECISIONS),
   channel: z.enum(DECISION_CHANNELS),
   note: z.string().trim().max(2000).default(""),
+  /** Spec 154: who on the client side decided (name as they signed the email). */
+  clientActor: z.string().trim().max(200).optional(),
 });
 
 /**
@@ -737,14 +757,17 @@ export async function recordClientDecision(user: CurrentUser, raw: unknown): Pro
   const i = parsed.data;
   try {
     const decisionId = await sql.begin(async (tx) => {
-      const [task] = await tx`select id, project_id, client_approval, blocked_reason from tasks where id = ${i.taskId} for update`;
+      const [task] = await tx`select id, project_id, client_approval, blocked_reason, after_state, target_url from tasks where id = ${i.taskId} for update`;
       if (!task) throw new ClassifiedError("not_found", "Task not found.");
       if (task.clientApproval === "not_required") {
         throw new ClassifiedError("conflict", "This task does not require client approval.");
       }
+      // Spec 154: the decision records exactly what was decided on.
       const [row] = await tx`
-        insert into task_client_decisions (task_id, project_id, decision, channel, note, recorded_by)
-        values (${i.taskId}, ${task.projectId}, ${i.decision}, ${i.channel}, ${i.note}, ${user.id})
+        insert into task_client_decisions (task_id, project_id, decision, channel, note, recorded_by,
+          client_actor, wording_snapshot, target_url_snapshot)
+        values (${i.taskId}, ${task.projectId}, ${i.decision}, ${i.channel}, ${i.note}, ${user.id},
+          ${i.clientActor ?? null}, ${(task.afterState as string | null) ?? null}, ${(task.targetUrl as string | null) ?? null})
         returning id
       `;
       await tx`

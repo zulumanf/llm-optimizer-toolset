@@ -61,7 +61,6 @@ import {
 } from "@/lib/engagements/rules";
 import { buildMeasurementSnapshot, runInstrument } from "@/lib/engagements/measurement";
 
-const DEFAULT_PROVIDER = "openai";
 /** Audit detail must be plain JSON; interfaces are not assignable to JSONValue. */
 const plain = (v: unknown): Record<string, never> => JSON.parse(JSON.stringify(v)) as Record<string, never>;
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD.");
@@ -907,30 +906,46 @@ const contextSchema = z
     message: "Never store credentials in context items — use delegated access or the encrypted connector vault.",
   });
 
+export type ContextItemInput = z.input<typeof contextSchema>;
+
+/**
+ * The one context-item insert (validated + audited). Authorization is the
+ * caller's: `addContextItem` for staff, the spec-155 client onboarding service
+ * for a client confirming their own details. Must run inside the caller's
+ * transaction so the item and the decision it came from land together.
+ */
+export async function insertContextItem(
+  tx: TransactionSql,
+  actorId: string,
+  raw: ContextItemInput
+): Promise<string> {
+  const parsed = contextSchema.safeParse(raw);
+  if (!parsed.success) throw new ClassifiedError("validation", firstZodMessage(parsed.error));
+  const i = parsed.data;
+  const e = await loadEngagementForWrite(tx, i.engagementId);
+  const [row] = await tx`
+    insert into engagement_context_items (engagement_id, project_id, kind, label, value, provenance, access_status, source_ref, created_by)
+    values (${e.id}, ${e.projectId}, ${i.kind}, ${i.label}, ${tx.json(i.value as never)}, ${i.provenance},
+      ${i.accessStatus ?? null}, ${i.sourceRef ?? null}, ${actorId})
+    returning id
+  `;
+  await writeAudit(tx, {
+    userId: actorId,
+    action: "engagement.context_added",
+    entity: "client_engagement",
+    entityId: e.id,
+    projectId: e.projectId,
+    detail: { kind: i.kind, label: i.label, provenance: i.provenance, accessStatus: i.accessStatus ?? null },
+  });
+  return row!.id as string;
+}
+
 export async function addContextItem(user: CurrentUser, raw: unknown): Promise<ActionResult<{ itemId: string }>> {
   const parsed = contextSchema.safeParse(raw);
   if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
-  const i = parsed.data;
   try {
     assertCanWrite(user);
-    const id = await sql.begin(async (tx) => {
-      const e = await loadEngagementForWrite(tx, i.engagementId);
-      const [row] = await tx`
-        insert into engagement_context_items (engagement_id, project_id, kind, label, value, provenance, access_status, source_ref, created_by)
-        values (${e.id}, ${e.projectId}, ${i.kind}, ${i.label}, ${tx.json(i.value as never)}, ${i.provenance},
-          ${i.accessStatus ?? null}, ${i.sourceRef ?? null}, ${user.id})
-        returning id
-      `;
-      await writeAudit(tx, {
-        userId: user.id,
-        action: "engagement.context_added",
-        entity: "client_engagement",
-        entityId: e.id,
-        projectId: e.projectId,
-        detail: { kind: i.kind, label: i.label, provenance: i.provenance, accessStatus: i.accessStatus ?? null },
-      });
-      return row!.id as string;
-    });
+    const id = await sql.begin((tx) => insertContextItem(tx, user.id, parsed.data));
     return ok({ itemId: id });
   } catch (err) {
     return fail(err);
@@ -1042,15 +1057,32 @@ async function competitorIds(projectId: string): Promise<string[]> {
 
 const freezeSchema = z.object({
   engagementId: idSchema,
-  /** Defaults to the prospect's linked benchmark run. */
-  runId: idSchema.optional(),
-  provider: z.string().min(1).default(DEFAULT_PROVIDER),
+  /** Spec 154: always explicit — the old default (the prospect's pre-sale
+   * benchmark) could lock a run the client never agreed to (audit P0-01). */
+  runId: idSchema,
+  /** Must equal the accepted protocol's provider when given. */
+  provider: z.string().min(1).optional(),
+  /** Spec 154: required when readiness reports warnings (failed cells, keyword-fallback rows). */
+  acknowledgeWarnings: z.boolean().default(false),
 });
 
+/** Spec 154: the accepted protocol a baseline must be frozen under. */
+async function acceptedProtocolForFreeze(engagementId: string): Promise<{ id: string; version: number; promptSetVersionId: string; provider: string; entityAliases: string[] } | null> {
+  const [row] = await sql`
+    select id, version, prompt_set_version_id, provider, entity_aliases from engagement_protocols
+    where engagement_id = ${engagementId} and status = 'accepted' limit 1
+  `;
+  return row
+    ? { id: row.id as string, version: Number(row.version), promptSetVersionId: row.promptSetVersionId as string, provider: row.provider as string, entityAliases: (row.entityAliases as string[]) ?? [] }
+    : null;
+}
+
 /**
- * DAY 0: freeze the baseline package over the pre-sale benchmark run — the
- * corrected evidence (spec 130), never the historical email claim. Refuses a
- * second baseline; the row is immutable once frozen.
+ * DAY 0: freeze the baseline package. Spec 154 gates it: an explicit run,
+ * captured on the accepted protocol's question version and provider, with
+ * every agreed name variant present on the subject company, fully parsed,
+ * review queue clear, no copied captures. Refuses a second baseline; the
+ * row is immutable once frozen.
  */
 export async function freezeBaseline(user: CurrentUser, raw: unknown): Promise<ActionResult<{ measurementId: string; snapshot: MeasurementSnapshot }>> {
   const parsed = freezeSchema.safeParse(raw);
@@ -1061,35 +1093,50 @@ export async function freezeBaseline(user: CurrentUser, raw: unknown): Promise<A
     const e = await getEngagement(input.engagementId);
     if (!e) return fail(new ClassifiedError("not_found", "Engagement not found."));
     if (await frozenBaseline(e.id)) return fail(new ClassifiedError("conflict", "This engagement already has a frozen baseline. A baseline never changes; record a new measurement instead."));
-    let runId = input.runId ?? null;
-    if (!runId && e.prospectId) {
-      const [bench] = await sql`
-        select run_id from prospect_benchmarks where prospect_id = ${e.prospectId} order by created_at desc limit 1
-      `;
-      runId = (bench?.runId as string | null) ?? null;
+    const protocol = await acceptedProtocolForFreeze(e.id);
+    if (!protocol) return fail(new ClassifiedError("validation", "Record the client's acceptance of the measurement protocol before locking the baseline."));
+    const runId = input.runId;
+    const provider = input.provider ?? protocol.provider;
+    if (provider !== protocol.provider) {
+      return fail(new ClassifiedError("validation", `The accepted protocol measures provider "${protocol.provider}", not "${provider}".`));
     }
-    if (!runId) return fail(new ClassifiedError("validation", "No benchmark run to freeze: link the prospect benchmark or pass a run id."));
     const instrument = await runInstrument(runId);
     if (!instrument) return fail(new ClassifiedError("not_found", "Run not found."));
     if (instrument.status !== "completed" && instrument.status !== "partial") {
       return fail(new ClassifiedError("validation", `Run is ${instrument.status}; only a finished run can be a baseline.`));
     }
+    if (instrument.promptSetVersionId !== protocol.promptSetVersionId) {
+      return fail(new ClassifiedError("validation", "This run used a different question set version than the accepted protocol."));
+    }
     const subject = await getSubjectCompany(e.projectId);
     if (!subject) return fail(new ClassifiedError("validation", "The client project has no subject company."));
+    const known = new Set([subject.name, ...(subject.aliases ?? [])].map((a) => a.trim().toLowerCase()));
+    const missingAliases = protocol.entityAliases.filter((a) => !known.has(a.trim().toLowerCase()));
+    if (missingAliases.length > 0) {
+      return fail(new ClassifiedError("validation", `Agreed name variants missing from the company record: ${missingAliases.join(", ")}. Add them and re-parse BEFORE locking — adding them later would look like improvement.`));
+    }
+    const { baselineReadiness } = await import("@/lib/engagements/measurement");
+    const readiness = await baselineReadiness(runId, provider);
+    if (readiness.blockers.length > 0) {
+      return fail(new ClassifiedError("validation", `Baseline not ready: ${readiness.blockers.join(" ")}`));
+    }
+    if (readiness.warnings.length > 0 && !input.acknowledgeWarnings) {
+      return fail(new ClassifiedError("conflict", `Acknowledge before locking: ${readiness.warnings.join(" ")}`));
+    }
     const competitors = await competitorIds(e.projectId);
     const snapshot = await buildMeasurementSnapshot({
       runId,
-      provider: input.provider,
+      provider,
       subjectCompanyId: subject.id,
       competitorCompanyIds: competitors,
     });
-    if (snapshot.answerCount === 0) return fail(new ClassifiedError("validation", `The run has no valid ${input.provider} answers.`));
+    if (snapshot.answerCount === 0) return fail(new ClassifiedError("validation", `The run has no valid ${provider} answers.`));
     const id = await sql.begin(async (tx) => {
       const [row] = await tx`
         insert into engagement_measurements (engagement_id, project_id, role, status, reason, run_id, provider,
           prompt_set_version_id, subject_company_id, competitor_company_ids, snapshot, frozen_at, created_by)
-        values (${e.id}, ${e.projectId}, 'baseline', 'frozen', 'Day 0 baseline over the pre-sale benchmark (corrected evidence).',
-          ${runId}, ${input.provider}, ${snapshot.promptSetVersionId}, ${subject.id}, ${competitors}::uuid[],
+        values (${e.id}, ${e.projectId}, 'baseline', 'frozen', ${`Day 0 baseline under measurement protocol v${protocol.version}.`},
+          ${runId}, ${provider}, ${snapshot.promptSetVersionId}, ${subject.id}, ${competitors}::uuid[],
           ${tx.json(snapshot as never)}, now(), ${user.id})
         returning id
       `;
@@ -1101,7 +1148,10 @@ export async function freezeBaseline(user: CurrentUser, raw: unknown): Promise<A
         projectId: e.projectId,
         detail: {
           runId,
-          provider: input.provider,
+          provider,
+          protocolId: protocol.id,
+          protocolVersion: protocol.version,
+          readinessWarnings: readiness.warnings,
           answerCount: snapshot.answerCount,
           subjectRecommended: snapshot.subject.recommendedCount,
           competitors: snapshot.competitors.map((c) => ({ name: c.name, recommended: c.recommendedCount })),

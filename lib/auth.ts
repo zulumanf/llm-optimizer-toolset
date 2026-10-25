@@ -34,6 +34,13 @@ export function isStaff(user: { role: Role }): boolean {
   return STAFF_ROLES.includes(user.role);
 }
 
+/** Roles belonging to a client's own team (portal accounts). */
+export const CLIENT_ROLES: Role[] = ["client_viewer", "client_validator"];
+
+export function isClient(user: { role: Role }): boolean {
+  return CLIENT_ROLES.includes(user.role);
+}
+
 export interface CurrentUser {
   id: string;
   email: string;
@@ -211,4 +218,33 @@ export async function assertProjectAccess(
   const visible = await visibleProjectIds(user);
   if (visible === null) return; // staff — unrestricted by design
   if (!visible.includes(projectId)) throw new ProjectAccessError();
+}
+
+/**
+ * The only client write gate (spec 155 R2): the client's designated approver
+ * (`client_validator`) acting on their own granted project — confirming
+ * onboarding details, reviewing proposed questions, approving the
+ * measurement plan. `client_viewer` is read-only and is refused here; staff
+ * are refused on purpose (a portal decision is the client's own — staff
+ * record client decisions from the channel the client used, on the delivery
+ * page). Everything else stays `assertCanWrite`.
+ */
+export async function assertClientApprover(
+  user: CurrentUser,
+  projectId: string
+): Promise<void> {
+  if (user.role !== "client_validator") {
+    throw new ClassifiedError(
+      "forbidden",
+      isClient(user)
+        ? "Only your designated approver can confirm this."
+        : "Only the client's approver can confirm this. Record the client's decision on the delivery page."
+    );
+  }
+  await assertProjectAccess(user, projectId);
+}
+
+/** True for the account allowed to act in the portal (read-only otherwise). */
+export function isClientApprover(user: { role: Role }): boolean {
+  return user.role === "client_validator";
 }

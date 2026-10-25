@@ -258,6 +258,14 @@ export interface SnapshotQuestion {
   competitorRecommended: Record<string, number>;
   /** Raw answer references — the immutable evidence behind every count. */
   responseIds: string[];
+  /** Spec 154: frozen prompt attributes at freeze time. Absent on older
+   * snapshots (reported as "Unspecified", never back-filled). */
+  segment?: {
+    priceTier: string | null;
+    neighborhood: string | null;
+    audience: string | null;
+    propertyType: string | null;
+  };
 }
 
 export interface MeasurementSnapshot {
@@ -272,6 +280,8 @@ export interface MeasurementSnapshot {
   /** Valid, non-holdout answers — the only denominator. */
   answerCount: number;
   capturedAt: string | null;
+  /** Spec 154: earliest capture in the snapshot (window start). Absent on older snapshots. */
+  capturedFrom?: string | null;
   subject: SnapshotEntity;
   competitors: SnapshotEntity[];
   questions: SnapshotQuestion[];
@@ -477,6 +487,9 @@ export interface WeeklyUpdateInput {
   needFromYou: string[];
   measurement: string | null;
   next: string[];
+  /** Spec 154: the MEASUREMENT line for a week without a new measurement,
+   * replacing the default (which assumes a baseline already stands). */
+  noMeasurementLine?: string;
 }
 
 /** Plain, deterministic weekly update. Empty sections say so — no vanity
@@ -504,7 +517,7 @@ export function composeWeeklyUpdate(i: WeeklyUpdateInput): string {
     list(i.needFromYou, "Nothing is waiting on you."),
     "",
     "MEASUREMENT",
-    i.measurement ?? "- No new measurement this week. The baseline stands; the next remeasurement is scheduled.",
+    i.measurement ?? i.noMeasurementLine ?? "- No new measurement this week. The baseline stands; the next remeasurement is scheduled.",
     "",
     "NEXT",
     list(i.next, "Continue the current work items."),

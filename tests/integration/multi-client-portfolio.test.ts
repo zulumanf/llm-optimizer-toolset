@@ -18,6 +18,7 @@ import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
 import { drainJobs, type PipelineModules } from "../helpers/prospect-fixtures";
 import { unwrap } from "../helpers/result";
+import { agreeAndFreeze } from "../helpers/engagement-protocol";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -130,7 +131,7 @@ describe.skipIf(!TEST_URL)("multi-client portfolio QA (integration)", () => {
     unwrap(await eng.activateExclusivity(admin, { engagementId: e.id }));
     const competitors = await import("@/lib/competitors/service");
     await competitors.addCompetitor(admin, { projectId: signed.projectId, companyId: c.rival.id, tier: "primary" });
-    unwrap(await eng.freezeBaseline(admin, { engagementId: e.id, provider: "mock" }));
+    unwrap(await agreeAndFreeze(admin, e.id, { provider: "mock" }));
     unwrap(await eng.addContextItem(admin, { engagementId: e.id, kind: "priority_area", label: "Downtown", provenance: "client_priority" }));
     unwrap(await eng.addContextItem(admin, { engagementId: e.id, kind: "asset", label: `https://${c.label.toLowerCase()}.invalid`, provenance: "client_confirmed" }));
     unwrap(await eng.addContextItem(admin, { engagementId: e.id, kind: "competitor", label: c.rival.name ?? "rival", provenance: "client_confirmed" }));

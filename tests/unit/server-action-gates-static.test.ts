@@ -13,7 +13,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ACTION_ALLOW_LIST, ACTION_EXCLUDED_DIRS } from "../helpers/authz-exemptions";
+import { ACTION_ALLOW_LIST, ACTION_EXCLUDED_DIRS, CLIENT_ACTIONS } from "../helpers/authz-exemptions";
 
 const ROOT = join(__dirname, "..", "..");
 const APP = join(ROOT, "app");
@@ -61,14 +61,34 @@ function violations(rel: string, src: string): string[] {
   const fns = functionBodies(src);
   const runners = new Set<string>([...src.matchAll(/const (\w+)\s*=\s*makeActionRunner\(/g)].map((m) => m[1]!));
   for (const [name, f] of fns) if (!f.exported && gatesFirst(f.body)) runners.add(name);
+  // A local wrapper that only delegates to a gating runner gates too
+  // (followed transitively, e.g. `const run = (id, fn) => runner(fn)`).
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [name, f] of fns) {
+      if (f.exported || runners.has(name)) continue;
+      if ([...runners].some((r) => new RegExp(`=>\\s*${r}\\(|\\breturn ${r}\\(`).test(f.body))) {
+        runners.add(name);
+        grew = true;
+      }
+    }
+  }
   const out: string[] = [];
   for (const [name, f] of fns) {
     if (!f.exported || ALLOW_LIST.has(`${rel}:${name}`)) continue;
+    if (`${rel}:${name}` in CLIENT_ACTIONS) {
+      // Client-callable: must go through the portal wrapper, which hands the
+      // call to a service that asserts the client approver gate (runtime suite).
+      if (!/\breturn respond\(/.test(f.body)) out.push(`${rel}:${name} (client action not through respond())`);
+      continue;
+    }
     const viaRunner = [...runners].some((r) => new RegExp(`\\breturn ${r}(?:<[^>]*>)?\\(`).test(f.body) || new RegExp(`=>\\s*${r}\\(`).test(f.body));
     if (!viaRunner && !gatesFirst(f.body)) out.push(`${rel}:${name}`);
   }
   return out;
 }
+
+const portalSource = () => readFileSync(join(ROOT, "app/portal/[projectId]/actions.ts"), "utf8");
 
 const files = serverActionFiles(APP)
   .map((f) => relative(ROOT, f).split(sep).join("/"))
@@ -85,6 +105,25 @@ describe("server actions gate before they touch anything (structural)", () => {
 
   it("finds the action modules", () => {
     expect(files.length).toBeGreaterThanOrEqual(25);
+  });
+
+  it("every client action is declared with an audience and reason, and exists", () => {
+    for (const [key, { audience, reason }] of Object.entries(CLIENT_ACTIONS)) {
+      expect(audience, key).toBe("CLIENT_VALIDATOR");
+      expect(reason.trim().length, key).toBeGreaterThan(20);
+      const [file, name] = key.split(":");
+      expect(new RegExp(`export (?:async )?function ${name}\\b`).test(readFileSync(join(ROOT, file!), "utf8")), key).toBe(true);
+    }
+    // The portal wrapper checks the client approver BEFORE running the action.
+    const wrapper = portalSource().slice(portalSource().indexOf("async function respond"));
+    const gate = wrapper.search(/^\s*await assertClientApprover\(user, projectId\);/m);
+    const run = wrapper.indexOf("await fn(user)");
+    expect(gate, "respond() must call assertClientApprover").toBeGreaterThan(-1);
+    expect(run, "respond() must run the action only after the gate").toBeGreaterThan(gate);
+    // And nothing client-callable hides outside the list.
+    const portal = readFileSync(join(ROOT, "app/portal/[projectId]/actions.ts"), "utf8");
+    const exported = [...portal.matchAll(/export async function (\w+)/g)].map((m) => `app/portal/[projectId]/actions.ts:${m[1]}`);
+    expect(exported.filter((k) => !(k in CLIENT_ACTIONS))).toEqual([]);
   });
 
   it("every exemption states a reason and still exists", () => {

@@ -2,6 +2,7 @@ import { portalWork } from "@/lib/portal/service";
 import { getCurrentUser } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/format";
+import { requirePortalPage } from "@/lib/security/page-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export default async function PortalWorkPage({
 }: {
   params: Promise<{ projectId: string }>;
 }) {
+  await requirePortalPage((await params).projectId);
   const { projectId } = await params;
   const items = await portalWork(await getCurrentUser(), projectId);
 

@@ -7,7 +7,7 @@
  * answer ids so every count is re-derivable from the responses table.
  */
 import { sql } from "@/db/client";
-import { SCORING_VERSION } from "@/lib/constants";
+import { PARSER_VERSION_HEURISTIC, SCORING_VERSION } from "@/lib/constants";
 import {
   MEASUREMENT_METHODOLOGY_VERSION,
   RESOLVER_POLICY_VERSION,
@@ -81,25 +81,27 @@ export async function buildMeasurementSnapshot(input: {
   const ents = await entities(allIds);
 
   const fp = sql`
-    select p."promptId" as prompt_id, p.text, p.category, coalesce(p."isHoldout", false) as is_holdout
+    select p."promptId" as prompt_id, p.text, p.category, coalesce(p."isHoldout", false) as is_holdout,
+      p."priceTier" as price_tier, p.neighborhood, p.audience, p."propertyType" as property_type
     from runs r2
     join prompt_set_versions v on v.id = r2.prompt_set_version_id,
     jsonb_to_recordset(v.frozen_prompts)
-      as p("promptId" uuid, text text, category text, "isHoldout" boolean)
+      as p("promptId" uuid, text text, category text, "isHoldout" boolean,
+           "priceTier" text, neighborhood text, audience text, "propertyType" text)
     where r2.id = ${input.runId}
   `;
   // Valid answers per non-holdout prompt for this provider.
   const answers = await sql`
     with fp as (${fp})
-    select fp.prompt_id, fp.text, fp.category,
+    select fp.prompt_id, fp.text, fp.category, fp.price_tier, fp.neighborhood, fp.audience, fp.property_type,
       array_agg(r.id order by r.repetition, r.id) filter (where r.id is not null) as response_ids,
       array_agg(distinct r.model) filter (where r.model is not null) as models,
-      max(r.requested_at) as captured_at
+      max(r.requested_at) as captured_at, min(r.requested_at) as captured_from
     from fp
     left join responses r on r.prompt_id = fp.prompt_id and r.run_id = ${input.runId}
       and r.provider = ${input.provider} and r.error is null
     where not fp.is_holdout
-    group by fp.prompt_id, fp.text, fp.category
+    group by fp.prompt_id, fp.text, fp.category, fp.price_tier, fp.neighborhood, fp.audience, fp.property_type
     order by fp.text
   `;
   // Recommendation mentions (current revision, echo-excluded) per prompt × company.
@@ -144,6 +146,12 @@ export async function buildMeasurementSnapshot(input: {
       subjectRecommended: bucket[input.subjectCompanyId] ?? 0,
       competitorRecommended,
       responseIds: (a.responseIds as string[] | null) ?? [],
+      segment: {
+        priceTier: (a.priceTier as string | null) ?? null,
+        neighborhood: (a.neighborhood as string | null) ?? null,
+        audience: (a.audience as string | null) ?? null,
+        propertyType: (a.propertyType as string | null) ?? null,
+      },
     };
   });
   const entity = (e: EntityInput): SnapshotEntity => ({
@@ -164,6 +172,10 @@ export async function buildMeasurementSnapshot(input: {
     .map((a) => a.capturedAt as Date | null)
     .filter((d): d is Date => d !== null)
     .sort((a, b) => b.getTime() - a.getTime())[0];
+  const capturedFrom = answers
+    .map((a) => a.capturedFrom as Date | null)
+    .filter((d): d is Date => d !== null)
+    .sort((a, b) => a.getTime() - b.getTime())[0];
   return {
     methodologyVersion: MEASUREMENT_METHODOLOGY_VERSION,
     runId: input.runId,
@@ -175,6 +187,7 @@ export async function buildMeasurementSnapshot(input: {
     questionCount: questions.length,
     answerCount: questions.reduce((s, q) => s + q.answerCount, 0),
     capturedAt: captured ? captured.toISOString() : null,
+    capturedFrom: capturedFrom ? capturedFrom.toISOString() : null,
     subject: entity(subject),
     competitors: ents.filter((e) => e.companyId !== input.subjectCompanyId).map(entity),
     questions,
@@ -185,4 +198,62 @@ export async function buildMeasurementSnapshot(input: {
       resolverPolicy: RESOLVER_POLICY_VERSION,
     },
   };
+}
+
+// ------------------------------------------------------- spec 154 readiness
+
+export interface BaselineReadiness {
+  validAnswers: number;
+  failedCells: number;
+  unparsed: number;
+  pendingReview: number;
+  reused: number;
+  heuristicRows: number;
+  /** Refuse the freeze while any of these is non-empty. */
+  blockers: string[];
+  /** Freeze only with an explicit acknowledgement. */
+  warnings: string[];
+}
+
+/**
+ * Is a finished run safe to lock as a contractual baseline? Every valid
+ * answer parsed, no classification waiting for a human, no answer copied
+ * from another project's capture (audit P0-01/P0-02). Heuristic-parser rows
+ * are a warning: they count, but an operator must say so out loud.
+ */
+export async function baselineReadiness(runId: string, provider: string): Promise<BaselineReadiness> {
+  const [row] = await sql`
+    with r as (
+      select x.id, x.error, x.reused_from from responses x
+      where x.run_id = ${runId} and x.provider = ${provider}
+    )
+    select
+      (select count(*)::int from r where r.error is null) as valid_answers,
+      (select count(*)::int from r where r.error is not null) as failed_cells,
+      (select count(*)::int from r where r.error is null
+         and not exists (select 1 from response_parses p where p.response_id = r.id)) as unparsed,
+      (select count(*)::int from r where r.reused_from is not null) as reused,
+      (select count(*)::int from mentions m join r on r.id = m.response_id
+         where m.needs_review and m.reviewed_by is null and ${CURRENT}) as pending_review,
+      (select count(*)::int from mentions m join r on r.id = m.response_id
+         where m.parser_version = ${PARSER_VERSION_HEURISTIC} and ${CURRENT}) as heuristic_rows
+  `;
+  const n = (k: string) => Number((row as Record<string, unknown> | undefined)?.[k] ?? 0);
+  const readiness = {
+    validAnswers: n("validAnswers"),
+    failedCells: n("failedCells"),
+    unparsed: n("unparsed"),
+    pendingReview: n("pendingReview"),
+    reused: n("reused"),
+    heuristicRows: n("heuristicRows"),
+  };
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+  if (readiness.validAnswers === 0) blockers.push(`The run has no valid ${provider} answers.`);
+  if (readiness.unparsed > 0) blockers.push(`${readiness.unparsed} answer(s) are not parsed yet — wait for parsing to finish.`);
+  if (readiness.pendingReview > 0) blockers.push(`${readiness.pendingReview} classification(s) await human review.`);
+  if (readiness.reused > 0) blockers.push(`${readiness.reused} answer(s) were copied from another project's capture; a baseline must be captured fresh.`);
+  if (readiness.failedCells > 0) warnings.push(`${readiness.failedCells} cell(s) failed and are excluded from the denominator.`);
+  if (readiness.heuristicRows > 0) warnings.push(`${readiness.heuristicRows} classification(s) came from the keyword fallback, not the classifier.`);
+  return { ...readiness, blockers, warnings };
 }

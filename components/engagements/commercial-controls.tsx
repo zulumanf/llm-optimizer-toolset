@@ -20,7 +20,7 @@ import { ENTITY_TYPES, type OnboardingPrefill } from "@/lib/engagements/constant
 
 const human = (s: string) => s.replace(/_/g, " ");
 
-function ActionDialog({ trigger, title, children, onSubmit, submitLabel = "Save", variant = "outline" }: { trigger: string; title: string; children: ReactNode; onSubmit: () => Promise<ActionResult<unknown>>; submitLabel?: string; variant?: "outline" | "default" | "destructive" | "secondary" }) {
+export function ActionDialog({ trigger, title, children, onSubmit, submitLabel = "Save", variant = "outline" }: { trigger: string; title: string; children: ReactNode; onSubmit: () => Promise<ActionResult<unknown>>; submitLabel?: string; variant?: "outline" | "default" | "destructive" | "secondary" }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   return (
@@ -39,11 +39,11 @@ function ActionDialog({ trigger, title, children, onSubmit, submitLabel = "Save"
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({ label, children }: { label: string; children: ReactNode }) {
   return <div className="space-y-1"><Label className="text-xs">{label}</Label>{children}</div>;
 }
 
-function Pick({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: readonly string[] }) {
+export function Pick({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: readonly string[] }) {
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger><SelectValue /></SelectTrigger>
@@ -202,6 +202,12 @@ export function OnboardingIntakeDialog({ prefill }: { prefill: OnboardingPrefill
     requiresClientApproval: "",
     terminology: "",
     competitorsConfirmed: "",
+    customerSegments: "",
+    minPropertyValueUsd: "",
+    neighborhoods: "",
+    surroundingMarkets: "",
+    nameVariants: prefill.aliases.join("\n"),
+    approvers: prefill.primaryContactName && prefill.contactEmail ? `${prefill.primaryContactName} <${prefill.contactEmail}>` : "",
   });
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const lines = (s: string) => s.split(/\n|,/).map((x) => x.trim()).filter(Boolean);
@@ -214,6 +220,15 @@ export function OnboardingIntakeDialog({ prefill }: { prefill: OnboardingPrefill
         implementationContact: f.implementationContact, marketDefinition: f.marketDefinition, priorities: lines(f.priorities),
         websiteControl: f.websiteControl, weCanChangeDirectly: f.weCanChangeDirectly, requiresClientApproval: f.requiresClientApproval,
         terminology: lines(f.terminology), competitorsConfirmed: lines(f.competitorsConfirmed),
+        customerSegments: lines(f.customerSegments),
+        minPropertyValueUsd: f.minPropertyValueUsd.trim() ? Number(f.minPropertyValueUsd.replace(/[$,\s]/g, "")) : null,
+        neighborhoods: f.neighborhoods.split(/\n/).map((x) => x.trim()).filter(Boolean),
+        surroundingMarkets: lines(f.surroundingMarkets),
+        nameVariants: f.nameVariants.split(/\n/).map((x) => x.trim()).filter(Boolean),
+        approvers: f.approvers.split(/\n/).map((x) => x.trim()).filter(Boolean).map((x) => {
+          const m = /^(.*?)\s*<([^>]+)>$/.exec(x);
+          return m ? { name: m[1]!, email: m[2]! } : { name: x };
+        }),
       })}>
       <p className="text-xs text-muted-foreground">Prefilled: {prefill.prefilled.length > 0 ? prefill.prefilled.join(", ") : "nothing"}. Ask the client only for what is empty or wrong.</p>
       <div className="grid grid-cols-2 gap-3">
@@ -237,6 +252,16 @@ export function OnboardingIntakeDialog({ prefill }: { prefill: OnboardingPrefill
       <Field label="Implementation contact (if different)"><Input value={f.implementationContact} onChange={set("implementationContact")} /></Field>
       <Field label="Key market terminology (comma-separated)"><Input value={f.terminology} onChange={set("terminology")} /></Field>
       <Field label="Competitors the client confirms (one per line)"><Textarea rows={2} value={f.competitorsConfirmed} onChange={set("competitorsConfirmed")} /></Field>
+      <p className="pt-2 text-sm font-medium">What we measure (optional, confirm with the client)</p>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Ideal customer segments (one per line)"><Textarea rows={2} value={f.customerSegments} onChange={set("customerSegments")} /></Field>
+        <Field label="Minimum property value (USD)"><Input inputMode="numeric" value={f.minPropertyValueUsd} onChange={set("minPropertyValueUsd")} placeholder="e.g. 300000" /></Field>
+        <Field label="Neighborhoods, most important first (one per line)"><Textarea rows={3} value={f.neighborhoods} onChange={set("neighborhoods")} /></Field>
+        <Field label="Surrounding communities confirmed in scope"><Textarea rows={3} value={f.surroundingMarkets} onChange={set("surroundingMarkets")} /></Field>
+        <Field label="Name variants the client confirms (one per line)"><Textarea rows={3} value={f.nameVariants} onChange={set("nameVariants")} /></Field>
+        <Field label="Approvers (Name <email>, one per line)"><Textarea rows={3} value={f.approvers} onChange={set("approvers")} /></Field>
+      </div>
+      <p className="text-xs text-muted-foreground">Name variants are recorded for verification; they are not added to the company record automatically — add them before the baseline run.</p>
       <p className="text-xs text-muted-foreground">* required before delivery starts. Writes canonical records only; starts no benchmark, sends nothing.</p>
     </ActionDialog>
   );

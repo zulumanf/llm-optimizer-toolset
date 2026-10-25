@@ -17,6 +17,7 @@ import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
 import { seedProspect, type PipelineModules } from "../helpers/prospect-fixtures";
 import { unwrap } from "../helpers/result";
+import { agreeAndFreeze } from "../helpers/engagement-protocol";
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -278,7 +279,7 @@ describe.skipIf(!TEST_URL)("commercial purchase path dry run (integration)", () 
     expect(doneAgain.itemsCreated).toBe(0);
     // Not active yet: baseline + plan still missing.
     expect((await eng.markActive(operator, { engagementId: e0.id })).ok).toBe(false);
-    const frozen = unwrap(await eng.freezeBaseline(operator, { engagementId: e0.id, provider: "mock" }));
+    const frozen = unwrap(await agreeAndFreeze(operator, e0.id, { provider: "mock" }));
     const w = unwrap(await tasks.suggestTask(operator, { projectId: e0.projectId, title: "Align identity on owned pages", evidence: [{ kind: "response", refId: frozen.snapshot.questions[0]!.responseIds[0]!, note: "baseline" }] }));
     expect(w.taskId).toBeTruthy();
     unwrap(await eng.markActive(operator, { engagementId: e0.id }));

@@ -4,9 +4,9 @@ import { Skeleton } from "@/components/ui/skeleton";
  * (nested segments with their own loading.tsx still win). */
 export default function RootLoading() {
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <Skeleton className="mb-2 h-8 w-48" />
-      <Skeleton className="mb-6 h-4 w-96" />
+    <div className="mx-auto max-w-6xl p-4 sm:p-6">
+      <Skeleton className="mb-2 h-8 w-48 max-w-full" />
+      <Skeleton className="mb-6 h-4 w-full max-w-96" />
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {Array.from({ length: 5 }, (_, i) => (
           <Skeleton key={i} className="h-24 w-full" />
