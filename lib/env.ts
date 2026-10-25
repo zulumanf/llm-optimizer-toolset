@@ -55,6 +55,14 @@ const envSchema = z
     VIDEO_WALKTHROUGH_RELEASE_KILL_SWITCH: z.string().optional(),
     // Spec 158: profile checks + correction drafting are opt-in ("true").
     PROFILE_CORRECTIONS_ENABLED: z.string().optional(),
+    // Spec 159: measurement_only (default; anything else but "full" too)
+    // runs only measurement jobs and skips every tick/cron lane. "full"
+    // restores automation. Set the same value on web and worker.
+    AUTOMATION_MODE: z.string().optional(),
+    // Spec 159 global kill switch: only "true" lets a consequential
+    // connector capability (email send, CMS publish, billing, client
+    // notification) leave the building. Unset = nothing outbound.
+    OUTBOUND_SENDS_ENABLED: z.string().optional(),
     VIDEO_DISTRIBUTION: z.string().optional(),
     VIDEO_TTS_PROVIDER: z.string().optional(),
     VIDEO_ALLOW_FIXTURE_INTRO: z.string().optional(),

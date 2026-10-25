@@ -585,6 +585,84 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     expect(parked?.sentRecordedAt).toBeNull();
   });
 
+  // ---------------------------------------------------------- spec 159
+  async function withOutboundOff<T>(fn: () => Promise<T>): Promise<T> {
+    const saved = process.env.OUTBOUND_SENDS_ENABLED;
+    delete process.env.OUTBOUND_SENDS_ENABLED;
+    try {
+      return await fn();
+    } finally {
+      process.env.OUTBOUND_SENDS_ENABLED = saved;
+    }
+  }
+
+  it("spec 159 D2: with outbound sends off the drain touches nothing — no claim, no park, no mailbox call", async () => {
+    const { draftId } = await seedApprovedDraft();
+    executeCapability.mockResolvedValue(sendOk);
+    await scheduleAndBackdate(draftId);
+    const before = await sql`select * from outreach_drafts where id = ${draftId}`;
+    const report = await withOutboundOff(() => drain.drainScheduledSends());
+    expect(report).toMatchObject({ due: 0, sent: 0, parked: 0, skipped: "outbound_disabled" });
+    expect(executeCapability).not.toHaveBeenCalled();
+    expect(await sql`select * from outreach_drafts where id = ${draftId}`).toEqual(before);
+  });
+
+  it("spec 159 D2: a transmitting send refuses first with sends off; a manual record is still accepted", async () => {
+    const { draftId } = await seedApprovedDraft();
+    const [{ n: ledgerBefore }] = (await sql`select count(*)::int as n from prospect_outreach_sends`) as unknown as [{ n: number }];
+    const [{ n: auditBefore }] = (await sql`select count(*)::int as n from audit_log`) as unknown as [{ n: number }];
+    const refused = await withOutboundOff(() => svc.sendProspectDraft(operator, { draftId, channel: "gmail", businessPurpose: PURPOSE }));
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error).toMatchObject({ kind: "forbidden" });
+    expect(refused.ok ? "" : refused.error.message).toMatch(/Outbound sending is switched off/);
+    expect(executeCapability).not.toHaveBeenCalled();
+    const [{ n: ledgerAfter }] = (await sql`select count(*)::int as n from prospect_outreach_sends`) as unknown as [{ n: number }];
+    const [{ n: auditAfter }] = (await sql`select count(*)::int as n from audit_log`) as unknown as [{ n: number }];
+    expect([ledgerAfter, auditAfter]).toEqual([ledgerBefore, auditBefore]);
+    // The human already sent it themselves: recording that is not outbound.
+    const manual = await withOutboundOff(() => svc.sendProspectDraft(operator, { draftId, channel: "manual", businessPurpose: PURPOSE }));
+    expect(manual.ok).toBe(true);
+  });
+
+  it("spec 159 D3: a send more than 24 h overdue parks for reconfirmation and is never dispatched", async () => {
+    const { draftId } = await seedApprovedDraft();
+    executeCapability.mockResolvedValue(sendOk);
+    await scheduleAndBackdate(draftId);
+    await sql`update outreach_drafts set scheduled_send_at = now() - interval '25 hours' where id = ${draftId}`;
+    const report = await drain.drainScheduledSends();
+    expect(report).toMatchObject({ due: 1, sent: 0, parked: 1, late: 1 });
+    expect(executeCapability).not.toHaveBeenCalled();
+    const [d] = await sql`select scheduled_send_at, sent_recorded_at, last_send_error from outreach_drafts where id = ${draftId}`;
+    expect(d?.sentRecordedAt).toBeNull();
+    expect(d?.scheduledSendAt).toBeNull();
+    expect(d?.lastSendError).toMatch(/more than 24 hours overdue/);
+    expect(d?.lastSendError).toMatch(/Nothing was sent/);
+  });
+
+  it("spec 159 D3: a send 23 h overdue (inside the bound) still goes out", async () => {
+    const { draftId } = await seedApprovedDraft();
+    executeCapability.mockResolvedValue(sendOk);
+    await scheduleAndBackdate(draftId);
+    await sql`update outreach_drafts set scheduled_send_at = now() - interval '23 hours' where id = ${draftId}`;
+    const report = await drain.drainScheduledSends();
+    expect(report).toMatchObject({ due: 1, sent: 1, parked: 0, late: 0 });
+  });
+
+  it("spec 159 D3: a stale claim is reconciled before lateness — a possibly-sent message is never treated as unsent", async () => {
+    const { draftId } = await seedApprovedDraft();
+    executeCapability.mockResolvedValue(sendOk);
+    await scheduleAndBackdate(draftId);
+    await sql`
+      update outreach_drafts set scheduled_send_at = now() - interval '3 days',
+        send_claimed_at = now() - interval '20 minutes', send_attempts = 1
+      where id = ${draftId}
+    `;
+    const report = await drain.drainScheduledSends();
+    expect(report.late).toBe(0);
+    const [d] = await sql`select last_send_error from outreach_drafts where id = ${draftId}`;
+    expect(d?.lastSendError).toMatch(/did not record an outcome/);
+  });
+
   it("drain: an outstanding stale claim parks as ambiguous — never auto-retried", async () => {
     const { draftId } = await seedApprovedDraft();
     executeCapability.mockResolvedValue(sendOk);

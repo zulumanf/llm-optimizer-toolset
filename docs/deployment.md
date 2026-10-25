@@ -37,6 +37,37 @@ Production minimums:
 - Never in production: `ALLOW_MOCK_PROVIDER`, `ALLOW_MOCK_SCORING`,
   `ALLOW_DEV_AUTH_IN_PROD`.
 
+## What the processes may do (spec 159)
+
+Two switches, both **off when unset**. Set the **same values on web and
+worker**, because the cron routes on web run the same tick as the worker's
+clock.
+
+| Variable | Unset (default) | Set |
+|---|---|---|
+| `AUTOMATION_MODE` | `measurement_only`. The worker claims only measurement jobs (`execute_run`, `parse_response`, `compute_scores`, `backfill_company`, `analyze_gaps`, `analyze_accuracy`). Every other job stays queued, untouched. The tick, the weekly kick, weekly baselines and the cron routes do nothing. | `full`: the whole automation layer (any other value still means measurement only). |
+| `OUTBOUND_SENDS_ENABLED` | Nothing consequential leaves the building, from any caller: no email send, CMS publish, billing action or client notification. The scheduled-send drain touches nothing. | `true`: sends pass to their own gates (specs 148/150 etc.). Drafts more than 24 h overdue are parked for reconfirmation, never sent late. |
+
+**Before starting the worker** (e.g. for a client measurement):
+
+1. Confirm both variables are unset (or as intended) on **both** services.
+2. Start the worker. Its first log line, `worker.start`, prints
+   `automationMode`, `claimableJobTypes` and `outboundSends`. Check them.
+3. `GET /api/health` should turn 200 once the heartbeat is in.
+
+**Before setting `OUTBOUND_SENDS_ENABLED=true`**, close the recorded gaps in
+`specs/159` "Out of scope":
+- follow-up send window (G3);
+- report-handoff side effects in SHADOW (G4);
+- workflow-engine send path without the spec 148/150 gates (G7).
+
+**`AUTOMATION_MODE=full` with sends off** is a valid state ("automation on,
+nothing leaves"). But drafts, model calls and audit-page publishing still
+happen.
+
+Bootstrap never re-enables a trigger or subscription an operator switched
+off. It can still force client-scoped templates and webhooks off.
+
 ## Internal open-weight inference (Ollama)
 
 Some internal tasks run on self-hosted open-weight models, through `lib/ai/internal/ollama.ts`. The mapping from task to model lives in `INTERNAL_TASK_TARGETS` in `lib/ai/routing.ts`. These tasks never fall back to a paid provider: when Ollama is down, the task fails closed.

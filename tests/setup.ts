@@ -26,6 +26,13 @@ process.env.QA_SOURCE_LINK_CHECKS = "off";
 // themselves. Same rule as AUTH_MODE: the local .env must not leak in.
 delete process.env.APP_URL;
 
+// Spec 159: production defaults to measurement-only with nothing outbound.
+// The suite was written against full automation with sends possible (each
+// send still behind its own gates and a stubbed transport); the spec 159
+// tests delete both variables to prove the safe defaults.
+process.env.AUTOMATION_MODE = "full";
+process.env.OUTBOUND_SENDS_ENABLED = "true";
+
 // Tests must never spend tokens or depend on a provider being reachable
 // (docs/09). Stripping the keys also pins the parse pipeline to the
 // deterministic heuristic classifier; LLM paths are exercised by injecting

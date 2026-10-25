@@ -24,8 +24,11 @@ export async function enqueueJob(
   return row?.id as string;
 }
 
-/** Lease the oldest runnable job. Returns null when the queue is empty. */
-export async function claimNextJob(workerId: string): Promise<Job | null> {
+/** Lease the oldest runnable job. Returns null when the queue is empty.
+ * `types` (spec 159): only lease these job types; others stay queued and
+ * untouched. Null/undefined leases any type. */
+export async function claimNextJob(workerId: string, types?: readonly string[] | null): Promise<Job | null> {
+  const allowed = types ? [...types] : null;
   const rows = await sql<Job[]>`
     update jobs set
       status = 'running',
@@ -35,6 +38,7 @@ export async function claimNextJob(workerId: string): Promise<Job | null> {
     where id = (
       select id from jobs
       where status = 'queued' and run_after <= now()
+        and (${allowed}::text[] is null or type = any(${allowed}::text[]))
       order by created_at asc
       limit 1
       for update skip locked

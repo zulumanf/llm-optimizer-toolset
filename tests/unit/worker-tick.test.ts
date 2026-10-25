@@ -10,6 +10,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAutomationTick, tickDue } from "@/lib/ops/tick";
+import { MEASUREMENT_ONLY_SKIP, skippedForMeasurement } from "@/lib/ops/mode";
 
 const mocks = vi.hoisted(() => ({
   runTriggerDispatch: vi.fn(),
@@ -64,6 +65,12 @@ vi.mock("@/lib/assistant/tasks", () => ({
 const T0 = 1_800_000_000_000;
 const TEN_MIN = 10 * 60_000;
 
+/** These tests run in full mode (tests/setup.ts); a skip here is a failure. */
+function ran<T>(r: T | typeof MEASUREMENT_ONLY_SKIP): T {
+  if (skippedForMeasurement(r)) throw new Error("tick skipped: AUTOMATION_MODE is not full");
+  return r;
+}
+
 describe("tickDue", () => {
   it("fires immediately on a fresh process (no prior tick)", () => {
     expect(tickDue(null, T0, TEN_MIN)).toBe(true);
@@ -116,7 +123,7 @@ describe("runAutomationTick — the assistant-task lane (spec 115)", () => {
       completed: 1,
       failed: 0,
     });
-    const report = await runAutomationTick();
+    const report = ran(await runAutomationTick());
     expect(mocks.advanceAssistantTasks).toHaveBeenCalledTimes(1);
     expect(report.assistantTasks).toEqual({
       advanced: 2,
@@ -130,7 +137,7 @@ describe("runAutomationTick — the assistant-task lane (spec 115)", () => {
 
   it("a throwing task engine is isolated — the rest of the tick still runs", async () => {
     mocks.advanceAssistantTasks.mockRejectedValue(new Error("task engine exploded"));
-    const report = await runAutomationTick();
+    const report = ran(await runAutomationTick());
     expect(report.assistantTasks).toEqual({
       error: "assistant tasks failed; dispatch was unaffected",
     });
@@ -138,5 +145,18 @@ describe("runAutomationTick — the assistant-task lane (spec 115)", () => {
     expect(mocks.syncNotifications).toHaveBeenCalledTimes(1);
     expect(report.notifications).toEqual({ synced: 0 });
     expect(report.scheduledSends).toEqual({ sent: 0 });
+  });
+  it("spec 159: in measurement_only (the default) no lane of the tick or weekly kick is even called", async () => {
+    const { runWeeklyKick } = await import("@/lib/ops/tick");
+    const saved = process.env.AUTOMATION_MODE;
+    delete process.env.AUTOMATION_MODE;
+    try {
+      for (const m of Object.values(mocks)) m.mockClear();
+      expect(await runAutomationTick({ includeHealth: true })).toEqual(MEASUREMENT_ONLY_SKIP);
+      expect(await runWeeklyKick()).toEqual(MEASUREMENT_ONLY_SKIP);
+      for (const [name, m] of Object.entries(mocks)) expect(m, name).not.toHaveBeenCalled();
+    } finally {
+      process.env.AUTOMATION_MODE = saved;
+    }
   });
 });

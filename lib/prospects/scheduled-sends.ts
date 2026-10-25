@@ -22,8 +22,10 @@ import { sendProspectDraft } from "@/lib/prospects/service";
 import { logActivity } from "@/lib/prospects/shared";
 import {
   SCHEDULED_SEND_MAX_ATTEMPTS,
+  SCHEDULED_SEND_MAX_LATENESS_HOURS,
   SCHEDULED_SEND_STALE_CLAIM_MINUTES,
 } from "@/lib/prospects/constants";
+import { outboundSendsEnabled } from "@/lib/ops/mode";
 import type { ErrorKind } from "@/lib/errors";
 import { createHash } from "node:crypto";
 import { executeCapability } from "@/lib/connectors/execute";
@@ -45,6 +47,10 @@ export interface ScheduledSendReport {
   parked: number;
   /** Spec 137: stale claims resolved by mailbox fingerprint, not resent. */
   reconciled: number;
+  /** Spec 159: parked for being more than SCHEDULED_SEND_MAX_LATENESS_HOURS overdue (also counted in parked). */
+  late?: number;
+  /** Spec 159: outbound sending is off — nothing was read, claimed or parked. */
+  skipped?: "outbound_disabled";
 }
 
 interface ClaimedDraft {
@@ -179,17 +185,23 @@ export async function listScheduledOutbox(
 }
 
 export async function drainScheduledSends(limit = 5): Promise<ScheduledSendReport> {
-  const report: ScheduledSendReport = { due: 0, sent: 0, retryable: 0, parked: 0, reconciled: 0 };
+  const report: ScheduledSendReport = { due: 0, sent: 0, retryable: 0, parked: 0, reconciled: 0, late: 0 };
+  // Spec 159: while outbound sending is off, touch nothing — no claim, no
+  // park, no mailbox read. Schedules survive the pause unchanged (and D3
+  // below parks anything that became too late by the time sends resume).
+  if (!outboundSendsEnabled()) return { ...report, skipped: "outbound_disabled" };
 
   // Phase 1 — claim, in its own committed transaction, so the in-flight
   // marker survives a crash during dispatch. Stale claims are parked here
   // rather than retried: the previous attempt may have transmitted.
   const stale: ClaimedDraft[] = [];
   const claimed: ClaimedDraft[] = [];
+  const late: (ClaimedDraft & { dueAt: Date })[] = [];
   await sql.begin(async (tx) => {
     const due = await tx`
       select id, prospect_id, scheduled_by, scheduled_business_purpose,
-        send_attempts, send_claimed_at, send_message_id
+        send_attempts, send_claimed_at, send_message_id, scheduled_send_at,
+        (scheduled_send_at < now() - make_interval(hours => ${SCHEDULED_SEND_MAX_LATENESS_HOURS})) as too_late
       from outreach_drafts
       where status = 'approved' and sent_recorded_at is null
         and scheduled_send_at is not null and scheduled_send_at <= now()
@@ -219,6 +231,12 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
         if (ageMinutes >= SCHEDULED_SEND_STALE_CLAIM_MINUTES) stale.push(draft);
         continue;
       }
+      if (row.tooLate) {
+        // Spec 159 D3: after the stale-claim check (a possibly-sent message
+        // is never treated as unsent), never send a confirmation this old.
+        late.push({ ...draft, dueAt: row.scheduledSendAt as Date });
+        continue;
+      }
       if (draft.attempts >= SCHEDULED_SEND_MAX_ATTEMPTS) {
         // Defensive: parked drafts have no schedule, so this should not
         // occur; if it does, park rather than loop forever.
@@ -234,6 +252,16 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
       `;
     }
   });
+
+  for (const draft of late) {
+    await park(
+      draft,
+      `This send was scheduled for ${draft.dueAt.toISOString()} and is more than ${SCHEDULED_SEND_MAX_LATENESS_HOURS} hours overdue ` +
+        "(sending was paused). Nothing was sent. Confirm it still makes sense, then reschedule."
+    );
+    report.parked += 1;
+    report.late = (report.late ?? 0) + 1;
+  }
 
   for (const draft of stale) {
     const outcome = await reconcileStaleClaim(draft);

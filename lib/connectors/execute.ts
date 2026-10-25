@@ -18,6 +18,7 @@
  * A node handler cannot skip any of it, because a node handler has no other way
  * to reach a provider.
  */
+import { OUTBOUND_DISABLED_MESSAGE, outboundSendsEnabled } from "@/lib/ops/mode";
 import type { JSONValue } from "postgres";
 import { sql } from "@/db/client";
 import { writeAudit } from "@/db/audit";
@@ -91,6 +92,19 @@ async function recordTestAction(args: {
 export async function executeCapability<T = unknown>(
   args: ExecuteCapabilityInput
 ): Promise<CapabilityOutcome<T>> {
+  // ---- 0. Spec 159: the global outbound switch ----------------------------
+  // Before anything else — no connection lookup, no adapter. Every caller
+  // (scheduled drain, workflow node, assistant, script, manual send) passes
+  // through here, so this is the one place nothing consequential can bypass.
+  if (args.mode === "live" && isConsequential(args.capability) && !outboundSendsEnabled()) {
+    log("warn", "connector.outbound_disabled", { capability: args.capability, projectId: args.projectId });
+    return {
+      ...executionFailure<T>({ error: OUTBOUND_DISABLED_MESSAGE, errorCode: "outbound_disabled", retryable: false }),
+      provider: args.provider ?? providersFor(args.capability)[0] ?? "none",
+      connectionId: null,
+    };
+  }
+
   // ---- 1. Which provider? -------------------------------------------------
   const candidates = args.provider ? [args.provider] : providersFor(args.capability);
   if (candidates.length === 0) {

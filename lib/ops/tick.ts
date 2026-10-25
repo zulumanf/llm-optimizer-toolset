@@ -19,6 +19,7 @@ import { measureDueActionOutcomes } from "@/lib/outcomes/sweep";
 import { startWeeklyBriefs, startWeeklyCycles } from "@/lib/cycles/service";
 import { syncNotifications } from "@/lib/notifications/service";
 import { log } from "@/lib/logger";
+import { automationMode, MEASUREMENT_ONLY_SKIP } from "@/lib/ops/mode";
 
 export interface AutomationTickReport {
   triggers: { evaluated: number; fired: number; skipped: number; failed: number };
@@ -49,7 +50,10 @@ export interface AutomationTickReport {
  */
 export async function runAutomationTick(
   opts: { includeHealth?: boolean } = {}
-): Promise<AutomationTickReport> {
+): Promise<AutomationTickReport | typeof MEASUREMENT_ONLY_SKIP> {
+  // Spec 159: nothing in the tick runs unless AUTOMATION_MODE=full — worker
+  // clock and cron routes alike (both call this one function).
+  if (automationMode() !== "full") return MEASUREMENT_ONLY_SKIP;
   // Prospect enrichment sweep (spec 081) rides the DAILY cadence only —
   // and is self-limiting beyond that: per-prospect freshness windows mean
   // zero API calls until something is 30 days stale. Staged proposals
@@ -423,6 +427,7 @@ export async function runAutomationTick(
  * enrolled prospect project's weekly run silently never started.
  */
 export async function runWeeklyKick(): Promise<Record<string, unknown>> {
+  if (automationMode() !== "full") return { ...MEASUREMENT_ONLY_SKIP };
   const cycles = await startWeeklyCycles();
   const briefs = await startWeeklyBriefs();
   const baselines = await runWeeklyBaselines();
@@ -460,8 +465,10 @@ interface BaselineConfig {
  * Windowed and idempotent like everything else on the tick.
  */
 export async function runWeeklyBaselines(): Promise<
-  Array<{ projectId: string; outcome: string }>
+  Array<{ projectId: string; outcome: string }> | typeof MEASUREMENT_ONLY_SKIP
 > {
+  // Spec 159: scheduled paid runs are automation, not measurement.
+  if (automationMode() !== "full") return MEASUREMENT_ONLY_SKIP;
   const { startRun } = await import("@/lib/runs/service");
   const { sql } = await import("@/db/client");
 
