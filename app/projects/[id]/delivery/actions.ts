@@ -37,6 +37,12 @@ export async function acceptProtocol(projectId: string, input: unknown) {
 export async function freezeBaseline(projectId: string, input: unknown) {
   return run(projectId, (u) => engagements.freezeBaseline(u, input));
 }
+export async function previewBaselineFreeze(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.previewBaselineFreeze(u, input));
+}
+export async function voidBaseline(projectId: string, input: unknown) {
+  return run(projectId, (u) => engagements.voidBaseline(u, input));
+}
 export async function generateWelcomeDraft(projectId: string, input: unknown) {
   return run(projectId, (u) => delivery.generateWelcomeDraft(u, input));
 }

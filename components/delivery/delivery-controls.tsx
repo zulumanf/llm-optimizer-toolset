@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ActionDialog, Field, OneClick, Pick } from "@/components/engagements/commercial-controls";
 import * as a from "@/app/projects/[id]/delivery/actions";
 import { DECISION_CHANNELS } from "@/lib/engagements/constants";
@@ -197,30 +198,102 @@ export function AcceptProtocolDialog({ projectId, protocolId }: { projectId: str
   );
 }
 
+type FreezePreview = Extract<Awaited<ReturnType<typeof a.previewBaselineFreeze>>, { ok: true }>["data"];
+
+/**
+ * Spec 160: check, then lock. The preview runs every rule the freeze runs;
+ * Lock stays disabled until nothing blocks, and sends the answer count the
+ * operator saw — the server refuses if the run changed in between.
+ */
 export function FreezeBaselineDialog({ projectId, engagementId, runs }: { projectId: string; engagementId: string; runs: { id: string; label: string; status: string; matchesProtocol: boolean }[] }) {
   const eligible = runs.filter((r) => r.matchesProtocol && (r.status === "completed" || r.status === "partial"));
+  const [open, setOpen] = useState(false);
   const [runId, setRunId] = useState(eligible[0]?.id ?? "");
-  const [ack, setAck] = useState(false);
+  const [preview, setPreview] = useState<FreezePreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [recallChecked, setRecallChecked] = useState(false);
+  const [pending, start] = useTransition();
+  const reset = () => { setPreview(null); setError(null); setRecallChecked(false); };
+  const check = () => start(async () => {
+    reset();
+    const r = await a.previewBaselineFreeze(projectId, { engagementId, runId });
+    if (r.ok) setPreview(r.data);
+    else setError(r.error.message);
+  });
+  const lock = () => start(async () => {
+    if (!preview?.headline) return;
+    const r = await a.freezeBaseline(projectId, { engagementId, runId, confirmedAnswerCount: preview.headline.answerCount });
+    if (r.ok) { toast.success("Baseline locked."); setOpen(false); reset(); }
+    else setError(r.error.message);
+  });
+  const blockers = preview?.readiness.blockers ?? [];
   return (
-    <ActionDialog trigger="Lock baseline" title="Lock the baseline (cannot be undone)" submitLabel="Lock baseline" variant="destructive"
-      onSubmit={() => a.freezeBaseline(projectId, { engagementId, runId, acknowledgeWarnings: ack })}>
-      {eligible.length === 0 ? (
-        <p className="text-sm">No finished run on the protocol&apos;s question set. Start one from Runs (mock off, capture reuse off), wait for parsing, clear the review queue.</p>
-      ) : (
-        <Field label="Run (protocol question set only)">
-          <Select value={runId} onValueChange={setRunId}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {eligible.map((r) => <SelectItem key={r.id} value={r.id}>{r.label || r.id.slice(0, 8)} · {r.status}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </Field>
-      )}
-      <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" className="mt-1" checked={ack} onChange={(e) => setAck(e.target.checked)} />
-        I reviewed the warnings (failed cells, keyword-fallback classifications) and the recall check of every agreed name variant.
-      </label>
-      <p className="text-xs text-muted-foreground">Refused while answers are unparsed, reviews are pending, captures were copied from another project, or an agreed name variant is missing from the company record.</p>
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
+      <DialogTrigger asChild><Button size="sm" variant="destructive">Lock baseline</Button></DialogTrigger>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Lock the baseline</DialogTitle></DialogHeader>
+        <div className="space-y-3 text-sm">
+          {eligible.length === 0 ? (
+            <p>No finished run on the protocol&apos;s question set. Start one on this project from Runs, wait for parsing, clear the review queue, retry failed cells.</p>
+          ) : (
+            <Field label="Run (this project, protocol question set)">
+              <Select value={runId} onValueChange={(v) => { setRunId(v); reset(); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {eligible.map((r) => <SelectItem key={r.id} value={r.id}>{r.label || r.id.slice(0, 8)} · {r.status}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+          {preview && (
+            <dl className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-1 rounded-md border p-3">
+              <dt className="text-muted-foreground">Run</dt><dd className="break-all font-mono text-xs">{preview.run.id}</dd>
+              <dt className="text-muted-foreground">Questions</dt><dd>{preview.questionSet.name} · v{preview.questionSet.version} · {preview.questionSet.promptCount}</dd>
+              <dt className="text-muted-foreground">Instrument</dt><dd>{preview.provider} · {preview.models.join(", ")} · ×{preview.repetitions}</dd>
+              <dt className="text-muted-foreground">Protocol</dt><dd>v{preview.protocol.version}</dd>
+              <dt className="text-muted-foreground">Name variants</dt><dd>{preview.protocol.aliases.join(", ") || "none agreed"}</dd>
+              <dt className="text-muted-foreground">Cells answered</dt><dd className="tabular-nums">{preview.readiness.expectedCells - preview.readiness.outstandingCells} of {preview.readiness.expectedCells}</dd>
+              {preview.headline && (
+                <>
+                  <dt className="text-muted-foreground">Will lock</dt>
+                  <dd className="tabular-nums">{preview.headline.answerCount} answers · recommended in {preview.headline.subjectRecommended} · {preview.headline.competitors} competitors</dd>
+                </>
+              )}
+            </dl>
+          )}
+          {blockers.length > 0 && (
+            <div role="alert" className="rounded-md border border-destructive/40 p-3">
+              <p className="font-medium">Not ready to lock:</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">{blockers.map((b) => <li key={b}>{b}</li>)}</ul>
+            </div>
+          )}
+          {preview?.headline && (
+            <label className="flex items-start gap-2">
+              <input type="checkbox" className="mt-1" checked={recallChecked} onChange={(e) => setRecallChecked(e.target.checked)} />
+              I checked every agreed name variant against the stored answers (recall QA). Locking cannot be undone except by an admin void, which is recorded.
+            </label>
+          )}
+          {error && <p role="alert" className="text-destructive">{error}</p>}
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" disabled={pending || !runId} onClick={check}>{pending && !preview ? "Checking…" : preview ? "Check again" : "Check readiness"}</Button>
+          <Button variant="destructive" disabled={pending || !preview?.headline || blockers.length > 0 || !recallChecked} onClick={lock}>
+            {pending && preview ? "Locking…" : "Lock baseline"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Spec 160 A4: admin-only, permanent record; the snapshot is kept. */
+export function VoidBaselineDialog({ projectId, engagementId, measurementId }: { projectId: string; engagementId: string; measurementId: string }) {
+  const [reason, setReason] = useState("");
+  return (
+    <ActionDialog trigger="Void baseline" title="Void this baseline" submitLabel="Void baseline" variant="destructive"
+      onSubmit={() => a.voidBaseline(projectId, { engagementId, measurementId, reason })}>
+      <p className="text-sm">The locked snapshot is kept permanently and marked void with your name, the time and this reason. A new baseline can then be locked. Refused once a later measurement was compared against it.</p>
+      <Field label="Why is this baseline wrong? (at least 20 characters) *"><Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
     </ActionDialog>
   );
 }
