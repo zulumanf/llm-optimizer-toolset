@@ -165,7 +165,7 @@ async function loadPortfolioData(engagements: EngagementRow[]): Promise<Portfoli
         order by (status = 'in_progress') desc, (status = 'approved') desc, (status = 'suggested') desc, updated_at desc`,
     () => sql`select id, engagement_id, kind, label, value, provenance, access_status, source_ref, created_at
         from engagement_context_items where engagement_id = any(${engagementIds}::uuid[]) order by kind, created_at`,
-    () => sql`select id, engagement_id, role, status, scheduled_for, reason, run_id, provider, snapshot, comparability, comparison, frozen_at, status_detail
+    () => sql`select id, engagement_id, role, status, scheduled_for, reason, run_id, provider, snapshot, comparability, comparison, frozen_at, status_detail, voided_at, void_reason
         from engagement_measurements where engagement_id = any(${engagementIds}::uuid[])
         order by (role = 'baseline') desc, coalesce(scheduled_for, frozen_at::date, created_at::date) asc, created_at asc`,
     () => sql`select id, contract_ref, kind, amount_cents, due_date, occurred_at, external_invoice_id
@@ -237,6 +237,8 @@ async function loadPortfolioData(engagements: EngagementRow[]): Promise<Portfoli
       comparison: (r.comparison as MeasurementComparison | null) ?? null,
       frozenAt: (r.frozenAt as Date | null) ?? null,
       statusDetail: (r.statusDetail as string | null) ?? null,
+      voidedAt: (r.voidedAt as Date | null) ?? null,
+      voidReason: (r.voidReason as string | null) ?? null,
     })), (m) => m.engagementId),
     billing: group(billing.map((r) => ({
       engagementId: String(r.contractRef).replace(/^engagement:/, ""),
