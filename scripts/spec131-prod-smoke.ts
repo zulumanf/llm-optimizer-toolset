@@ -16,6 +16,13 @@
  *   npx tsx scripts/spec131-prod-smoke.ts
  */
 import "dotenv/config";
+
+// RETIRED (specs 154, 160): this smoke freezes a baseline over a shared run
+// that is not the client's own, with no explicit run — exactly what the
+// freeze now refuses (audit P0-01). It also writes to the deployed database.
+// Kept for history; it refuses to run.
+console.error("scripts/spec131-prod-smoke.ts is retired (specs 154/160). See specs/160-baseline-freeze-integrity.md.");
+process.exit(1);
 import { randomUUID } from "node:crypto";
 import { sql } from "@/db/client";
 import type { CurrentUser } from "@/lib/auth";

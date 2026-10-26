@@ -10,6 +10,7 @@ import {
   ExternalQaDialog,
   FinalReviewButton,
   FreezeBaselineDialog,
+  VoidBaselineDialog,
   ImportQuestionsDialog,
   MeetingNotesDialog,
   PlanActions,
@@ -28,6 +29,7 @@ import { changedFields, effective, marketDiffers, primaryFocusLabel, type Prepar
 import { operatorReviewSummary } from "@/lib/engagements/client-question-review";
 import { getProject } from "@/db/projects";
 import { requireProjectStaffPage } from "@/lib/security/page-gates";
+import { getCurrentUser } from "@/lib/auth";
 import { deliveryState } from "@/lib/engagements/delivery";
 import { PLAN_PHASES, PROTOCOL_DEFAULTS, WORK_STATE_LABELS, currentStep, rateView, type StepState } from "@/lib/engagements/delivery-rules";
 import { baselineReadiness } from "@/lib/engagements/measurement";
@@ -52,6 +54,7 @@ const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
  */
 export default async function DeliveryPage({ params }: { params: Promise<{ id: string }> }) {
   await requireProjectStaffPage((await params).id);
+  const viewer = await getCurrentUser();
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();
@@ -81,6 +84,7 @@ export default async function DeliveryPage({ params }: { params: Promise<{ id: s
   const accepted = s.protocols.find((p) => p.status === "accepted") ?? null;
   const draft = s.protocols.find((p) => p.status === "draft") ?? null;
   const baseline = s.measurements.find((m) => m.role === "baseline" && m.status === "frozen") ?? null;
+  const voided = s.measurements.filter((m) => m.role === "baseline" && m.status === "voided");
   const readyRun = s.candidateRuns.find((r) => r.matchesProtocol && (r.status === "completed" || r.status === "partial"));
   const readiness = !baseline && readyRun && accepted ? await baselineReadiness(readyRun.id, accepted.provider) : null;
   const step = currentStep(s.journey);
@@ -264,7 +268,12 @@ export default async function DeliveryPage({ params }: { params: Promise<{ id: s
         )}
       </Section>
 
-      <Section title="5 · Baseline" description="Locked once, on the protocol's questions, after parsing and human review.">
+      <Section title="5 · Baseline" description="Locked once, on the protocol's questions, after parsing and human review." actions={baseline && viewer.role === "admin" ? <VoidBaselineDialog projectId={id} engagementId={e.id} measurementId={baseline.id} /> : undefined}>
+        {voided.map((m) => (
+          <p key={m.id} className="mb-2 text-sm text-muted-foreground">
+            Voided baseline (locked {m.frozenAt ? formatDate(m.frozenAt) : "—"}, voided {m.voidedAt ? formatDate(m.voidedAt) : "—"}): {m.voidReason}
+          </p>
+        ))}
         {baseline && baseRate ? (
           <StatGrid columns={4}>
             <Stat label="Recommended" value={`${baseRate.recommended} of ${baseRate.answers}`} hint={pct(baseRate.rate)} />
@@ -276,7 +285,7 @@ export default async function DeliveryPage({ params }: { params: Promise<{ id: s
           <div className="space-y-2 text-sm">
             {readiness ? (
               <ul className="space-y-1">
-                <li>Run {readyRun!.label || readyRun!.id.slice(0, 8)}: {readiness.validAnswers} valid answers, {readiness.unparsed} unparsed, {readiness.pendingReview} awaiting review, {readiness.reused} copied captures.</li>
+                <li>Run {readyRun!.label || readyRun!.id.slice(0, 8)}: {readiness.expectedCells - readiness.outstandingCells} of {readiness.expectedCells} cells answered, {readiness.unparsed} unparsed, {readiness.pendingReview} awaiting review, {readiness.heuristicRows} keyword-fallback, {readiness.reused} copied captures.</li>
                 {readiness.blockers.map((b) => <li key={b} className="text-destructive">Blocks: {b}</li>)}
                 {readiness.warnings.map((w) => <li key={w} className="text-muted-foreground">Warning: {w}</li>)}
               </ul>

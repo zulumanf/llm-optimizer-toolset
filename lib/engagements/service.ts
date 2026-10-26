@@ -59,7 +59,7 @@ import {
   type MeasurementComparison,
   type MeasurementSnapshot,
 } from "@/lib/engagements/rules";
-import { buildMeasurementSnapshot, runInstrument } from "@/lib/engagements/measurement";
+import { baselineReadiness, buildMeasurementSnapshot, runInstrument, type BaselineReadiness } from "@/lib/engagements/measurement";
 
 /** Audit detail must be plain JSON; interfaces are not assignable to JSONValue. */
 const plain = (v: unknown): Record<string, never> => JSON.parse(JSON.stringify(v)) as Record<string, never>;
@@ -866,7 +866,7 @@ export async function markActive(user: CurrentUser, raw: unknown): Promise<Actio
       marketDefinitionConfirmed: Boolean(e.marketDefinitionConfirmedAt),
       exclusivityStatus: e.exclusivityStatus,
       marketConflicts: client.overview.marketConflicts.length,
-      competitorCount: client.overview.measurements.find((m) => m.role === "baseline")?.snapshot?.competitors.length ?? 0,
+      competitorCount: client.overview.measurements.find((m) => m.role === "baseline" && m.status === "frozen")?.snapshot?.competitors.length ?? 0,
       competitorConfirmed: client.overview.context.some((i) => (i.kind === "competitor" || i.kind === "excluded_competitor") && i.provenance === "client_confirmed"),
       baseline: client.overview.measurements.find((m) => m.role === "baseline" && m.status === "frozen")?.snapshot ?? null,
       baselineImmutableTrigger: client.activation.issues.every((i) => i.code !== "BASELINE_NOT_IMMUTABLE"),
@@ -1021,11 +1021,15 @@ export interface MeasurementRow {
   comparison: MeasurementComparison | null;
   frozenAt: Date | null;
   statusDetail: string | null;
+  /** Spec 160: a voided baseline keeps its snapshot; these say who, when, why. */
+  voidedAt: Date | null;
+  voidReason: string | null;
 }
 
 export async function listMeasurements(engagementId: string): Promise<MeasurementRow[]> {
   const rows = await sql`
-    select id, role, status, scheduled_for, reason, run_id, provider, snapshot, comparability, comparison, frozen_at, status_detail
+    select id, role, status, scheduled_for, reason, run_id, provider, snapshot, comparability, comparison, frozen_at, status_detail,
+      voided_at, void_reason
     from engagement_measurements where engagement_id = ${engagementId}
     order by (role = 'baseline') desc, coalesce(scheduled_for, frozen_at::date, created_at::date) asc, created_at asc
   `;
@@ -1042,6 +1046,8 @@ export async function listMeasurements(engagementId: string): Promise<Measuremen
     comparison: (r.comparison as MeasurementComparison | null) ?? null,
     frozenAt: (r.frozenAt as Date | null) ?? null,
     statusDetail: (r.statusDetail as string | null) ?? null,
+    voidedAt: (r.voidedAt as Date | null) ?? null,
+    voidReason: (r.voidReason as string | null) ?? null,
   }));
 }
 
@@ -1055,15 +1061,22 @@ async function competitorIds(projectId: string): Promise<string[]> {
   return rows.filter((r) => !r.isSelf).map((r) => r.companyId);
 }
 
-const freezeSchema = z.object({
+const freezeTargetSchema = z.object({
   engagementId: idSchema,
   /** Spec 154: always explicit — the old default (the prospect's pre-sale
    * benchmark) could lock a run the client never agreed to (audit P0-01). */
   runId: idSchema,
   /** Must equal the accepted protocol's provider when given. */
   provider: z.string().min(1).optional(),
-  /** Spec 154: required when readiness reports warnings (failed cells, keyword-fallback rows). */
+});
+
+const freezeSchema = freezeTargetSchema.extend({
+  /** Required whenever readiness reports warnings. */
   acknowledgeWarnings: z.boolean().default(false),
+  /** Spec 160: the answer count the operator saw in the preview. The lock is
+   * refused unless the snapshot built at freeze time has exactly this many. */
+  /** Checked last, after every rule, so a refusal names the real problem. */
+  confirmedAnswerCount: z.number().int().nonnegative().optional(),
 });
 
 /** Spec 154: the accepted protocol a baseline must be frozen under. */
@@ -1077,89 +1090,231 @@ async function acceptedProtocolForFreeze(engagementId: string): Promise<{ id: st
     : null;
 }
 
+type FreezeTarget = z.infer<typeof freezeTargetSchema>;
+
+interface FreezeContext {
+  e: EngagementRow;
+  protocol: NonNullable<Awaited<ReturnType<typeof acceptedProtocolForFreeze>>>;
+  provider: string;
+  instrument: NonNullable<Awaited<ReturnType<typeof runInstrument>>>;
+  subject: NonNullable<Awaited<ReturnType<typeof getSubjectCompany>>>;
+  readiness: BaselineReadiness;
+}
+
 /**
- * DAY 0: freeze the baseline package. Spec 154 gates it: an explicit run,
- * captured on the accepted protocol's question version and provider, with
- * every agreed name variant present on the subject company, fully parsed,
- * review queue clear, no copied captures. Refuses a second baseline; the
- * row is immutable once frozen.
+ * Every rule a baseline freeze must satisfy (specs 154, 160), shared by the
+ * preview and the freeze so the operator sees exactly what is enforced.
+ * Throws for a structural refusal (wrong run, wrong project, no protocol);
+ * readiness blockers are returned for the preview to list.
  */
-export async function freezeBaseline(user: CurrentUser, raw: unknown): Promise<ActionResult<{ measurementId: string; snapshot: MeasurementSnapshot }>> {
-  const parsed = freezeSchema.safeParse(raw);
-  if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
-  const input = parsed.data;
+async function freezeContext(input: FreezeTarget): Promise<FreezeContext> {
+  const e = await getEngagement(input.engagementId);
+  if (!e) throw new ClassifiedError("not_found", "Engagement not found.");
+  if (await frozenBaseline(e.id)) throw new ClassifiedError("conflict", "This engagement already has a frozen baseline. A baseline never changes; record a new measurement instead.");
+  const protocol = await acceptedProtocolForFreeze(e.id);
+  if (!protocol) throw new ClassifiedError("validation", "Record the client's acceptance of the measurement protocol before locking the baseline.");
+  const provider = input.provider ?? protocol.provider;
+  if (provider !== protocol.provider) {
+    throw new ClassifiedError("validation", `The accepted protocol measures provider "${protocol.provider}", not "${provider}".`);
+  }
+  const instrument = await runInstrument(input.runId);
+  if (!instrument) throw new ClassifiedError("not_found", "Run not found.");
+  // Spec 160 A2: the client's own project only — never a prospect benchmark
+  // or another client's capture.
+  if (instrument.projectId !== e.projectId) {
+    throw new ClassifiedError("validation", "This run belongs to another project. A client baseline is captured on the client's own project.");
+  }
+  if (instrument.status !== "completed" && instrument.status !== "partial") {
+    throw new ClassifiedError("validation", `Run is ${instrument.status}; only a finished run can be a baseline.`);
+  }
+  if (instrument.promptSetVersionId !== protocol.promptSetVersionId) {
+    throw new ClassifiedError("validation", "This run used a different question set version than the accepted protocol.");
+  }
+  const subject = await getSubjectCompany(e.projectId);
+  if (!subject) throw new ClassifiedError("validation", "The client project has no subject company.");
+  const known = new Set([subject.name, ...(subject.aliases ?? [])].map((a) => a.trim().toLowerCase()));
+  const missingAliases = protocol.entityAliases.filter((a) => !known.has(a.trim().toLowerCase()));
+  if (missingAliases.length > 0) {
+    throw new ClassifiedError("validation", `Agreed name variants missing from the company record: ${missingAliases.join(", ")}. Add them and re-parse BEFORE locking — adding them later would look like improvement.`);
+  }
+  const readiness = await baselineReadiness(input.runId, provider);
+  return { e, protocol, provider, instrument, subject, readiness };
+}
+
+export interface BaselineFreezePreview {
+  run: { id: string; label: string; status: string; startedAt: Date | null };
+  questionSet: { name: string; version: number; promptCount: number };
+  provider: string;
+  models: string[];
+  repetitions: number;
+  protocol: { id: string; version: number; aliases: string[] };
+  readiness: BaselineReadiness;
+  /** Only when nothing blocks: what the snapshot would say. */
+  headline: { answerCount: number; subjectRecommended: number; competitors: number } | null;
+}
+
+/** Spec 160 A3: exactly what a freeze of this run would lock, or why it can't. */
+export async function previewBaselineFreeze(user: CurrentUser, raw: unknown): Promise<ActionResult<BaselineFreezePreview>> {
   try {
     assertCanWrite(user);
-    const e = await getEngagement(input.engagementId);
-    if (!e) return fail(new ClassifiedError("not_found", "Engagement not found."));
-    if (await frozenBaseline(e.id)) return fail(new ClassifiedError("conflict", "This engagement already has a frozen baseline. A baseline never changes; record a new measurement instead."));
-    const protocol = await acceptedProtocolForFreeze(e.id);
-    if (!protocol) return fail(new ClassifiedError("validation", "Record the client's acceptance of the measurement protocol before locking the baseline."));
-    const runId = input.runId;
-    const provider = input.provider ?? protocol.provider;
-    if (provider !== protocol.provider) {
-      return fail(new ClassifiedError("validation", `The accepted protocol measures provider "${protocol.provider}", not "${provider}".`));
+    const parsed = freezeTargetSchema.safeParse(raw);
+    if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+    const c = await freezeContext(parsed.data);
+    const [meta] = await sql`
+      select r.label, r.started_at, s.name as set_name, v.version, jsonb_array_length(v.frozen_prompts) as prompt_count
+      from runs r join prompt_set_versions v on v.id = r.prompt_set_version_id join prompt_sets s on s.id = v.prompt_set_id
+      where r.id = ${c.instrument.runId}
+    `;
+    const configs = c.instrument.providers.filter((p) => p.provider === c.provider);
+    let headline: BaselineFreezePreview["headline"] = null;
+    if (c.readiness.blockers.length === 0) {
+      const snap = await buildMeasurementSnapshot({ runId: c.instrument.runId, provider: c.provider, subjectCompanyId: c.subject.id, competitorCompanyIds: await competitorIds(c.e.projectId) });
+      headline = { answerCount: snap.answerCount, subjectRecommended: snap.subject.recommendedCount, competitors: snap.competitors.length };
     }
-    const instrument = await runInstrument(runId);
-    if (!instrument) return fail(new ClassifiedError("not_found", "Run not found."));
-    if (instrument.status !== "completed" && instrument.status !== "partial") {
-      return fail(new ClassifiedError("validation", `Run is ${instrument.status}; only a finished run can be a baseline.`));
-    }
-    if (instrument.promptSetVersionId !== protocol.promptSetVersionId) {
-      return fail(new ClassifiedError("validation", "This run used a different question set version than the accepted protocol."));
-    }
-    const subject = await getSubjectCompany(e.projectId);
-    if (!subject) return fail(new ClassifiedError("validation", "The client project has no subject company."));
-    const known = new Set([subject.name, ...(subject.aliases ?? [])].map((a) => a.trim().toLowerCase()));
-    const missingAliases = protocol.entityAliases.filter((a) => !known.has(a.trim().toLowerCase()));
-    if (missingAliases.length > 0) {
-      return fail(new ClassifiedError("validation", `Agreed name variants missing from the company record: ${missingAliases.join(", ")}. Add them and re-parse BEFORE locking — adding them later would look like improvement.`));
-    }
-    const { baselineReadiness } = await import("@/lib/engagements/measurement");
-    const readiness = await baselineReadiness(runId, provider);
+    return ok({
+      run: { id: c.instrument.runId, label: (meta?.label as string) ?? "", status: c.instrument.status, startedAt: (meta?.startedAt as Date | null) ?? null },
+      questionSet: { name: (meta?.setName as string) ?? "", version: Number(meta?.version ?? 0), promptCount: Number(meta?.promptCount ?? 0) },
+      provider: c.provider,
+      models: [...new Set(configs.map((p) => p.model))],
+      repetitions: configs.reduce((n, p) => n + p.repetitions, 0),
+      protocol: { id: c.protocol.id, version: c.protocol.version, aliases: c.protocol.entityAliases },
+      readiness: c.readiness,
+      headline,
+    });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * DAY 0: freeze the baseline package (specs 154, 160): the engagement's own
+ * finished run on the accepted protocol's version and provider, every agreed
+ * name variant on the subject company, every cell answered and classified by
+ * the classifier with nothing pending or copied — and exactly the answer
+ * count the operator confirmed in the preview. Refuses a second baseline;
+ * the row is immutable once frozen (an admin may void it, spec 160 A4).
+ */
+export async function freezeBaseline(user: CurrentUser, raw: unknown): Promise<ActionResult<{ measurementId: string; snapshot: MeasurementSnapshot }>> {
+  try {
+    assertCanWrite(user);
+    const parsed = freezeSchema.safeParse(raw);
+    if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+    const input = parsed.data;
+    const { e, protocol, provider, subject, readiness } = await freezeContext(input);
     if (readiness.blockers.length > 0) {
       return fail(new ClassifiedError("validation", `Baseline not ready: ${readiness.blockers.join(" ")}`));
     }
     if (readiness.warnings.length > 0 && !input.acknowledgeWarnings) {
       return fail(new ClassifiedError("conflict", `Acknowledge before locking: ${readiness.warnings.join(" ")}`));
     }
+    const runId = input.runId;
     const competitors = await competitorIds(e.projectId);
-    const snapshot = await buildMeasurementSnapshot({
-      runId,
-      provider,
-      subjectCompanyId: subject.id,
-      competitorCompanyIds: competitors,
-    });
+    const snapshot = await buildMeasurementSnapshot({ runId, provider, subjectCompanyId: subject.id, competitorCompanyIds: competitors });
     if (snapshot.answerCount === 0) return fail(new ClassifiedError("validation", `The run has no valid ${provider} answers.`));
-    const id = await sql.begin(async (tx) => {
-      const [row] = await tx`
-        insert into engagement_measurements (engagement_id, project_id, role, status, reason, run_id, provider,
-          prompt_set_version_id, subject_company_id, competitor_company_ids, snapshot, frozen_at, created_by)
-        values (${e.id}, ${e.projectId}, 'baseline', 'frozen', ${`Day 0 baseline under measurement protocol v${protocol.version}.`},
-          ${runId}, ${provider}, ${snapshot.promptSetVersionId}, ${subject.id}, ${competitors}::uuid[],
-          ${tx.json(snapshot as never)}, now(), ${user.id})
-        returning id
+    // Spec 160 A3: a re-parse or review landing mid-freeze must not slip in.
+    const after = await baselineReadiness(runId, provider);
+    if (after.blockers.length > 0 || after.validAnswers !== readiness.validAnswers) {
+      return fail(new ClassifiedError("conflict", "The run changed while locking (parsing or review activity). Check it again."));
+    }
+    if (input.confirmedAnswerCount === undefined) {
+      return fail(new ClassifiedError("conflict", `Check readiness first, then confirm the ${snapshot.answerCount} answers you are locking.`));
+    }
+    if (snapshot.answerCount !== input.confirmedAnswerCount) {
+      return fail(new ClassifiedError("conflict", `The run changed since you reviewed it (${input.confirmedAnswerCount} answers then, ${snapshot.answerCount} now). Check it again.`));
+    }
+    let id: string;
+    try {
+      id = await sql.begin(async (tx) => {
+        const [row] = await tx`
+          insert into engagement_measurements (engagement_id, project_id, role, status, reason, run_id, provider,
+            prompt_set_version_id, subject_company_id, competitor_company_ids, snapshot, frozen_at, created_by)
+          values (${e.id}, ${e.projectId}, 'baseline', 'frozen', ${`Day 0 baseline under measurement protocol v${protocol.version}.`},
+            ${runId}, ${provider}, ${snapshot.promptSetVersionId}, ${subject.id}, ${competitors}::uuid[],
+            ${tx.json(snapshot as never)}, now(), ${user.id})
+          returning id
+        `;
+        await writeAudit(tx, {
+          userId: user.id,
+          action: "engagement.baseline_frozen",
+          entity: "client_engagement",
+          entityId: e.id,
+          projectId: e.projectId,
+          detail: {
+            runId,
+            provider,
+            protocolId: protocol.id,
+            protocolVersion: protocol.version,
+            readiness: { ...readiness, blockers: undefined, warnings: undefined } as never,
+            readinessWarnings: readiness.warnings,
+            confirmedAnswerCount: input.confirmedAnswerCount,
+            answerCount: snapshot.answerCount,
+            subjectRecommended: snapshot.subject.recommendedCount,
+            competitors: snapshot.competitors.map((c) => ({ name: c.name, recommended: c.recommendedCount })),
+          },
+        });
+        return row!.id as string;
+      });
+    } catch (err) {
+      // A concurrent freeze won the one-baseline unique index.
+      if ((err as { code?: string }).code === "23505") {
+        return fail(new ClassifiedError("conflict", "This engagement already has a frozen baseline."));
+      }
+      throw err;
+    }
+    return ok({ measurementId: id, snapshot });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+const voidSchema = z.object({
+  engagementId: idSchema,
+  measurementId: idSchema,
+  reason: z.string().trim().min(20, "Explain why in at least 20 characters — this is the permanent record.").max(2000),
+});
+
+/**
+ * Spec 160 A4: an admin voids a wrongly frozen baseline. The row and its
+ * snapshot stay forever; status moves frozen -> voided with who/when/why, and
+ * a new baseline may then be frozen. Refused once a later measurement was
+ * compared against it.
+ */
+export async function voidBaseline(user: CurrentUser, raw: unknown): Promise<ActionResult<{ measurementId: string }>> {
+  try {
+    assertRole(user, "admin");
+    const parsed = voidSchema.safeParse(raw);
+    if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+    const input = parsed.data;
+    await sql.begin(async (tx) => {
+      const [m] = await tx`
+        select id, engagement_id, project_id, role, status, run_id, snapshot from engagement_measurements
+        where id = ${input.measurementId} for update
       `;
+      if (!m || m.engagementId !== input.engagementId || m.role !== "baseline" || m.status !== "frozen") {
+        throw new ClassifiedError("not_found", "That is not this engagement's frozen baseline.");
+      }
+      const [later] = await tx`
+        select count(*)::int as n from engagement_measurements
+        where engagement_id = ${input.engagementId} and role <> 'baseline' and status in ('frozen', 'non_comparable')
+      `;
+      if (Number(later?.n ?? 0) > 0) {
+        throw new ClassifiedError("conflict", "Later measurements were compared against this baseline; it cannot be voided.");
+      }
+      await tx`
+        update engagement_measurements set status = 'voided', voided_at = now(), voided_by = ${user.id}, void_reason = ${input.reason}
+        where id = ${m.id}
+      `;
+      const snap = m.snapshot as MeasurementSnapshot;
       await writeAudit(tx, {
         userId: user.id,
-        action: "engagement.baseline_frozen",
+        action: "engagement.baseline_voided",
         entity: "client_engagement",
-        entityId: e.id,
-        projectId: e.projectId,
-        detail: {
-          runId,
-          provider,
-          protocolId: protocol.id,
-          protocolVersion: protocol.version,
-          readinessWarnings: readiness.warnings,
-          answerCount: snapshot.answerCount,
-          subjectRecommended: snapshot.subject.recommendedCount,
-          competitors: snapshot.competitors.map((c) => ({ name: c.name, recommended: c.recommendedCount })),
-        },
+        entityId: input.engagementId,
+        projectId: m.projectId as string,
+        detail: { measurementId: m.id, runId: m.runId, reason: input.reason, answerCount: snap?.answerCount ?? null, subjectRecommended: snap?.subject?.recommendedCount ?? null },
       });
-      return row!.id as string;
     });
-    return ok({ measurementId: id, snapshot });
+    return ok({ measurementId: input.measurementId });
   } catch (err) {
     return fail(err);
   }
@@ -1190,6 +1345,11 @@ export async function recordMeasurement(user: CurrentUser, raw: unknown): Promis
     if (!baseline?.snapshot) return fail(new ClassifiedError("validation", "Freeze the baseline before recording a remeasurement."));
     const instrument = await runInstrument(input.runId);
     if (!instrument) return fail(new ClassifiedError("not_found", "Run not found."));
+    // Spec 160 A2: every measurement compared with the client's baseline is
+    // captured on the client's own project.
+    if (instrument.projectId !== e.projectId) {
+      return fail(new ClassifiedError("validation", "This run belongs to another project. A client measurement is captured on the client's own project."));
+    }
     if (instrument.status !== "completed" && instrument.status !== "partial") {
       return fail(new ClassifiedError("validation", `Run is ${instrument.status}; wait for it to finish (a failed run is recorded as failed, never filled in).`));
     }

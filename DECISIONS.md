@@ -3847,3 +3847,38 @@ Spec 131/154 kept client roles read-only because no safe write path existed. A d
 - **Every portal layout gates itself (`lib/portal/gate.ts`).** Next.js renders nested layouts in parallel, so a parent layout's `notFound()` does not stop a child layout. When the portal split into `(dashboard)` and `welcome`, the dashboard layout streamed an ungranted project's name to a client. This was caught by rendering as a client, fixed, and is now guarded by `tests/unit/portal-layout-gates.test.ts`.
 - **The workspace shell no longer wraps `/portal`** (same rule as `/audit`). A client never sees the internal top bar, and a staff preview matches exactly, with a one-line "Staff preview" note.
 - **`DEV_USER_ROLE` accepts `client_viewer`**, so the portal can be driven as a client locally. Dev auth is still refused in production.
+
+## 2026-10-25 — A contractual baseline locks only a complete, classifier-judged capture of the client's own project (spec 160)
+
+Medina audit P0-01: the baseline could be frozen from the wrong run or an
+incomplete one, and the only correction was database surgery.
+
+- **Anything incomplete blocks.** That covers outstanding cells,
+  unparsed/pending/copied answers, unreviewed keyword-fallback rows, and
+  unrecognised or empty answers. Before this, failed cells and fallback rows
+  were "acknowledgeable" warnings. A baseline is what the fee is judged
+  against, so "count it anyway" is not an operator choice.
+- **Outstanding cells reuse the cell definitions** that run execution and
+  Retry failed use (`expandCells`, `successfulCellKeys`). Insert-only history
+  means a failed attempt followed by a success is answered.
+- **A human review outranks the fallback.** A reviewed fallback row
+  (`reviewed_by` set) does not block, matching the platform's precedence:
+  human over machine.
+- **The run must belong to the engagement's project,** for the freeze and
+  for every later measurement. Four existing suites were freezing the
+  prospect's benchmark run as the client baseline (the audited bug, encoded
+  in tests); they now capture on the client project.
+- **Confirmation is checked server-side, last.** `confirmedAnswerCount` must
+  equal the snapshot built at lock time, so the lock is of exactly what was
+  previewed. It is optional to parse, so a refusal names the real rule that
+  failed rather than a missing field.
+- **The void is a status, not a delete.** `frozen -> voided` happens once,
+  with who, when and why. The snapshot stays immutable and the row is final.
+  The void is refused once a later measurement was compared against the
+  baseline. The down migration refuses while voided rows exist.
+- **Tests parse with a classifier stand-in** (`tests/helpers/mock-classifier.ts`),
+  rather than weakening the gate. The synthetic rehearsal records its
+  operator reviewing each fallback row by hand, audited. No mock classifier
+  was added to production code.
+- **`scripts/spec131-prod-smoke.ts` is retired.** It froze a non-client
+  shared run, and it wrote to the deployed database.

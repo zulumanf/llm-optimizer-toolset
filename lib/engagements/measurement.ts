@@ -15,7 +15,9 @@ import {
 import type { MeasurementSnapshot, SnapshotEntity, SnapshotQuestion } from "@/lib/engagements/rules";
 import { CURRENT } from "@/lib/prospects/benchmark";
 import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
-import type { ProviderConfig } from "@/lib/runs/cells";
+import { expandCells, type ProviderConfig } from "@/lib/runs/cells";
+import type { FrozenPrompt } from "@/lib/prompts/types";
+import { successfulCellKeys } from "@/db/runs";
 import { ClassifiedError } from "@/lib/errors";
 
 export interface RunInstrument {
@@ -204,11 +206,18 @@ export async function buildMeasurementSnapshot(input: {
 
 export interface BaselineReadiness {
   validAnswers: number;
-  failedCells: number;
+  /** Spec 160: the run's cell space for this provider (every frozen prompt × config × repetition). */
+  expectedCells: number;
+  /** Spec 160: expected cells with no successful answer (failed and not retried, or never attempted). */
+  outstandingCells: number;
   unparsed: number;
   pendingReview: number;
   reused: number;
   heuristicRows: number;
+  /** Spec 160: valid answers whose payload shape was not recognised. */
+  unrecognized: number;
+  /** Spec 160: valid, non-refusal answers with no text. */
+  empty: number;
   /** Refuse the freeze while any of these is non-empty. */
   blockers: string[];
   /** Freeze only with an explicit acknowledgement. */
@@ -216,44 +225,63 @@ export interface BaselineReadiness {
 }
 
 /**
- * Is a finished run safe to lock as a contractual baseline? Every valid
- * answer parsed, no classification waiting for a human, no answer copied
- * from another project's capture (audit P0-01/P0-02). Heuristic-parser rows
- * are a warning: they count, but an operator must say so out loud.
+ * Is a finished run safe to lock as a contractual baseline (specs 154, 160)?
+ * Every expected cell answered, every answer parsed and recognised, no
+ * classification waiting for a human or from the keyword fallback, nothing
+ * copied from another project's capture. Anything incomplete blocks: the
+ * baseline is what the contract is judged against.
  */
 export async function baselineReadiness(runId: string, provider: string): Promise<BaselineReadiness> {
+  const instrument = await runInstrument(runId);
+  const configs = (instrument?.providers ?? []).filter((c) => c.provider === provider);
+  const [version] = instrument
+    ? await sql`select frozen_prompts from prompt_set_versions where id = ${instrument.promptSetVersionId}`
+    : [];
+  const prompts = ((version?.frozenPrompts as FrozenPrompt[] | undefined) ?? []);
+  // One definition of the cell space and of a successful cell — the same
+  // ones run execution and "Retry failed" use — so a failed cell later
+  // retried successfully is not outstanding (responses are insert-only).
+  const expected = expandCells(prompts, configs);
+  const ok = await successfulCellKeys(runId);
+  const outstandingCells = expected.filter((c) => !ok.has(`${c.promptId}|${c.provider}|${c.model}|${c.repetition}`)).length;
   const [row] = await sql`
     with r as (
-      select x.id, x.error, x.reused_from from responses x
-      where x.run_id = ${runId} and x.provider = ${provider}
+      select x.id, x.reused_from, x.shape_recognized, x.refusal, x.response_text from responses x
+      where x.run_id = ${runId} and x.provider = ${provider} and x.error is null
     )
     select
-      (select count(*)::int from r where r.error is null) as valid_answers,
-      (select count(*)::int from r where r.error is not null) as failed_cells,
-      (select count(*)::int from r where r.error is null
-         and not exists (select 1 from response_parses p where p.response_id = r.id)) as unparsed,
+      (select count(*)::int from r) as valid_answers,
+      (select count(*)::int from r
+         where not exists (select 1 from response_parses p where p.response_id = r.id)) as unparsed,
       (select count(*)::int from r where r.reused_from is not null) as reused,
+      (select count(*)::int from r where r.shape_recognized = false) as unrecognized,
+      (select count(*)::int from r where not r.refusal and length(trim(coalesce(r.response_text, ''))) = 0) as empty,
       (select count(*)::int from mentions m join r on r.id = m.response_id
          where m.needs_review and m.reviewed_by is null and ${CURRENT}) as pending_review,
       (select count(*)::int from mentions m join r on r.id = m.response_id
-         where m.parser_version = ${PARSER_VERSION_HEURISTIC} and ${CURRENT}) as heuristic_rows
+         where m.parser_version = ${PARSER_VERSION_HEURISTIC} and m.reviewed_by is null and ${CURRENT}) as heuristic_rows
   `;
   const n = (k: string) => Number((row as Record<string, unknown> | undefined)?.[k] ?? 0);
   const readiness = {
     validAnswers: n("validAnswers"),
-    failedCells: n("failedCells"),
+    expectedCells: expected.length,
+    outstandingCells,
     unparsed: n("unparsed"),
     pendingReview: n("pendingReview"),
     reused: n("reused"),
     heuristicRows: n("heuristicRows"),
+    unrecognized: n("unrecognized"),
+    empty: n("empty"),
   };
   const blockers: string[] = [];
   const warnings: string[] = [];
   if (readiness.validAnswers === 0) blockers.push(`The run has no valid ${provider} answers.`);
+  if (readiness.outstandingCells > 0) blockers.push(`${readiness.outstandingCells} of ${readiness.expectedCells} question cell(s) have no successful answer — retry failed cells first.`);
   if (readiness.unparsed > 0) blockers.push(`${readiness.unparsed} answer(s) are not parsed yet — wait for parsing to finish.`);
   if (readiness.pendingReview > 0) blockers.push(`${readiness.pendingReview} classification(s) await human review.`);
   if (readiness.reused > 0) blockers.push(`${readiness.reused} answer(s) were copied from another project's capture; a baseline must be captured fresh.`);
-  if (readiness.failedCells > 0) warnings.push(`${readiness.failedCells} cell(s) failed and are excluded from the denominator.`);
-  if (readiness.heuristicRows > 0) warnings.push(`${readiness.heuristicRows} classification(s) came from the keyword fallback, not the classifier.`);
+  if (readiness.heuristicRows > 0) blockers.push(`${readiness.heuristicRows} classification(s) came from the keyword fallback, not the classifier — re-parse them with the classifier, or review them by hand.`);
+  if (readiness.unrecognized > 0) blockers.push(`${readiness.unrecognized} answer(s) had a response shape the capture did not recognise.`);
+  if (readiness.empty > 0) blockers.push(`${readiness.empty} answer(s) are empty.`);
   return { ...readiness, blockers, warnings };
 }
