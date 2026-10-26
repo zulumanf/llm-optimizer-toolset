@@ -123,7 +123,30 @@ async function main() {
   const run = must("run", await runs.startRun(op, { projectId: d.projectId, promptSetVersionId: d.versionId, providers: [{ provider: "mock", model: "mock-model", repetitions: 1 }], budgetUsd: 5, label: "SYNTHETIC baseline" }));
   await sql`update runs set reuse_captures = false where id = ${run.id}`;
   await drain();
-  const frozen = must("freeze", await eng.freezeBaseline(op, { engagementId: d.e.id, runId: run.id, acknowledgeWarnings: true }));
+  // Spec 160: a baseline refuses unreviewed keyword-fallback classifications.
+  // The rehearsal has no classifier (mock provider, no API key), so its
+  // operator reviews each fallback classification by hand and confirms it —
+  // the same reviewed revision reviewMention writes, audited as such.
+  const { CURRENT_REVISION } = await import("@/db/mentions");
+  const { PARSER_VERSION_HEURISTIC } = await import("@/lib/constants");
+  const { writeAudit } = await import("@/db/audit");
+  await sql.begin(async (tx) => {
+    const rows = await tx`
+      select m.* from mentions m join responses r on r.id = m.response_id
+      where r.run_id = ${run.id} and m.parser_version = ${PARSER_VERSION_HEURISTIC} and m.reviewed_by is null and ${CURRENT_REVISION}
+    `;
+    for (const m of rows) {
+      await tx`
+        insert into mentions (response_id, company_id, revision, mentioned, recommended, list_position, sentiment, excerpt, cited_urls,
+          parser_version, confidence, needs_review, reviewed_by, reviewed_at)
+        values (${m.responseId}, ${m.companyId}, ${(m.revision as number) + 1}, ${m.mentioned}, ${m.recommended}, ${m.listPosition},
+          ${m.sentiment}, ${m.excerpt}, ${m.citedUrls}, ${m.parserVersion}, 1.0, false, ${op.id}, now())
+      `;
+    }
+    await writeAudit(tx, { userId: op.id, action: "mention.review", entity: "run", entityId: run.id, detail: { rehearsal: true, confirmed: rows.length, reason: "synthetic rehearsal: operator confirmed every keyword-fallback classification by hand" } });
+  });
+  const preview = must("preview", await eng.previewBaselineFreeze(op, { engagementId: d.e.id, runId: run.id }));
+  const frozen = must("freeze", await eng.freezeBaseline(op, { engagementId: d.e.id, runId: run.id, confirmedAnswerCount: preview.headline?.answerCount }));
   const plan = must("plan", await delivery.createManualPlan(op, { projectId: d.projectId }));
   const evidence = frozen.snapshot.questions[0]!.responseIds[0]!;
   const i1 = must("item 1", await delivery.addPlanItem(op, { planId: plan.planId, phase: "foundation", title: "Publish a seller FAQ page", rationale: "Baseline answers rarely cite a seller-focused page from the client's own site (synthetic).", owner: "operator", evidenceResponseIds: [evidence] }));

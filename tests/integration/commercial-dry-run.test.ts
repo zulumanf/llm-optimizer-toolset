@@ -12,12 +12,15 @@
  */
 import { execSync } from "node:child_process";
 import { join } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
 import { seedProspect, type PipelineModules } from "../helpers/prospect-fixtures";
 import { unwrap } from "../helpers/result";
 import { agreeAndFreeze } from "../helpers/engagement-protocol";
+
+// Spec 160: baselines refuse keyword-fallback classifications; parse with the classifier stand-in.
+vi.mock("@/lib/parsing/classify-llm", async (orig) => (await import("../helpers/mock-classifier")).mockClassifierModule(await orig()));
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");

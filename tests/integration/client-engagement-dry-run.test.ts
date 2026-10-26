@@ -15,12 +15,15 @@
  */
 import { execSync } from "node:child_process";
 import { join } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
 import { seedProspect, type PipelineModules } from "../helpers/prospect-fixtures";
 import { unwrap } from "../helpers/result";
 import { agreeAndFreeze } from "../helpers/engagement-protocol";
+
+// Spec 160: baselines refuse keyword-fallback classifications; parse with the classifier stand-in.
+vi.mock("@/lib/parsing/classify-llm", async (orig) => (await import("../helpers/mock-classifier")).mockClassifierModule(await orig()));
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const ROOT = join(__dirname, "..", "..");
@@ -260,8 +263,15 @@ describe.skipIf(!TEST_URL)("client engagement dry run (integration)", () => {
     // The alias drift above was a mutation test; restore the instrument so the
     // remeasurement is the same instrument (drift itself grades medium — unit-tested).
     await sql`update companies set aliases = '{}' where id = ${f.subjectCompanyId}`;
-    const [version] = await sql`select prompt_set_version_id from runs where id = ${f.runId}`;
-    const rerun = unwrap(await m.runSvc.startRun(operator, { projectId: f.projectId, promptSetVersionId: version!.promptSetVersionId as string, providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }], budgetUsd: 5, label: "midpoint" }));
+    // Spec 160: remeasure on the client's own project, on the baseline's question version.
+    const [version] = await sql`
+      select r.prompt_set_version_id from engagement_measurements em join runs r on r.id = em.run_id
+      where em.id = ${frozen.measurementId}
+    `;
+    const foreign = await eng.recordMeasurement(operator, { engagementId: e0.id, runId: f.runId });
+    expect(foreign.ok).toBe(false);
+    if (!foreign.ok) expect(foreign.error.message).toMatch(/belongs to another project/);
+    const rerun = unwrap(await m.runSvc.startRun(operator, { projectId: e0.projectId, promptSetVersionId: version!.promptSetVersionId as string, providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }], budgetUsd: 5, label: "midpoint" }));
     await sql`update runs set reuse_captures = false where id = ${rerun.id}`;
     const { drainJobs } = await import("../helpers/prospect-fixtures");
     await drainJobs(m);
@@ -270,13 +280,17 @@ describe.skipIf(!TEST_URL)("client engagement dry run (integration)", () => {
     expect(measured.comparability.grade).toBe("high");
     expect(measured.comparison?.statement).toMatch(/observed movement, not an attribution/);
     expect(measured.comparison?.baselineAnswerCount).toBe(6);
+    // Spec 160 A4: once a measurement was compared against it, the baseline cannot be voided.
+    const lateVoid = await eng.voidBaseline(admin, { engagementId: e0.id, measurementId: frozen.measurementId, reason: "Attempted void after a remeasurement (synthetic)." });
+    expect(lateVoid.ok).toBe(false);
+    if (!lateVoid.ok) expect(lateVoid.error.message).toMatch(/Later measurements/);
 
     // Failure mode 17: a changed instrument (different question set) is NON_COMPARABLE.
-    const set2 = unwrap(await m.setSvc.createPromptSet(operator, { projectId: f.projectId, name: "Set v2" }));
+    const set2 = unwrap(await m.setSvc.createPromptSet(operator, { projectId: e0.projectId, name: "Set v2" }));
     unwrap(await m.promptSvc.addPrompt(operator, { setId: set2.id, text: "who is the best broker in soho?", category: "recommendation" }));
     unwrap(await m.setSvc.freezePromptSet(operator, { id: set2.id }));
     const [v2] = await sql`select id from prompt_set_versions where prompt_set_id = ${set2.id}`;
-    const run3 = unwrap(await m.runSvc.startRun(operator, { projectId: f.projectId, promptSetVersionId: v2!.id as string, providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }], budgetUsd: 5, label: "changed instrument" }));
+    const run3 = unwrap(await m.runSvc.startRun(operator, { projectId: e0.projectId, promptSetVersionId: v2!.id as string, providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }], budgetUsd: 5, label: "changed instrument" }));
     await drainJobs(m);
     const nonComparable = unwrap(await eng.recordMeasurement(operator, { engagementId: e0.id, runId: run3.id }));
     expect(nonComparable.comparability.grade).toBe("not_comparable");
@@ -284,7 +298,7 @@ describe.skipIf(!TEST_URL)("client engagement dry run (integration)", () => {
     const [ncRow] = await sql`select status from engagement_measurements where id = ${nonComparable.measurementId}`;
     expect(ncRow!.status).toBe("non_comparable");
     // Failure mode 8: a run that has not finished is never recorded.
-    const pending = unwrap(await m.runSvc.startRun(operator, { projectId: f.projectId, promptSetVersionId: version!.promptSetVersionId as string, providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }], budgetUsd: 5, label: "pending" }));
+    const pending = unwrap(await m.runSvc.startRun(operator, { projectId: e0.projectId, promptSetVersionId: version!.promptSetVersionId as string, providers: [{ provider: "mock", model: "mock-model", repetitions: 3 }], budgetUsd: 5, label: "pending" }));
     const early = await eng.recordMeasurement(operator, { engagementId: e0.id, runId: pending.id });
     expect(early.ok).toBe(false);
 

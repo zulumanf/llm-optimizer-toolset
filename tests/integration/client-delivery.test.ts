@@ -11,11 +11,16 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { classifierReparse } from "../helpers/mock-classifier";
+import { freezeConfirmed } from "../helpers/engagement-protocol";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
 import { drainJobs, seedProspect, type PipelineModules } from "../helpers/prospect-fixtures";
 import { unwrap } from "../helpers/result";
+
+// Spec 160: baselines refuse keyword-fallback classifications; parse with the classifier stand-in.
+vi.mock("@/lib/parsing/classify-llm", async (orig) => (await import("../helpers/mock-classifier")).mockClassifierModule(await orig()));
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
 const FIXTURE = readFileSync(join(__dirname, "..", "fixtures", "client-delivery", "synthetic-64-seller-questions.csv"), "utf8");
@@ -189,25 +194,57 @@ describe.skipIf(!TEST_URL)("client onboarding and 90-day delivery (integration, 
 
     // ---------------------------------------------------------- baseline gate
     expect((await eng.freezeBaseline(operator, { engagementId })).ok).toBe(false); // run is explicit
-    const wrongRun = await eng.freezeBaseline(operator, { engagementId, runId: f.runId, acknowledgeWarnings: true });
+    // Spec 160 A2: the prospect's benchmark run is another project's capture.
+    const wrongRun = await eng.freezeBaseline(operator, { engagementId, runId: f.runId });
     expect(wrongRun.ok).toBe(false);
-    if (!wrongRun.ok) expect(wrongRun.error.message).toMatch(/different question set version/);
+    if (!wrongRun.ok) expect(wrongRun.error.message).toMatch(/belongs to another project/);
     const run = unwrap(await m.runSvc.startRun(operator, { projectId, promptSetVersionId: imported.versionId!, providers: [{ provider: "mock", model: "mock-model", repetitions: 1 }], budgetUsd: 5, label: "baseline" }));
     await sql`update runs set reuse_captures = false where id = ${run.id}`;
     // Interrupted pipeline: captured but not parsed → refused.
     await m.execute.executeRun(run.id); // capture only; parse jobs stay queued
-    const notParsed = await eng.freezeBaseline(operator, { engagementId, runId: run.id, acknowledgeWarnings: true });
+    const notParsed = await eng.freezeBaseline(operator, { engagementId, runId: run.id });
     expect(notParsed.ok).toBe(false);
     if (!notParsed.ok) expect(notParsed.error.message).toMatch(/not parsed|Agreed name variants/);
     await drainJobs(m);
-    const missingAlias = await eng.freezeBaseline(operator, { engagementId, runId: run.id, acknowledgeWarnings: true });
+    const missingAlias = await eng.freezeBaseline(operator, { engagementId, runId: run.id });
     expect(missingAlias.ok).toBe(false);
     if (!missingAlias.ok) expect(missingAlias.error.message).toMatch(/Lumina Team/);
     await sql`update companies set aliases = array['Lumina Team'] where id = ${f.subjectCompanyId}`;
-    const unacknowledged = await eng.freezeBaseline(operator, { engagementId, runId: run.id });
-    expect(unacknowledged.ok).toBe(false);
-    if (!unacknowledged.ok) expect(unacknowledged.error.message).toMatch(/Acknowledge/);
-    const baseline = unwrap(await eng.freezeBaseline(operator, { engagementId, runId: run.id, acknowledgeWarnings: true }));
+    // Spec 160 A1: the suite parses with the keyword fallback — a baseline refuses it.
+    const fallback = await eng.previewBaselineFreeze(operator, { engagementId, runId: run.id });
+    expect(fallback.ok && fallback.data.headline).toBe(null);
+    if (fallback.ok) expect(fallback.data.readiness.blockers.join(" ")).toMatch(/keyword fallback/);
+    expect((await eng.freezeBaseline(operator, { engagementId, runId: run.id, confirmedAnswerCount: 64 })).ok).toBe(false);
+    await classifierReparse(run.id);
+    // Spec 160 A3: preview → confirm exactly what was previewed.
+    const preview = unwrap(await eng.previewBaselineFreeze(operator, { engagementId, runId: run.id }));
+    expect(preview).toMatchObject({ provider: "mock", models: ["mock-model"], repetitions: 1, questionSet: { promptCount: 64 }, protocol: { aliases: ["Lumina", "Lumina Team"] } });
+    expect(preview.readiness).toMatchObject({ expectedCells: 64, outstandingCells: 0, blockers: [] });
+    expect(preview.headline?.answerCount).toBe(64);
+    expect((await eng.previewBaselineFreeze(clientViewer, { engagementId, runId: run.id })).ok).toBe(false);
+    const unconfirmed = await eng.freezeBaseline(operator, { engagementId, runId: run.id });
+    expect(unconfirmed.ok).toBe(false);
+    if (!unconfirmed.ok) expect(unconfirmed.error.message).toMatch(/Check readiness first/);
+    const stale = await eng.freezeBaseline(operator, { engagementId, runId: run.id, confirmedAnswerCount: 63 });
+    expect(stale.ok).toBe(false);
+    if (!stale.ok) expect(stale.error).toMatchObject({ kind: "conflict" });
+    expect((await sql`select count(*)::int as n from engagement_measurements where engagement_id = ${engagementId} and role = 'baseline' and status <> 'planned'`)[0]!.n).toBe(0);
+    const first = unwrap(await eng.freezeBaseline(operator, { engagementId, runId: run.id, confirmedAnswerCount: 64 }));
+
+    // Spec 160 A4: void — admin only, a real reason, a permanent record; then a new lock.
+    expect((await eng.voidBaseline(operator, { engagementId, measurementId: first.measurementId, reason: "Wrong run locked by mistake during testing." })).ok).toBe(false);
+    expect((await eng.voidBaseline(admin, { engagementId, measurementId: first.measurementId, reason: "too short" })).ok).toBe(false);
+    unwrap(await eng.voidBaseline(admin, { engagementId, measurementId: first.measurementId, reason: "Locked before the recall QA was finished (synthetic)." }));
+    const [voided] = await sql`select status, voided_by, void_reason, snapshot from engagement_measurements where id = ${first.measurementId}`;
+    expect(voided).toMatchObject({ status: "voided", voidedBy: admin.id, voidReason: "Locked before the recall QA was finished (synthetic)." });
+    expect((voided!.snapshot as { answerCount: number }).answerCount).toBe(64); // kept forever
+    await expect(sql`update engagement_measurements set status = 'frozen' where id = ${first.measurementId}`).rejects.toThrow(/final/);
+    await expect(sql`update engagement_measurements set void_reason = 'rewritten' where id = ${first.measurementId}`).rejects.toThrow(/final/);
+    await expect(sql`delete from engagement_measurements where id = ${first.measurementId}`).rejects.toThrow(/never deleted/);
+    expect((await sql`select count(*)::int as n from audit_log where action = 'engagement.baseline_voided' and entity_id = ${engagementId}`)[0]!.n).toBe(1);
+    const baseline = unwrap(await freezeConfirmed(operator, engagementId, run.id));
+    // A frozen baseline can only ever move to voided.
+    await expect(sql`update engagement_measurements set status = 'cancelled' where id = ${baseline.measurementId}`).rejects.toThrow(/can only be voided/);
     expect(baseline.snapshot.answerCount).toBe(64);
     expect(baseline.snapshot.questions.filter((q) => q.segment?.priceTier === "Luxury $750K–$1.49M")).toHaveLength(16);
     // The accepted protocol cannot be replaced once the baseline is locked.
