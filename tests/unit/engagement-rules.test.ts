@@ -121,6 +121,15 @@ describe("measurement comparability", () => {
     drift.subject = { ...drift.subject, aliases: ["Ryan Ogle", "Blu House Team"] };
     expect(assessMeasurementComparability(snapshot(), drift).grade).toBe("medium");
   });
+  it("spec 161: copied answers on either side are not comparable; an unknown count is not read as zero copies", () => {
+    const copied = assessMeasurementComparability(snapshot({ reusedCount: 0 }), snapshot({ runId: "run-b", reusedCount: 3 }));
+    expect(copied.grade).toBe("not_comparable");
+    expect(copied.reasons.join(" ")).toMatch(/remeasurement: 3 answer\(s\) were copied from another project's capture/);
+    expect(assessMeasurementComparability(snapshot({ reusedCount: 2 }), snapshot({ runId: "run-b", reusedCount: 0 })).reasons.join(" ")).toMatch(/^baseline: 2 answer/);
+    expect(assessMeasurementComparability(snapshot({ reusedCount: 0 }), snapshot({ runId: "run-b", reusedCount: 0 })).grade).toBe("high");
+    // Snapshots frozen before spec 161 carry no count: no basis either way, no flag.
+    expect(assessMeasurementComparability(snapshot(), snapshot({ runId: "run-b" })).grade).toBe("high");
+  });
 });
 
 describe("measurement comparison", () => {

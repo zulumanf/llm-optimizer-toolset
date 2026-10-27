@@ -113,10 +113,14 @@ describe.skipIf(!TEST_URL)("shared market captures (integration)", () => {
   async function seedProjectRun(
     name: string,
     subjectName: string,
-    promptText = MARKET_PROMPT
+    promptText = MARKET_PROMPT,
+    // Spec 161: reuse is a prospect-benchmark feature; client projects never copy.
+    kind: "prospect" | "client" = "prospect",
+    runOptions: { reuseCaptures?: boolean } = {}
   ): Promise<{ projectId: string; runId: string; versionId: string }> {
     const subject = unwrap(await companySvc.upsertCompany(operator, { name: subjectName }));
     const project = unwrap(await projectSvc.createProject(operator, { name }));
+    await sql`update projects set kind = ${kind} where id = ${project.id}`;
     unwrap(
       await claims.setSubjectCompany(operator, {
         projectId: project.id,
@@ -146,6 +150,7 @@ describe.skipIf(!TEST_URL)("shared market captures (integration)", () => {
         ],
         budgetUsd: 5,
         label: "market run",
+        ...runOptions,
       })
     );
     await drainJobs();
@@ -299,5 +304,86 @@ describe.skipIf(!TEST_URL)("shared market captures (integration)", () => {
     await sql`update runs set reuse_captures = false where id = ${run.id}`;
     await drainJobs();
     expect(providerCalls).toHaveLength(4);
+  });
+  // ---------------------------------------------------------- spec 161
+  it("spec 161 B1: a client project never copies — fresh capture even with an eligible source", async () => {
+    await seedProjectRun("Prospect A", "Rivera Team");
+    expect(providerCalls).toHaveLength(2);
+    const c = await seedProjectRun("Client Medina (synthetic)", "Medina Synthetic", MARKET_PROMPT, "client");
+    expect(providerCalls).toHaveLength(4); // both cells asked of the provider
+    const [run] = await sql`select reuse_captures from runs where id = ${c.runId}`;
+    expect(run?.reuseCaptures).toBe(false);
+    const [copied] = await sql`select count(*)::int as n from responses where run_id = ${c.runId} and reused_from is not null`;
+    expect(copied?.n).toBe(0);
+  });
+
+  it("spec 161 B1: a client project refuses an explicit reuse request; a prospect may opt out", async () => {
+    const svc = await import("@/lib/runs/service");
+    expect(svc.captureReuseFor("client", undefined)).toBe(false);
+    expect(svc.captureReuseFor("client", false)).toBe(false);
+    expect(() => svc.captureReuseFor("client", true)).toThrow(/always captured fresh/);
+    expect(svc.captureReuseFor("prospect", undefined)).toBe(true);
+    expect(svc.captureReuseFor("prospect", false)).toBe(false);
+    await expect(seedProjectRun("Client X", "X Co", MARKET_PROMPT, "client", { reuseCaptures: true })).rejects.toThrow(/always captured fresh/);
+    const p = await seedProjectRun("Prospect Opt-out", "Opt Co", MARKET_PROMPT, "prospect", { reuseCaptures: false });
+    const [run] = await sql`select reuse_captures from runs where id = ${p.runId}`;
+    expect(run?.reuseCaptures).toBe(false);
+  });
+
+  it("spec 161 B1: a historical client run flagged for reuse is guarded at execution", async () => {
+    await seedProjectRun("Prospect A", "Rivera Team");
+    const c = await seedProjectRun("Client Old", "Old Co", MARKET_PROMPT, "client");
+    // Re-run the same version with the flag forced on, as pre-161 runs had it.
+    const again = unwrap(await runSvc.startRun(operator, { projectId: c.projectId, promptSetVersionId: c.versionId, providers: [{ provider: "openai", model: "gpt-5.4-2026-03-05", repetitions: 2 }], budgetUsd: 5, label: "historical flag" }));
+    await sql`update runs set reuse_captures = true where id = ${again.id}`;
+    const before = providerCalls.length;
+    await drainJobs();
+    expect(providerCalls.length).toBe(before + 2);
+    const [copied] = await sql`select count(*)::int as n from responses where run_id = ${again.id} and reused_from is not null`;
+    expect(copied?.n).toBe(0);
+  });
+
+  it("spec 161 B2: a copy carries the time the provider was asked; historical copies read it through their source", async () => {
+    const a = await seedProjectRun("Prospect A", "Rivera Team");
+    const b = await seedProjectRun("Prospect B", "Meridian Group");
+    const pairs = await sql`
+      select c.requested_at as copy_at, o.requested_at as origin_at
+      from responses c join responses o on o.id = c.reused_from where c.run_id = ${b.runId}
+    `;
+    expect(pairs.length).toBe(2);
+    for (const p of pairs) expect((p.copyAt as Date).getTime()).toBe((p.originAt as Date).getTime());
+
+    // A pre-161 copy stamped with copy time: the read helper returns the source's time.
+    const [origin] = await sql`select id, prompt_id, prompt_text, requested_at from responses where run_id = ${a.runId} limit 1`;
+    const [legacyRun] = await sql`insert into runs (project_id, prompt_set_version_id, label, providers, budget_usd, status, trigger) values (${b.projectId}, ${b.versionId}, 'legacy copy', '[]'::jsonb, 1, 'completed', 'manual') returning id`;
+    const [legacy] = await sql`
+      insert into responses (run_id, prompt_id, prompt_text, provider, model, repetition, response_text, reused_from, requested_at)
+      values (${legacyRun!.id}, ${origin!.promptId}, ${origin!.promptText}, 'openai', 'gpt-5.4-2026-03-05', 9, 'copy', ${origin!.id}, now() + interval '2 days')
+      returning id
+    `;
+    const { captureTimeSql } = await import("@/lib/runs/reuse");
+    const [t] = await sql`select ${captureTimeSql("x")} as at from responses x where x.id = ${legacy!.id}`;
+    expect((t!.at as Date).getTime()).toBe((origin!.requestedAt as Date).getTime());
+
+    // The answer page's read returns the source.
+    const { getResponse } = await import("@/db/runs");
+    const detail = (await getResponse(legacy!.id as string))!;
+    expect(detail.source).toMatchObject({ runId: a.runId, projectId: a.projectId, projectName: "Prospect A" });
+    expect(detail.source!.requestedAt.getTime()).toBe((origin!.requestedAt as Date).getTime());
+    expect((await getResponse(origin!.id as string))!.source).toBeNull();
+  });
+
+  it("spec 161 B4: a snapshot over copied answers counts them and reports the true capture time", async () => {
+    const a = await seedProjectRun("Prospect A", "Rivera Team");
+    const b = await seedProjectRun("Prospect B", "Meridian Group");
+    const { buildMeasurementSnapshot } = await import("@/lib/engagements/measurement");
+    const [subject] = await sql`select subject_company_id from projects where id = ${b.projectId}`;
+    const snapB = await buildMeasurementSnapshot({ runId: b.runId, provider: "openai", subjectCompanyId: subject!.subjectCompanyId as string, competitorCompanyIds: [] });
+    expect(snapB.reusedCount).toBe(2);
+    const [latest] = await sql`select max(requested_at) as at from responses where run_id = ${a.runId}`;
+    expect(snapB.capturedAt).toBe((latest!.at as Date).toISOString());
+    const [subjectA] = await sql`select subject_company_id from projects where id = ${a.projectId}`;
+    const snapA = await buildMeasurementSnapshot({ runId: a.runId, provider: "openai", subjectCompanyId: subjectA!.subjectCompanyId as string, competitorCompanyIds: [] });
+    expect(snapA.reusedCount).toBe(0);
   });
 });
