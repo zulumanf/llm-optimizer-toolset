@@ -40,6 +40,9 @@ export const runConfigSchema = z.object({
 });
 
 export const startRunSchema = runConfigSchema.extend({
+  /** Spec 161: prospect benchmarks only (default true there); a client
+   * project always captures fresh and refuses true. */
+  reuseCaptures: z.boolean().optional(),
   label: z
     .string()
     .transform((s) => s.trim())

@@ -272,6 +272,9 @@ export interface MeasurementSnapshot {
   /** Valid, non-holdout answers — the only denominator. */
   answerCount: number;
   capturedAt: string | null;
+  /** Spec 161: answers copied from another project's capture. Absent on
+   * snapshots frozen before spec 161 (unknown — never read as zero). */
+  reusedCount?: number;
   subject: SnapshotEntity;
   competitors: SnapshotEntity[];
   questions: SnapshotQuestion[];
@@ -349,6 +352,13 @@ export function assessMeasurementComparability(
     flag("not_comparable", "baseline has no valid answers");
   }
   if (next.answerCount === 0) flag("not_comparable", "remeasurement has no valid answers");
+  // Spec 161: a copy is not this client's measurement. Unknown (an older
+  // snapshot without the count) is not evidence either way — no flag.
+  for (const [side, snap] of [["baseline", baseline], ["remeasurement", next]] as const) {
+    if ((snap.reusedCount ?? 0) > 0) {
+      flag("not_comparable", `${side}: ${snap.reusedCount} answer(s) were copied from another project's capture — not a fresh measurement`);
+    }
+  }
   const baselineAliases = new Set(baseline.subject.aliases);
   const aliasDrift = next.subject.aliases.filter((a) => !baselineAliases.has(a));
   if (aliasDrift.length > 0) {

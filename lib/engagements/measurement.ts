@@ -17,6 +17,7 @@ import { CURRENT } from "@/lib/prospects/benchmark";
 import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
 import type { ProviderConfig } from "@/lib/runs/cells";
 import { ClassifiedError } from "@/lib/errors";
+import { captureTimeSql } from "@/lib/runs/reuse";
 
 export interface RunInstrument {
   runId: string;
@@ -94,7 +95,8 @@ export async function buildMeasurementSnapshot(input: {
     select fp.prompt_id, fp.text, fp.category,
       array_agg(r.id order by r.repetition, r.id) filter (where r.id is not null) as response_ids,
       array_agg(distinct r.model) filter (where r.model is not null) as models,
-      max(r.requested_at) as captured_at
+      max(${captureTimeSql("r")}) as captured_at,
+      count(r.reused_from)::int as reused
     from fp
     left join responses r on r.prompt_id = fp.prompt_id and r.run_id = ${input.runId}
       and r.provider = ${input.provider} and r.error is null
@@ -175,6 +177,7 @@ export async function buildMeasurementSnapshot(input: {
     questionCount: questions.length,
     answerCount: questions.reduce((s, q) => s + q.answerCount, 0),
     capturedAt: captured ? captured.toISOString() : null,
+    reusedCount: answers.reduce((s, a) => s + Number(a.reused ?? 0), 0),
     subject: entity(subject),
     competitors: ents.filter((e) => e.companyId !== input.subjectCompanyId).map(entity),
     questions,

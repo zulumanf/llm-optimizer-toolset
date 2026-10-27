@@ -43,9 +43,11 @@ interface Props {
   models: ModelInfo[];
   /** Providers with configured API keys (mock when none) — checked by default. */
   defaultEnabled: ProviderId[];
+  /** Spec 161: only prospect benchmarks may reuse other projects' captures. */
+  projectKind: "client" | "prospect";
 }
 
-export function NewRunForm({ projectId, versions, models, defaultEnabled }: Props) {
+export function NewRunForm({ projectId, versions, models, defaultEnabled, projectKind }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [versionId, setVersionId] = useState(versions[0]?.id ?? "");
@@ -53,6 +55,7 @@ export function NewRunForm({ projectId, versions, models, defaultEnabled }: Prop
   const [budget, setBudget] = useState("15");
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reuse, setReuse] = useState(true);
 
   const providerIds = [...new Set(models.map((m) => m.provider))];
   const [rows, setRows] = useState<ProviderRow[]>(
@@ -96,6 +99,7 @@ export function NewRunForm({ projectId, versions, models, defaultEnabled }: Prop
         providers: selectedProviders,
         budgetUsd: Number(budget),
         label,
+        ...(projectKind === "prospect" ? { reuseCaptures: reuse } : {}),
       });
       if (result.ok) {
         toast.success("Run started — the worker will pick it up.");
@@ -200,6 +204,16 @@ export function NewRunForm({ projectId, versions, models, defaultEnabled }: Prop
             />
           </div>
         </div>
+
+        {projectKind === "prospect" ? (
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-1" checked={reuse} onChange={(e) => setReuse(e.target.checked)} />
+            Reuse identical answers captured by other projects in the last 72 hours (saves cost; prospect benchmarks only).
+            Copies are marked and keep their original capture time.
+          </label>
+        ) : (
+          <p className="text-sm text-muted-foreground">Client measurements are always captured fresh — no answer is copied from another project.</p>
+        )}
 
         {estimate && (
           <div className="rounded-md border bg-muted/40 px-4 py-3 text-sm">

@@ -64,6 +64,11 @@ export async function executeRun(runId: string): Promise<void> {
     select frozen_prompts from prompt_set_versions
     where id = ${run.promptSetVersionId}
   `;
+  // Spec 161: reuse only on a prospect benchmark project, read at execution
+  // time — a historical client run flagged true, a resumed run, or a project
+  // converted to client never copies another project's capture.
+  const [owner] = await sql`select kind from projects where id = ${run.projectId}`;
+  const mayReuse = run.reuseCaptures && owner?.kind === "prospect";
   if (!version) {
     throw new ClassifiedError("internal", `Run ${runId}: frozen version missing.`);
   }
@@ -169,7 +174,7 @@ export async function executeRun(runId: string): Promise<void> {
         // the byte-identical prompt from ANOTHER project satisfies this
         // cell without a provider call or budget draw. Same-project runs
         // never reuse — a retest must not "measure" its own baseline.
-        if (run.reuseCaptures) {
+        if (mayReuse) {
           const reused = await tryReuseCapture(runId, run.projectId, cell, state);
           if (reused) continue;
         }
@@ -203,14 +208,16 @@ async function tryReuseCapture(
       insert into responses
         (run_id, prompt_id, prompt_text, provider, model, repetition,
          raw_payload, response_text, refusal, latency_ms, tokens_in,
-         tokens_out, cost_usd, request_params, shape_recognized, reused_from)
+         tokens_out, cost_usd, request_params, shape_recognized, reused_from,
+         requested_at)
       values
         (${runId}, ${cell.promptId}, ${cell.promptText}, ${cell.provider},
          ${cell.model}, ${cell.repetition},
          ${sql.json(source.rawPayload as never)}, ${source.responseText},
          ${source.refusal}, 0, ${source.tokensIn}, ${source.tokensOut}, 0,
          ${sql.json(source.requestParams as never)},
-         ${source.shapeRecognized}, ${source.id})
+         ${source.shapeRecognized}, ${source.id},
+         ${source.requestedAt})
     `;
   } catch (err) {
     // 23505: a concurrent attempt already captured this cell — that row wins.

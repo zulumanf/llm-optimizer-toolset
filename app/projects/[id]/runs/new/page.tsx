@@ -83,6 +83,7 @@ export default async function NewRunPage({
           versions={versions}
           models={listAllModels()}
           defaultEnabled={configuredProviders()}
+          projectKind={project.kind === "prospect" ? "prospect" : "client"}
         />
       )}
     </PageShell>

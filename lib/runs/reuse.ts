@@ -21,6 +21,8 @@ export interface ReusableCapture {
   tokensOut: number | null;
   requestParams: unknown;
   shapeRecognized: boolean | null;
+  /** Spec 161: when the provider was actually asked — a copy carries it. */
+  requestedAt: Date;
 }
 
 export async function findReusableCapture(
@@ -30,7 +32,7 @@ export async function findReusableCapture(
   if (cell.provider === "mock") return null;
   const rows = await sql`
     select r.id, r.raw_payload, r.response_text, r.refusal, r.tokens_in,
-      r.tokens_out, r.request_params, r.shape_recognized
+      r.tokens_out, r.request_params, r.shape_recognized, r.requested_at
     from responses r
     join runs source_run on source_run.id = r.run_id
     where md5(r.prompt_text) = md5(${cell.promptText})
@@ -57,5 +59,17 @@ export async function findReusableCapture(
     tokensOut: (row.tokensOut as number | null) ?? null,
     requestParams: row.requestParams,
     shapeRecognized: (row.shapeRecognized as boolean | null) ?? null,
+    requestedAt: row.requestedAt as Date,
   };
+}
+
+/**
+ * Spec 161: the time the provider was actually asked for a response row
+ * aliased `alias`. A copy's own requested_at was its COPY time before spec
+ * 161 (insert-only rows are never corrected), so a copy reads its source's.
+ * One expression, used by every reader of capture time.
+ */
+export function captureTimeSql(alias: string) {
+  const a = sql.unsafe(alias);
+  return sql`coalesce((select src.requested_at from responses src where src.id = ${a}.reused_from), ${a}.requested_at)`;
 }
