@@ -23,6 +23,18 @@ const RUN_COLUMNS = sql`id, project_id, prompt_set_version_id, label, providers,
   status, status_detail, trigger, started_by, budget_usd, cost_usd,
   started_at, completed_at`;
 
+export const CLIENT_REUSE_REFUSED =
+  "Client measurements are always captured fresh; capture reuse is for prospect benchmarks only.";
+
+/** Spec 161: whether a new run may copy recent captures from other projects. */
+export function captureReuseFor(projectKind: string, requested: boolean | undefined): boolean {
+  if (projectKind !== "prospect") {
+    if (requested === true) throw new ClassifiedError("validation", CLIENT_REUSE_REFUSED);
+    return false;
+  }
+  return requested ?? true;
+}
+
 export async function startRun(
   user: CurrentUser | null,
   raw: unknown,
@@ -38,7 +50,7 @@ export async function startRun(
     if (user) assertCanWrite(user);
     const run = await sql.begin(async (tx) => {
       const [version] = await tx`
-        select v.id, s.project_id, p.status as project_status
+        select v.id, s.project_id, p.status as project_status, p.kind as project_kind
         from prompt_set_versions v
         join prompt_sets s on s.id = v.prompt_set_id
         join projects p on p.id = s.project_id
@@ -70,14 +82,17 @@ export async function startRun(
         );
       }
 
+      // Spec 161: a client's measurement is always its own capture. Reuse
+      // (spec 054) exists to save cost on prospect benchmarks.
+      const reuseCaptures = captureReuseFor(version.projectKind as string, input.reuseCaptures);
       const [row] = await tx<Run[]>`
         insert into runs
           (project_id, prompt_set_version_id, label, providers, trigger,
-           started_by, budget_usd)
+           started_by, budget_usd, reuse_captures)
         values
           (${input.projectId}, ${input.promptSetVersionId}, ${input.label},
            ${tx.json(input.providers as never)}, ${trigger},
-           ${user?.id ?? null}, ${input.budgetUsd})
+           ${user?.id ?? null}, ${input.budgetUsd}, ${reuseCaptures})
         returning ${RUN_COLUMNS}
       `;
       if (!row) throw new ClassifiedError("internal", "Insert returned no row.");
