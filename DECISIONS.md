@@ -3815,3 +3815,31 @@ paid work no one requested. Medina's baseline needs the worker.
 - **Not fixed here, and recorded as blockers for enabling outreach:** G3
   (follow-up send window), G4 (handoff side effects in SHADOW) and G7
   (workflow send path without the 148/150 gates).
+
+## 2026-10-26 — A client's measurement is always its own capture (spec 161)
+
+Medina audit P0-02: capture reuse (spec 054) was on for every run by
+default, with no control. A client baseline or rerun could be partly
+another project's answers, timestamped as if this run had asked.
+
+- **Reuse is decided at run creation from `projects.kind`.**
+  - On a client project it is always off, and an explicit request is
+    refused.
+  - On a prospect benchmark (the cost saving 054 was built for) it is on
+    by default, with an explicit opt-out on the run form.
+  - The column default is now `false`, so nothing opts in silently.
+- **The executor re-checks the kind at execution.** Runs created before
+  this spec carry `reuse_captures = true`, runs are resumed, and prospects
+  convert to clients. The flag alone was not enough.
+- **True capture time without touching history.** Responses are insert-only,
+  so pre-161 copies keep their copy-time `requested_at`. New copies take
+  the source's time. One SQL expression (`captureTimeSql`) resolves a copy
+  through `reused_from` for every reader. No backfill, no UPDATE.
+- **Copies make a measurement `not_comparable`.** A copy is not this
+  client's measurement.
+  - Snapshots now record `reusedCount`.
+  - An older snapshot without it is unknown and is never read as zero
+    copies, so it is not flagged.
+- **Not decided here:** whether a client's own captures may be a reuse
+  source for prospect runs. Those are answers to public prompts, so this is
+  not a measurement risk for the client.
