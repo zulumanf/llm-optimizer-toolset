@@ -35,3 +35,13 @@ email to a prospect was possible.
       and not resent.
 - [x] Existing retry-then-park behaviour holds when the mailbox has no match.
 - [x] typecheck, lint, full suite pass; `DECISIONS.md` entry.
+
+## Amendment (2026-10-27) — Gmail replaces our Message-ID
+
+A live test send showed Gmail's `messages.send` overwrites the stamped
+Message-ID with its own (`…@mail.gmail.com`), so an `rfc822msgid` search
+never matches (this also affected spec 137 reconciliation). The mailbox check
+now searches `{rfc822msgid:<ours> (in:sent to:<recipient> subject:"<subject>"
+newer_than:3d)}`; verified live: the test send is found, a different recipient
+is not. Re-contact rules mean no other mail to that person shares the subject.
+Reconciled ledger rows are stamped `reconciled-by-fingerprint-v2`.

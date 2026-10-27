@@ -3859,3 +3859,10 @@ paid work no one requested. Medina's baseline needs the worker.
 - **Spec 165.** A send that may have been accepted is never retried blind:
   no in-process retry of the Gmail POST, a Message-ID fingerprint on every
   scheduled send, and a mailbox check before any retry.
+
+## 2026-10-27 — Send reconciliation searches the Sent folder (spec 165 amendment)
+
+- Live test: Gmail's send API overwrites our Message-ID, so the rfc822msgid
+  fingerprint (specs 137/165) could never be found and an ambiguous failure
+  read as "not sent". The search now ORs in Sent-folder mail to the same
+  recipient with the same subject in the last 3 days.

@@ -67,7 +67,9 @@ interface ClaimedDraft {
   sendMessageId: string | null;
 }
 
-export const RECONCILED_GATE_VERSION = "reconciled-by-fingerprint-v1";
+export const RECONCILED_GATE_VERSION = "reconciled-by-fingerprint-v2";
+/** How far back the Sent-folder fallback looks (covers the 24 h lateness bound). */
+const SENT_SEARCH_WINDOW_DAYS = 3;
 
 /**
  * Spec 137 reconciliation. A stale claim means the previous worker died
@@ -80,9 +82,20 @@ export const RECONCILED_GATE_VERSION = "reconciled-by-fingerprint-v1";
 export async function reconcileStaleClaim(draft: ClaimedDraft): Promise<"reconciled" | "not_found" | "search_failed" | "no_fingerprint"> {
   if (!draft.sendMessageId) return "no_fingerprint";
   const bare = draft.sendMessageId.replace(/^<|>$/g, "");
+  // Gmail's send API replaces the Message-ID we stamp with its own (verified
+  // live 2026-10-27), so an rfc822msgid search alone never matches. The Sent
+  // folder is searched for this draft's recipient and subject as well; the
+  // re-contact rules mean no other mail to that person shares the subject.
+  const [meta] = await sql`select d.subject, coalesce(c.email, p.email) as email
+    from outreach_drafts d left join prospect_contacts c on c.id = d.contact_id join prospects p on p.id = d.prospect_id where d.id = ${draft.id}`;
+  const to = (meta?.email as string | null) ?? null;
+  const subject = ((meta?.subject as string | null) ?? "").replace(/["{}()]/g, " ").replace(/\s+/g, " ").trim();
+  const q = to && subject
+    ? `{rfc822msgid:${bare} (in:sent to:${to} subject:"${subject}" newer_than:${SENT_SEARCH_WINDOW_DAYS}d)}`
+    : `rfc822msgid:${bare}`;
   const res = await executeCapability<{ messages: ParsedGmailMessage[] }>({
     capability: "email.search_messages", projectId: null, provider: "gmail", mode: "live",
-    input: { q: `rfc822msgid:${bare}`, maxResults: 5 },
+    input: { q, maxResults: 5 },
   });
   if (!res.ok) return "search_failed";
   const found = (res.data?.messages ?? []).find((m) => (m.messageId ?? "").replace(/^<|>$/g, "") === bare) ?? res.data?.messages?.[0];
@@ -97,8 +110,8 @@ export async function reconcileStaleClaim(draft: ClaimedDraft): Promise<"reconci
          provider_message_id, sent_by, gmail_thread_id, sent_at, reconciled_from)
       values (${draft.id}, ${draft.prospectId}, 'gmail', ${(d?.email as string | null) ?? null}, ${bodyHash},
         ${draft.businessPurpose ?? "reconciled after lost acknowledgement"},
-        ${tx.json({ version: RECONCILED_GATE_VERSION, checks: [{ name: "mailbox_fingerprint", passed: true, detail: `rfc822msgid ${bare} found in the mailbox` }] } as never)},
-        true, ${found.id}, ${draft.scheduledBy}, ${found.threadId ?? null}, ${found.date ? new Date(found.date) : new Date()}, 'gmail rfc822msgid search')
+        ${tx.json({ version: RECONCILED_GATE_VERSION, checks: [{ name: "mailbox_fingerprint", passed: true, detail: `found in the mailbox by ${q}` }] } as never)},
+        true, ${found.id}, ${draft.scheduledBy}, ${found.threadId ?? null}, ${found.date ? new Date(found.date) : new Date()}, 'gmail sent-folder search')
       returning id`;
     await tx`update outreach_drafts set sent_recorded_at = now(), sent_recorded_by = ${draft.scheduledBy}, send_claimed_at = null, scheduled_send_at = null where id = ${draft.id}`;
     await writeAudit(tx, { userId: draft.scheduledBy, action: "prospect.send_reconciled", entity: "prospect_outreach_send", entityId: row!.id as string, detail: { draftId: draft.id, messageId: bare, providerMessageId: found.id } });
