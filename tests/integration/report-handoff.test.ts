@@ -671,7 +671,7 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     const calls: string[] = [];
     executeCapability.mockImplementation(async (args: { capability: string; input: { q?: string } }) => {
       calls.push(args.capability);
-      if (args.capability === "email.search_messages" && args.input.q === `rfc822msgid:${fingerprint}`) {
+      if (args.capability === "email.search_messages" && String(args.input.q).includes(`rfc822msgid:${fingerprint}`) && String(args.input.q).includes("in:sent to:")) {
         return { ok: true, data: { messages: [{ id: "gm-sent-1", threadId: "thread-1", messageId: `<${fingerprint}>`, from: SENDER, to: RECIPIENT, subject: "Re: Ryan - Reno", date: "2026-09-04T16:05:00Z", labelIds: ["SENT"], body: "..." }] } };
       }
       return { ok: false, errorCode: "unsupported" };
@@ -682,7 +682,7 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect(calls).not.toContain("email.send_approved_message");
     const sends = await sql`select provider_message_id, reconciled_from, allowed, gmail_thread_id from prospect_outreach_sends where draft_id = ${h.draftId}`;
     expect(sends).toHaveLength(1);
-    expect(sends[0]).toMatchObject({ providerMessageId: "gm-sent-1", reconciledFrom: "gmail rfc822msgid search", allowed: true, gmailThreadId: "thread-1" });
+    expect(sends[0]).toMatchObject({ providerMessageId: "gm-sent-1", reconciledFrom: "gmail sent-folder search", allowed: true, gmailThreadId: "thread-1" });
     const [after] = await sql`select sent_recorded_at, send_claimed_at, scheduled_send_at from outreach_drafts where id = ${h.draftId}`;
     expect(after!.sentRecordedAt).not.toBeNull();
     expect(after!.sendClaimedAt).toBeNull();
