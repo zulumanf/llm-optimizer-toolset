@@ -16,6 +16,11 @@ export interface ProjectWithCounts extends Project {
   runCount: number;
 }
 
+/** getProject's row: the counts plus the project kind (spec 161 reuse policy). */
+export interface ProjectDetail extends ProjectWithCounts {
+  kind: "client" | "prospect";
+}
+
 export interface PortfolioRow extends ProjectWithCounts {
   subjectName: string | null;
   authorityScore: number | null;
@@ -120,9 +125,9 @@ export async function getInternalProject(): Promise<Project | null> {
   return rows[0] ?? null;
 }
 
-export async function getProject(id: string): Promise<ProjectWithCounts | null> {
-  const rows = await sql<ProjectWithCounts[]>`
-    select p.id, p.name, p.description, p.status, p.created_at, p.archived_at,
+export async function getProject(id: string): Promise<ProjectDetail | null> {
+  const rows = await sql<ProjectDetail[]>`
+    select p.id, p.name, p.description, p.status, p.created_at, p.archived_at, p.kind,
       (select count(*)::int from prompt_sets s
         where s.project_id = p.id and s.archived_at is null) as prompt_set_count,
       (select count(*)::int from runs r

@@ -1,4 +1,5 @@
 import { PageHeader, PageShell } from "@/components/layout/page";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getResponse, getRun } from "@/db/runs";
 import { sql } from "@/db/client";
@@ -48,17 +49,33 @@ export default async function ResponsePage({
             <Badge variant="destructive">{response.error.kind}</Badge>
           ) : response.refusal ? (
             <Badge variant="outline">refusal</Badge>
+          ) : response.source ? (
+            <Badge variant="outline">copied capture</Badge>
           ) : (
             <Badge variant="secondary">captured</Badge>
           )
         }
         description={
+          response.source ? (
+            <span className="text-xs">
+              Copied from an answer captured {formatDate(response.source.requestedAt)} on {response.source.projectName}{" "}
+              (run {response.source.runLabel || response.source.runId.slice(0, 8)}) — not asked by this run.{" "}
+              <Link
+                className="underline underline-offset-4"
+                href={`/projects/${response.source.projectId}/runs/${response.source.runId}/responses/${response.reusedFrom}`}
+              >
+                Open the original
+              </Link>{" "}
+              · immutable capture
+            </span>
+          ) : (
           <span className="text-xs">
             {formatDate(response.requestedAt)} ·{" "}
             {response.latencyMs != null ? `${response.latencyMs}ms` : "no latency"} ·{" "}
             {response.tokensIn ?? 0} in / {response.tokensOut ?? 0} out tokens · $
             {Number(response.costUsd).toFixed(4)} · immutable capture
           </span>
+          )
         }
       />
 

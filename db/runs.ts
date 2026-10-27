@@ -46,6 +46,10 @@ export interface ResponseCell {
 export interface ResponseDetail extends ResponseCell {
   runId: string;
   rawPayload: unknown;
+  /** Spec 161: set when this answer is a copy of another project's capture. */
+  reusedFrom: string | null;
+  /** Spec 161: the copied answer's origin (null for an original capture). */
+  source: { requestedAt: Date; runId: string; runLabel: string; projectId: string; projectName: string } | null;
 }
 
 const RUN_COLUMNS = sql`id, project_id, prompt_set_version_id, label, providers,
@@ -92,13 +96,28 @@ export async function listRunCells(runId: string): Promise<ResponseCell[]> {
 }
 
 export async function getResponse(id: string): Promise<ResponseDetail | null> {
-  const rows = await sql<ResponseDetail[]>`
-    select id, run_id, prompt_id, prompt_text, provider, model, repetition,
-      raw_payload, response_text, refusal, latency_ms, tokens_in, tokens_out,
-      cost_usd, error, requested_at
-    from responses where id = ${id}
+  const rows = await sql`
+    select r.id, r.run_id, r.prompt_id, r.prompt_text, r.provider, r.model, r.repetition,
+      r.raw_payload, r.response_text, r.refusal, r.latency_ms, r.tokens_in, r.tokens_out,
+      r.cost_usd, r.error, r.requested_at, r.reused_from,
+      src.requested_at as source_requested_at, src.run_id as source_run_id,
+      sr.label as source_run_label, sr.project_id as source_project_id, sp.name as source_project_name
+    from responses r
+    left join responses src on src.id = r.reused_from
+    left join runs sr on sr.id = src.run_id
+    left join projects sp on sp.id = sr.project_id
+    where r.id = ${id}
   `;
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  const { sourceRequestedAt, sourceRunId, sourceRunLabel, sourceProjectId, sourceProjectName, ...rest } = row;
+  return {
+    ...(rest as unknown as Omit<ResponseDetail, "source">),
+    reusedFrom: (row.reusedFrom as string | null) ?? null,
+    source: row.reusedFrom
+      ? { requestedAt: sourceRequestedAt as Date, runId: sourceRunId as string, runLabel: (sourceRunLabel as string) ?? "", projectId: sourceProjectId as string, projectName: (sourceProjectName as string) ?? "" }
+      : null,
+  };
 }
 
 /** Keys of cells that already have a successful capture (idempotent resume). */
