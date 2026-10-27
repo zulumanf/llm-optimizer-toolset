@@ -1301,10 +1301,71 @@ describe.skipIf(!TEST_URL)("automation layer (integration)", () => {
       base.connectionProjectId = projectA;
     });
 
+    async function approvedApproval(key: string, bodyHash: string): Promise<string> {
+      const [definition] = await sql`
+        insert into workflow_definitions (key, name, action_type) values (${key}, 'A', 'test') returning id
+      `;
+      const [version] = await sql`
+        insert into workflow_versions (definition_id, version, graph_hash, spec)
+        values (${definition!.id}, 1, ${key}, '{}'::jsonb) returning id
+      `;
+      const [run] = await sql`
+        insert into workflow_runs (version_id, project_id, idempotency_key)
+        values (${version!.id}, ${projectA}, ${key}) returning id
+      `;
+      const [node] = await sql`
+        insert into workflow_nodes (version_id, node_key, node_type, name)
+        values (${version!.id}, 'n', 'integration_task', 'N') returning id
+      `;
+      const [nodeRun] = await sql`
+        insert into node_runs (workflow_run_id, node_id, node_key, fan_key, state)
+        values (${run!.id}, ${node!.id}, 'n', '', 'awaiting_approval') returning id
+      `;
+      const [approval] = await sql`
+        insert into workflow_approvals (workflow_run_id, node_run_id, project_id, action_type,
+          risk_level, required_role, summary, detail, decision, decided_by, decided_at)
+        values (${run!.id}, ${nodeRun!.id}, ${projectA}, 'outreach', 'high', 'operator',
+          'Send it?', ${sql.json({ bodyHash })}, 'approved', ${OPERATOR}, now())
+        returning id
+      `;
+      return approval!.id as string;
+    }
+
     it("allows a send that passes every check", async () => {
-      const verdict = await suppression.assertSendAllowed(base);
+      const approvalId = await approvedApproval("ok_wf", base.bodyHash);
+      const verdict = await suppression.assertSendAllowed({ ...base, approvalId });
       expect(verdict.allowed).toBe(true);
       expect(verdict.checks.every((c) => c.passed)).toBe(true);
+    });
+
+    it.each([3, 4])("requires an approval at autonomy level %i too (spec 162 D2)", async (level) => {
+      const verdict = await suppression.assertSendAllowed({ ...base, autonomyLevel: level });
+      expect(verdict.allowed).toBe(false);
+      expect(verdict.failedCheck).toBe("approval");
+    });
+
+    it("matches non-archived prospect and contact emails, case-insensitively (spec 162 D3)", async () => {
+      const { isProspectRecipient } = await import("@/db/prospect-recipients");
+      const [market] = await sql`insert into markets (name, kind) values ('G7 City', 'city') returning id`;
+      const [launch] = await sql`
+        insert into market_launches (name, market_id) values ('G7', ${market!.id}) returning id
+      `;
+      const [prospect] = await sql`
+        insert into prospects (launch_id, business_name, email)
+        values (${launch!.id}, 'G7 Team', 'team@g7.example') returning id
+      `;
+      await sql`
+        insert into prospect_contacts (prospect_id, name, email) values
+          (${prospect!.id}, 'Live', 'live@g7.example')
+      `;
+      await sql`
+        insert into prospect_contacts (prospect_id, name, email, archived_at) values
+          (${prospect!.id}, 'Gone', 'gone@g7.example', now())
+      `;
+      expect(await isProspectRecipient(" LIVE@g7.example ")).toBe(true);
+      expect(await isProspectRecipient("Team@G7.example")).toBe(true);
+      expect(await isProspectRecipient("gone@g7.example")).toBe(false);
+      expect(await isProspectRecipient("stranger@g7.example")).toBe(false);
     });
 
     it("refuses in test mode before anything else is evaluated", async () => {
@@ -1345,8 +1406,10 @@ describe.skipIf(!TEST_URL)("automation layer (integration)", () => {
     });
 
     it("refuses cold outreach with no unsubscribe path", async () => {
+      const approvalId = await approvedApproval("unsub_wf", base.bodyHash);
       const verdict = await suppression.assertSendAllowed({
         ...base,
+        approvalId,
         hasRelationship: false,
         businessPurpose: "measured their AI visibility from public data; offering the findings",
         unsubscribeUrl: null,

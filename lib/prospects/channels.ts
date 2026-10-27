@@ -29,6 +29,9 @@ export interface OutboundEmail {
   /** Spec 137: RFC 5322 Message-ID we stamp so a lost acknowledgement can
    * be reconciled by fingerprint instead of resent. */
   messageId?: string | null;
+  /** Spec 157: RFC 8058 one-click target, emitted as List-Unsubscribe and
+   * List-Unsubscribe-Post headers. */
+  unsubscribeUrl?: string | null;
 }
 
 export interface EmailChannel {
@@ -98,6 +101,7 @@ const gmailChannel: EmailChannel = {
         ...(message.inReplyTo ? { inReplyTo: message.inReplyTo } : {}),
         ...(message.references ? { references: message.references } : {}),
         ...(message.messageId ? { messageId: message.messageId } : {}),
+        ...(message.unsubscribeUrl ? { unsubscribeUrl: message.unsubscribeUrl } : {}),
       },
       mode: "live",
       provider: "gmail",
@@ -169,7 +173,7 @@ export function optOutFooter(identity: {
   postalAddress: string;
 }): string {
   return (
-    `\n\n—\n${identity.senderName} · ${identity.companyName}\n` +
+    `\n\n--\n${identity.senderName} · ${identity.companyName}\n` +
     `${OUTREACH_PUBLIC_WEBSITE}\n` +
     `${identity.postalAddress}\n` +
     `If you'd rather not hear from us, reply "unsubscribe" and we will not contact you again.`

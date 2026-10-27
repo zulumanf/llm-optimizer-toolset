@@ -57,13 +57,17 @@ clock.
 
 **Before setting `OUTBOUND_SENDS_ENABLED=true`**, close the recorded gaps in
 `specs/159` "Out of scope":
-- follow-up send window (G3);
-- report-handoff side effects in SHADOW (G4);
-- workflow-engine send path without the spec 148/150 gates (G7).
+- ~~follow-up send window (G3)~~ closed by spec 163;
+- ~~report-handoff side effects in SHADOW (G4)~~ closed by spec 164;
+- ~~workflow-engine send path without the spec 148/150 gates (G7)~~ closed by spec 162.
+
+**Branch `feat/162-workflow-send-gates` adds migration 126** (one-click
+unsubscribe tokens, spec 157). Apply it before deploying that code (see
+"Migrations before code"); a Gmail send without the table fails.
 
 **`AUTOMATION_MODE=full` with sends off** is a valid state ("automation on,
-nothing leaves"). But drafts, model calls and audit-page publishing still
-happen.
+nothing leaves"). Drafts and some model calls still happen; positive-reply
+handoffs hold before publishing or reviewing (spec 164).
 
 Bootstrap never re-enables a trigger or subscription an operator switched
 off. It can still force client-scoped templates and webhooks off.

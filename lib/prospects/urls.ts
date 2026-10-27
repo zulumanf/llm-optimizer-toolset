@@ -28,6 +28,22 @@ export function openPixelUrl(token: string): string | null {
   return `${base.replace(/\/$/, "")}/api/open/${token}`;
 }
 
+/** One-click unsubscribe endpoint (spec 157): /api/unsubscribe/<token> —
+ * the List-Unsubscribe header target. Null means no working link can exist,
+ * and the send gate refuses a transmitting send. */
+export function unsubscribeEndpointUrl(token: string): string | null {
+  const base = process.env.APP_URL;
+  if (!base) return null;
+  return `${base.replace(/\/$/, "")}/api/unsubscribe/${token}`;
+}
+
+/** Human confirmation page for unsubscribe (spec 157). */
+export function unsubscribePageUrl(token: string): string | null {
+  const base = process.env.APP_URL;
+  if (!base) return null;
+  return `${base.replace(/\/$/, "")}/unsubscribe/${token}`;
+}
+
 /** Private-report invitation (spec 134): /report/<slug>/<key>. The key is the
  * credential; after the exchange the browser shows only /report/<slug>. */
 export function reportInvitationUrl(slug: string, key: string): string | null {

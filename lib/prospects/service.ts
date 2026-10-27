@@ -119,7 +119,8 @@ import { mockScoringAllowed } from "@/lib/ai/registry";
 import { checkNoMockResponses } from "@/lib/qa/preflight";
 // removed-unused: validateAuditEvidence
 import {} from "@/lib/prospects/audit-evidence";
-import { auditUrl, brandedAuditUrl, openPixelUrl } from "@/lib/prospects/urls";
+import { auditUrl, brandedAuditUrl, openPixelUrl, unsubscribeEndpointUrl } from "@/lib/prospects/urls";
+import { issueUnsubscribeLink } from "@/lib/outreach/unsubscribe";
 import { plainTextToTrackedHtml } from "@/lib/text/html";
 import { invitationLinkLabels } from "@/lib/prospects/report-access";
 import { recordQuoteFromSend } from "@/lib/pricing/quotes";
@@ -2317,7 +2318,7 @@ export async function cancelScheduledSend(
 // Not exported: stamped into ledger rows, no external consumer.
 // v2 (spec 091): adds the daily_send_cap check for transmitting gmail sends.
 // v4 (spec 148): adds recipient_email_provenance.
-const SEND_GATE_VERSION = "prospect-send-gate-v4";
+const SEND_GATE_VERSION = "prospect-send-gate-v5";
 
 /**
  * The bridge between the two outreach stacks (spec 043): every dispatch —
@@ -2614,6 +2615,18 @@ export async function sendProspectDraft(
                 : "The outgoing text does not carry the sender's postal address."
             : "no sender identity to source the postal address from"
         );
+        // Spec 157: a real transmission must carry a working RFC 8058
+        // one-click unsubscribe link, which needs APP_URL to exist.
+        if (channel.id === "gmail") {
+          const linkable = unsubscribeEndpointUrl("0".repeat(32)) !== null;
+          check(
+            "one_click_unsubscribe",
+            linkable,
+            linkable
+              ? "one-click unsubscribe link will be attached (List-Unsubscribe)"
+              : "APP_URL is not configured, so no working one-click unsubscribe link can be attached — set APP_URL before sending."
+          );
+        }
       } else {
         check("recipient_email", true, "manual channel — the human used their own mailbox");
         check("opt_out_path", true, "not gated for manual records");
@@ -2666,6 +2679,16 @@ export async function sendProspectDraft(
         const { fulfillmentSendRecheck } = await import("@/lib/prospects/report-handoff");
         const re = await fulfillmentSendRecheck(tx, draft.id as string);
         check("fulfillment_manifest_current", re.passed, re.detail);
+        // Spec 164 (G4): an unattended delivery re-asks the lane at send
+        // time, so the kill switch or SHADOW stops an already-scheduled send.
+        if (input.unattended) {
+          const { releaseDecision, resolveLaneConfig } = await import("@/lib/prospects/fulfillment-lane");
+          const [handoff] = await tx`select id from prospect_report_handoffs where draft_id = ${draft.id as string} limit 1`;
+          const lane = handoff
+            ? releaseDecision(resolveLaneConfig(), handoff.id as string)
+            : { action: "hold_shadow", detail: "no handoff owns this delivery draft" };
+          check("fulfillment_lane_release", lane.action === "transmit", lane.detail);
+        }
       }
       // Deterministic QA re-check at dispatch (spec 116): a draft approved
       // against one audit state must not transmit stale or inconsistent
@@ -2744,6 +2767,19 @@ export async function sendProspectDraft(
         }
       }
 
+      // Spec 157: issued outside this transaction and before dispatch, so the
+      // link in a delivered message survives a ledger rollback.
+      let unsubscribeUrl: string | null = null;
+      if (channel.id === "gmail" && email) {
+        const link = await issueUnsubscribeLink({
+          recipientEmail: email,
+          prospectId: draft.prospectId as string,
+          draftId: draft.id as string,
+        });
+        if (!link) throw new ClassifiedError("validation", "APP_URL is required for a one-click unsubscribe link.");
+        unsubscribeUrl = link.url;
+      }
+
       // Dispatch before the ledger row so the insert-only row carries the
       // provider message id (both current channels are in-process; a
       // network channel restructures this into claim → dispatch → finalize).
@@ -2754,6 +2790,7 @@ export async function sendProspectDraft(
         htmlBody,
         ...threading,
         messageId: (draft.sendMessageId as string | null) ?? null,
+        unsubscribeUrl,
       });
       const sendId = await writeLedger(
         dispatched.providerMessageId,

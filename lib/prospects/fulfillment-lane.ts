@@ -85,6 +85,16 @@ export function releaseDecision(cfg: LaneConfig, handoffId: string): ReleaseDeci
   }
 }
 
+/**
+ * Spec 164 (G4): publishing the report and the paid release review run only
+ * when their result can be sent. Null = prepare; otherwise the hold reason.
+ * With outbound on, every mode prepares: SHADOW stages for founder review
+ * (spec 139), and the send-time lane check stops unattended transmission.
+ */
+export function preparationHold(outboundOn: boolean): string | null {
+  return outboundOn ? null : "PREPARATION_HELD: outbound sending is off; nothing is published or reviewed";
+}
+
 // ---------------------------------------------------------- state machine
 
 export const HANDOFF_STATUSES = [

@@ -82,6 +82,7 @@ const INTENTIONAL_SHELLS = new Map<string, string>([
   ["app/portal/[projectId]/work/page.tsx", "client portal — portal shell"],
   ["app/portal/[projectId]/reports/page.tsx", "client portal — portal shell"],
   ["app/login/page.tsx", "auth screen — renders before any workspace exists"],
+  ["app/unsubscribe/[token]/page.tsx", "public one-click unsubscribe confirmation for prospects (spec 157) — no workspace"],
 ]);
 
 const LEGACY_SHELLS = new Set<string>([]);

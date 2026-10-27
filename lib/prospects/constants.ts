@@ -17,6 +17,13 @@ export const LAUNCH_STATUSES = [
 ] as const;
 export type LaunchStatus = (typeof LAUNCH_STATUSES)[number];
 
+/**
+ * Workflow action types that are prospect outreach. The workflow-engine send
+ * node refuses them: prospect email leaves only through `sendProspectDraft`
+ * (spec 162).
+ */
+export const PROSPECT_OUTREACH_ACTION_TYPES: readonly string[] = ["prospect_first_outreach"];
+
 export const PROSPECT_TYPES = [
   "brokerage",
   "team",
@@ -361,6 +368,8 @@ export const FOLLOWUP_CADENCE_BUSINESS_DAYS = { 2: 3, 3: 4 } as const;
 export const FOLLOWUP_MAX_TOUCHES = 3;
 /** Recipient-local morning window: 09:00 + [3, 88] min → 09:03–10:28. */
 export const FOLLOWUP_SEND_WINDOW = { startHour: 9, minOffsetMinutes: 3, maxOffsetMinutes: 88 } as const;
+/** Spec 163: a due touch may still leave this long after the window's last slot. */
+export const FOLLOWUP_DISPATCH_GRACE_MINUTES = 30;
 /** Branch is rendered no earlier than this before its slot. */
 export const FOLLOWUP_RENDER_LEAD_MINUTES = 30;
 /** Preflight refuses when the Gmail reply sync is older than this. */

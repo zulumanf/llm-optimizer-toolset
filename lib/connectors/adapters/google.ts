@@ -284,6 +284,31 @@ const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1";
  * `htmlBody`, emits multipart/alternative (plain text first, HTML second —
  * RFC 2046 puts the preferred form last); plain-text-only messages carry
  * the same headers and body as before spec 092. */
+/** RFC 2047: a header value with any non-ASCII character is sent as an
+ * encoded word. Raw UTF-8 bytes in a header are read as Latin-1 by many
+ * receivers — found live 2026-09-25, when "Robby — Greenville" reached the
+ * inbox as "Robby Ã¢Â€Â” Greenville". Bodies were never affected (they
+ * declare charset=UTF-8). ASCII values pass through unchanged. */
+export function encodeHeaderValue(value: string): string {
+  if (!/[^\x09\x20-\x7E]/.test(value)) return value;
+  // An encoded word may not exceed 75 characters, and a multi-byte character
+  // may not be split across words: chunk by code point, folding between words.
+  const words: string[] = [];
+  let chunk = "";
+  for (const ch of value) {
+    if (Buffer.byteLength(chunk + ch, "utf8") > ENCODED_WORD_MAX_BYTES) {
+      words.push(chunk);
+      chunk = "";
+    }
+    chunk += ch;
+  }
+  if (chunk) words.push(chunk);
+  return words.map((w) => `=?UTF-8?B?${Buffer.from(w, "utf8").toString("base64")}?=`).join("\r\n ");
+}
+
+/** 45 bytes → 60 base64 chars + 12 for `=?UTF-8?B?…?=` = 72 ≤ 75 (RFC 2047). */
+const ENCODED_WORD_MAX_BYTES = 45;
+
 function encodeMessage(args: {
   to: string;
   from: string;
@@ -296,7 +321,7 @@ function encodeMessage(args: {
   references?: string;
   messageId?: string;
 }): string {
-  const headers = [`To: ${args.to}`, `From: ${args.from}`, `Subject: ${args.subject}`];
+  const headers = [`To: ${args.to}`, `From: ${args.from}`, `Subject: ${encodeHeaderValue(args.subject)}`];
   if (args.replyTo) headers.push(`Reply-To: ${args.replyTo}`);
   if (args.messageId) headers.push(`Message-ID: ${args.messageId}`);
   if (args.inReplyTo) headers.push(`In-Reply-To: ${args.inReplyTo}`);
@@ -563,6 +588,7 @@ export const gmailConnector = buildAdapter({
       const response = await ctx.http({
         url: `${GMAIL_BASE}/users/${encodeURIComponent(config.userId)}/messages/send`,
         method: "POST",
+        idempotent: false,
         headers: bearer(ctx),
         body: {
           raw: encodeMessage({
@@ -746,4 +772,4 @@ export const googleCalendarConnector = buildAdapter({
 });
 
 /** Exported for the unit tests that assert the encoder's header behaviour. */
-export const __testables = { encodeMessage, decodeBody, connectorFetch };
+export const __testables = { encodeMessage, encodeHeaderValue, decodeBody, connectorFetch };

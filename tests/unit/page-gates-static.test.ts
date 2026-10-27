@@ -21,6 +21,7 @@ const EXEMPT: { pattern: RegExp; reason: string }[] = [
   { pattern: /^app\/\(marketing\)\//, reason: "public marketing site" },
   { pattern: /^app\/login\/page\.tsx$/, reason: "sign-in screen" },
   { pattern: /^app\/report\/\[slug\]\//, reason: "prospect report, gated by its own report session (spec 134)" },
+  { pattern: /^app\/unsubscribe\/\[token\]\/page\.tsx$/, reason: "prospect one-click unsubscribe; the token is the credential and answers are uniform (spec 157)" },
   { pattern: /^app\/portal\//, reason: "client portal; every read goes through lib/portal/service.ts, which asserts project access per call" },
 ];
 

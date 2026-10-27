@@ -32,6 +32,7 @@ import {
   FOLLOWUP_RENDER_LEAD_MINUTES,
   FOLLOWUP_REPLY_SYNC_MAX_AGE_MINUTES,
   FOLLOWUP_SEND_WINDOW,
+  FOLLOWUP_DISPATCH_GRACE_MINUTES,
   FOLLOWUP_TEMPLATE_VERSIONS,
   FOLLOWUP_TEMPLATE_VERSION_LIST,
   GMAIL_DAILY_SEND_CAP,
@@ -48,6 +49,7 @@ import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
 import {
   addBusinessDays,
   deterministicOffsetMinutes,
+  isBusinessDay,
   nextMorningSlot,
   timezoneForState,
   wallClock,
@@ -185,6 +187,28 @@ export function slotFor(seq: Pick<FollowupSequence, "id" | "timezone">, earliest
       FOLLOWUP_SEND_WINDOW.maxOffsetMinutes
     ),
   });
+}
+
+/**
+ * Spec 163 (G3): a due touch leaves only inside its recipient-local window
+ * on the local day it was slotted for; otherwise it moves to the next slot.
+ */
+export function followupDispatchDecision(
+  seq: Pick<FollowupSequence, "id" | "timezone">,
+  scheduledAt: Date,
+  now: Date
+): { send: true } | { send: false; deferTo: Date } {
+  const local = wallClock(now, seq.timezone);
+  const due = wallClock(scheduledAt, seq.timezone);
+  const minuteOfDay = local.hour * 60 + local.minute;
+  const windowStart = FOLLOWUP_SEND_WINDOW.startHour * 60;
+  const windowEnd =
+    windowStart + FOLLOWUP_SEND_WINDOW.maxOffsetMinutes + FOLLOWUP_DISPATCH_GRACE_MINUTES;
+  const sameDay = local.year === due.year && local.month === due.month && local.day === due.day;
+  if (isBusinessDay(now, seq.timezone) && sameDay && minuteOfDay >= windowStart && minuteOfDay <= windowEnd) {
+    return { send: true };
+  }
+  return { send: false, deferTo: slotFor(seq, now) };
 }
 
 /** Projected send instant for the next touch (null when nothing is due). */
