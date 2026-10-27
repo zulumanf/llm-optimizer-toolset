@@ -32,9 +32,12 @@ import { MARKETING_PREFIXES, MARKETING_PUBLIC_FILES, marketingRewriteTarget } fr
 // `/mcp`, `/healthz`, `/.well-known` are the remote MCP surface (spec 126):
 // bearer-token machine clients, never a browser session — without these the
 // auth redirect would 307 Grok's JSON-RPC to /login (the /api/open trap).
+// `/api/unsubscribe/` and `/unsubscribe/` are one-click unsubscribe (spec
+// 157): POSTed by mail providers (RFC 8058) or opened by the recipient —
+// never a session; the token is the credential and answers are uniform.
 // `/report` is the private-report surface (spec 134): invitation exchange
 // and session-gated clean URLs — its own security is the report session.
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/api/open", "/api/audit-signal", "/audit", "/report/", "/mcp", "/healthz", "/.well-known", ...MARKETING_PREFIXES, ...MARKETING_PUBLIC_FILES];
+const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/health", "/api/webhooks", "/api/open", "/api/unsubscribe/", "/unsubscribe/", "/api/audit-signal", "/audit", "/report/", "/mcp", "/healthz", "/.well-known", ...MARKETING_PREFIXES, ...MARKETING_PUBLIC_FILES];
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   // Apex-host rewrite (spec 061): the marketing domain's `/` is the homepage;

@@ -312,48 +312,44 @@ export async function assertSendAllowed(input: SendGateInput): Promise<SendGateV
     input.hasRelationship ? "existing relationship" : "stated business purpose"
   );
 
-  // 5. Approval, when autonomy demands one.
-  if (input.autonomyLevel <= 2) {
-    if (!input.approvalId) {
-      return fail(
-        "approval",
-        `autonomy level ${input.autonomyLevel} requires a recorded approval before sending`
-      );
-    }
-    const [approval] = await sql`
-      select decision, decided_by, detail from workflow_approvals where id = ${input.approvalId}
-    `;
-    if (!approval) return fail("approval", "the referenced approval does not exist");
-    if (approval.decision !== "approved") {
-      return fail(
-        "approval",
-        `the referenced approval is "${(approval.decision as string | null) ?? "undecided"}"`
-      );
-    }
-    // 6. Message version: the approved artifact must be the one being sent.
-    // No recorded hash FAILS: an approval that cannot be bound to a specific
-    // message version authorises nothing. The old soft-pass here meant the
-    // check never actually ran in production, because the engine buried the
-    // hash under detail.output.artifact (fixed alongside this, A7).
-    const approvedHash = (approval.detail as { bodyHash?: string } | null)?.bodyHash;
-    if (!approvedHash) {
-      return fail(
-        "message_version",
-        "the approval records no artifact hash, so the approved version cannot be verified; re-approve the message"
-      );
-    }
-    if (approvedHash !== input.bodyHash) {
-      return fail(
-        "message_version",
-        "the message changed after it was approved; a new approval is required"
-      );
-    }
-    pass("approval", `approved by ${(approval.decidedBy as string | null) ?? "unknown"}`);
-    pass("message_version", "hash matches the approved artifact");
-  } else {
-    pass("approval", `autonomy level ${input.autonomyLevel} does not require per-send approval`);
-    pass("message_version", "not gated at this autonomy level");
+  // 5. Approval, at every autonomy level (spec 162 D2): no external email
+  // leaves the workflow engine without a recorded human approval.
+  if (!input.approvalId) {
+    return fail(
+      "approval",
+      `autonomy level ${input.autonomyLevel} requires a recorded approval before sending`
+    );
   }
+  const [approval] = await sql`
+    select decision, decided_by, detail from workflow_approvals where id = ${input.approvalId}
+  `;
+  if (!approval) return fail("approval", "the referenced approval does not exist");
+  if (approval.decision !== "approved") {
+    return fail(
+      "approval",
+      `the referenced approval is "${(approval.decision as string | null) ?? "undecided"}"`
+    );
+  }
+  // 6. Message version: the approved artifact must be the one being sent.
+  // No recorded hash FAILS: an approval that cannot be bound to a specific
+  // message version authorises nothing. The old soft-pass here meant the
+  // check never actually ran in production, because the engine buried the
+  // hash under detail.output.artifact (fixed alongside this, A7).
+  const approvedHash = (approval.detail as { bodyHash?: string } | null)?.bodyHash;
+  if (!approvedHash) {
+    return fail(
+      "message_version",
+      "the approval records no artifact hash, so the approved version cannot be verified; re-approve the message"
+    );
+  }
+  if (approvedHash !== input.bodyHash) {
+    return fail(
+      "message_version",
+      "the message changed after it was approved; a new approval is required"
+    );
+  }
+  pass("approval", `approved by ${(approval.decidedBy as string | null) ?? "unknown"}`);
+  pass("message_version", "hash matches the approved artifact");
 
   // 7. Compliance fields. Cold outreach needs a way out.
   if (!input.hasRelationship && (input.unsubscribeUrl ?? "").length === 0) {

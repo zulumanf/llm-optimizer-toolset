@@ -478,3 +478,40 @@ describe("connectorFetch redaction vs the token-refresh exception", () => {
     ).rejects.toThrow(/redacted placeholder/);
   });
 });
+
+describe("spec 165: a non-idempotent request is never retried blind", () => {
+  it("does not retry a 5xx or a network error when idempotent is false, but still retries a 429", async () => {
+    const { connectorFetch } = await import("@/lib/connectors/http");
+    let calls = 0;
+    const res500 = await connectorFetch(
+      { url: "https://gmail.googleapis.com/send", method: "POST", body: {}, idempotent: false },
+      { provider: "gmail", fetchImpl: async () => { calls += 1; return new Response("boom", { status: 503 }); } }
+    );
+    expect(res500.status).toBe(503);
+    expect(calls).toBe(1);
+
+    calls = 0;
+    const resNet = await connectorFetch(
+      { url: "https://gmail.googleapis.com/send", method: "POST", body: {}, idempotent: false },
+      { provider: "gmail", fetchImpl: async () => { calls += 1; throw new Error("socket hang up"); } }
+    );
+    expect(resNet.ok).toBe(false);
+    expect(calls).toBe(1);
+
+    calls = 0;
+    const res429 = await connectorFetch(
+      { url: "https://gmail.googleapis.com/send", method: "POST", body: {}, idempotent: false },
+      {
+        provider: "gmail",
+        fetchImpl: async () => {
+          calls += 1;
+          return calls === 1
+            ? new Response("slow down", { status: 429, headers: { "retry-after": "0" } })
+            : new Response("{}", { status: 200 });
+        },
+      }
+    );
+    expect(res429.ok).toBe(true);
+    expect(calls).toBe(2);
+  });
+});

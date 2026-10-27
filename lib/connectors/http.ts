@@ -134,7 +134,7 @@ export async function connectorFetch(
         retryAfterSeconds,
       };
 
-      const retryable = rateLimited || response.status >= 500;
+      const retryable = rateLimited || (response.status >= 500 && request.idempotent !== false);
       if (!retryable || attempt > MAX_RETRIES) return lastResponse;
 
       const delayMs = rateLimited && retryAfterSeconds !== null
@@ -164,7 +164,7 @@ export async function connectorFetch(
         rateLimited: false,
         retryAfterSeconds: null,
       };
-      if (attempt > MAX_RETRIES) return lastResponse;
+      if (attempt > MAX_RETRIES || request.idempotent === false) return lastResponse;
       await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
     } finally {
       clearTimeout(timer);

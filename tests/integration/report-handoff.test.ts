@@ -428,6 +428,44 @@ describe.skipIf(!TEST_URL)("positive-reply report handoff (integration)", () => 
     expect((await sql`select count(*)::int as n from prospect_outreach_sends where draft_id = ${h.draftId} and allowed`)[0]!.n).toBe(0);
   });
 
+  it("spec 164 G4: with outbound off, a verified handoff publishes nothing and calls no model; it resumes when outbound is back on", async () => {
+    lane("NARROW_AUTONOMOUS");
+    const caller = vi.fn(passingCaller);
+    await sayYes();
+    process.env.OUTBOUND_SENDS_ENABLED = "false";
+    try {
+      await rh.processReportHandoffs(NOON, { caller });
+      await rh.processReportHandoffs(NOON, { caller });
+      const h = (await rh.handoffForProspect(prospectId))!;
+      expect(h.status).toBe("evidence_verified");
+      expect(h.autoVerdict).toBe("held");
+      expect(h.reason).toMatch(/^PREPARATION_HELD/);
+      expect(h.auditId).toBeNull();
+      expect(h.attempts).toBeLessThanOrEqual(1);
+      expect(caller).not.toHaveBeenCalled();
+    } finally {
+      process.env.OUTBOUND_SENDS_ENABLED = "true";
+    }
+    await rh.processReportHandoffs(NOON, { caller });
+    const after = (await rh.handoffForProspect(prospectId))!;
+    expect(after.auditId).not.toBeNull();
+    expect(caller).toHaveBeenCalled();
+  });
+
+  it("spec 164 G4: an unattended delivery re-asks the lane at send time; the kill switch refuses an already-staged send", async () => {
+    lane("NARROW_AUTONOMOUS");
+    await sayYes();
+    await rh.processReportHandoffs(NOON, { caller: passingCaller });
+    const h = (await rh.handoffForProspect(prospectId))!;
+    expect(h.draftId).not.toBeNull();
+    lane("NARROW_AUTONOMOUS", { AUTONOMOUS_POSITIVE_REPLY_KILL_SWITCH: "true" });
+    const refused = await svc.sendProspectDraft(operator, { draftId: h.draftId!, channel: "mock", businessPurpose: "Deliver the report he asked for", unattended: true });
+    expect(refused.ok).toBe(false);
+    const [row] = await sql`select gate_verdict from prospect_outreach_sends where draft_id = ${h.draftId} and not allowed order by sent_at desc limit 1`;
+    const checks = (row?.gateVerdict as { checks: { name: string; passed: boolean }[] }).checks;
+    expect(checks.find((c) => c.name === "fulfillment_lane_release")?.passed).toBe(false);
+  });
+
   it("complex replies always escalate (20): 'Yes, how much?' parks immediately with no report, no draft; founder reactivation re-enters at the eligibility check (31)", async () => {
     lane("NARROW_AUTONOMOUS");
     unwrap(await svc.recordProspectReply(operator, { prospectId, contactId, bodyText: "Yes, how much?", gmailMessageId: "gm-price", receivedAt: new Date("2026-09-03T20:00:00Z") }));

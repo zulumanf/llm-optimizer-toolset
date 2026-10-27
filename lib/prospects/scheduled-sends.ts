@@ -26,6 +26,8 @@ import {
   SCHEDULED_SEND_STALE_CLAIM_MINUTES,
 } from "@/lib/prospects/constants";
 import { outboundSendsEnabled } from "@/lib/ops/mode";
+import { followupDispatchDecision } from "@/lib/prospects/followups";
+import { sendMessageIdFor, senderDomainOf } from "@/lib/prospects/fulfillment-lane";
 import type { ErrorKind } from "@/lib/errors";
 import { createHash } from "node:crypto";
 import { executeCapability } from "@/lib/connectors/execute";
@@ -49,6 +51,8 @@ export interface ScheduledSendReport {
   reconciled: number;
   /** Spec 159: parked for being more than SCHEDULED_SEND_MAX_LATENESS_HOURS overdue (also counted in parked). */
   late?: number;
+  /** Spec 163: follow-ups due outside the recipient-local window, moved to the next slot. */
+  deferred?: number;
   /** Spec 159: outbound sending is off — nothing was read, claimed or parked. */
   skipped?: "outbound_disabled";
 }
@@ -199,20 +203,24 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
   const late: (ClaimedDraft & { dueAt: Date })[] = [];
   await sql.begin(async (tx) => {
     const due = await tx`
-      select id, prospect_id, scheduled_by, scheduled_business_purpose,
-        send_attempts, send_claimed_at, send_message_id, scheduled_send_at,
-        (scheduled_send_at < now() - make_interval(hours => ${SCHEDULED_SEND_MAX_LATENESS_HOURS})) as too_late
-      from outreach_drafts
-      where status = 'approved' and sent_recorded_at is null
-        and scheduled_send_at is not null and scheduled_send_at <= now()
+      select d.id, d.prospect_id, d.scheduled_by, d.scheduled_business_purpose,
+        d.send_attempts, d.send_claimed_at, d.send_message_id, d.scheduled_send_at,
+        d.sequence_id, s.timezone as sequence_timezone,
+        (d.scheduled_send_at < now() - make_interval(hours => ${SCHEDULED_SEND_MAX_LATENESS_HOURS})) as too_late
+      from outreach_drafts d
+      left join outreach_followup_sequences s on s.id = d.sequence_id
+      where d.status = 'approved' and d.sent_recorded_at is null
+        and d.scheduled_send_at is not null and d.scheduled_send_at <= now()
       -- Send priority when the daily cap is tight: human replies to active
       -- prospects (reply_to_id) → due Touch 2/3 (sequence_id) → new cold
       -- Touch 1. Warm conversations are never crowded out by cold sends.
-      order by (reply_to_id is not null) desc, (sequence_id is not null) desc, scheduled_send_at asc
+      order by (d.reply_to_id is not null) desc, (d.sequence_id is not null) desc, d.scheduled_send_at asc
       limit ${limit}
-      for update skip locked
+      for update of d skip locked
     `;
     report.due = due.length;
+    const [identity] = await tx`select reply_to_email from outreach_sender_identity where active limit 1`;
+    const senderDomain = senderDomainOf((identity?.replyToEmail as string | null) ?? null);
     for (const row of due) {
       const draft: ClaimedDraft = {
         id: row.id as string,
@@ -237,17 +245,44 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
         late.push({ ...draft, dueAt: row.scheduledSendAt as Date });
         continue;
       }
+      if (row.sequenceId && row.sequenceTimezone) {
+        // Spec 163 (G3): a follow-up leaves only inside its recipient-local
+        // window; outside it, move to the next slot without claiming.
+        const decision = followupDispatchDecision(
+          { id: row.sequenceId as string, timezone: row.sequenceTimezone as string },
+          row.scheduledSendAt as Date,
+          new Date()
+        );
+        if (!decision.send) {
+          await tx`update outreach_drafts set scheduled_send_at = ${decision.deferTo} where id = ${draft.id}`;
+          const detail = { draftId: draft.id, from: row.scheduledSendAt as Date, to: decision.deferTo };
+          await writeAudit(tx, {
+            userId: draft.scheduledBy,
+            action: "prospect.followup_send_deferred",
+            entity: "outreach_draft",
+            entityId: draft.id,
+            detail: { ...detail, worker: true },
+          });
+          await logActivity(tx, draft.prospectId, "followup_send_deferred", detail, draft.scheduledBy);
+          report.deferred = (report.deferred ?? 0) + 1;
+          continue;
+        }
+      }
       if (draft.attempts >= SCHEDULED_SEND_MAX_ATTEMPTS) {
         // Defensive: parked drafts have no schedule, so this should not
         // occur; if it does, park rather than loop forever.
         stale.push(draft);
         continue;
       }
+      // Spec 165: every scheduled send carries a Message-ID fingerprint,
+      // committed before dispatch, so an ambiguous failure can be checked
+      // against the mailbox instead of resent blind.
+      draft.sendMessageId ??= sendMessageIdFor(draft.id.replace(/-/g, ""), senderDomain);
       claimed.push(draft);
       await tx`
         update outreach_drafts set
           send_claimed_at = now(), send_attempts = ${draft.attempts + 1},
-          last_send_error = null
+          last_send_error = null, send_message_id = ${draft.sendMessageId}
         where id = ${draft.id}
       `;
     }
@@ -280,6 +315,21 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
   // record the outcome (clearing the claim marker) in a fresh transaction.
   for (const draft of claimed) {
     const attempts = draft.attempts + 1;
+    if (draft.attempts > 0) {
+      // Spec 165: a prior attempt failed, possibly after Gmail accepted it.
+      // Look for its fingerprint before sending again.
+      const prior = await reconcileStaleClaim(draft);
+      if (prior === "reconciled") { report.reconciled += 1; continue; }
+      if (prior === "search_failed") {
+        await park(
+          { ...draft, attempts },
+          "A previous send attempt failed and the mailbox could not be checked for it. " +
+            "The message may or may not have left — verify in the Gmail Sent folder before rescheduling."
+        );
+        report.parked += 1;
+        continue;
+      }
+    }
     const [schedulerRow] = draft.scheduledBy
       ? await sql`
           select id, email, name, role from users
@@ -324,8 +374,8 @@ export async function drainScheduledSends(limit = 5): Promise<ScheduledSendRepor
       await park({ ...draft, attempts }, result.error.message);
       report.parked += 1;
     } else {
-      // Clean transport failure: nothing left the building. Clear the
-      // claim, keep the schedule — the next tick retries.
+      // Transport failure. It may have left (a timeout after acceptance), so
+      // the next tick checks the mailbox for the fingerprint before retrying.
       await sql`
         update outreach_drafts set
           send_claimed_at = null, last_send_error = ${result.error.message.slice(0, 500)}

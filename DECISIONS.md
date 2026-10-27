@@ -3815,3 +3815,47 @@ paid work no one requested. Medina's baseline needs the worker.
 - **Not fixed here, and recorded as blockers for enabling outreach:** G3
   (follow-up send window), G4 (handoff side effects in SHADOW) and G7
   (workflow send path without the 148/150 gates).
+
+## 2026-10-26 — The workflow engine never sends prospect email (spec 162, G7)
+
+- **Refuse, don't delegate.** `int.email_send_approved_message` stops
+  (`safe_stop`, `prospect_send_path`) on `prospect_first_outreach` or any
+  recipient matching a non-archived prospect or contact. Delegating to
+  `sendProspectDraft` would need an `outreach_drafts` row the workflow does not
+  have; inventing one would bypass the 148/150 provenance and QA gates.
+- **Approval at every autonomy level.** `assertSendAllowed` guards only this
+  node. Level ≥ 3 skipping approval was the second half of G7; an external
+  email now always needs a recorded approval bound to its body hash.
+
+## 2026-10-26 — Follow-ups leave only inside the recipient-local window (spec 163, G3)
+
+- **Defer, don't park.** A Touch 2/3 that comes due outside 09:00–10:58
+  recipient-local (window + 30 min grace), or on a different local day than it
+  was slotted for, moves to the next slot instead of sending. Follow-ups are
+  system-scheduled, so a new slot needs no human; every send-time gate still
+  runs when it leaves. More than 24 h late still parks (spec 159 D3).
+- **DST fix in `nextMorningSlot`.** It advanced "one day" by adding 24 h, so on
+  the 25-hour DST-end day it landed on the same date until it threw. It now
+  advances by calendar date.
+
+## 2026-10-26 — Handoffs prepare only when sending is on; delivery re-asks the lane (spec 164, G4)
+
+- **Hold on outbound-off, not on SHADOW.** Holding preparation in SHADOW would
+  break spec 139: SHADOW stages the report and email for the founder to review
+  and send. The waste G4 names is preparing while nothing can leave, so the
+  hold keys on `OUTBOUND_SENDS_ENABLED`.
+- **Send-time lane check, unattended only.** `fulfillment_lane_release` makes
+  the kill switch and a mode change stop an already-scheduled delivery. A
+  founder's attended send of a staged draft is untouched. Gate → v5.
+
+## 2026-10-26 — Pre-restart send fixes: subject encoding, one-click unsubscribe, retry safety
+
+- **RFC 2047 subjects** (from the unmerged 143 branch, `2817748`), plus
+  folding: a non-ASCII subject is split into encoded words of at most 75
+  characters, never splitting a character.
+- **Spec 157 ported without the 151 stack.** Only its own commit (`34a1cde`)
+  was needed; the migration became 126 with a plain down. A Gmail send now
+  carries `List-Unsubscribe` + `List-Unsubscribe-Post` and needs `APP_URL`.
+- **Spec 165.** A send that may have been accepted is never retried blind:
+  no in-process retry of the Gmail POST, a Message-ID fingerprint on every
+  scheduled send, and a mailbox check before any retry.

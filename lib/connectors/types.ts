@@ -142,6 +142,12 @@ export interface ConnectorHttpRequest {
    * `text` stays redacted regardless.
    */
   rawSecrets?: boolean;
+  /**
+   * Spec 165: false for requests that must not be repeated blind (an email
+   * send). A 5xx, timeout or network error may mean the provider accepted it,
+   * so only a 429 (an explicit refusal) is retried.
+   */
+  idempotent?: boolean;
 }
 
 export interface ConnectorHttpResponse<T = unknown> {

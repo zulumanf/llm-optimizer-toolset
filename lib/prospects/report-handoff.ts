@@ -29,7 +29,8 @@ import {
 import { getActiveSenderIdentity } from "@/lib/outreach/sender-identity";
 import { compileFactManifest, evidenceHashOf, assertReportMatchesManifest, assertTextNumbersManifested, validatedSummarySentence, type CompiledSentence, type FactManifest } from "@/lib/prospects/fact-manifest";
 import { evidenceSnapshotForDraft, releaseGateDetail, verifyEvidenceRelease, type EvidenceReleaseVerdict } from "@/lib/prospects/evidence-release";
-import { assertTransition, effectiveReleasePolicy, releaseDecision, resolveLaneConfig, reviewOverrideFor, sendIntentKey, sendMessageIdFor, senderDomainOf, videoReleasableFor, HANDOFF_STATUSES, type HandoffStatus, type LaneConfig } from "@/lib/prospects/fulfillment-lane";
+import { outboundSendsEnabled } from "@/lib/ops/mode";
+import { assertTransition, effectiveReleasePolicy, preparationHold, releaseDecision, resolveLaneConfig, reviewOverrideFor, sendIntentKey, sendMessageIdFor, senderDomainOf, videoReleasableFor, HANDOFF_STATUSES, type HandoffStatus, type LaneConfig } from "@/lib/prospects/fulfillment-lane";
 import { classifyForAutonomy, type AutonomyClass } from "@/lib/prospects/reply-preprocess";
 import { checkSuppression } from "@/lib/outreach/suppression";
 import {
@@ -62,6 +63,8 @@ export type { HandoffStatus };
 
 /** Statuses in which a tick performs preparation work (and counts an attempt). */
 const WORK_STATUSES: ReadonlySet<HandoffStatus> = new Set(["pending", "autonomy_eligible", "evidence_verified", "report_published", "qa_passed"]);
+/** Spec 164: the states whose next step publishes or calls the release review. */
+const PREPARATION_STATUSES: ReadonlySet<HandoffStatus> = new Set(["evidence_verified", "report_published"]);
 /** How often a held (SHADOW / canary-held / kill-switch) handoff re-validates its artifacts. */
 const HELD_RECHECK_MINUTES = 30;
 
@@ -799,7 +802,9 @@ async function advanceClaimed(h: ReportHandoff, now: Date, opts: { caller?: Agen
   // Attempts count WORK (preparation) ticks only; a held or scheduled
   // handoff is observed, not retried, and never times out on its own.
   const heldForVideo = h.status === "qa_passed" && /^WAITING_FOR_VIDEO/.test(h.reason ?? "");
-  if (WORK_STATUSES.has(h.status) && !heldForVideo) {
+  const prepHold = preparationHold(outboundSendsEnabled());
+  const heldForLane = prepHold !== null && PREPARATION_STATUSES.has(h.status);
+  if (WORK_STATUSES.has(h.status) && !heldForVideo && !heldForLane) {
     if (h.attempts >= REPORT_HANDOFF.maxAttempts) return note(h, "needs_review", `ARTIFACT_GENERATION_FAILED: ${h.attempts} attempts without completing`, actor.id);
     await tickAttempt(h.id, null);
   }
@@ -819,6 +824,14 @@ async function advanceClaimed(h: ReportHandoff, now: Date, opts: { caller?: Agen
     await recordQaRun(h, "release_gate", evidenceHashOf(ctx.seq.evidenceSnapshot), v.ok, v.verdict ?? { reason: v.ok ? null : v.reason });
     if (!v.ok) return note(h, "needs_review", v.reason, actor.id, { releaseVerdict: v.verdict });
     h = await transition(h, "evidence_verified", { releaseVerdict: v.verdict, reason: null });
+  }
+
+  // Spec 164 (G4): no publish and no release review unless this can send.
+  if (prepHold !== null && PREPARATION_STATUSES.has(h.status)) {
+    await sql`
+      update prospect_report_handoffs set reason = ${prepHold}, auto_verdict = 'held', updated_at = now()
+      where id = ${h.id} and status = ${h.status}`;
+    return (await getReportHandoff(h.id)) ?? h;
   }
 
   // 2. EVIDENCE_VERIFIED → REPORT_READY over the same frozen evidence.

@@ -18,6 +18,8 @@ import { runModeFor, recordWouldHaveHappened } from "@/lib/automation/testmode";
 import { assertSendAllowed } from "@/lib/outreach/suppression";
 import { hashBody } from "@/lib/outreach/sequences";
 import { resolveAutonomy } from "@/lib/workflow/autonomy";
+import { isProspectRecipient } from "@/db/prospect-recipients";
+import { PROSPECT_OUTREACH_ACTION_TYPES } from "@/lib/prospects/constants";
 import type { NodeHandler, NodeResult } from "@/lib/workflow/types";
 
 /**
@@ -172,10 +174,32 @@ const emailSendApproved: NodeHandler = async (ctx): Promise<NodeResult> => {
     };
   }
 
+  // Spec 162 (G7): prospect email has one path, `sendProspectDraft`, with the
+  // 148/150 gates. This node never sends it, whatever the autonomy level.
+  const actionType = String(ctx.config.actionType ?? "outreach_send");
+  if (
+    PROSPECT_OUTREACH_ACTION_TYPES.includes(actionType) ||
+    (await isProspectRecipient(recipient))
+  ) {
+    const reason =
+      "prospect email is sent only through the prospect send path (sendProspectDraft); the workflow engine does not send it";
+    await recordWouldHaveHappened({
+      workflowRunId: ctx.runId,
+      capability: "email.send_approved_message",
+      payload: { to: recipient, subject, bodyHash: hashBody(subject, body), actionType },
+      reason,
+    });
+    return {
+      outcome: "safe_stop",
+      reason,
+      output: { ok: false, sent: false, failedCheck: "prospect_send_path", mode: mode.mode },
+    };
+  }
+
   const autonomy = await resolveAutonomy({
     projectId: ctx.projectId,
     workflowKey: String(ctx.config.workflowKey ?? ""),
-    actionType: String(ctx.config.actionType ?? "outreach_send"),
+    actionType,
     riskLevel: ctx.node.riskLevel ?? "high",
     workflowLevel: (ctx.config.workflowLevel as 0 | 1 | 2 | 3 | 4) ?? 2,
     nodeLevel: ctx.node.autonomyLevel,

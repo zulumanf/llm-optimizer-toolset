@@ -11,7 +11,7 @@
  */
 import { execSync } from "node:child_process";
 import { join } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/auth";
 import { seedTestActors } from "../helpers/actors";
 import { unwrap } from "../helpers/result";
@@ -133,6 +133,17 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
         replyToEmail: "dana@avos.agency",
       })
     );
+  });
+
+  // Spec 157: a Gmail send needs APP_URL for its one-click unsubscribe link
+  // (tests/setup.ts deletes it globally). Tests that need it absent unset it.
+  const savedAppUrl = process.env.APP_URL;
+  beforeEach(() => {
+    process.env.APP_URL = "https://app.test.local";
+  });
+  afterEach(() => {
+    if (savedAppUrl === undefined) delete process.env.APP_URL;
+    else process.env.APP_URL = savedAppUrl;
   });
 
   afterAll(async () => {
@@ -278,6 +289,9 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     };
     expect(dispatched.input.body).toMatch(/unsubscribe/i);
     expect(dispatched.input.body).toContain("123 Grand St");
+    // Spec 157: the RFC 8058 one-click target reaches the adapter.
+    const withLink = dispatched.input as { unsubscribeUrl?: string };
+    expect(withLink.unsubscribeUrl).toMatch(/^https:\/\/app\.test\.local\/api\/unsubscribe\/[0-9a-f]{32}$/);
 
     const [ledger] = await sql`
       select channel, allowed, provider_message_id, gate_verdict
@@ -292,7 +306,7 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
       version: string;
       checks: { name: string; passed: boolean }[];
     };
-    expect(verdict.version).toBe("prospect-send-gate-v4");
+    expect(verdict.version).toBe("prospect-send-gate-v5");
     const cap = verdict.checks.find((c) => c.name === "daily_send_cap");
     expect(cap?.passed).toBe(true);
 
@@ -556,9 +570,37 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     expect(human.ok).toBe(true);
   });
 
-  it("drain: clean transport failures retry, then park at the attempt cap", async () => {
+  it("spec 165: a failed attempt that Gmail actually accepted is reconciled by fingerprint, never resent", async () => {
     const { draftId } = await seedApprovedDraft();
     executeCapability.mockResolvedValue(sendHttp500);
+    await scheduleAndBackdate(draftId);
+    const first = await drain.drainScheduledSends();
+    expect(first).toMatchObject({ retryable: 1 });
+    const [d] = await sql`select send_message_id from outreach_drafts where id = ${draftId}`;
+    const fingerprint = d?.sendMessageId as string;
+    expect(fingerprint).toMatch(/^<rf-[0-9a-f]{32}@.+>$/);
+    const sent = executeCapability.mock.calls.find((c) => (c[0] as { capability: string }).capability === "email.send_approved_message");
+    expect((sent?.[0] as { input: { messageId?: string } }).input.messageId).toBe(fingerprint);
+
+    executeCapability.mockReset();
+    executeCapability.mockImplementation(async (req: { capability: string }) =>
+      req.capability === "email.search_messages"
+        ? { ...sendOk, data: { messages: [{ id: "gm-late", threadId: "th-late", messageId: fingerprint, date: new Date().toISOString() }] } }
+        : sendOk
+    );
+    const second = await drain.drainScheduledSends();
+    expect(second).toMatchObject({ reconciled: 1, sent: 0 });
+    expect(executeCapability.mock.calls.some((c) => (c[0] as { capability: string }).capability === "email.send_approved_message")).toBe(false);
+    const [after] = await sql`select sent_recorded_at from outreach_drafts where id = ${draftId}`;
+    expect(after?.sentRecordedAt).not.toBeNull();
+  });
+
+  it("drain: clean transport failures retry, then park at the attempt cap", async () => {
+    const { draftId } = await seedApprovedDraft();
+    // Spec 165: before each retry the mailbox is searched for the fingerprint.
+    executeCapability.mockImplementation(async (req: { capability: string }) =>
+      req.capability === "email.search_messages" ? { ...sendOk, data: { messages: [] } } : sendHttp500
+    );
     await scheduleAndBackdate(draftId);
 
     for (let attempt = 1; attempt < constants.SCHEDULED_SEND_MAX_ATTEMPTS; attempt += 1) {
@@ -637,6 +679,38 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     expect(d?.scheduledSendAt).toBeNull();
     expect(d?.lastSendError).toMatch(/more than 24 hours overdue/);
     expect(d?.lastSendError).toMatch(/Nothing was sent/);
+  });
+
+  it("spec 163 G3: a follow-up due outside its recipient-local window is deferred, not sent", async () => {
+    const { prospectId, draftId } = await seedApprovedDraft();
+    executeCapability.mockResolvedValue(sendOk);
+    await scheduleAndBackdate(draftId);
+    // Pick a zone where the current instant is outside 09:00–10:58 local.
+    const fu = await import("@/lib/prospects/followups");
+    const tz = ["America/New_York", "Asia/Tokyo"].find(
+      (z) => !fu.followupDispatchDecision({ id: "probe", timezone: z }, new Date(), new Date()).send
+    )!;
+    const [company] = await sql`insert into companies (name) values ('G3 Rival') returning id`;
+    const [send] = await sql`
+      insert into prospect_outreach_sends (draft_id, prospect_id, channel, recipient_email, body_hash, business_purpose, gate_verdict, allowed, sent_by)
+      values (${draftId}, ${prospectId}, 'gmail', 'x@example.com', 'h', ${PURPOSE}, '{}'::jsonb, true, ${operator.id})
+      returning id
+    `;
+    const [seq] = await sql`
+      insert into outreach_followup_sequences (prospect_id, experiment_id, touch1_draft_id, touch1_send_id, competitor_company_id, evidence_snapshot, timezone, enrolled_by)
+      values (${prospectId}, 'g3', ${draftId}, ${send!.id}, ${company!.id}, '{}'::jsonb, ${tz}, ${operator.id})
+      returning id
+    `;
+    await sql`update outreach_drafts set sequence_id = ${seq!.id}, touch_number = 2 where id = ${draftId}`;
+
+    const report = await drain.drainScheduledSends();
+    expect(report).toMatchObject({ due: 1, sent: 0, parked: 0, deferred: 1 });
+    expect(executeCapability).not.toHaveBeenCalled();
+    const [d] = await sql`select scheduled_send_at, send_attempts, send_claimed_at from outreach_drafts where id = ${draftId}`;
+    expect((d?.scheduledSendAt as Date).getTime()).toBeGreaterThan(Date.now());
+    expect(d?.sendClaimedAt).toBeNull();
+    const [audit] = await sql`select count(*)::int as n from audit_log where action = 'prospect.followup_send_deferred' and entity_id = ${draftId}`;
+    expect(audit?.n).toBe(1);
   });
 
   it("spec 159 D3: a send 23 h overdue (inside the bound) still goes out", async () => {
@@ -753,37 +827,25 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     }
   });
 
-  it("open tracking: without APP_URL the send transmits untracked — never blocked, never zero", async () => {
+  it("spec 157: without APP_URL a Gmail send refuses (no compliant unsubscribe link), ledgered, nothing dispatched", async () => {
     const { draftId } = await seedApprovedDraft();
     executeCapability.mockResolvedValue(sendOk);
-    const originalAppUrl = process.env.APP_URL;
     delete process.env.APP_URL;
-    try {
-      const result = unwrap(
-        await svc.sendProspectDraft(operator, {
-          draftId,
-          channel: "gmail",
-          businessPurpose: PURPOSE,
-        })
-      );
-      const dispatched = executeCapability.mock.calls[0]?.[0] as {
-        input: { htmlBody?: string };
-      };
-      expect(dispatched.input.htmlBody).toBeUndefined();
-      const [ledger] = await sql`
-        select open_token from prospect_outreach_sends where id = ${result.sendId}
-      `;
-      expect(ledger?.openToken).toBeNull();
-      const [row] = await sql`
-        select bool_or(s.open_token is not null) as open_tracked
-        from prospect_outreach_sends s
-        where s.draft_id = ${draftId} and s.allowed
-      `;
-      expect(row?.openTracked).toBe(false);
-    } finally {
-      if (originalAppUrl === undefined) delete process.env.APP_URL;
-      else process.env.APP_URL = originalAppUrl;
-    }
+    const result = await svc.sendProspectDraft(operator, {
+      draftId,
+      channel: "gmail",
+      businessPurpose: PURPOSE,
+    });
+    expect(result.ok).toBe(false);
+    expect(executeCapability).not.toHaveBeenCalled();
+    const [ledger] = await sql`
+      select allowed, gate_verdict from prospect_outreach_sends where draft_id = ${draftId}
+    `;
+    expect(ledger?.allowed).toBe(false);
+    const checks = (ledger?.gateVerdict as { checks: { name: string; passed: boolean }[] }).checks;
+    expect(checks.find((c) => c.name === "one_click_unsubscribe")?.passed).toBe(false);
+    const [{ n }] = (await sql`select count(*)::int as n from outreach_unsubscribe_tokens where draft_id = ${draftId}`) as unknown as [{ n: number }];
+    expect(n).toBe(0);
   });
 
   it("drain: never picks up a schedule on anything but an approved, unsent draft", async () => {

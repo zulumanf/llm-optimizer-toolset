@@ -168,7 +168,9 @@ export function nextMorningSlot(earliest: Date, rule: SlotRule): Date {
     }
     // Advance to the next local midnight.
     const w = wallClock(new Date(t), rule.tz);
-    t = zonedInstant(w.year, w.month, w.day, 0, 0, rule.tz).getTime() + DAY_MS + 60_000;
+    // Next calendar day by date, not +24 h: a 25-hour DST-end day would
+    // otherwise land on the same local date forever.
+    t = zonedInstant(w.year, w.month, w.day + 1, 0, 0, rule.tz).getTime();
   }
   throw new Error("no business-day slot within 30 days");
 }

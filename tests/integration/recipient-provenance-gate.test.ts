@@ -133,7 +133,7 @@ describe.skipIf(!TEST_URL)("recipient provenance send gate (spec 148, integratio
     expect(ledger).toHaveLength(2);
     expect(ledger.every((r) => r.allowed === false)).toBe(true);
     const checks = (ledger[0]!.gateVerdict as { version: string; checks: { name: string; passed: boolean }[] });
-    expect(checks.version).toBe("prospect-send-gate-v4");
+    expect(checks.version).toBe("prospect-send-gate-v5");
     expect(checks.checks.find((c) => c.name === "recipient_email_provenance")?.passed).toBe(false);
     const [d] = await sql`select sent_recorded_at from outreach_drafts where id = ${draftId}`;
     expect(d!.sentRecordedAt).toBeNull();
