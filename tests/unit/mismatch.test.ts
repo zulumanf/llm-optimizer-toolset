@@ -271,9 +271,14 @@ describe("generateCompetitiveMismatchEmail", () => {
         "",
         "When people use ChatGPT to research who to work with, they can see them before they see you.",
         "",
-        "I have the exact questions and the side-by-side. Want me to send them?",
+        "Any single answer varies; the pattern across all 64 is the finding. " +
+          "These answers change slowly, so whoever fixes this first becomes the default recommendation in Jersey City.",
+        "",
+        'I work with one client per market. If you want the exact questions and the side-by-side, reply "show me". It\'s a five-minute read.',
       ].join("\n")
     );
+    // Spec 167: the v2 copy stays inside prospect-voice's hard lines.
+    expect(findProhibitedPhrase(draft.body)).toBeNull();
     expect(draft.promptVersion).toBe(MISMATCH_TEMPLATE_VERSION);
   });
 
@@ -359,5 +364,16 @@ describe("dataset-sourced competitors (spec 124 data pass)", () => {
       })
     );
     expect(mismatchStrength(weak.selected!)).toBe("valid"); // 87% ratio, gap 2
+  });
+});
+
+describe("spec 167: mismatch template versions", () => {
+  it("recognises v1 and v2 so QA, follow-ups and analytics keep working for both", async () => {
+    const { isMismatchTemplate, MISMATCH_TEMPLATE_VERSIONS } = await import("@/lib/prospects/constants");
+    expect(MISMATCH_TEMPLATE_VERSIONS).toEqual(["competitive_mismatch_reply_v1", "competitive_mismatch_reply_v2"]);
+    expect(isMismatchTemplate("competitive_mismatch_reply_v1")).toBe(true);
+    expect(isMismatchTemplate(MISMATCH_TEMPLATE_VERSION)).toBe(true);
+    expect(isMismatchTemplate("reply-first-email-v2")).toBe(false);
+    expect(isMismatchTemplate(null)).toBe(false);
   });
 });

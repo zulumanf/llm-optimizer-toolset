@@ -3866,3 +3866,13 @@ paid work no one requested. Medina's baseline needs the worker.
   fingerprint (specs 137/165) could never be found and an ambiguous failure
   read as "not sent". The search now ORs in Sent-folder mail to the same
   recipient with the same subject in the last 3 days.
+
+## 2026-10-28 — Touch 1 v2 (spec 167)
+
+- Hormozi-aligned within prospect-voice: outcome via mechanism, candor about
+  variance, true scarcity (one retained client per market), reply "show me".
+  No guarantee: "guaranteed" is a prohibited phrase; risk reversal needs an
+  operator-approved offer term.
+- Template versions are a list, not one constant: equality on the current
+  version would have silently skipped Touch 1 QA evidence checks and follow-up
+  enrollment for any new version.

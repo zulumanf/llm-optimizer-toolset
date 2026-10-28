@@ -36,7 +36,7 @@ import {
   FOLLOWUP_TEMPLATE_VERSIONS,
   FOLLOWUP_TEMPLATE_VERSION_LIST,
   GMAIL_DAILY_SEND_CAP,
-  MISMATCH_TEMPLATE_VERSION,
+  MISMATCH_TEMPLATE_VERSIONS,
   OUTREACH_PUBLIC_WEBSITE,
   PROSPECT_EXIT_STAGES,
   UNATTENDED_SEND_BLOCKED_STAGES,
@@ -324,7 +324,7 @@ export async function deliveredTouch1(prospectId: string): Promise<DeliveredTouc
       where c.evidence_snapshot is null and c.depth < 10
     )
     select * from chain
-    where prompt_version = ${MISMATCH_TEMPLATE_VERSION} and evidence_snapshot is not null
+    where prompt_version = any(${MISMATCH_TEMPLATE_VERSIONS}) and evidence_snapshot is not null
     order by sent_at desc, depth asc limit 1
   `;
   const r = rows[0];

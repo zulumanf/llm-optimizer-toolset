@@ -14,7 +14,7 @@ import {
 import { resolveFindingEvidence, unsupportedProviderMentions } from "@/lib/prospects/finding-evidence";
 import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
 import {
-  MISMATCH_TEMPLATE_VERSION,
+  isMismatchTemplate,
   MISMATCH_THRESHOLDS,
   OUTREACH_FORBIDDEN_FOOTER_HOST,
   OUTREACH_PUBLIC_WEBSITE,
@@ -385,7 +385,7 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
   }
   const followup = isFollowupTemplate(row.promptVersion as string | null);
   const snapshot =
-    (row.promptVersion === MISMATCH_TEMPLATE_VERSION || followup) && row.evidenceSnapshot
+    (isMismatchTemplate(row.promptVersion) || followup) && row.evidenceSnapshot
       ? (row.evidenceSnapshot as MismatchEvidenceSnapshot)
       : null;
   const mismatchIssues: DraftQaIssue[] = [];

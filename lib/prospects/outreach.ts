@@ -246,7 +246,9 @@ export function generateCompetitiveMismatchEmail(
   );
   const pronoun = benchmark.modelCount > 1 ? "They" : "It";
   const n = benchmark.answerCount;
-  const cta = "I have the exact questions and the side-by-side. Want me to send them?";
+  // Spec 167: one two-word reply, what it gets them, and how long it takes.
+  const cta = `If you want the exact questions and the side-by-side, reply "show me". It's a five-minute read.`;
+  const market = marketShortName(review.marketName);
   const body = [
     `${firstName} —`,
     ``,
@@ -259,7 +261,13 @@ export function generateCompetitiveMismatchEmail(
     ``,
     implicationLine(review.audiences),
     ``,
-    cta,
+    // Spec 167: candor about variance, the outcome, and urgency through
+    // mechanism (prospect-voice) — no projected losses, no guarantees.
+    `Any single answer varies; the pattern across all ${n} is the finding. ` +
+      `These answers change slowly, so whoever fixes this first becomes the default recommendation in ${market}.`,
+    ``,
+    // True scarcity: one retained client per market (docs/15-pricing-policy.md).
+    `I work with one client per market. ${cta}`,
   ].join("\n");
   return {
     subject: `${firstName} — ${marketShortName(review.marketName)}`,
