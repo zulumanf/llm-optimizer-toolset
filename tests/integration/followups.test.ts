@@ -68,7 +68,7 @@ vi.mock("@/lib/prospects/evidence-release", async (orig) => {
     verifyEvidenceRelease: verdictFor,
     verifyDraftEvidenceRelease: async (db: unknown, draft: { id: string }) => {
       const found = await real.evidenceSnapshotForDraft(db as never, draft.id);
-      return found ? verdictFor(found.snapshot) : null;
+      return found ? verdictFor(found.snapshot as never) : null;
     },
   };
 });

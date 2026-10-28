@@ -3876,3 +3876,10 @@ paid work no one requested. Medina's baseline needs the worker.
 - Template versions are a list, not one constant: equality on the current
   version would have silently skipped Touch 1 QA evidence checks and follow-up
   enrollment for any new version.
+
+## 2026-10-28 — Market-leader Touch 1 (spec 168)
+
+- A separate claim, not a weakened mismatch: counts only, no production
+  inversion asserted, same-entity-level leader, gap ≥ 10, prospect ≤ 2.
+- A separate snapshot type keeps `MismatchEvidenceSnapshot` strict; only
+  evidence release accepts both and skips just the production checks.
