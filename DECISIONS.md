@@ -3883,3 +3883,14 @@ paid work no one requested. Medina's baseline needs the worker.
   inversion asserted, same-entity-level leader, gap ≥ 10, prospect ≤ 2.
 - A separate snapshot type keeps `MismatchEvidenceSnapshot` strict; only
   evidence release accepts both and skips just the production checks.
+
+## 2026-10-28 — Leader email for "increase your ranking" (spec 169)
+
+- Segment B (already recommended, not the default) gets the leader email when
+  the leader is 10+ ahead and at least 2x; nearly absent prospects need 6+.
+  The 2x floor keeps "far more often" true without new copy.
+
+## 2026-10-28 — Reply alerts to the owner's inbox (spec 170)
+
+- The alert goes to the owner's account email, not the outreach mailbox the
+  reply already sits in: the point is a phone notification within the hour.

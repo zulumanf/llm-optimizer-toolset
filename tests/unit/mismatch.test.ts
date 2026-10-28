@@ -400,10 +400,18 @@ describe("spec 168: market-leader comparison", () => {
     expect(e.leader?.recommendationCount).toBe(18);
   });
 
-  it("refuses a prospect already recommended, a small gap, an unknown or different entity level", async () => {
+  it("spec 169: nearly absent needs a 6+ gap; already recommended needs 10+ and at least 2x", async () => {
     const { evaluateLeader } = await import("@/lib/prospects/mismatch");
-    expect(evaluateLeader(leaderReview(3, 30), "team", NOW).reasonCodes).toContain("PROSPECT_ALREADY_RECOMMENDED");
-    expect(evaluateLeader(leaderReview(0, 9), "team", NOW).reasonCodes).toContain("NO_CLEAR_LEADER");
+    expect(evaluateLeader(leaderReview(0, 6), "team", NOW).eligible).toBe(true);
+    expect(evaluateLeader(leaderReview(2, 7), "team", NOW).reasonCodes).toContain("NO_CLEAR_LEADER");
+    expect(evaluateLeader(leaderReview(5, 30), "team", NOW).eligible).toBe(true);
+    expect(evaluateLeader(leaderReview(12, 22), "team", NOW).reasonCodes).toContain("NO_CLEAR_LEADER");
+    expect(evaluateLeader(leaderReview(3, 12), "team", NOW).reasonCodes).toContain("NO_CLEAR_LEADER");
+  });
+
+  it("refuses a small gap, an unknown or different entity level", async () => {
+    const { evaluateLeader } = await import("@/lib/prospects/mismatch");
+    expect(evaluateLeader(leaderReview(0, 5), "team", NOW).reasonCodes).toContain("NO_CLEAR_LEADER");
     expect(evaluateLeader(leaderReview(0, 18), null, NOW).reasonCodes).toContain("ENTITY_LEVEL_UNKNOWN");
     expect(evaluateLeader(leaderReview(0, 18), "individual", NOW).reasonCodes).toContain("NO_CLEAR_LEADER");
   });
@@ -432,7 +440,7 @@ describe("spec 168: market-leader comparison", () => {
     const live = { eligible: true, prospectRecommendationCount: 0, competitorRecommendationCount: 18, answerCount: 64, benchmarkAgeDays: 1 };
     expect(qaLeaderClaims(d.body, snap, live)).toEqual([]);
     expect(qaLeaderClaims(d.body, snap, { ...live, competitorRecommendationCount: 15 }).map((i) => i.check)).toContain("leader_stale");
-    expect(qaLeaderClaims(d.body, snap, { ...live, prospectRecommendationCount: 0, competitorRecommendationCount: 9 }).map((i) => i.check)).toContain("leader_eligibility");
+    expect(qaLeaderClaims(d.body, snap, { ...live, prospectRecommendationCount: 0, competitorRecommendationCount: 5 }).map((i) => i.check)).toContain("leader_eligibility");
     expect(qaLeaderClaims(d.body.replace("18 of 64", "19 of 64"), snap, live).map((i) => i.check)).toContain("leader_render");
   });
 });

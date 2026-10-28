@@ -16,6 +16,7 @@ import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
 import {
   isLeaderTemplate,
   isMismatchTemplate,
+  leaderClearlyAhead,
   LEADER_THRESHOLDS,
   MISMATCH_THRESHOLDS,
   OUTREACH_FORBIDDEN_FOOTER_HOST,
@@ -393,7 +394,7 @@ export function qaLeaderClaims(
   }
   if (
     !live.eligible ||
-    (live.competitorRecommendationCount ?? 0) - live.prospectRecommendationCount < LEADER_THRESHOLDS.minRecommendationGap
+    !leaderClearlyAhead(live.prospectRecommendationCount, live.competitorRecommendationCount ?? 0)
   ) {
     add("leader_eligibility", "the leader comparison no longer passes eligibility against live data — regenerate the draft.");
   }
