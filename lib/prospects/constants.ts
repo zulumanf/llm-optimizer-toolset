@@ -347,7 +347,15 @@ const LEGACY_OUTREACH_TEMPLATE_VERSION = "reply-first-email-v1";
 // Spec 124: the competitive-mismatch template. The version string IS the
 // template identity persisted on drafts (prompt_version) — bump it with any
 // copy change so analytics attribution survives edits.
-export const MISMATCH_TEMPLATE_VERSION = "competitive_mismatch_reply_v1";
+export const MISMATCH_TEMPLATE_VERSION = "competitive_mismatch_reply_v2";
+/** Every Touch 1 mismatch template version ever persisted (spec 167). QA,
+ * follow-up enrollment and analytics must recognise all of them. */
+export const MISMATCH_TEMPLATE_VERSIONS: readonly string[] = [
+  "competitive_mismatch_reply_v1",
+  MISMATCH_TEMPLATE_VERSION,
+];
+export const isMismatchTemplate = (v: string | null | undefined): boolean =>
+  v != null && MISMATCH_TEMPLATE_VERSIONS.includes(v);
 
 /** Prospect-readable labels per template version for analytics groupings. */
 /** Spec 127: follow-up touches over the frozen Touch 1 evidence. */
@@ -424,7 +432,8 @@ export const REPLY_SYNC_LOOKBACK_DAYS = 30;
 export const OUTREACH_TEMPLATE_LABELS: Record<string, string> = {
   [OUTREACH_TEMPLATE_VERSION]: "Reply-first audit email",
   [LEGACY_OUTREACH_TEMPLATE_VERSION]: "Reply-first audit email",
-  [MISMATCH_TEMPLATE_VERSION]: "Competitive mismatch",
+  "competitive_mismatch_reply_v1": "Competitive mismatch",
+  [MISMATCH_TEMPLATE_VERSION]: "Competitive mismatch v2",
   [FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement]: "Mismatch T2 · no engagement",
   [FOLLOWUP_TEMPLATE_VERSIONS.t2Engaged]: "Mismatch T2 · engaged",
   [FOLLOWUP_TEMPLATE_VERSIONS.t3Engaged]: "Mismatch T3 · engaged",
