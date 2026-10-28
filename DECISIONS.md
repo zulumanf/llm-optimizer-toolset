@@ -3884,6 +3884,7 @@ paid work no one requested. Medina's baseline needs the worker.
 - A separate snapshot type keeps `MismatchEvidenceSnapshot` strict; only
   evidence release accepts both and skips just the production checks.
 
+<<<<<<< HEAD
 ## 2026-10-17 — Spec 152 (planned): performance pilot pricing replaces the $7,500 offer
 
 - **Founder decision: the current offer is $1,000 to start, plus $4,000 only if an agreed, measurable target is reached.** `first_client_90d_v1` ($7,500 / 90 days) is retired, not deleted: presented quotes and engagements reference policies by version, and history is evidence (spec 135).
@@ -3901,3 +3902,15 @@ paid work no one requested. Medina's baseline needs the worker.
 - Purchase order changes: freeze baseline and record the target before the
   agreement, which cites the target. `markActive` checks onboarding, then the
   target. v1 agreements re-render byte-identically (pinned hash).
+=======
+## 2026-10-28 — Leader email for "increase your ranking" (spec 169)
+
+- Segment B (already recommended, not the default) gets the leader email when
+  the leader is 10+ ahead and at least 2x; nearly absent prospects need 6+.
+  The 2x floor keeps "far more often" true without new copy.
+
+## 2026-10-28 — Reply alerts to the owner's inbox (spec 170)
+
+- The alert goes to the owner's account email, not the outreach mailbox the
+  reply already sits in: the point is a phone notification within the hour.
+>>>>>>> origin/main

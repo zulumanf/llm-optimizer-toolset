@@ -1889,7 +1889,7 @@ export async function recordProspectReply(
           select id, classification from prospect_replies where gmail_message_id = ${input.gmailMessageId}
         `;
         if (dup) {
-          return { replyId: dup.id as string, classification: dup.classification as ReplyClassification, stage: prospect.stage };
+          return { replyId: dup.id as string, classification: dup.classification as ReplyClassification, stage: prospect.stage, isNew: false };
         }
       }
       let contactEmail: string | null = null;
@@ -1962,7 +1962,7 @@ export async function recordProspectReply(
           receivedAt: input.receivedAt ?? new Date(), actorId: user.id, objections,
         });
       }
-      return { replyId: row?.id as string, classification, stage: prospect.stage };
+      return { replyId: row?.id as string, classification, stage: prospect.stage, isNew: true };
     });
     // A real conversation advances the stage through the one existing
     // transition path — outside the tx so a gate refusal (e.g. conflict)
@@ -1978,6 +1978,11 @@ export async function recordProspectReply(
         reason: `Reply recorded (${result.classification}).`,
       });
       stageAdvanced = moved.ok;
+    }
+    // Spec 170: answer within the hour — alert the owner (never blocks).
+    if (result.isNew) {
+      const { alertOperatorOfReply } = await import("@/lib/prospects/reply-alert");
+      await alertOperatorOfReply({ prospectId: input.prospectId, classification: result.classification, bodyText: input.bodyText });
     }
     return ok({
       replyId: result.replyId,

@@ -24,7 +24,7 @@ import {
   datasetProductionByCompany,
   launchGeographies,
 } from "@/lib/prospects/realtrends-dataset";
-import { LEADER_TEMPLATE_VERSION, LEADER_THRESHOLDS, MISMATCH_TEMPLATE_VERSION, MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
+import { leaderClearlyAhead, LEADER_TEMPLATE_VERSION, LEADER_THRESHOLDS, MISMATCH_TEMPLATE_VERSION, MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
 import { OPERATOR_TIMEZONE } from "@/lib/prospects/intent";
 
 /** The provider whose answers this template counts. Never widened to a
@@ -689,7 +689,6 @@ export type LeaderReasonCode =
   | "CHATGPT_DATA_UNAVAILABLE"
   | "BENCHMARK_SCOPE_INVALID"
   | "BENCHMARK_TOO_OLD"
-  | "PROSPECT_ALREADY_RECOMMENDED"
   | "ENTITY_LEVEL_UNKNOWN"
   | "NO_CLEAR_LEADER";
 
@@ -719,15 +718,12 @@ export function evaluateLeader(
   else if ((now.getTime() - review.benchmarkCompletedAt.getTime()) / 86_400_000 > LEADER_THRESHOLDS.maxBenchmarkAgeDays) {
     codes.push("BENCHMARK_TOO_OLD");
   }
-  if (review.prospect.recommendationCount > LEADER_THRESHOLDS.maxProspectRecommendations) {
-    codes.push("PROSPECT_ALREADY_RECOMMENDED");
-  }
   if (!prospectEntity) codes.push("ENTITY_LEVEL_UNKNOWN");
   const leader =
     [...review.evaluation.candidates]
       .filter((c) => prospectEntity !== null && c.production?.entityType === prospectEntity)
       .sort((a, b) => b.recommendationCount - a.recommendationCount || a.displayName.localeCompare(b.displayName))[0] ?? null;
-  if (!leader || leader.recommendationCount - review.prospect.recommendationCount < LEADER_THRESHOLDS.minRecommendationGap) {
+  if (!leader || !leaderClearlyAhead(review.prospect.recommendationCount, leader.recommendationCount)) {
     codes.push("NO_CLEAR_LEADER");
   }
   return { eligible: codes.length === 0, reasonCodes: codes, leader: codes.length === 0 ? leader : null };

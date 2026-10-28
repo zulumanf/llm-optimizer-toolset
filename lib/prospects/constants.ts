@@ -360,10 +360,25 @@ export const isLeaderTemplate = (v: string | null | undefined): boolean => v ===
 /** Spec 168: who gets the leader email. The prospect is (nearly) absent and
  * the market's most-recommended comparable entity clearly is not. */
 export const LEADER_THRESHOLDS = {
-  maxProspectRecommendations: 2,
-  minRecommendationGap: 10,
+  /** At or under this the prospect is "nearly absent" (spec 169). */
+  absentMaxRecommendations: 2,
+  /** Nearly absent: the leader must be this many recommendations ahead. */
+  minGapWhenAbsent: 6,
+  /** Already recommended ("increase your ranking"): gap AND multiple, so
+   * "far more often" stays true. */
+  minGapWhenRanked: 10,
+  minLeaderMultipleWhenRanked: 2,
   maxBenchmarkAgeDays: 14,
 } as const;
+
+/** Spec 169, pure: is the leader clearly ahead of this prospect? */
+export function leaderClearlyAhead(prospectRecommendations: number, leaderRecommendations: number): boolean {
+  const gap = leaderRecommendations - prospectRecommendations;
+  return prospectRecommendations <= LEADER_THRESHOLDS.absentMaxRecommendations
+    ? gap >= LEADER_THRESHOLDS.minGapWhenAbsent
+    : gap >= LEADER_THRESHOLDS.minGapWhenRanked &&
+        leaderRecommendations >= LEADER_THRESHOLDS.minLeaderMultipleWhenRanked * prospectRecommendations;
+}
 /** Every cold Touch 1 template that states frozen competitive evidence. */
 export const TOUCH1_EVIDENCE_TEMPLATE_VERSIONS: readonly string[] = [
   "competitive_mismatch_reply_v1",
