@@ -17,6 +17,9 @@ import { firstZodMessage } from "@/lib/service-helpers";
 import {
   activePricingPolicy,
   billingLabel,
+  centsToUsd,
+  formatBillingLabel,
+  formatOfferLabel,
   installmentSchedule,
   offerLabel,
   pricingPolicy,
@@ -25,16 +28,33 @@ import {
   usdToCents,
   type Installment,
 } from "@/lib/pricing/policy";
+import { addDays } from "@/lib/engagements/rules";
+import {
+  DEFAULT_PERFORMANCE_FEE_DUE_DAYS,
+  performanceFeeStatus,
+  performanceInvoiceId,
+  type PerformanceFeeStatus,
+  type PerformanceOutcome,
+  type PerformanceTarget,
+} from "@/lib/engagements/performance";
 import { openQuoteForProspect, quoteById, quotesForProspect, type QuoteBilling, type QuoteRow } from "@/lib/pricing/quotes";
 import { agreementForEngagement, type AgreementRow } from "@/lib/engagements/agreement";
 import { exclusivityGateForProspect } from "@/lib/engagements/exclusivity-gate";
-import { billingSummary, engagementForProject, getEngagement, recordBillingEvent, type BillingSummary, type EngagementRow } from "@/lib/engagements/service";
+import { billingSummary, engagementForProject, getEngagement, listMeasurements, recordBillingEvent, type BillingSummary, type EngagementRow } from "@/lib/engagements/service";
 import { activationPaid, onboardingComplete, type ChecklistItem } from "@/lib/engagements/rules";
 
 // ----------------------------------------------------------------- money
 
 export const PAYMENT_STATUSES = ["UNPAID", "PARTIALLY_PAID", "PAID_IN_FULL", "OVERDUE"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export interface PerformanceFeeState {
+  status: PerformanceFeeStatus;
+  feeCents: number;
+  paidCents: number;
+  /** "Performance fee: pending target" / "not owed" / "due $4,000" / "paid $4,000". */
+  label: string;
+}
 
 export interface PaymentState {
   status: PaymentStatus;
@@ -45,6 +65,22 @@ export interface PaymentState {
   activationPaymentCents: number;
   activationPaymentReceived: boolean;
   overdueCount: number;
+  /** Spec 152: null when the engagement carries no performance fee. */
+  performance: PerformanceFeeState | null;
+}
+
+export const PERFORMANCE_FEE_STATUS_LABEL: Record<PerformanceFeeStatus, (feeUsd: string) => string> = {
+  not_applicable: () => "No performance fee",
+  pending_target: () => "Performance fee: pending target",
+  not_owed: () => "Performance fee: not owed",
+  due: (fee) => `Performance fee: due ${fee}`,
+  paid: (fee) => `Performance fee: paid ${fee}`,
+};
+
+/** Spec 152: the contract total is the fixed fee; the performance fee joins
+ * it only once the founder records the target as met. Never before. */
+export function contractTotalCents(i: { fixedCents: number; performanceFeeCents: number; outcome: PerformanceOutcome }): number {
+  return i.fixedCents + (i.outcome === "met" ? i.performanceFeeCents : 0);
 }
 
 /** Financial status of the whole contract, separate from the lifecycle stage.
@@ -55,6 +91,7 @@ export function paymentState(i: {
   invoicedCents: number;
   receivedCents: number;
   overdueCount: number;
+  performance?: { outcome: PerformanceOutcome; feeCents: number; paidCents: number } | null;
 }): PaymentState {
   const balanceCents = Math.max(0, i.contractTotalCents - i.receivedCents);
   let status: PaymentStatus;
@@ -71,8 +108,16 @@ export function paymentState(i: {
     activationPaymentCents: i.activationPaymentCents,
     activationPaymentReceived: i.activationPaymentCents > 0 ? i.receivedCents >= i.activationPaymentCents : i.receivedCents > 0,
     overdueCount: i.overdueCount,
+    performance: performanceState(i.performance ?? null),
   };
 }
+
+function performanceState(p: { outcome: PerformanceOutcome; feeCents: number; paidCents: number } | null): PerformanceFeeState | null {
+  if (!p || p.outcome === "not_applicable") return null;
+  const status = performanceFeeStatus(p);
+  return { status, feeCents: p.feeCents, paidCents: p.paidCents, label: PERFORMANCE_FEE_STATUS_LABEL[status](usd(centsToUsd(p.feeCents))) };
+}
+
 
 /** Deterministic invoice id for installment n of an engagement. */
 export function installmentInvoiceId(engagementId: string, n: number): string {
@@ -176,13 +221,91 @@ export async function recordInstallmentPayment(user: CurrentUser, raw: unknown):
 
 export async function engagementPaymentState(e: EngagementRow, summary?: BillingSummary): Promise<PaymentState> {
   const b = summary ?? (await billingSummary(e.id, e.projectId));
+  const feeCents = e.performanceFeeUsd !== null ? usdToCents(e.performanceFeeUsd) : 0;
+  const perfInvoice = performanceInvoiceId(e.id);
+  const paidCents = b.events.filter((x) => x.kind === "payment_received" && x.externalInvoiceId === perfInvoice).reduce((s, x) => s + x.amountCents, 0);
   return paymentState({
-    contractTotalCents: usdToCents(e.totalValueUsd),
+    contractTotalCents: contractTotalCents({ fixedCents: usdToCents(e.totalValueUsd), performanceFeeCents: feeCents, outcome: e.performanceOutcome }),
     activationPaymentCents: usdToCents(e.monthlyFeeUsd),
     invoicedCents: b.invoicedCents,
     receivedCents: b.receivedCents,
     overdueCount: b.overdueCount,
+    performance: { outcome: e.performanceOutcome, feeCents, paidCents },
   });
+}
+
+/** Days after "met" the performance invoice falls due: the frozen quote's,
+ * else the engagement policy's, else the founder default. */
+export function performanceDueDays(e: EngagementRow, quote: QuoteRow | null): number {
+  return (
+    quote?.billing.performanceFee?.dueDaysAfterOutcome ??
+    (e.pricingPolicyVersion ? pricingPolicy(e.pricingPolicyVersion)?.performanceFee?.dueDaysAfterOutcome : undefined) ??
+    DEFAULT_PERFORMANCE_FEE_DUE_DAYS
+  );
+}
+
+/**
+ * Spec 152: the performance invoice exists only after the founder recorded
+ * the agreed target as met. Idempotent (deterministic id ENG-<id8>-P); due
+ * `outcome_at + dueDaysAfterOutcome`. Nothing is sent or charged.
+ */
+export async function createPerformanceInvoice(user: CurrentUser, raw: unknown): Promise<ActionResult<{ invoiceId: string; billingEventId: string; amountCents: number; dueOn: string; created: boolean }>> {
+  const parsed = z.object({ engagementId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  try {
+    assertCanWrite(user);
+    const e = await getEngagement(parsed.data.engagementId);
+    if (!e) throw new ClassifiedError("not_found", "Engagement not found.");
+    if (e.performanceOutcome !== "met" || !e.performanceOutcomeAt) {
+      throw new ClassifiedError("conflict", e.performanceOutcome === "not_met" ? "The target was recorded as not met: the performance fee is not owed." : "The performance fee is invoiced only after the founder records the agreed target as met.");
+    }
+    if (e.performanceFeeUsd === null || e.performanceFeeUsd <= 0) throw new ClassifiedError("conflict", "This engagement has no performance fee.");
+    const quote = e.quoteId ? await quoteById(e.quoteId) : null;
+    const invoiceId = performanceInvoiceId(e.id);
+    const dueOn = addDays(e.performanceOutcomeAt.toISOString().slice(0, 10), performanceDueDays(e, quote));
+    const existing = await billingSummary(e.id, e.projectId);
+    const have = existing.events.find((x) => x.kind === "invoice_created" && x.externalInvoiceId === invoiceId);
+    const amountCents = usdToCents(e.performanceFeeUsd);
+    if (have) return ok({ invoiceId, billingEventId: have.id, amountCents: have.amountCents, dueOn: have.dueDate ?? dueOn, created: false });
+    const r = await recordBillingEvent(user, { engagementId: e.id, kind: "invoice_created", amountUsd: e.performanceFeeUsd, dueDate: dueOn, externalInvoiceId: invoiceId, note: "Performance fee — agreed target recorded as met" });
+    if (!r.ok) return r;
+    await sql.begin((tx) => writeAudit(tx, { userId: user.id, action: "engagement.performance_invoice", entity: "client_engagement", entityId: e.id, projectId: e.projectId, detail: { invoiceId, amountCents, dueOn, outcomeSnapshotId: e.performanceOutcomeSnapshotId } }));
+    return ok({ invoiceId, billingEventId: r.data.billingEventId, amountCents, dueOn, created: true });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Record that the performance invoice was paid. Requires the invoice. */
+export async function recordPerformanceFeePayment(user: CurrentUser, raw: unknown): Promise<ActionResult<{ billingEventId: string; payment: PaymentState }>> {
+  const parsed = z.object({
+    engagementId: z.string().uuid(),
+    amountUsd: z.number().nonnegative().optional(),
+    paidAt: z.string().datetime().optional(),
+    reference: z.string().trim().max(300).optional(),
+  }).safeParse(raw);
+  if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  const i = parsed.data;
+  try {
+    assertCanWrite(user);
+    const e = await getEngagement(i.engagementId);
+    if (!e) throw new ClassifiedError("not_found", "Engagement not found.");
+    const invoiceId = performanceInvoiceId(e.id);
+    const summary = await billingSummary(e.id, e.projectId);
+    const invoice = summary.events.find((x) => x.kind === "invoice_created" && x.externalInvoiceId === invoiceId);
+    if (!invoice) throw new ClassifiedError("conflict", "No performance invoice exists; it is created only after the target is recorded as met.");
+    const r = await recordBillingEvent(user, {
+      engagementId: e.id,
+      kind: "payment_received",
+      amountUsd: i.amountUsd ?? centsToUsd(invoice.amountCents),
+      externalInvoiceId: invoiceId,
+      note: `Performance fee payment${i.reference ? ` · ref ${i.reference}` : ""}${i.paidAt ? ` · paid ${i.paidAt}` : ""}`,
+    });
+    if (!r.ok) return r;
+    return ok({ billingEventId: r.data.billingEventId, payment: await engagementPaymentState(e) });
+  } catch (err) {
+    return fail(err);
+  }
 }
 
 // ------------------------------------------------------- commercial stage
@@ -240,13 +363,13 @@ export const COMMERCIAL_NEXT_ACTION: Record<CommercialStage, string> = {
   QUOTE_READY: "Send the quote through your own channel, then mark it presented.",
   QUOTE_PRESENTED: "Wait for the response; record accepted / declined with objections.",
   QUOTE_ACCEPTED: "Record the signed engagement from the quote, confirm the market definition, prepare the agreement.",
-  AGREEMENT_READY: "Confirm the market definition if missing, prepare the agreement, send it through the approved process, mark it sent.",
+  AGREEMENT_READY: "Confirm the market definition if missing; with a performance fee, freeze the baseline and record the agreed target first. Prepare the agreement, send it through the approved process, mark it sent.",
   AGREEMENT_SENT: "When the signed copy returns, record it with the reference; create the invoice schedule.",
   SIGNED: "Create the invoice schedule and issue installment 1.",
   ACTIVATION_PAYMENT_DUE: "Issue installment 1 through the approved process; record the payment when it lands.",
   ACTIVATION_PAYMENT_RECEIVED: "Start onboarding (commercial gate clear) and run the onboarding intake.",
-  ONBOARDING: "Complete the onboarding intake, activate exclusivity, freeze the baseline, plan the first work, then mark active.",
-  ACTIVE: "Work the plan; installments 2 and 3 fall due on schedule.",
+  ONBOARDING: "Complete the onboarding intake, activate exclusivity, freeze the baseline, record the agreed performance target (if any), plan the first work, then mark active.",
+  ACTIVE: "Work the plan; any remaining installments fall due on schedule. With a performance fee: rerun the identical test after the agreed term and record the outcome yourself.",
   COMPLETED: "Historical. Nothing to do.",
   DECLINED: "Record objections; no new quote unless the founder decides.",
   LOST: "Historical. Cooldown applies before any re-prospecting.",
@@ -259,13 +382,27 @@ export interface CommercialState {
   projectId: string | null;
   engagementId: string | null;
   businessName: string;
-  offer: { label: string; billing: string; policyVersion: string; totalUsd: number; termDays: number; monthlyEquivalentUsd: number; source: "quote" | "engagement" | "current_policy" };
+  offer: {
+    label: string;
+    billing: string;
+    policyVersion: string;
+    /** The fixed, contracted fee. */
+    totalUsd: number;
+    termDays: number;
+    monthlyEquivalentUsd: number;
+    /** Spec 152: contingent on an agreed target — NOT contracted, never pipeline value. */
+    performanceFeeUsd: number | null;
+    source: "quote" | "engagement" | "current_policy";
+  };
+  performance: PerformanceView | null;
   quote: QuoteRow | null;
   quotes: QuoteRow[];
   agreement: { id: string; status: AgreementRow["status"]; templateVersion: string; legalReviewStatus: string; sentAt: Date | null; signedAt: Date | null; signedRef: string | null; contentHash: string } | null;
   contractStatus: EngagementRow["contractStatus"] | null;
   payment: PaymentState | null;
   installments: (Installment & { invoiceId: string; invoiced: boolean; paid: boolean })[];
+  /** Spec 152: the performance invoice once it exists. */
+  performanceInvoice: { invoiceId: string; amountCents: number; dueOn: string | null; paid: boolean } | null;
   market: { id: string | null; name: string; definition: string | null; definitionConfirmed: boolean };
   exclusivity: { status: EngagementRow["exclusivityStatus"] | "none"; conflict: boolean; detail: string };
   onboarding: { complete: boolean; open: string[] } | null;
@@ -274,13 +411,48 @@ export interface CommercialState {
 
 function offerFrom(quote: QuoteRow | null, e: EngagementRow | null): CommercialState["offer"] {
   if (e) {
-    return { label: `${usd(e.totalValueUsd)} / ${Math.max(1, Math.round((new Date(`${e.endsOn}T00:00:00Z`).getTime() - new Date(`${e.startsOn}T00:00:00Z`).getTime()) / 86_400_000))} days`, billing: `${usd(e.monthlyFeeUsd)} × ${e.totalValueUsd > 0 && e.monthlyFeeUsd > 0 ? Math.round(e.totalValueUsd / e.monthlyFeeUsd) : 1}`, policyVersion: e.pricingPolicyVersion ?? "pre-policy", totalUsd: e.totalValueUsd, termDays: Math.round((new Date(`${e.endsOn}T00:00:00Z`).getTime() - new Date(`${e.startsOn}T00:00:00Z`).getTime()) / 86_400_000), monthlyEquivalentUsd: e.monthlyFeeUsd, source: "engagement" };
+    const termDays = Math.round((new Date(`${e.endsOn}T00:00:00Z`).getTime() - new Date(`${e.startsOn}T00:00:00Z`).getTime()) / 86_400_000);
+    const installments = e.totalValueUsd > 0 && e.monthlyFeeUsd > 0 ? Math.round(e.totalValueUsd / e.monthlyFeeUsd) : 1;
+    const schedule = e.billingCadence === "upfront" && installments === 1 ? ["at signing"] : [];
+    return { label: formatOfferLabel(e.totalValueUsd, Math.max(1, termDays), e.performanceFeeUsd), billing: formatBillingLabel({ installments, installmentUsd: e.monthlyFeeUsd, schedule }, e.performanceFeeUsd), policyVersion: e.pricingPolicyVersion ?? "pre-policy", totalUsd: e.totalValueUsd, termDays, monthlyEquivalentUsd: e.monthlyFeeUsd, performanceFeeUsd: e.performanceFeeUsd, source: "engagement" };
   }
   if (quote) {
-    return { label: `${usd(quote.totalFeeUsd)} / ${quote.termDays} days`, billing: `${usd(quote.billing.installmentUsd)} × ${quote.billing.installments}`, policyVersion: quote.pricingPolicyVersion, totalUsd: quote.totalFeeUsd, termDays: quote.termDays, monthlyEquivalentUsd: quote.billing.installmentUsd, source: "quote" };
+    const perf = quote.billing.performanceFee?.usd ?? null;
+    return { label: formatOfferLabel(quote.totalFeeUsd, quote.termDays, perf), billing: formatBillingLabel(quote.billing, perf), policyVersion: quote.pricingPolicyVersion, totalUsd: quote.totalFeeUsd, termDays: quote.termDays, monthlyEquivalentUsd: quote.billing.installmentUsd, performanceFeeUsd: perf, source: "quote" };
   }
   const p = activePricingPolicy();
-  return { label: offerLabel(p), billing: billingLabel(p), policyVersion: p.version, totalUsd: p.totalFeeUsd, termDays: p.termDays, monthlyEquivalentUsd: runRate(p).monthlyEquivalentUsd, source: "current_policy" };
+  return { label: offerLabel(p), billing: billingLabel(p), policyVersion: p.version, totalUsd: p.totalFeeUsd, termDays: p.termDays, monthlyEquivalentUsd: runRate(p).monthlyEquivalentUsd, performanceFeeUsd: p.performanceFee?.usd ?? null, source: "current_policy" };
+}
+
+/** Spec 152: what the founder needs to record the target and the outcome. */
+export interface PerformanceView {
+  outcome: PerformanceOutcome;
+  feeUsd: number;
+  target: PerformanceTarget | null;
+  baselineFrozen: boolean;
+  /** Target may still be (re)recorded: before work starts and before a sent/signed agreement. */
+  targetEditable: boolean;
+  /** Frozen remeasurements the outcome may cite (instrument is re-checked on record). */
+  remeasurements: { id: string; role: string; frozenAt: Date | null }[];
+  outcomeSnapshotId: string | null;
+  outcomeAt: Date | null;
+  outcomeNote: string | null;
+}
+
+async function performanceView(e: EngagementRow, agreementStatus: AgreementRow["status"] | null): Promise<PerformanceView | null> {
+  if (e.performanceOutcome === "not_applicable" || e.performanceFeeUsd === null) return null;
+  const measurements = await listMeasurements(e.id);
+  return {
+    outcome: e.performanceOutcome,
+    feeUsd: e.performanceFeeUsd,
+    target: e.performanceTarget,
+    baselineFrozen: measurements.some((m) => m.role === "baseline" && m.status === "frozen"),
+    targetEditable: e.performanceOutcome === "pending" && (e.stage === "signed" || e.stage === "onboarding") && agreementStatus !== "sent" && agreementStatus !== "signed",
+    remeasurements: measurements.filter((m) => m.role !== "baseline" && m.status === "frozen").map((m) => ({ id: m.id, role: m.role, frozenAt: m.frozenAt })),
+    outcomeSnapshotId: e.performanceOutcomeSnapshotId,
+    outcomeAt: e.performanceOutcomeAt,
+    outcomeNote: e.performanceOutcomeNote,
+  };
 }
 
 async function assemble(prospectId: string | null, e: EngagementRow | null, checklist: ChecklistItem[] | null, marketConflicts: number): Promise<CommercialState> {
@@ -300,6 +472,12 @@ async function assemble(prospectId: string | null, e: EngagementRow | null, chec
       paid: Boolean(summary?.events.some((x) => x.kind === "payment_received" && x.externalInvoiceId === invoiceId)),
     };
   });
+  const perfInvoiceId = e ? performanceInvoiceId(e.id) : null;
+  const perfInvoiceEvent = perfInvoiceId ? summary?.events.find((x) => x.kind === "invoice_created" && x.externalInvoiceId === perfInvoiceId) : undefined;
+  const performanceInvoice = perfInvoiceEvent && perfInvoiceId
+    ? { invoiceId: perfInvoiceId, amountCents: perfInvoiceEvent.amountCents, dueOn: perfInvoiceEvent.dueDate, paid: Boolean(summary?.events.some((x) => x.kind === "payment_received" && x.externalInvoiceId === perfInvoiceId)) }
+    : null;
+  const performance = e ? await performanceView(e, agreement?.status ?? null) : null;
   let businessName = "";
   let market: CommercialState["market"] = { id: e?.marketId ?? null, name: e?.marketName ?? "", definition: e?.marketDefinition ?? null, definitionConfirmed: Boolean(e?.marketDefinitionConfirmedAt) };
   let exclusivity: CommercialState["exclusivity"] = { status: e?.exclusivityStatus ?? "none", conflict: marketConflicts > 0, detail: marketConflicts > 0 ? `${marketConflicts} other live client(s) overlap this market` : e ? "no other live client overlaps this market" : "" };
@@ -339,6 +517,8 @@ async function assemble(prospectId: string | null, e: EngagementRow | null, chec
     contractStatus: e?.contractStatus ?? null,
     payment,
     installments,
+    performanceInvoice,
+    performance,
     market,
     exclusivity,
     onboarding: checklist ? { complete: onboardingComplete(checklist), open: checklist.filter((c) => !c.done).map((c) => c.label) } : null,
@@ -375,5 +555,6 @@ export function activationPrerequisites(s: CommercialState): { ready: boolean; m
   if (!s.market.definitionConfirmed) missing.push("market definition not confirmed");
   if (s.exclusivity.conflict) missing.push("exclusivity conflict");
   if (s.onboarding && !s.onboarding.complete) missing.push(`onboarding open: ${s.onboarding.open.join("; ")}`);
+  if (s.performance && s.performance.outcome === "pending" && !s.performance.target) missing.push("performance target not recorded");
   return { ready: missing.length === 0, missing };
 }

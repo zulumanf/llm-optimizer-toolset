@@ -176,6 +176,16 @@ The wrapper (`discoveryPrompt`) asks the model for *the pages it consulted*,
 not for an answer: what this feature stores is citations, and a model answering
 fluently from memory with no citations has produced nothing we can keep.
 
+### pricing_reply_v2 — the answer under a performance fee (spec 152)
+
+Rendered by `pricingReplyLines()` when the active policy has a
+`performanceFee` (`performance_fee_v1`). Same sending rule as v1: only after
+an explicit price request or commercial interest, never in a cold touch.
+
+> It's $1,000 to start, and $4,000 only if we hit a measurable target we agree on before we begin.
+> The target is measured by rerunning the same frozen set of ChatGPT questions after 90 days.
+> If the target isn't reached, the $4,000 isn't owed.
+
 ### pricing_reply_v1 — the founder's answer to "what does it cost?" (spec 135)
 
 Rendered by `pricingReplyLines()` from the ACTIVE policy in
@@ -188,6 +198,7 @@ commercial interest, never in a cold touch.
 
 | Date | Template | Change |
 |---|---|---|
+| 2026-10-28 | pricing_reply_v2 | Spec 152: $1,000 to start + $4,000 only on the agreed target; 90-day rerun; no "pilot" wording. v1 kept for the retired policies' history. |
 | 2026-09-07 | pricing_reply_v1 | Spec 135: one offer, total first, billing second, no discount framing. Report offer section now reads the active policy (`first_client_90d_v1`); Ryan's snapshot keeps `founder_monthly_7500_v0` text. |
 | 2026-07-30 | external-discovery-v1 | Initial. |
 

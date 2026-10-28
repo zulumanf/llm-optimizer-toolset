@@ -22,8 +22,14 @@ import { activePricingPolicy, installmentSchedule, pricingPolicy, usd, type Inst
 import { quoteById, type QuoteBilling } from "@/lib/pricing/quotes";
 import { getEngagement, type EngagementRow } from "@/lib/engagements/service";
 import { daysBetween } from "@/lib/engagements/rules";
+import { DEFAULT_PERFORMANCE_FEE_DUE_DAYS, describeThreshold, type PerformanceTarget } from "@/lib/engagements/performance";
 
-export const AGREEMENT_TEMPLATE_VERSION = "engagement_agreement_v1";
+/** Fixed-fee engagements (spec 140). Renders byte-identically forever. */
+export const AGREEMENT_TEMPLATE_V1 = "engagement_agreement_v1";
+/** Spec 152: fixed fee + performance fee on a frozen, agreed target. */
+export const AGREEMENT_TEMPLATE_V2 = "engagement_agreement_v2";
+/** The newest template; an engagement without a performance fee still renders v1. */
+export const AGREEMENT_TEMPLATE_VERSION = AGREEMENT_TEMPLATE_V2;
 export const LEGAL_REVIEW_STATUSES = ["NOT_REVIEWED", "REVIEWED"] as const;
 export type LegalReviewStatus = (typeof LEGAL_REVIEW_STATUSES)[number];
 /** The template in this file has not been reviewed by counsel. */
@@ -53,6 +59,21 @@ export const AGREEMENT_CLAUSES = {
   term: "The engagement runs for the stated term from the effective date. Nothing continues after the term unless both parties agree in writing.",
 } as const;
 
+/** Spec 152 (engagement_agreement_v2) clauses. Plain operating language; the
+ * performance fee is a condition, never a promise of a result. */
+export const AGREEMENT_V2_CLAUSES = {
+  performanceNotOwed: "If the target is not met, the performance fee is not owed.",
+  performanceDecision:
+    "The outcome is recorded by the provider against the rerun and shared with the client together with the full before-and-after evidence. Nothing is decided or invoiced automatically.",
+  targetIsCondition:
+    "The agreed target is the condition for the performance fee. It is not a promise that the target will be reached.",
+  measurementMethod: [
+    "The rerun repeats the identical test frozen at baseline: the same question set version, the same assistant and model, the same number of repetitions per question, the same scoring version and the same names counted as the client.",
+    "The exact model version is reported for both the baseline and the rerun.",
+    "AI assistants, their models and the web results they read change over time, independently of the work. A rerun that cannot use the identical instrument is reported as non-comparable rather than compared, and no outcome is recorded against it.",
+  ],
+} as const;
+
 export interface AgreementSnapshot {
   templateVersion: string;
   legalReviewStatus: LegalReviewStatus;
@@ -75,10 +96,18 @@ export interface AgreementSnapshot {
   noGuarantee: string[];
   methodologyLimitation: string;
   createdAt: string;
+  /** Spec 152 (v2 only): the performance fee and the frozen target it depends on. */
+  performance?: { feeUsd: number; dueDaysAfterOutcome: number; target: PerformanceTarget };
 }
 
-/** Deterministic Markdown from a snapshot — the artifact the founder sends. */
+/** Deterministic Markdown from a snapshot — the artifact the founder sends.
+ * The snapshot's own template version picks the renderer, so a v1 artifact
+ * re-renders byte-identically after v2 exists. */
 export function renderAgreement(s: AgreementSnapshot): string {
+  return s.templateVersion === AGREEMENT_TEMPLATE_V2 && s.performance ? renderAgreementV2(s, s.performance) : renderAgreementV1(s);
+}
+
+function renderAgreementV1(s: AgreementSnapshot): string {
   const lines: string[] = [];
   lines.push(`# ${s.engagement.offerName} — Agreement`);
   lines.push("");
@@ -99,6 +128,80 @@ export function renderAgreement(s: AgreementSnapshot): string {
   lines.push("## Scope");
   lines.push(`One client entity (${s.parties.client.brandName || s.parties.client.legalName}), one defined market, one engagement. Scope version ${s.scope.version}. The fee includes:`);
   for (const inc of s.scope.includes) lines.push(`- ${inc}`);
+  lines.push("");
+  lines.push(s.scope.summary);
+  if (s.scope.exclusions) {
+    lines.push("");
+    lines.push(`**Out of scope:** ${s.scope.exclusions}`);
+  }
+  lines.push("");
+  lines.push("## Defined market and exclusivity");
+  lines.push(`Market: **${s.market.name}**. Boundary: ${s.market.definition}`);
+  lines.push(s.market.exclusivity);
+  lines.push("");
+  lines.push("## Client responsibilities");
+  for (const r of s.clientResponsibilities) lines.push(`- ${r}`);
+  lines.push("");
+  lines.push("## No guarantee");
+  lines.push("The provider does not guarantee:");
+  for (const g of s.noGuarantee) lines.push(`- ${g}`);
+  lines.push("What is promised: a rigorous baseline, evidence-backed diagnosis, documented execution and a comparable remeasurement.");
+  lines.push("");
+  lines.push("## Methodology limitation");
+  lines.push(s.methodologyLimitation);
+  lines.push("");
+  lines.push("## Signatures");
+  lines.push(`Client: ______________________  Date: __________  (${s.parties.client.legalName})`);
+  lines.push(`Provider: ____________________  Date: __________  (${s.parties.provider.legalName})`);
+  lines.push("");
+  return lines.join("\n");
+}
+
+function renderAgreementV2(s: AgreementSnapshot, p: NonNullable<AgreementSnapshot["performance"]>): string {
+  const t = p.target;
+  const client = s.parties.client.brandName || s.parties.client.legalName;
+  const lines: string[] = [];
+  lines.push(`# ${s.engagement.offerName} — Agreement`);
+  lines.push("");
+  lines.push(`Template ${s.templateVersion} · Legal review: ${s.legalReviewStatus}${s.commercial.quoteId ? ` · Quote ${s.commercial.quoteId}` : ""}`);
+  lines.push("");
+  lines.push("## Parties");
+  lines.push(`- **Client:** ${s.parties.client.legalName}${s.parties.client.brandName && s.parties.client.brandName !== s.parties.client.legalName ? ` (${s.parties.client.brandName})` : ""} — primary contact ${s.parties.client.primaryContact || "to be named"}`);
+  lines.push(`- **Provider:** ${s.parties.provider.legalName}, ${s.parties.provider.postalAddress}`);
+  lines.push("");
+  lines.push("## Engagement and term");
+  lines.push(`${s.engagement.offerName}. Term: ${s.engagement.termDays} days, effective ${s.engagement.startsOn} through ${s.engagement.endsOn}. The baseline was frozen on ${t.baselineFrozenOn}; the agreed target is measured by the rerun on or after ${t.rerunOn}. ${AGREEMENT_CLAUSES.term}`);
+  lines.push("");
+  lines.push("## Fixed fee");
+  lines.push(`Fixed fee: **${usd(s.commercial.totalUsd)}** for the ${s.engagement.termDays}-day engagement:`);
+  for (const i of s.commercial.installments) lines.push(`- ${usd(i.amountUsd)} — ${i.label} (due ${i.dueOn})`);
+  lines.push(`It is due at signing and precedes the start of work. Pricing policy ${s.commercial.pricingPolicyVersion ?? "recorded before the pricing policy"}${s.commercial.priceOverrideReason ? ` — founder override: ${s.commercial.priceOverrideReason}` : ""}. The fixed fee covers:`);
+  for (const inc of s.scope.includes) lines.push(`- ${inc}`);
+  lines.push("");
+  lines.push("## Performance fee");
+  lines.push(`Performance fee: **${usd(p.feeUsd)}**, owed only if the agreed target below is reached at the rerun. It is invoiced after the outcome is recorded as met and is due ${p.dueDaysAfterOutcome} days after that record. ${AGREEMENT_V2_CLAUSES.performanceNotOwed}`);
+  lines.push(AGREEMENT_V2_CLAUSES.performanceDecision);
+  lines.push("");
+  lines.push(`### Agreed target (agreed ${t.agreedOn})`);
+  lines.push(t.secondary ? "The target is reached when both thresholds are reached at the rerun:" : "The target is reached when this threshold is reached at the rerun:");
+  lines.push(`- ${describeThreshold(t.primary)}`);
+  if (t.secondary) lines.push(`- ${describeThreshold(t.secondary)}`);
+  if (t.note) lines.push(`- Note: ${t.note}`);
+  lines.push("");
+  lines.push("Frozen measurement instrument:");
+  lines.push(`- Question set: version ${t.instrument.promptSetVersionId}, ${t.instrument.questionCount} questions`);
+  lines.push(`- Assistant: ${t.instrument.provider}, model ${t.instrument.models.join(", ") || "as reported"}`);
+  lines.push(`- Repetitions: ${t.instrument.repetitions} per question`);
+  lines.push(`- Scoring version: ${t.instrument.scoringVersion}`);
+  lines.push(`- Names counted as ${client}: ${t.entityNames.join(", ")}`);
+  lines.push(`- Baseline: measurement ${t.baselineMeasurementId}, frozen ${t.baselineFrozenOn}`);
+  lines.push(AGREEMENT_V2_CLAUSES.targetIsCondition);
+  lines.push("");
+  lines.push("## Measurement method");
+  for (const m of AGREEMENT_V2_CLAUSES.measurementMethod) lines.push(`- ${m}`);
+  lines.push("");
+  lines.push("## Scope");
+  lines.push(`One client entity (${client}), one defined market, one engagement. Scope version ${s.scope.version}.`);
   lines.push("");
   lines.push(s.scope.summary);
   if (s.scope.exclusions) {
@@ -206,8 +309,22 @@ export function buildAgreementSnapshot(input: {
       ? { installments: policy.billing.installments, installmentUsd: policy.billing.installmentUsd, schedule: [...policy.billing.schedule], dueDayOffsets: [...policy.billing.dueDayOffsets] }
       : { installments: 1, installmentUsd: e.totalValueUsd, schedule: ["at signing"], dueDayOffsets: [0] };
   const installments = installmentSchedule({ ...billing, cadence: "custom" }, e.startsOn);
+  // Spec 152: a performance engagement renders v2, citing the frozen target;
+  // every other engagement keeps rendering v1.
+  const hasPerformance = e.performanceOutcome !== "not_applicable" && e.performanceFeeUsd !== null && e.performanceFeeUsd > 0;
+  if (hasPerformance && !e.performanceTarget) {
+    throw new ClassifiedError("validation", "Record the agreed performance target first (freeze the baseline, then record the target) — the agreement cites it.");
+  }
+  const performance =
+    hasPerformance && e.performanceTarget
+      ? {
+          feeUsd: e.performanceFeeUsd!,
+          dueDaysAfterOutcome: input.quote?.billing.performanceFee?.dueDaysAfterOutcome ?? policy?.performanceFee?.dueDaysAfterOutcome ?? DEFAULT_PERFORMANCE_FEE_DUE_DAYS,
+          target: e.performanceTarget,
+        }
+      : null;
   return {
-    templateVersion: AGREEMENT_TEMPLATE_VERSION,
+    templateVersion: performance ? AGREEMENT_TEMPLATE_V2 : AGREEMENT_TEMPLATE_V1,
     legalReviewStatus: TEMPLATE_LEGAL_REVIEW_STATUS,
     parties: {
       client: { legalName: e.clientLegalName || input.brandName, brandName: input.brandName, primaryContact: e.primaryContactName },
@@ -233,6 +350,7 @@ export function buildAgreementSnapshot(input: {
     noGuarantee: [...AGREEMENT_CLAUSES.noGuarantee],
     methodologyLimitation: AGREEMENT_CLAUSES.methodologyLimitation,
     createdAt: input.now.toISOString(),
+    ...(performance ? { performance } : {}),
   };
 }
 
@@ -272,9 +390,9 @@ export async function prepareAgreement(user: CurrentUser, raw: unknown): Promise
       if (current) await tx`update engagement_agreements set status = 'void', updated_at = now() where id = ${current.id} and status = 'draft'`;
       const [row] = await tx`
         insert into engagement_agreements (engagement_id, project_id, quote_id, template_version, legal_review_status, status, content_md, content_hash, snapshot, created_by)
-        values (${e.id}, ${e.projectId}, ${quote?.id ?? null}, ${AGREEMENT_TEMPLATE_VERSION}, ${TEMPLATE_LEGAL_REVIEW_STATUS}, 'draft', ${content}, ${agreementHash(content)}, ${tx.json(snapshot as never)}, ${user.id})
+        values (${e.id}, ${e.projectId}, ${quote?.id ?? null}, ${snapshot.templateVersion}, ${TEMPLATE_LEGAL_REVIEW_STATUS}, 'draft', ${content}, ${agreementHash(content)}, ${tx.json(snapshot as never)}, ${user.id})
         returning id`;
-      await writeAudit(tx, { userId: user.id, action: "engagement.agreement_prepared", entity: "client_engagement", entityId: e.id, projectId: e.projectId, detail: { agreementId: row!.id, quoteId: quote?.id ?? null, templateVersion: AGREEMENT_TEMPLATE_VERSION, legalReviewStatus: TEMPLATE_LEGAL_REVIEW_STATUS, regenerated: Boolean(current) } });
+      await writeAudit(tx, { userId: user.id, action: "engagement.agreement_prepared", entity: "client_engagement", entityId: e.id, projectId: e.projectId, detail: { agreementId: row!.id, quoteId: quote?.id ?? null, templateVersion: snapshot.templateVersion, legalReviewStatus: TEMPLATE_LEGAL_REVIEW_STATUS, regenerated: Boolean(current) } });
       return row!.id as string;
     });
     return ok({ agreement: (await agreementById(id))!, regenerated: Boolean(current) });

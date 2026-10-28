@@ -3,7 +3,37 @@
 Source of truth: `lib/pricing/policy.ts` (versioned in git). Nothing else in the
 OS states a price. Read this before any commercial conversation.
 
-## Current offer — `first_client_90d_v1` (ACTIVE from 2026-09-07)
+## Current offer — `performance_fee_v1` (founder decisions 2026-10-17 and 2026-10-28, spec 152)
+
+| | |
+|---|---|
+| Offer | **90-Day Performance-Based Engagement** |
+| Price | **$1,000 to start, plus $4,000 only if the agreed target is reached** |
+| The $1,000 covers | the frozen baseline benchmark (every answer saved) · diagnosis and a priority work plan · implementation of the highest-confidence first changes on the client's site and profiles |
+| Target | Agreed **per client** before work starts and recorded in the OS (**Record target**, admin only) over the frozen baseline: recommendation rate on the frozen ChatGPT question set (optionally question coverage). The agreement cites it; it cannot change once the agreement is sent or work starts |
+| Term | **90 days** from the frozen baseline to the rerun |
+| Outcome | The founder records met / not met against a remeasurement on the **same instrument** (question set, provider and exact model, repetitions, scoring version). The OS never decides "met" |
+| Performance fee | Invoiced only after "met" (`ENG-<id>-P`), due **14 days** after that record. If not met, the $4,000 isn't owed |
+| Scope | one client entity/team · one founder-confirmed defined market |
+| Exclusivity | one retained client in that market **during the engagement** |
+| Framing | "Most of the fee depends on a result we agree in advance." **Never** say pilot, discount, founding, introductory, special or early-client price to a prospect (`performance_fee_v1` is an internal id) |
+
+Purchase path order (the agreement cites the target): **Prepare quote → Record signed engagement → confirm market definition → Freeze baseline → Record target → Prepare agreement (v2) → send / record signed → Create invoice schedule ($1,000) → payment → onboarding → activate**. After the 90-day rerun: **Record measurement → Record outcome → Create performance invoice → record payment**.
+
+When asked "what does it cost?" — `pricing_reply_v2`:
+
+> It's $1,000 to start, and $4,000 only if we hit a measurable target we agree on before we begin.
+> The target is measured by rerunning the same frozen set of ChatGPT questions after 90 days.
+> If the target isn't reached, the $4,000 isn't owed.
+
+Never promise rankings, leads or transactions. Always state the model-change
+caveat: ChatGPT's model and the web results it reads change over time; we
+report the exact model version on both dates.
+
+## Retired — `first_client_90d_v1` (ACTIVE 2026-09-07 → 2026-10-17)
+
+Kept for history: quotes and engagements reference it by version. Retired in
+code (`effectiveTo` 2026-10-17); it can no longer be quoted.
 
 | | |
 |---|---|
@@ -22,7 +52,7 @@ monitoring of changes and competitors · the comparable rerun with before/after
 and limitations · client progress and the 90-day review · exclusivity above.
 Never promise rankings, leads or transactions.
 
-## When asked "what does it cost?" — `pricing_reply_v1`
+## Retired reply — `pricing_reply_v1` (for the $7,500 offer; history only)
 
 > The 90-day engagement is $7,500.
 > That includes the baseline, implementation of the highest-confidence changes, monitoring, and the comparable rerun at the end.
@@ -33,6 +63,11 @@ no urgency. Pricing goes only to a prospect who asked or showed explicit
 commercial interest — never in T1/T2/T3 or a correction.
 
 ## When a prospect says "send me the agreement" — spec 140 path
+
+> **Paused for new clients until spec 152 ships.** The steps below still
+> quote, sign and invoice the retired $7,500 offer ($2,500 × 3). Spec 152
+> replaces steps 1, 4, 7 and 8 with the fixed fee, the recorded target, and a
+> performance invoice that exists only after the target is recorded as met.
 
 All on the prospect page → **Commercial state** (and the same panel on the
 client's Engagement page). The OS never sends, signs or charges; you do those

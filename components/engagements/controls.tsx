@@ -153,9 +153,12 @@ export function SignClientDialog({ projectId, prospectId, defaultStart }: { proj
   const [termDays, setTermDays] = useState(String(policy.termDays));
   const [monthly, setMonthly] = useState(String(policy.billing.installmentUsd));
   const [total, setTotal] = useState(String(policy.totalFeeUsd));
+  // Spec 152: the performance fee is owed only on a recorded "met" outcome; 0 = none.
+  const defaultPerformance = policy.performanceFee?.usd ?? 0;
+  const [performance, setPerformance] = useState(String(defaultPerformance));
   const [paymentTerms, setPaymentTerms] = useState(paymentTermsDefault(policy));
   const [priceOverride, setPriceOverride] = useState("");
-  const termsDiffer = Number(total) !== policy.totalFeeUsd || Number(termDays) !== policy.termDays;
+  const termsDiffer = Number(total) !== policy.totalFeeUsd || Number(termDays) !== policy.termDays || Number(performance) !== defaultPerformance;
   const [scope, setScope] = useState(DEFAULT_SCOPE_SUMMARY);
   const [exclusions, setExclusions] = useState(DEFAULT_SCOPE_EXCLUSIONS);
   const [override, setOverride] = useState("");
@@ -168,6 +171,7 @@ export function SignClientDialog({ projectId, prospectId, defaultStart }: { proj
           termDays: Number(termDays),
           monthlyFeeUsd: Number(monthly),
           totalValueUsd: Number(total),
+          performanceFeeUsd: Number(performance) > 0 ? Number(performance) : null,
           paymentTerms,
           priceOverrideReason: priceOverride.trim() || undefined,
           scopeSummary: scope,
@@ -181,7 +185,8 @@ export function SignClientDialog({ projectId, prospectId, defaultStart }: { proj
         <Field label="Starts on"><Input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} /></Field>
         <Field label="Term (days)"><Input type="number" value={termDays} onChange={(e) => setTermDays(e.target.value)} /></Field>
         <Field label="Installment (USD)"><Input type="number" value={monthly} onChange={(e) => setMonthly(e.target.value)} /></Field>
-        <Field label="Total engagement value (USD)"><Input type="number" value={total} onChange={(e) => setTotal(e.target.value)} /></Field>
+        <Field label="Fixed fee — contracted total (USD)"><Input type="number" value={total} onChange={(e) => setTotal(e.target.value)} /></Field>
+        <Field label="Performance fee if the agreed target is met (USD, 0 = none)"><Input type="number" value={performance} onChange={(e) => setPerformance(e.target.value)} /></Field>
       </div>
       <p className="text-xs text-muted-foreground">Active offer: {policy.offerName} · {offerLabel(policy)} · billed {billingLabel(policy)} · {policy.version}</p>
       {termsDiffer && (

@@ -17,6 +17,7 @@ import * as actions from "@/app/commercial/actions";
 import type { ActionResult } from "@/lib/actions/result";
 import { PRICING_OBJECTIONS, QUOTE_RESPONSE_STATUSES, activePricingPolicy, offerLabel, billingLabel, pricingReplyLines } from "@/lib/pricing/policy";
 import { ENTITY_TYPES, type OnboardingPrefill } from "@/lib/engagements/constants";
+import { DECIDED_PERFORMANCE_OUTCOMES } from "@/lib/engagements/performance";
 
 const human = (s: string) => s.replace(/_/g, " ");
 
@@ -177,6 +178,63 @@ export function InstallmentPaymentDialog({ engagementId, installments }: { engag
       {chosen && <p className="text-sm">{chosen.invoiceId} · ${chosen.amountUsd.toLocaleString("en-US")} · due {chosen.dueOn}{chosen.paid ? " · already paid" : ""}</p>}
       <Field label="Payment reference (bank / provider id)"><Input value={ref} onChange={(e) => setRef(e.target.value)} /></Field>
       <p className="text-xs text-muted-foreground">Manual confirmation of money that landed. The same installment recorded twice is one event.</p>
+    </ActionDialog>
+  );
+}
+
+// ------------------------------------------------------- performance fee
+
+export function PerformanceTargetDialog({ engagementId, replacing }: { engagementId: string; replacing: boolean }) {
+  const [rate, setRate] = useState("");
+  const [coverage, setCoverage] = useState("");
+  const [agreedOn, setAgreedOn] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState("");
+  return (
+    <ActionDialog trigger={replacing ? "Replace performance target" : "Record performance target"} title="Agreed performance target"
+      onSubmit={() => actions.recordPerformanceTarget({ engagementId, recommendationRatePercent: Number(rate), questionCoveragePercent: coverage.trim() ? Number(coverage) : null, agreedOn, note: note.trim() || undefined })}>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Recommendation rate at least (%) *"><Input type="number" value={rate} onChange={(e) => setRate(e.target.value)} /></Field>
+        <Field label="Question coverage at least (%, optional)"><Input type="number" value={coverage} onChange={(e) => setCoverage(e.target.value)} /></Field>
+        <Field label="Agreed with the client on"><Input type="date" value={agreedOn} onChange={(e) => setAgreedOn(e.target.value)} /></Field>
+      </div>
+      <Field label="Note (how it was agreed)"><Input value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+      <p className="text-xs text-muted-foreground">Only the thresholds are typed. The question set, assistant and exact model, repetitions, scoring version, names and baseline values are copied from the frozen baseline. With coverage set, both thresholds must be reached. The agreement cites this target; it freezes once the agreement is sent or work starts.</p>
+    </ActionDialog>
+  );
+}
+
+export function PerformanceOutcomeDialog({ engagementId, remeasurements }: { engagementId: string; remeasurements: { id: string; role: string; frozenAt: Date | null }[] }) {
+  const [outcome, setOutcome] = useState<string>("met");
+  const [snapshotId, setSnapshotId] = useState(remeasurements.at(-1)?.id ?? "");
+  const [note, setNote] = useState("");
+  const label = (m: { id: string; role: string; frozenAt: Date | null }) => `${m.role} · ${m.frozenAt ? new Date(m.frozenAt).toISOString().slice(0, 10) : "—"} · ${m.id.slice(0, 8)}`;
+  return (
+    <ActionDialog trigger="Record performance outcome" title="Record the performance outcome" variant="default"
+      onSubmit={() => actions.recordPerformanceOutcome({ engagementId, outcome, snapshotId, note })}>
+      <Field label="Outcome (your decision)"><Pick value={outcome} onChange={setOutcome} options={DECIDED_PERFORMANCE_OUTCOMES} /></Field>
+      <Field label="Remeasurement the decision cites">
+        <Select value={snapshotId} onValueChange={setSnapshotId}>
+          <SelectTrigger><SelectValue placeholder="Choose a frozen remeasurement" /></SelectTrigger>
+          <SelectContent>{remeasurements.map((m) => <SelectItem key={m.id} value={m.id}>{label(m)}</SelectItem>)}</SelectContent>
+        </Select>
+      </Field>
+      <Field label="Note (what the rerun showed, recorded) *"><Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+      <p className="text-xs text-muted-foreground">Recorded once and never changed. A remeasurement taken with a different question set, model, repetitions or scoring version is refused. &quot;Met&quot; makes the performance invoice available; &quot;not met&quot; means the fee is not owed.</p>
+    </ActionDialog>
+  );
+}
+
+export function PerformanceInvoiceButton({ engagementId }: { engagementId: string }) {
+  return <OneClick label="Create performance invoice" onClick={() => actions.createPerformanceInvoice({ engagementId })} />;
+}
+
+export function PerformancePaymentDialog({ engagementId, invoiceId, amountUsd }: { engagementId: string; invoiceId: string; amountUsd: number }) {
+  const [ref, setRef] = useState("");
+  return (
+    <ActionDialog trigger="Record performance fee payment" title="Performance fee received" variant="default" onSubmit={() => actions.recordPerformanceFeePayment({ engagementId, reference: ref || undefined })}>
+      <p className="text-sm tabular-nums">{invoiceId} · ${amountUsd.toLocaleString("en-US")}</p>
+      <Field label="Payment reference (bank / provider id)"><Input value={ref} onChange={(e) => setRef(e.target.value)} /></Field>
+      <p className="text-xs text-muted-foreground">Manual confirmation of money that landed. Recorded twice is one event.</p>
     </ActionDialog>
   );
 }

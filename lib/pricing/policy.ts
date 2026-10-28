@@ -6,6 +6,10 @@
  *
  * Exactly one policy is ACTIVE. It is "the current offer": never a discount,
  * pilot, beta, founding or introductory price in customer-facing copy.
+ * Spec 152: a policy may carry a PERFORMANCE FEE — owed only when the founder
+ * records an agreed, frozen target as met. `totalFeeUsd` is always the fixed,
+ * contracted fee; the performance fee is never an installment, never run
+ * rate and never pipeline value until it is recorded as met.
  * Future scope-based policies (local / major / multi-market) are new entries
  * here, activated by a founder decision — never inferred from a prospect's
  * wealth, production volume or market size.
@@ -26,12 +30,27 @@ export interface BillingStructure {
   cadence: "monthly" | "upfront" | "custom";
 }
 
+/** Spec 152: the only condition a performance fee may carry. */
+export const PERFORMANCE_FEE_CONDITION = "agreed_target_met" as const;
+export type PerformanceFeeCondition = typeof PERFORMANCE_FEE_CONDITION;
+
+/** Spec 152: a fee owed only after the founder records the agreed target as met. */
+export interface PerformanceFee {
+  usd: number;
+  /** Days after the outcome is recorded as met that the performance invoice falls due. */
+  dueDaysAfterOutcome: number;
+  condition: PerformanceFeeCondition;
+}
+
 export interface PricingPolicy {
   version: string;
   offerName: string;
   termDays: number;
+  /** The FIXED, contracted fee. Never includes a performance fee. */
   totalFeeUsd: number;
   billing: BillingStructure;
+  /** Spec 152: owed only on a recorded "met" outcome; never an installment. */
+  performanceFee?: PerformanceFee;
   effectiveFrom: string;
   effectiveTo: string | null;
   status: PricingPolicyStatus;
@@ -74,9 +93,9 @@ export const PRICING_POLICIES: readonly PricingPolicy[] = [
     totalFeeUsd: 7_500,
     billing: { installments: 3, installmentUsd: 2_500, schedule: ["at signing", "day 30", "day 60"], dueDayOffsets: [0, 30, 60], cadence: "monthly" },
     effectiveFrom: "2026-09-07",
-    effectiveTo: null,
-    status: "active",
-    internalLabel: "early-stage validation pricing — first three paying clients; proof, delivery learning, case studies, willingness-to-pay",
+    effectiveTo: "2026-10-17",
+    status: "retired",
+    internalLabel: "retired 2026-10-17 (spec 152). Was: early-stage validation pricing — first three paying clients; proof, delivery learning, case studies, willingness-to-pay",
     includes: [
       "the baseline: a verified AI recommendation benchmark against your competitors, with every answer saved",
       "diagnosis and a priority work plan from that evidence",
@@ -92,6 +111,31 @@ export const PRICING_POLICIES: readonly PricingPolicy[] = [
       commitment: "One 90-day engagement. Nothing continues after it unless we both choose to.",
     },
     offerMarkers: ["$7,500 for the 90-day", "90-day engagement is $7,500"],
+  },
+  {
+    version: "performance_fee_v1",
+    offerName: "90-Day Performance-Based Engagement",
+    termDays: 90,
+    totalFeeUsd: 1_000,
+    billing: { installments: 1, installmentUsd: 1_000, schedule: ["at signing"], dueDayOffsets: [0], cadence: "upfront" },
+    performanceFee: { usd: 4_000, dueDaysAfterOutcome: 14, condition: PERFORMANCE_FEE_CONDITION },
+    effectiveFrom: "2026-10-17",
+    effectiveTo: null,
+    status: "active",
+    internalLabel: "founder decision 2026-10-17 (spec 152): performance fee — $1,000 fixed, $4,000 only on an agreed, frozen target recorded as met",
+    // Founder decision 2026-10-28: what the fixed fee covers, in writing.
+    includes: [
+      "the frozen baseline: a verified AI recommendation benchmark against your competitors, with every answer saved",
+      "diagnosis and a priority work plan from that evidence",
+      "implementation of the highest-confidence first changes on your site and profiles",
+    ],
+    scope: { entities: 1, markets: 1, exclusivity: "one retained client within the founder-confirmed defined market during the engagement" },
+    customerFacing: {
+      price: "$1,000 to start, plus $4,000 only if the agreed target is reached",
+      billing: "The $1,000 is due at signing. The target is measured by rerunning the same frozen set of ChatGPT questions 90 days after the baseline; if it isn't reached, the $4,000 isn't owed.",
+      commitment: "Most of the fee depends on a result we agree in advance. While we work together, I take no other client in your defined market.",
+    },
+    offerMarkers: ["$1,000 to start", "$4,000 only if"],
   },
 ] as const;
 
@@ -181,7 +225,25 @@ export function validatePolicy(p: PricingPolicy): PricingPolicy {
   if (p.billing.schedule.length !== m.installments || p.billing.dueDayOffsets.length !== m.installments) {
     throw new Error(`pricing policy ${p.version}: schedule must list one entry per installment`);
   }
+  if (p.performanceFee) {
+    if (!(usdToCents(p.performanceFee.usd) > 0)) {
+      throw new Error(`pricing policy ${p.version}: a performance fee must be greater than zero`);
+    }
+    if (!Number.isInteger(p.performanceFee.dueDaysAfterOutcome) || p.performanceFee.dueDaysAfterOutcome < 0) {
+      throw new Error(`pricing policy ${p.version}: performance fee due days must be a non-negative whole number`);
+    }
+    if (p.performanceFee.condition !== PERFORMANCE_FEE_CONDITION) {
+      throw new Error(`pricing policy ${p.version}: unknown performance fee condition`);
+    }
+  }
   return p;
+}
+
+/** Spec 152: the most the client can ever owe under a policy — fixed plus
+ * performance fee. Only for places that must show a maximum, labelled as such;
+ * never a contracted, expected or pipeline amount. */
+export function maximumFeeUsd(p: PricingPolicy): number {
+  return p.totalFeeUsd + (p.performanceFee?.usd ?? 0);
 }
 
 export interface Installment {
@@ -215,18 +277,36 @@ export function installmentSchedule(
   });
 }
 
+const MONTHS_PER_YEAR = 12;
+const DAYS_PER_MONTH = 30;
+
 /** Operational run-rate semantics (spec 140). The monthly equivalent is what
- * one installment represents; the annualized figure is a RUN RATE — never
- * contracted or expected annual revenue, never a renewal assumption. */
+ * one installment represents (monthly billing) or the fixed fee spread over
+ * the term (any other cadence); the annualized figure is a RUN RATE — never
+ * contracted or expected annual revenue, never a renewal assumption.
+ * Spec 152: contracted money only — a performance fee is reported apart as
+ * contingent and NOT CONTRACTED, and never enters the run rate. */
 export interface RunRate {
   monthlyEquivalentUsd: number;
   annualizedRunRateUsd: number;
   annualizedLabel: "ANNUALIZED RUN RATE";
   contractedTotalUsd: number;
+  contingentUsd: number;
+  contingentLabel: "CONTINGENT — NOT CONTRACTED";
 }
 export function runRate(p: PricingPolicy): RunRate {
-  const monthly = p.billing.installmentUsd;
-  return { monthlyEquivalentUsd: monthly, annualizedRunRateUsd: monthly * 12, annualizedLabel: "ANNUALIZED RUN RATE", contractedTotalUsd: p.totalFeeUsd };
+  const monthly =
+    p.billing.cadence === "monthly"
+      ? p.billing.installmentUsd
+      : centsToUsd(Math.round((usdToCents(p.totalFeeUsd) * DAYS_PER_MONTH) / p.termDays));
+  return {
+    monthlyEquivalentUsd: monthly,
+    annualizedRunRateUsd: centsToUsd(usdToCents(monthly) * MONTHS_PER_YEAR),
+    annualizedLabel: "ANNUALIZED RUN RATE",
+    contractedTotalUsd: p.totalFeeUsd,
+    contingentUsd: p.performanceFee?.usd ?? 0,
+    contingentLabel: "CONTINGENT — NOT CONTRACTED",
+  };
 }
 
 export function pricingPolicy(version: string): PricingPolicy | null {
@@ -247,18 +327,31 @@ export function assertQuotablePolicy(version: string, at: Date = new Date()): Pr
 
 export const usd = (n: number): string => `$${n.toLocaleString("en-US")}`;
 
-/** "$7,500 / 90 days" */
-export function offerLabel(p: PricingPolicy = activePricingPolicy()): string {
-  return `${usd(p.totalFeeUsd)} / ${p.termDays} days`;
+/** "$7,500 / 90 days", or "$1,000 + $4,000 on target / 90 days" (spec 152).
+ * Shared by policies, frozen quotes and engagements so every view agrees. */
+export function formatOfferLabel(fixedUsd: number, termDays: number, performanceUsd: number | null | undefined): string {
+  return performanceUsd ? `${usd(fixedUsd)} + ${usd(performanceUsd)} on target / ${termDays} days` : `${usd(fixedUsd)} / ${termDays} days`;
 }
 
-/** "$2,500 × 3" */
+export function offerLabel(p: PricingPolicy = activePricingPolicy()): string {
+  return formatOfferLabel(p.totalFeeUsd, p.termDays, p.performanceFee?.usd);
+}
+
+/** "$2,500 × 3", or "$1,000 at signing + $4,000 if target met" (spec 152). */
+export function formatBillingLabel(b: { installments: number; installmentUsd: number; schedule: readonly string[] }, performanceUsd: number | null | undefined): string {
+  const fixed = b.installments === 1 && b.schedule[0] ? `${usd(b.installmentUsd)} ${b.schedule[0]}` : `${usd(b.installmentUsd)} × ${b.installments}`;
+  return performanceUsd ? `${fixed} + ${usd(performanceUsd)} if target met` : fixed;
+}
+
 export function billingLabel(p: PricingPolicy = activePricingPolicy()): string {
-  return `${usd(p.billing.installmentUsd)} × ${p.billing.installments}`;
+  return formatBillingLabel(p.billing, p.performanceFee?.usd);
 }
 
 /** Default engagement payment terms sentence for the sign dialog. */
 export function paymentTermsDefault(p: PricingPolicy = activePricingPolicy()): string {
+  if (p.performanceFee) {
+    return `${usd(p.totalFeeUsd)} fixed fee for the ${p.termDays}-day engagement, invoiced ${p.billing.schedule.join(", ")}. Performance fee ${usd(p.performanceFee.usd)}, invoiced only when the agreed target is recorded as met and due ${p.performanceFee.dueDaysAfterOutcome} days after; not owed if the target is not met.`;
+  }
   return `${usd(p.totalFeeUsd)} total for the ${p.termDays}-day engagement, invoiced ${billingLabel(p)}: ${p.billing.schedule.join(", ")}.`;
 }
 
@@ -270,10 +363,25 @@ export function policyStatedIn(body: string): PricingPolicy | null {
   return null;
 }
 
-/** The founder-ready answer to "what does it cost?" (docs/13-prompts.md,
- * pricing_reply_v1). Three sentences, no essay, no anchoring, no urgency. */
-export const PRICING_REPLY_TEMPLATE_VERSION = "pricing_reply_v1";
+/** The founder-ready answer to "what does it cost?" (docs/13-prompts.md).
+ * Three sentences, no essay, no anchoring, no urgency. v1 renders the
+ * fixed-fee policies (history); v2 renders a policy with a performance fee. */
+export const PRICING_REPLY_TEMPLATE_V1 = "pricing_reply_v1";
+export const PRICING_REPLY_TEMPLATE_V2 = "pricing_reply_v2";
+/** The template the ACTIVE policy renders with. */
+export const PRICING_REPLY_TEMPLATE_VERSION = PRICING_REPLY_TEMPLATE_V2;
+export function pricingReplyTemplateVersion(p: PricingPolicy = activePricingPolicy()): string {
+  return p.performanceFee ? PRICING_REPLY_TEMPLATE_V2 : PRICING_REPLY_TEMPLATE_V1;
+}
 export function pricingReplyLines(p: PricingPolicy = activePricingPolicy()): string[] {
+  if (p.performanceFee) {
+    const perf = usd(p.performanceFee.usd);
+    return [
+      `It's ${usd(p.totalFeeUsd)} to start, and ${perf} only if we hit a measurable target we agree on before we begin.`,
+      `The target is measured by rerunning the same frozen set of ChatGPT questions after ${p.termDays} days.`,
+      `If the target isn't reached, the ${perf} isn't owed.`,
+    ];
+  }
   return [
     `The ${p.termDays}-day engagement is ${usd(p.totalFeeUsd)}.`,
     "That includes the baseline, implementation of the highest-confidence changes, monitoring, and the comparable rerun at the end.",
@@ -284,6 +392,8 @@ export function pricingReplyLines(p: PricingPolicy = activePricingPolicy()): str
 export interface EngagementPricingInput {
   totalValueUsd: number;
   termDays: number;
+  /** Spec 152: omitted = the policy's performance fee; null or 0 = none. */
+  performanceFeeUsd?: number | null;
   priceOverrideReason?: string | null;
 }
 
@@ -291,23 +401,36 @@ export interface ResolvedEngagementPricing {
   policyVersion: string;
   defaultTotalValueUsd: number;
   totalValueUsd: number;
+  /** Spec 152: null when the engagement carries no performance fee. */
+  defaultPerformanceFeeUsd: number | null;
+  performanceFeeUsd: number | null;
   overrideReason: string | null;
 }
 
 /**
  * Engagement terms against the active policy: matching terms need no reason;
- * any other total or term is a founder override and must say why. The
- * default is always recorded next to the actual, so an override can be read
- * later as exactly what it was.
+ * any other fixed fee, performance fee or term is a founder override and must
+ * say why. The default is always recorded next to the actual, so an override
+ * can be read later as exactly what it was.
  */
 export function resolveEngagementPricing(input: EngagementPricingInput, p: PricingPolicy = activePricingPolicy()): ResolvedEngagementPricing {
   const reason = input.priceOverrideReason?.trim() || null;
-  const differs = input.totalValueUsd !== p.totalFeeUsd || input.termDays !== p.termDays;
+  const defaultPerformance = p.performanceFee?.usd ?? null;
+  const requested = input.performanceFeeUsd === undefined ? defaultPerformance : input.performanceFeeUsd;
+  const performanceFeeUsd = requested && requested > 0 ? requested : null;
+  const differs = input.totalValueUsd !== p.totalFeeUsd || input.termDays !== p.termDays || performanceFeeUsd !== defaultPerformance;
   if (differs && !reason) {
     throw new ClassifiedError(
       "validation",
       `Terms differ from the active offer (${offerLabel(p)}); a founder override reason is required. No silent discounting.`
     );
   }
-  return { policyVersion: p.version, defaultTotalValueUsd: p.totalFeeUsd, totalValueUsd: input.totalValueUsd, overrideReason: differs ? reason : null };
+  return {
+    policyVersion: p.version,
+    defaultTotalValueUsd: p.totalFeeUsd,
+    totalValueUsd: input.totalValueUsd,
+    defaultPerformanceFeeUsd: defaultPerformance,
+    performanceFeeUsd,
+    overrideReason: differs ? reason : null,
+  };
 }

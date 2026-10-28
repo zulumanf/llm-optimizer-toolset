@@ -131,6 +131,8 @@ describe.skipIf(!TEST_URL)("multi-client portfolio QA (integration)", () => {
     const competitors = await import("@/lib/competitors/service");
     await competitors.addCompetitor(admin, { projectId: signed.projectId, companyId: c.rival.id, tier: "primary" });
     unwrap(await eng.freezeBaseline(admin, { engagementId: e.id, provider: "mock" }));
+    // Spec 152: the performance target is agreed over the frozen baseline before activation.
+    unwrap(await eng.recordPerformanceTarget(admin, { engagementId: e.id, recommendationRatePercent: 25, agreedOn: today() }));
     unwrap(await eng.addContextItem(admin, { engagementId: e.id, kind: "priority_area", label: "Downtown", provenance: "client_priority" }));
     unwrap(await eng.addContextItem(admin, { engagementId: e.id, kind: "asset", label: `https://${c.label.toLowerCase()}.invalid`, provenance: "client_confirmed" }));
     unwrap(await eng.addContextItem(admin, { engagementId: e.id, kind: "competitor", label: c.rival.name ?? "rival", provenance: "client_confirmed" }));

@@ -124,7 +124,7 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
         badge={<Badge variant={STAGE_VARIANT[view.derivedStage] ?? "outline"}>{human(view.derivedStage)}</Badge>}
         description={
           <>
-            <span className="block">{e.marketName} · {formatDate(new Date(`${e.startsOn}T12:00:00Z`))} → {formatDate(new Date(`${e.endsOn}T12:00:00Z`))} ({daysLeft >= 0 ? `${daysLeft} days left` : `ended ${-daysLeft} days ago`}) · {usd(e.monthlyFeeUsd)}/month · {usd(e.totalValueUsd)} total</span>
+            <span className="block">{e.marketName} · {formatDate(new Date(`${e.startsOn}T12:00:00Z`))} → {formatDate(new Date(`${e.endsOn}T12:00:00Z`))} ({daysLeft >= 0 ? `${daysLeft} days left` : `ended ${-daysLeft} days ago`}) · {e.billingCadence === "monthly" ? `${usd(e.monthlyFeeUsd)}/month · ` : ""}{usd(e.totalValueUsd)} {e.performanceFeeUsd ? `fixed · ${usd(e.performanceFeeUsd)} on target (not contracted)` : "total"}</span>
             {e.primaryContactName && <span className="block text-xs">Primary contact: {e.primaryContactName}</span>}
           </>
         }
