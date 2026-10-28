@@ -891,7 +891,10 @@ export function deriveAcquisition(f: AcquisitionFacts, now: Date): AcquisitionPa
   // ---------------------------------------------------------- economics
   const spend = f.benchmarkSpendUsd;
   const per = (n: number): number | null => (spend === null || n === 0 ? null : Math.round((spend / n) * 100) / 100);
+  // Spec 152: pipeline value is the fixed, contracted fee only; a performance
+  // fee is contingent and shown apart, labelled "not contracted".
   const engagementValue = activePricingPolicy().totalFeeUsd;
+  const contingentValue = activePricingPolicy().performanceFee?.usd ?? null;
   const economics: Economics = {
     spendUsd: spend,
     perT1Ready: per(t1All.length + inventory),
@@ -899,7 +902,7 @@ export function deriveAcquisition(f: AcquisitionFacts, now: Date): AcquisitionPa
     perHighIntent: per(highIntentIds.size),
     clientsWon: f.clientsWon,
     cac: f.clientsWon > 0 ? per(f.clientsWon) : null,
-    scenario: f.clientsWon === 0 && spend !== null ? { label: `If one ${usd(engagementValue)} engagement closes`, cac: Math.round(spend * 100) / 100 } : null,
+    scenario: f.clientsWon === 0 && spend !== null ? { label: `If one ${usd(engagementValue)} engagement closes${contingentValue ? ` (fixed fee; ${usd(contingentValue)} on target is contingent, not contracted)` : ""}`, cac: Math.round(spend * 100) / 100 } : null,
   };
 
   // ---------------------------------------------------------- decision point

@@ -27,19 +27,30 @@ import {
   OPEN_QUOTE_STATUSES,
   assertQuotablePolicy,
   usd,
+  formatOfferLabel,
+  type PerformanceFee,
   type PricingPolicy,
   type QuoteStatus,
 } from "@/lib/pricing/policy";
 
-/** Billing structure as stored on a quote row (frozen copy of the policy's). */
+/** Billing structure as stored on a quote row (frozen copy of the policy's).
+ * Spec 152: `performanceFee` rides the same frozen jsonb; it is never one of
+ * the installments. Absent on fixed-fee quotes. */
 export interface QuoteBilling {
   installments: number;
   installmentUsd: number;
   schedule: string[];
   dueDayOffsets: number[];
+  performanceFee?: PerformanceFee;
 }
 export function billingSnapshot(p: PricingPolicy): QuoteBilling {
-  return { installments: p.billing.installments, installmentUsd: p.billing.installmentUsd, schedule: [...p.billing.schedule], dueDayOffsets: [...p.billing.dueDayOffsets] };
+  const base: QuoteBilling = { installments: p.billing.installments, installmentUsd: p.billing.installmentUsd, schedule: [...p.billing.schedule], dueDayOffsets: [...p.billing.dueDayOffsets] };
+  return p.performanceFee ? { ...base, performanceFee: { ...p.performanceFee } } : base;
+}
+
+/** The offer as a frozen quote states it (spec 152: fixed + performance). */
+export function quoteOfferLabel(q: Pick<QuoteRow, "totalFeeUsd" | "termDays" | "billing">): string {
+  return formatOfferLabel(q.totalFeeUsd, q.termDays, q.billing.performanceFee?.usd);
 }
 
 /** Called inside the send transaction: if the body states a policy's offer,
@@ -110,6 +121,9 @@ function mapQuote(r: Record<string, unknown>): QuoteRow {
       installmentUsd: Number(b.installmentUsd ?? 0),
       schedule: b.schedule ?? [],
       dueDayOffsets: b.dueDayOffsets ?? [],
+      ...(b.performanceFee
+        ? { performanceFee: { usd: Number(b.performanceFee.usd), dueDaysAfterOutcome: Number(b.performanceFee.dueDaysAfterOutcome), condition: b.performanceFee.condition } }
+        : {}),
     },
     scopeVersion: (r.scopeVersion as string) ?? "",
     quotedAt: r.quotedAt as Date,
@@ -158,6 +172,12 @@ const prepareSchema = z.object({
 /** Scope version stamped on a new quote: the active policy's version is the
  * scope definition until a separate scope registry exists. */
 export const QUOTE_SCOPE_VERSION = "scope_90d_market_implementation_v1";
+/** Spec 152: the fixed fee of a performance policy covers a narrower scope
+ * (baseline, diagnosis and plan, first changes) — a distinct scope version. */
+export const PERFORMANCE_QUOTE_SCOPE_VERSION = "scope_90d_performance_v1";
+export function quoteScopeVersion(p: PricingPolicy): string {
+  return p.performanceFee ? PERFORMANCE_QUOTE_SCOPE_VERSION : QUOTE_SCOPE_VERSION;
+}
 
 /**
  * Founder prepares a quote under the CURRENT policy (spec 140). Nothing is
@@ -183,7 +203,7 @@ export async function prepareQuote(user: CurrentUser, raw: unknown): Promise<Act
            billing_structure, scope_version, quoted_at, channel, status, recorded_by)
         values (${i.prospectId}, ${(p.companyId as string | null) ?? null}, ${(p.marketId as string | null) ?? null},
           ${policy.version}, ${policy.offerName}, ${policy.totalFeeUsd}, ${policy.termDays},
-          ${tx.json(billingSnapshot(policy) as never)}, ${i.scopeVersion ?? QUOTE_SCOPE_VERSION}, now(), 'manual', 'draft', ${user.id})
+          ${tx.json(billingSnapshot(policy) as never)}, ${i.scopeVersion ?? quoteScopeVersion(policy)}, now(), 'manual', 'draft', ${user.id})
         returning id`;
       await writeAudit(tx, { userId: user.id, action: "pricing.quote_prepared", entity: "pricing_quote", entityId: row!.id as string, detail: { policy: policy.version, totalFeeUsd: policy.totalFeeUsd, termDays: policy.termDays } });
       await logActivity(tx, i.prospectId, "pricing_quote_prepared", { quoteId: row!.id, policy: policy.version, totalFeeUsd: policy.totalFeeUsd }, user.id);
@@ -249,7 +269,7 @@ export async function regenerateDraftQuote(user: CurrentUser, raw: unknown): Pro
           (prospect_id, company_id, market_id, pricing_policy_version, offer_name, total_fee_usd, term_days,
            billing_structure, scope_version, quoted_at, channel, status, recorded_by)
         values (${q.prospectId}, ${q.companyId}, ${q.marketId}, ${policy.version}, ${policy.offerName}, ${policy.totalFeeUsd}, ${policy.termDays},
-          ${tx.json(billingSnapshot(policy) as never)}, ${q.scopeVersion || QUOTE_SCOPE_VERSION}, now(), 'manual', 'draft', ${user.id})
+          ${tx.json(billingSnapshot(policy) as never)}, ${quoteScopeVersion(policy)}, now(), 'manual', 'draft', ${user.id})
         returning id`;
       await tx`update pricing_quotes set status = 'superseded', superseded_by = ${row!.id}, updated_at = now() where id = ${q.id} and status = 'draft'`;
       await writeAudit(tx, { userId: user.id, action: "pricing.quote_regenerated", entity: "pricing_quote", entityId: row!.id as string, detail: { supersededQuoteId: q.id, from: q.pricingPolicyVersion, to: policy.version } });
@@ -342,11 +362,16 @@ export interface PricingLearning {
   milestones: PricingMilestone[];
 }
 
+/** "$7,500", or "$1,000 + $4,000 on target" for a performance quote. */
+function priceQuotedLabel(fixedUsd: number, performanceUsd: number | undefined): string {
+  return performanceUsd ? `${usd(fixedUsd)} + ${usd(Number(performanceUsd))} on target` : usd(fixedUsd);
+}
+
 /** Everything the dashboard's Pricing learning block shows. Real prospects only. */
 export async function pricingLearning(): Promise<PricingLearning> {
   const fixture = `${QA_FIXTURE_NAME_PREFIX}%`;
   const rows = await sql`
-    select q.id, q.prospect_id, p.business_name, m.name as market_name, q.total_fee_usd, q.term_days,
+    select q.id, q.prospect_id, p.business_name, m.name as market_name, q.total_fee_usd, q.term_days, q.billing_structure,
       q.pricing_policy_version, q.quoted_at, q.status, q.objections, q.preferred_solution, q.outcome
     from pricing_quotes q
     join prospects p on p.id = q.prospect_id
@@ -360,7 +385,7 @@ export async function pricingLearning(): Promise<PricingLearning> {
     prospectId: r.prospectId as string,
     prospect: r.businessName as string,
     market: (r.marketName as string | null) ?? "",
-    priceQuoted: usd(Number(r.totalFeeUsd)),
+    priceQuoted: priceQuotedLabel(Number(r.totalFeeUsd), (r.billingStructure as Partial<QuoteBilling> | null)?.performanceFee?.usd),
     termDays: Number(r.termDays),
     policyVersion: r.pricingPolicyVersion as string,
     quotedAt: r.quotedAt as Date,

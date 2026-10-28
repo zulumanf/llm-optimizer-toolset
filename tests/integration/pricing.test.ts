@@ -120,7 +120,7 @@ describe.skipIf(!TEST_URL)("pricing policy (integration)", () => {
     expect(learning.offersPresented).toBe(0);
     await sql`update market_launches set name = 'Manhattan luxury residential'`;
     learning = await quotes.pricingLearning();
-    expect(learning.activeOffer).toMatchObject({ version: "first_client_90d_v1", price: "$7,500 / 90 days", billing: "$2,500 × 3" });
+    expect(learning.activeOffer).toMatchObject({ version: "performance_fee_v1", price: "$1,000 + $4,000 on target / 90 days" });
     expect(learning.realConversations).toBe(1);
     expect(learning.offersPresented).toBe(1);
     expect(learning.accepted).toBe(0);
@@ -140,12 +140,15 @@ describe.skipIf(!TEST_URL)("pricing policy (integration)", () => {
     const refused = await eng.signClient(operator, { prospectId: f.prospectId, startsOn: "2026-10-01", monthlyFeeUsd: 2000, totalValueUsd: 6000, scopeSummary: SCOPE });
     expect(refused.ok).toBe(false);
     if (!refused.ok) expect(refused.error.message).toMatch(/override reason is required/);
-    const signed = unwrap(await eng.signClient(operator, { prospectId: f.prospectId, startsOn: "2026-10-01", monthlyFeeUsd: 2500, totalValueUsd: 7500, scopeSummary: SCOPE }));
-    const [e] = await sql`select pricing_policy_version, default_total_value_usd, price_override_reason, total_value_usd, ends_on::text from client_engagements where id = ${signed.engagementId}`;
-    expect(e!.pricingPolicyVersion).toBe("first_client_90d_v1");
-    expect(Number(e!.defaultTotalValueUsd)).toBe(7500);
+    // Spec 152: the active policy's default terms ($1,000 fixed + $4,000 on target) need no reason.
+    const signed = unwrap(await eng.signClient(operator, { prospectId: f.prospectId, startsOn: "2026-10-01", monthlyFeeUsd: 1000, totalValueUsd: 1000, scopeSummary: SCOPE }));
+    const [e] = await sql`select pricing_policy_version, default_total_value_usd, price_override_reason, total_value_usd, performance_fee_usd, performance_outcome, ends_on::text from client_engagements where id = ${signed.engagementId}`;
+    expect(e!.pricingPolicyVersion).toBe("performance_fee_v1");
+    expect(Number(e!.defaultTotalValueUsd)).toBe(1000);
     expect(e!.priceOverrideReason).toBeNull();
-    expect(Number(e!.totalValueUsd)).toBe(7500);
+    expect(Number(e!.totalValueUsd)).toBe(1000);
+    expect(Number(e!.performanceFeeUsd)).toBe(4000);
+    expect(e!.performanceOutcome).toBe("pending");
     expect(e!.endsOn).toBe("2026-12-30");
   });
 
@@ -154,8 +157,8 @@ describe.skipIf(!TEST_URL)("pricing policy (integration)", () => {
     await sql`update prospects set stage = 'verbal_yes' where id = ${f.prospectId}`;
     const signed = unwrap(await eng.signClient(operator, { prospectId: f.prospectId, startsOn: "2026-10-01", monthlyFeeUsd: 5000, totalValueUsd: 15000, priceOverrideReason: "two defined markets in scope", scopeSummary: SCOPE }));
     const [e] = await sql`select pricing_policy_version, default_total_value_usd, price_override_reason, total_value_usd from client_engagements where id = ${signed.engagementId}`;
-    expect(e).toMatchObject({ pricingPolicyVersion: "first_client_90d_v1", priceOverrideReason: "two defined markets in scope" });
-    expect(Number(e!.defaultTotalValueUsd)).toBe(7500);
+    expect(e).toMatchObject({ pricingPolicyVersion: "performance_fee_v1", priceOverrideReason: "two defined markets in scope" });
+    expect(Number(e!.defaultTotalValueUsd)).toBe(1000);
     expect(Number(e!.totalValueUsd)).toBe(15000);
   });
 });

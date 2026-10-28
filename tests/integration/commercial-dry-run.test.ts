@@ -116,9 +116,11 @@ describe.skipIf(!TEST_URL)("commercial purchase path dry run (integration)", () 
     expect(q1.created).toBe(true);
     expect(q1.quote.status).toBe("draft");
     expect(q1.quote.pricingPolicyVersion).toBe(active.version);
-    expect(q1.quote.totalFeeUsd).toBe(7_500);
+    // Spec 152: $1,000 fixed at signing; the $4,000 performance fee rides frozen in the billing structure.
+    expect(q1.quote.totalFeeUsd).toBe(1_000);
     expect(q1.quote.termDays).toBe(90);
-    expect(q1.quote.billing).toEqual({ installments: 3, installmentUsd: 2_500, schedule: ["at signing", "day 30", "day 60"], dueDayOffsets: [0, 30, 60] });
+    expect(q1.quote.billing).toMatchObject({ installments: 1, installmentUsd: 1_000, schedule: ["at signing"], dueDayOffsets: [0] });
+    expect(q1.quote.billing.performanceFee).toMatchObject({ usd: 4_000, dueDaysAfterOutcome: 14 });
     // idempotent: the same open quote comes back
     expect(unwrap(await quotes.prepareQuote(operator, { prospectId: f.prospectId })).quote.id).toBe(q1.quote.id);
     // a response cannot be recorded on a draft
@@ -126,7 +128,7 @@ describe.skipIf(!TEST_URL)("commercial purchase path dry run (integration)", () 
     // commercial state before presentation
     const s0 = await commercial.commercialStateForProspect(f.prospectId);
     expect(s0.stage).toBe("QUOTE_READY");
-    expect(s0.offer.label).toBe("$7,500 / 90 days");
+    expect(s0.offer.label).toBe("$1,000 + $4,000 on target / 90 days");
     expect(s0.exclusivity.conflict).toBe(false);
 
     // ---------------------------------------------- presented = frozen
@@ -155,8 +157,9 @@ describe.skipIf(!TEST_URL)("commercial purchase path dry run (integration)", () 
     expect(signed.alreadyExisted).toBe(false);
     const e0 = (await eng.getEngagement(signed.engagementId))!;
     expect(e0.quoteId).toBe(q1.quote.id);
-    expect(e0.totalValueUsd).toBe(7_500);
-    expect(e0.monthlyFeeUsd).toBe(2_500);
+    expect(e0.totalValueUsd).toBe(1_000);
+    expect(e0.performanceFeeUsd).toBe(4_000);
+    expect(e0.performanceOutcome).toBe("pending");
     expect(e0.pricingPolicyVersion).toBe(active.version);
     expect(e0.priceOverrideReason).toBeNull();
     expect(e0.clientLegalName).toBe("Acme Realty Test Team LLC");
@@ -185,12 +188,21 @@ describe.skipIf(!TEST_URL)("commercial purchase path dry run (integration)", () 
     const noDef = await agreements.prepareAgreement(operator, { engagementId: e0.id });
     expect(noDef.ok).toBe(false);
     unwrap(await eng.confirmMarketDefinition(operator, { engagementId: e0.id, definition: "The QA131 sandbox city limits only; excludes the sandbox metro and county." }));
+    // Spec 152: the agreement cites the target, so baseline → target come first.
+    const noTarget = await agreements.prepareAgreement(operator, { engagementId: e0.id });
+    expect(noTarget.ok).toBe(false);
+    if (!noTarget.ok) expect(noTarget.error.message).toMatch(/performance target/);
+    const frozen = unwrap(await eng.freezeBaseline(operator, { engagementId: e0.id, provider: "mock" }));
+    expect((await eng.recordPerformanceTarget(operator, { engagementId: e0.id, recommendationRatePercent: 25, agreedOn: today })).ok).toBe(false); // admin only
+    unwrap(await eng.recordPerformanceTarget(admin, { engagementId: e0.id, recommendationRatePercent: 25, agreedOn: today }));
     const a1 = unwrap(await agreements.prepareAgreement(operator, { engagementId: e0.id }));
     expect(a1.agreement.status).toBe("draft");
     expect(a1.agreement.templateVersion).toBe(agreements.AGREEMENT_TEMPLATE_VERSION);
     expect(a1.agreement.legalReviewStatus).toBe("NOT_REVIEWED");
     expect(a1.agreement.quoteId).toBe(q1.quote.id);
-    expect(a1.agreement.contentMd).toContain("**$7,500** for the 90-day engagement, billed in 3 installments");
+    expect(a1.agreement.contentMd).toContain("Fixed fee: **$1,000** for the 90-day engagement");
+    expect(a1.agreement.contentMd).toContain("Performance fee: **$4,000**, owed only if the agreed target below is reached at the rerun.");
+    expect(a1.agreement.contentMd).not.toMatch(/pilot/i);
     expect(a1.agreement.contentMd).toContain("QA131 Sandbox Market");
     expect(a1.agreement.contentMd).toContain("sandbox city limits only");
     expect(a1.agreement.contentMd).toContain("No specific position, ranking or placement");
@@ -219,16 +231,13 @@ describe.skipIf(!TEST_URL)("commercial purchase path dry run (integration)", () 
 
     // ------------------------------------------------------- invoices
     const inv = unwrap(await commercial.createInvoiceSchedule(operator, { engagementId: e0.id }));
-    expect(inv.created).toBe(3);
-    expect(inv.invoices.map((i) => [i.invoiceId, i.amountCents])).toEqual([
-      [commercial.installmentInvoiceId(e0.id, 1), 250_000],
-      [commercial.installmentInvoiceId(e0.id, 2), 250_000],
-      [commercial.installmentInvoiceId(e0.id, 3), 250_000],
-    ]);
-    expect(inv.invoices.reduce((s, i) => s + i.amountCents, 0)).toBe(750_000);
+    // Spec 152: only the fixed fee is invoiced; no performance invoice while pending.
+    expect(inv.created).toBe(1);
+    expect(inv.invoices.map((i) => [i.invoiceId, i.amountCents])).toEqual([[commercial.installmentInvoiceId(e0.id, 1), 100_000]]);
+    expect((await commercial.createPerformanceInvoice(operator, { engagementId: e0.id })).ok).toBe(false);
     const invAgain = unwrap(await commercial.createInvoiceSchedule(operator, { engagementId: e0.id }));
     expect(invAgain.created).toBe(0);
-    expect((await sql`select count(*)::int as n from billing_events where kind = 'invoice_created'`)[0]!.n).toBe(3);
+    expect((await sql`select count(*)::int as n from billing_events where kind = 'invoice_created'`)[0]!.n).toBe(1);
     // unpaid activation blocks onboarding
     const unpaid = await eng.startOnboarding(operator, { engagementId: e0.id });
     expect(unpaid.ok).toBe(false);
@@ -236,19 +245,19 @@ describe.skipIf(!TEST_URL)("commercial purchase path dry run (integration)", () 
 
     // ------------------------------------------------- installment 1
     const p1 = unwrap(await commercial.recordInstallmentPayment(operator, { engagementId: e0.id, installment: 1, reference: "qa-manual-0001" }));
-    expect(p1.payment.status).toBe("PARTIALLY_PAID");
-    expect(p1.payment.receivedCents).toBe(250_000);
-    expect(p1.payment.balanceCents).toBe(500_000);
+    // No phantom $4,000 balance while the target is pending.
+    expect(p1.payment.status).toBe("PAID_IN_FULL");
+    expect(p1.payment.receivedCents).toBe(100_000);
+    expect(p1.payment.balanceCents).toBe(0);
     expect(p1.payment.activationPaymentReceived).toBe(true);
     // duplicate event is one event
     const p1dup = unwrap(await commercial.recordInstallmentPayment(operator, { engagementId: e0.id, installment: 1, reference: "qa-manual-0001-retry" }));
     expect(p1dup.billingEventId).toBe(p1.billingEventId);
-    expect(p1dup.payment.receivedCents).toBe(250_000);
+    expect(p1dup.payment.receivedCents).toBe(100_000);
     expect((await sql`select count(*)::int as n from billing_events where kind = 'payment_received'`)[0]!.n).toBe(1);
     const s1 = await commercial.commercialStateForProspect(f.prospectId);
     expect(s1.stage).toBe("ACTIVATION_PAYMENT_RECEIVED");
-    expect(s1.payment!.status).not.toBe("PAID_IN_FULL");
-    expect(s1.installments.map((i) => i.paid)).toEqual([true, false, false]);
+    expect(s1.installments.map((i) => i.paid)).toEqual([true]);
 
     // ---------------------------------------------------- onboarding
     unwrap(await eng.startOnboarding(operator, { engagementId: e0.id }));
@@ -278,15 +287,14 @@ describe.skipIf(!TEST_URL)("commercial purchase path dry run (integration)", () 
     expect(doneAgain.itemsCreated).toBe(0);
     // Not active yet: baseline + plan still missing.
     expect((await eng.markActive(operator, { engagementId: e0.id })).ok).toBe(false);
-    const frozen = unwrap(await eng.freezeBaseline(operator, { engagementId: e0.id, provider: "mock" }));
     const w = unwrap(await tasks.suggestTask(operator, { projectId: e0.projectId, title: "Align identity on owned pages", evidence: [{ kind: "response", refId: frozen.snapshot.questions[0]!.responseIds[0]!, note: "baseline" }] }));
     expect(w.taskId).toBeTruthy();
     unwrap(await eng.markActive(operator, { engagementId: e0.id }));
     const sA = await commercial.commercialStateForProspect(f.prospectId);
     expect(sA.stage).toBe("ACTIVE");
     expect(sA.engagementStage).toBe("active");
-    expect(sA.payment!.status).toBe("PARTIALLY_PAID");
-    expect(sA.payment!.balanceCents).toBe(500_000);
+    expect(sA.payment!.status).toBe("PAID_IN_FULL");
+    expect(sA.payment!.balanceCents).toBe(0);
     expect(sA.offer.source).toBe("engagement");
     expect(sA.agreement!.status).toBe("signed");
     expect(sA.exclusivity.status).toBe("active");
@@ -295,12 +303,30 @@ describe.skipIf(!TEST_URL)("commercial purchase path dry run (integration)", () 
     expect((await eng.markActive(operator, { engagementId: e0.id })).ok).toBe(false);
     expect((await sql`select count(*)::int as n from client_engagements`)[0]!.n).toBe(1);
     expect((await sql`select count(*)::int as n from exclusivity_agreements where project_id = ${e0.projectId}`)[0]!.n).toBe(1);
-    // Installments 2 and 3 complete the contract exactly.
-    unwrap(await commercial.recordInstallmentPayment(operator, { engagementId: e0.id, installment: 2 }));
-    const p3 = unwrap(await commercial.recordInstallmentPayment(operator, { engagementId: e0.id, installment: 3 }));
-    expect(p3.payment.status).toBe("PAID_IN_FULL");
-    expect(p3.payment.receivedCents).toBe(750_000);
-    expect(p3.payment.balanceCents).toBe(0);
+    // ------------------------------------------- spec 152: outcome → fee
+    // The target can no longer change once work started (database-enforced).
+    expect((await eng.recordPerformanceTarget(admin, { engagementId: e0.id, recommendationRatePercent: 50, agreedOn: today })).ok).toBe(false);
+    // The founder records "met" against a remeasurement on the same instrument.
+    const [run0] = await sql`select prompt_set_version_id, providers from runs where id = ${frozen.snapshot.runId}`;
+    const rerun = unwrap(await m.runSvc.startRun(operator, { projectId: frozen.snapshot.sourceProjectId, promptSetVersionId: run0!.promptSetVersionId as string, providers: run0!.providers as never, budgetUsd: 5, label: "QA131 rerun" }));
+    await sql`update runs set reuse_captures = false where id = ${rerun.id}`;
+    const { drainJobs } = await import("../helpers/prospect-fixtures");
+    await drainJobs(m as never);
+    const remeasured = unwrap(await eng.recordMeasurement(operator, { engagementId: e0.id, runId: rerun.id }));
+    expect((await eng.recordPerformanceOutcome(operator, { engagementId: e0.id, outcome: "met", snapshotId: remeasured.measurementId, note: "QA131: target reached on the rerun" })).ok).toBe(false); // admin only
+    unwrap(await eng.recordPerformanceOutcome(admin, { engagementId: e0.id, outcome: "met", snapshotId: remeasured.measurementId, note: "QA131: target reached on the rerun" }));
+    expect((await eng.recordPerformanceOutcome(admin, { engagementId: e0.id, outcome: "not_met", snapshotId: remeasured.measurementId, note: "QA131: trying to flip the outcome" })).ok).toBe(false);
+    const pInv = unwrap(await commercial.createPerformanceInvoice(operator, { engagementId: e0.id }));
+    expect(pInv.amountCents).toBe(400_000);
+    expect(pInv.invoiceId).toBe(`ENG-${e0.id.slice(0, 8).toUpperCase()}-P`);
+    expect(unwrap(await commercial.createPerformanceInvoice(operator, { engagementId: e0.id })).created).toBe(false);
+    const due = await commercial.commercialStateForProspect(f.prospectId);
+    expect(due.payment!.status).toBe("PARTIALLY_PAID");
+    expect(due.payment!.balanceCents).toBe(400_000);
+    const pPaid = unwrap(await commercial.recordPerformanceFeePayment(operator, { engagementId: e0.id, reference: "qa-manual-perf" }));
+    expect(pPaid.payment.status).toBe("PAID_IN_FULL");
+    expect(pPaid.payment.receivedCents).toBe(500_000);
+    expect(pPaid.payment.balanceCents).toBe(0);
 
     // ------------------------------------------------ safety and history
     // History untouched: the v0 quote is exactly what it was; its terms are immutable.
@@ -309,7 +335,7 @@ describe.skipIf(!TEST_URL)("commercial purchase path dry run (integration)", () 
     await expect(sql`update pricing_quotes set total_fee_usd = 7500 where id = ${v0Quote}`).rejects.toThrow(/immutable/);
     // The engagement's economics are its own rows, not a live policy read.
     const [row] = await sql`select total_value_usd, monthly_fee_usd, pricing_policy_version from client_engagements where id = ${e0.id}`;
-    expect([Number(row!.totalValueUsd), Number(row!.monthlyFeeUsd), row!.pricingPolicyVersion]).toEqual([7_500, 2_500, active.version]);
+    expect([Number(row!.totalValueUsd), row!.pricingPolicyVersion]).toEqual([1_000, active.version]);
     // Fixture never enters real metrics.
     const learning = await quotes.pricingLearning();
     expect(learning.offersPresented).toBe(0);

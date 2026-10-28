@@ -9,7 +9,7 @@
 import { z } from "zod";
 import { sql } from "@/db/client";
 import type { TransactionSql } from "@/db/client";
-import { paymentTermsDefault, pricingPolicy, resolveEngagementPricing, usdToCents } from "@/lib/pricing/policy";
+import { activePricingPolicy, paymentTermsDefault, pricingPolicy, resolveEngagementPricing, usdToCents } from "@/lib/pricing/policy";
 import { quoteById, type QuoteRow } from "@/lib/pricing/quotes";
 import { writeAudit } from "@/db/audit";
 import { getSubjectCompany } from "@/db/companies";
@@ -60,6 +60,14 @@ import {
   type MeasurementSnapshot,
 } from "@/lib/engagements/rules";
 import { buildMeasurementSnapshot, runInstrument } from "@/lib/engagements/measurement";
+import {
+  buildPerformanceTarget,
+  DECIDED_PERFORMANCE_OUTCOMES,
+  instrumentMismatches,
+  observedPerformance,
+  type PerformanceOutcome,
+  type PerformanceTarget,
+} from "@/lib/engagements/performance";
 
 const DEFAULT_PROVIDER = "openai";
 /** Audit detail must be plain JSON; interfaces are not assignable to JSONValue. */
@@ -112,6 +120,14 @@ export interface EngagementRow {
   /** Spec 140: the accepted quote this engagement was created from. */
   quoteId: string | null;
   clientLegalName: string;
+  /** Spec 152: null when the engagement carries no performance fee. */
+  performanceFeeUsd: number | null;
+  performanceTarget: PerformanceTarget | null;
+  performanceOutcome: PerformanceOutcome;
+  performanceOutcomeSnapshotId: string | null;
+  performanceOutcomeBy: string | null;
+  performanceOutcomeAt: Date | null;
+  performanceOutcomeNote: string | null;
 }
 
 function toIso(d: unknown): string {
@@ -160,6 +176,13 @@ export function mapEngagementRow(r: Record<string, unknown>): EngagementRow {
     cooldownUntil: r.cooldownUntil ? toIso(r.cooldownUntil) : null,
     quoteId: (r.quoteId as string | null) ?? null,
     clientLegalName: (r.clientLegalName as string) ?? "",
+    performanceFeeUsd: r.performanceFeeUsd === null || r.performanceFeeUsd === undefined ? null : Number(r.performanceFeeUsd),
+    performanceTarget: (r.performanceTarget as PerformanceTarget | null) ?? null,
+    performanceOutcome: ((r.performanceOutcome as string | null) ?? "not_applicable") as PerformanceOutcome,
+    performanceOutcomeSnapshotId: (r.performanceOutcomeSnapshotId as string | null) ?? null,
+    performanceOutcomeBy: (r.performanceOutcomeBy as string | null) ?? null,
+    performanceOutcomeAt: (r.performanceOutcomeAt as Date | null) ?? null,
+    performanceOutcomeNote: (r.performanceOutcomeNote as string | null) ?? null,
   };
 }
 
@@ -279,7 +302,10 @@ const signSchema = z
     termDays: z.number().int().min(30).max(730).optional(),
     monthlyFeeUsd: z.number().nonnegative().optional(),
     totalValueUsd: z.number().nonnegative().optional(),
-    billingCadence: z.enum(BILLING_CADENCES).default("monthly"),
+    /** Spec 152: omitted = the policy's performance fee; null or 0 = none (an override). */
+    performanceFeeUsd: z.number().nonnegative().nullable().optional(),
+    /** Defaults to the policy's cadence (monthly for pre-policy terms). */
+    billingCadence: z.enum(BILLING_CADENCES).optional(),
     paymentTerms: z.string().trim().max(300).default(""),
     /** Spec 135: required whenever total or term differ from the active policy. */
     priceOverrideReason: z.string().trim().max(1000).optional(),
@@ -365,19 +391,23 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
       if (quote.status !== "presented" && quote.status !== "accepted") {
         return fail(new ClassifiedError("conflict", `Quote is ${quote.status}; only a presented or accepted quote becomes an engagement.`));
       }
+      const quotePerformance = quote.billing.performanceFee?.usd ?? null;
       const mismatch =
         (input.totalValueUsd !== undefined && input.totalValueUsd !== quote.totalFeeUsd) ||
         (input.termDays !== undefined && input.termDays !== quote.termDays) ||
-        (input.monthlyFeeUsd !== undefined && input.monthlyFeeUsd !== quote.billing.installmentUsd);
+        (input.monthlyFeeUsd !== undefined && input.monthlyFeeUsd !== quote.billing.installmentUsd) ||
+        (input.performanceFeeUsd !== undefined && (input.performanceFeeUsd || null) !== quotePerformance);
       if (mismatch) {
-        return fail(new ClassifiedError("validation", `Terms differ from the presented quote (${quote.totalFeeUsd} USD / ${quote.termDays} days / ${quote.billing.installmentUsd} × ${quote.billing.installments}). A presented quote is never edited — prepare a new quote instead.`));
+        return fail(new ClassifiedError("validation", `Terms differ from the presented quote (${quote.totalFeeUsd} USD / ${quote.termDays} days / ${quote.billing.installmentUsd} × ${quote.billing.installments}${quotePerformance ? ` + ${quotePerformance} USD performance fee` : ""}). A presented quote is never edited — prepare a new quote instead.`));
       }
     }
     const termDays = quote ? quote.termDays : (input.termDays ?? DEFAULT_TERM_DAYS);
     const totalValueUsd = quote ? quote.totalFeeUsd : input.totalValueUsd!;
     const monthlyFeeUsd = quote ? quote.billing.installmentUsd : input.monthlyFeeUsd!;
     const quotePolicy = quote ? pricingPolicy(quote.pricingPolicyVersion) : null;
+    const termsPolicy = quote ? quotePolicy : activePricingPolicy();
     const paymentTerms = input.paymentTerms || (quotePolicy ? paymentTermsDefault(quotePolicy) : "");
+    const billingCadence = input.billingCadence ?? termsPolicy?.billing.cadence ?? "monthly";
     const clientLegalName = input.clientLegalName ?? (prospect.businessName as string);
 
     const conflicts = await liveEngagementConflicts(prospect.marketId as string, prospect.promotedProjectId as string | null);
@@ -411,8 +441,15 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
     let pricing;
     try {
       pricing = quote
-        ? { policyVersion: quote.pricingPolicyVersion, defaultTotalValueUsd: quote.totalFeeUsd, totalValueUsd, overrideReason: null }
-        : resolveEngagementPricing({ totalValueUsd, termDays, priceOverrideReason: input.priceOverrideReason });
+        ? {
+            policyVersion: quote.pricingPolicyVersion,
+            defaultTotalValueUsd: quote.totalFeeUsd,
+            totalValueUsd,
+            defaultPerformanceFeeUsd: quote.billing.performanceFee?.usd ?? null,
+            performanceFeeUsd: quote.billing.performanceFee?.usd ?? null,
+            overrideReason: null,
+          }
+        : resolveEngagementPricing({ totalValueUsd, termDays, performanceFeeUsd: input.performanceFeeUsd, priceOverrideReason: input.priceOverrideReason });
     } catch (err) {
       return fail(err);
     }
@@ -466,13 +503,15 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
           project_id, prospect_id, market_id, exclusivity_agreement_id, primary_contact_id,
           primary_contact_name, owner_id, starts_on, ends_on, monthly_fee_usd, total_value_usd,
           billing_cadence, payment_terms, scope_summary, scope_exclusions, renewal_review_on, created_by,
-          pricing_policy_version, default_total_value_usd, price_override_reason, quote_id, client_legal_name
+          pricing_policy_version, default_total_value_usd, price_override_reason, quote_id, client_legal_name,
+          performance_fee_usd, performance_outcome
         ) values (
           ${projectId}, ${prospect.id}, ${prospect.marketId}, ${agreement.data.agreementId},
           ${input.primaryContactId ?? null}, ${contactName}, ${user.id}, ${input.startsOn}, ${dates.endsOn},
-          ${monthlyFeeUsd}, ${totalValueUsd}, ${input.billingCadence}, ${paymentTerms},
+          ${monthlyFeeUsd}, ${totalValueUsd}, ${billingCadence}, ${paymentTerms},
           ${input.scopeSummary}, ${input.scopeExclusions}, ${dates.renewalReviewOn}, ${user.id},
-          ${pricing.policyVersion}, ${pricing.defaultTotalValueUsd}, ${pricing.overrideReason}, ${quote?.id ?? null}, ${clientLegalName}
+          ${pricing.policyVersion}, ${pricing.defaultTotalValueUsd}, ${pricing.overrideReason}, ${quote?.id ?? null}, ${clientLegalName},
+          ${pricing.performanceFeeUsd}, ${pricing.performanceFeeUsd !== null ? "pending" : "not_applicable"}
         ) returning id
       `;
       const id = row!.id as string;
@@ -501,6 +540,8 @@ export async function signClient(user: CurrentUser, raw: unknown): Promise<Actio
           quoteId: quote?.id ?? null,
           monthlyFeeUsd,
           totalValueUsd,
+          performanceFeeUsd: pricing.performanceFeeUsd,
+          defaultPerformanceFeeUsd: pricing.defaultPerformanceFeeUsd,
           termDays,
           conflictOverride: input.conflictOverrideRationale ?? null,
           conflicts: plain(conflicts),
@@ -849,6 +890,9 @@ export async function markActive(user: CurrentUser, raw: unknown): Promise<Actio
       const open = checklist.filter((c) => !c.done).map((c) => c.label);
       return fail(new ClassifiedError("validation", `Onboarding is not complete: ${open.join("; ")}.`));
     }
+    if (e.performanceOutcome === "pending" && !e.performanceTarget) {
+      return fail(new ClassifiedError("validation", "Record the agreed performance target before activation — the performance fee depends on a target frozen before work starts."));
+    }
     // Spec 132 activation QA: the deterministic lane must not block. Its input
     // is evaluated as if the engagement were already active.
     const { activationQa } = await import("@/lib/engagements/qa");
@@ -1191,6 +1235,136 @@ export async function recordMeasurement(user: CurrentUser, raw: unknown): Promis
       return measurementId!;
     });
     return ok({ measurementId: id, comparability, comparison });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ------------------------------------------------------ performance fee
+
+const PERFORMANCE_NOTE_MIN = 10;
+const PERFORMANCE_NOTE_MAX = 2000;
+const percentSchema = z.number().min(0).max(100);
+
+const performanceTargetSchema = z.object({
+  engagementId: idSchema,
+  recommendationRatePercent: percentSchema,
+  questionCoveragePercent: percentSchema.nullable().optional(),
+  agreedOn: dateSchema,
+  note: z.string().trim().max(PERFORMANCE_NOTE_MAX).optional(),
+});
+
+/**
+ * Spec 152: the founder records the target agreed with the client. Only
+ * before work starts (signed/onboarding), only over a frozen baseline, and
+ * never once an agreement citing it has been sent or signed. The instrument
+ * (question set, provider, exact model, repetitions, scoring version) and the
+ * baseline values are copied from the baseline snapshot — never typed. The
+ * database refuses any change once the engagement is active.
+ */
+export async function recordPerformanceTarget(user: CurrentUser, raw: unknown): Promise<ActionResult<{ engagementId: string; target: PerformanceTarget }>> {
+  const parsed = performanceTargetSchema.safeParse(raw);
+  if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  const input = parsed.data;
+  try {
+    assertRole(user, "admin");
+    const e = await getEngagement(input.engagementId);
+    if (!e) return fail(new ClassifiedError("not_found", "Engagement not found."));
+    if (e.performanceOutcome !== "pending") {
+      return fail(new ClassifiedError("conflict", e.performanceOutcome === "not_applicable" ? "This engagement has no performance fee." : `The performance outcome is already recorded (${e.performanceOutcome}).`));
+    }
+    if (e.stage !== "signed" && e.stage !== "onboarding") {
+      return fail(new ClassifiedError("conflict", `Engagement is ${e.stage}; the target is agreed before work starts and never changes after.`));
+    }
+    const [liveAgreement] = await sql`select id, status from engagement_agreements where engagement_id = ${e.id} and status in ('sent', 'signed') limit 1`;
+    if (liveAgreement) {
+      return fail(new ClassifiedError("conflict", `The agreement citing the target is already ${liveAgreement.status as string}; the target can no longer change.`));
+    }
+    const baseline = await frozenBaseline(e.id);
+    if (!baseline?.snapshot || !baseline.frozenAt) return fail(new ClassifiedError("validation", "Freeze the baseline first — the target is defined over the frozen baseline."));
+    const target = buildPerformanceTarget({
+      target: input,
+      baseline: baseline.snapshot,
+      baselineMeasurementId: baseline.id,
+      baselineFrozenOn: baseline.frozenAt.toISOString().slice(0, 10),
+    });
+    await sql.begin(async (tx) => {
+      const locked = await loadEngagementForWrite(tx, e.id);
+      if (locked.performanceOutcome !== "pending") throw new ClassifiedError("conflict", "The performance outcome changed meanwhile.");
+      await tx`update client_engagements set performance_target = ${tx.json(target as never)}, updated_at = now() where id = ${e.id}`;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "engagement.performance_target_recorded",
+        entity: "client_engagement",
+        entityId: e.id,
+        projectId: e.projectId,
+        detail: { target: plain(target), replaced: plain(locked.performanceTarget) },
+      });
+    });
+    return ok({ engagementId: e.id, target });
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+const performanceOutcomeSchema = z.object({
+  engagementId: idSchema,
+  outcome: z.enum(DECIDED_PERFORMANCE_OUTCOMES),
+  /** The remeasurement (engagement_measurements id) the decision cites. */
+  snapshotId: idSchema,
+  note: z.string().trim().min(PERFORMANCE_NOTE_MIN).max(PERFORMANCE_NOTE_MAX),
+});
+
+/**
+ * Spec 152: the founder records whether the agreed target was met. The OS
+ * never decides: it refuses a remeasurement taken with a different
+ * instrument than the frozen target, shows what the snapshot observed in the
+ * audit, and records the founder's decision once (enforced by the database).
+ * No invoice is created here — `createPerformanceInvoice` does that after "met".
+ */
+export async function recordPerformanceOutcome(user: CurrentUser, raw: unknown): Promise<ActionResult<{ engagementId: string; outcome: PerformanceOutcome }>> {
+  const parsed = performanceOutcomeSchema.safeParse(raw);
+  if (!parsed.success) return fail(new ClassifiedError("validation", firstZodMessage(parsed.error)));
+  const input = parsed.data;
+  try {
+    assertRole(user, "admin");
+    await sql.begin(async (tx) => {
+      const e = await loadEngagementForWrite(tx, input.engagementId);
+      if (e.performanceOutcome === "not_applicable") throw new ClassifiedError("conflict", "This engagement has no performance fee.");
+      if (e.performanceOutcome !== "pending") throw new ClassifiedError("conflict", `The performance outcome is already recorded (${e.performanceOutcome}); it is recorded once.`);
+      if (!e.performanceTarget) throw new ClassifiedError("validation", "No agreed target is recorded for this engagement.");
+      const [m] = await tx`select id, role, status, snapshot, frozen_at from engagement_measurements where id = ${input.snapshotId} and engagement_id = ${e.id}`;
+      if (!m) throw new ClassifiedError("not_found", "Remeasurement not found for this engagement.");
+      if (m.role === "baseline") throw new ClassifiedError("validation", "The outcome cites a remeasurement, not the baseline.");
+      if (m.status !== "frozen" || !m.snapshot) throw new ClassifiedError("validation", `The measurement is ${m.status as string}; only a frozen, comparable remeasurement can decide the outcome.`);
+      const snapshot = m.snapshot as MeasurementSnapshot;
+      const mismatches = instrumentMismatches(e.performanceTarget, snapshot);
+      if (mismatches.length > 0) {
+        throw new ClassifiedError("validation", `The remeasurement was not taken with the target's instrument: ${mismatches.join("; ")}. Rerun the identical test.`);
+      }
+      const observed = observedPerformance(e.performanceTarget, snapshot);
+      await tx`
+        update client_engagements set performance_outcome = ${input.outcome}, performance_outcome_snapshot_id = ${m.id},
+          performance_outcome_by = ${user.id}, performance_outcome_at = now(), performance_outcome_note = ${input.note}, updated_at = now()
+        where id = ${e.id} and performance_outcome = 'pending'`;
+      await writeAudit(tx, {
+        userId: user.id,
+        action: "engagement.performance_outcome_recorded",
+        entity: "client_engagement",
+        entityId: e.id,
+        projectId: e.projectId,
+        detail: {
+          outcome: input.outcome,
+          snapshotId: m.id as string,
+          note: input.note,
+          rerunOn: e.performanceTarget.rerunOn,
+          measuredOn: m.frozenAt instanceof Date ? m.frozenAt.toISOString().slice(0, 10) : null,
+          observed: plain(observed),
+          performanceFeeUsd: e.performanceFeeUsd,
+        },
+      });
+    });
+    return ok({ engagementId: input.engagementId, outcome: input.outcome });
   } catch (err) {
     return fail(err);
   }

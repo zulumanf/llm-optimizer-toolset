@@ -11,7 +11,7 @@
  */
 import { sql } from "@/db/client";
 import { FREEMAIL_DOMAINS, PRICING_REQUEST_RE } from "@/lib/prospects/constants";
-import { activePricingPolicy, type PricingPolicy } from "@/lib/pricing/policy";
+import { activePricingPolicy, usd, type PricingPolicy } from "@/lib/pricing/policy";
 import { CURRENT } from "@/lib/prospects/benchmark";
 import { PROMPT_ECHO_EXCLUDED } from "@/lib/scoring/prompt-echo";
 import { deliveredTouch1, prospectEntityType } from "@/lib/prospects/followups";
@@ -112,6 +112,8 @@ export interface ReportOffer {
   price: string;
   total: string;
   includes: string[];
+  /** Spec 152: heading over `includes` ("The $1,000 covers"); absent = "Includes". */
+  includesLabel?: string;
   commitment: string;
   promise: string;
   /** Spec 135: the policy this section was built from — frozen with the
@@ -447,6 +449,7 @@ export function offerSection(policy: PricingPolicy = activePricingPolicy()): Rep
     price: policy.customerFacing.price,
     total: policy.customerFacing.billing,
     includes: [...policy.includes],
+    ...(policy.performanceFee ? { includesLabel: `The ${usd(policy.totalFeeUsd)} covers` } : {}),
     commitment: policy.customerFacing.commitment,
     promise: "I can't promise a ranking. I can show you the before, what we changed, and whether the same test moved.",
     pricingPolicyVersion: policy.version,

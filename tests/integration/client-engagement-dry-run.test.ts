@@ -186,6 +186,8 @@ describe.skipIf(!TEST_URL)("client engagement dry run (integration)", () => {
 
     // -------------------------------------------------------- baseline frozen
     const frozen = unwrap(await eng.freezeBaseline(operator, { engagementId: e0.id, provider: "mock" }));
+    // Spec 152: the performance target is agreed over the frozen baseline (admin only).
+    unwrap(await eng.recordPerformanceTarget(admin, { engagementId: e0.id, recommendationRatePercent: 25, agreedOn: new Date().toISOString().slice(0, 10) }));
     expect(frozen.snapshot.answerCount).toBe(6);
     expect(frozen.snapshot.subject.recommendedCount).toBeGreaterThan(0);
     expect(frozen.snapshot.questions.every((q) => q.responseIds.length === 3)).toBe(true);

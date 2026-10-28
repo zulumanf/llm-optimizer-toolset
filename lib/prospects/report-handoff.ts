@@ -236,7 +236,7 @@ export function serializeReportForReview(block: AuditMismatchBlock, ctx: { prosp
   );
   if (block.offer) {
     h(block.offer.title);
-    out.push(block.offer.price, block.offer.total, `Includes: ${block.offer.includes.join("; ")}.`, block.offer.commitment, block.offer.promise);
+    out.push(block.offer.price, block.offer.total, `${block.offer.includesLabel ?? "Includes"}: ${block.offer.includes.join("; ")}.`, block.offer.commitment, block.offer.promise);
   }
   h("Want me to walk you through what I'd look at first?");
   out.push(`I've already done the initial comparison. If you want, I can walk you through which parts of this I think matter, which parts I wouldn't worry about, and the first two or three things I'd investigate for ${you}.`);

@@ -3883,3 +3883,21 @@ paid work no one requested. Medina's baseline needs the worker.
   inversion asserted, same-entity-level leader, gap ≥ 10, prospect ≤ 2.
 - A separate snapshot type keeps `MismatchEvidenceSnapshot` strict; only
   evidence release accepts both and skips just the production checks.
+
+## 2026-10-17 — Spec 152 (planned): performance pilot pricing replaces the $7,500 offer
+
+- **Founder decision: the current offer is $1,000 to start, plus $4,000 only if an agreed, measurable target is reached.** `first_client_90d_v1` ($7,500 / 90 days) is retired, not deleted: presented quotes and engagements reference policies by version, and history is evidence (spec 135).
+- **Documented now, built after the 2026-10-19 Medina meeting.** Prices live in code, so nothing reaches production without a deploy, and no deploy happens before that meeting. Until spec 152 ships, `docs/15` states the new offer and pauses the quote → sign → invoice path for new clients, because that path still defaults to $7,500.
+- **The performance fee is never decided or billed automatically.** It becomes due only when the founder records the outcome against a remeasurement snapshot taken with the same instrument as the frozen target. Until then it is not a balance, not run rate and not pipeline value.
+
+## 2026-10-28 — Spec 152 built: `performance_fee_v1`
+
+- Founder answers: 90 days; $1,000 covers baseline, plan and first changes;
+  $4,000 due 14 days after "met"; per-client target; exclusivity applies; no
+  "pilot" wording to prospects.
+- Version id renamed `performance_pilot_v1` → `performance_fee_v1`: the id is
+  rendered into the agreement and the report's offer data, so the internal
+  name leaked the forbidden word.
+- Purchase order changes: freeze baseline and record the target before the
+  agreement, which cites the target. `markActive` checks onboarding, then the
+  target. v1 agreements re-render byte-identically (pinned hash).

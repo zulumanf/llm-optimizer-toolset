@@ -430,7 +430,7 @@ export function MismatchReport({
           <div className="max-w-[56ch] text-sm leading-relaxed lg:col-span-7">
             <p className={`${serifClass} text-xl tabular-nums`}>{b.offer.price}</p>
             <p className="mt-1 tabular-nums">{b.offer.total}</p>
-            <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">Includes</p>
+            <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">{b.offer.includesLabel ?? "Includes"}</p>
             <ul className="mt-1 list-disc space-y-1 pl-5">
               {b.offer.includes.map((x) => <li key={x}>{x}</li>)}
             </ul>

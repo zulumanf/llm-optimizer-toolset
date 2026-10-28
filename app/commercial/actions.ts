@@ -62,3 +62,15 @@ export async function activateExclusivity(input: unknown) {
 export async function markActive(input: unknown) {
   return run((u) => engagements.markActive(u, input));
 }
+export async function recordPerformanceTarget(input: unknown) {
+  return run((u) => engagements.recordPerformanceTarget(u, input));
+}
+export async function recordPerformanceOutcome(input: unknown) {
+  return run((u) => engagements.recordPerformanceOutcome(u, input));
+}
+export async function createPerformanceInvoice(input: unknown) {
+  return run((u) => commercial.createPerformanceInvoice(u, input));
+}
+export async function recordPerformanceFeePayment(input: unknown) {
+  return run((u) => commercial.recordPerformanceFeePayment(u, input));
+}

@@ -159,11 +159,12 @@ describe("the offer section (only when pricing was asked for)", () => {
   it("states one number, the 90-day term, one engagement and no ranking promise (spec 135 active policy)", () => {
     const o = offerSection();
     expect(o.title).toBe("Pricing");
-    expect(o.price).toBe("$7,500 for the 90-day engagement");
-    expect(o.total).toBe("Billed as $2,500 per month over the 90 days");
+    // Spec 152: the active offer is $1,000 + $4,000 on an agreed target.
+    expect(o.price).toBe("$1,000 to start, plus $4,000 only if the agreed target is reached");
+    expect(o.total).toContain("if it isn't reached, the $4,000 isn't owed");
     expect(o.includes).toEqual([...activePricingPolicy().includes]);
-    expect(o.commitment).toContain("One 90-day engagement");
-    expect(o.pricingPolicyVersion).toBe("first_client_90d_v1");
+    expect(o.commitment).toContain("Most of the fee depends on a result we agree in advance");
+    expect(o.pricingPolicyVersion).toBe("performance_fee_v1");
     expect(o.promise).toContain("can't promise a ranking");
     // The retired v0 policy still renders exactly what Ryan's snapshot holds.
     const v0 = offerSection(pricingPolicy("founder_monthly_7500_v0")!);
