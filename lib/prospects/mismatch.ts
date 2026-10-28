@@ -24,7 +24,7 @@ import {
   datasetProductionByCompany,
   launchGeographies,
 } from "@/lib/prospects/realtrends-dataset";
-import { MISMATCH_TEMPLATE_VERSION, MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
+import { LEADER_TEMPLATE_VERSION, LEADER_THRESHOLDS, MISMATCH_TEMPLATE_VERSION, MISMATCH_THRESHOLDS } from "@/lib/prospects/constants";
 import { OPERATOR_TIMEZONE } from "@/lib/prospects/intent";
 
 /** The provider whose answers this template counts. Never widened to a
@@ -360,6 +360,35 @@ export interface MismatchEvidenceSnapshot {
   thresholds: typeof MISMATCH_THRESHOLDS;
 }
 
+/** Spec 168: what a "market leader" Touch 1 asserts — recommendation counts
+ * from one run for the prospect and the market's most-recommended comparable
+ * entity. No production claim, so no production fields. */
+export interface LeaderEvidenceSnapshot {
+  variant: "leader";
+  templateVersion: string;
+  runId: string;
+  provider: string;
+  answerCount: number;
+  modelCount: number;
+  capturedAt: string | null;
+  completedAt: string | null;
+  scopeCopy: string;
+  audiences: string[];
+  prospect: LeaderSnapshotEntity;
+  competitor: LeaderSnapshotEntity & { recommendationGap: number };
+  thresholds: typeof LEADER_THRESHOLDS;
+}
+
+interface LeaderSnapshotEntity {
+  companyId: string;
+  prospectId: string | null;
+  name: string;
+  recommendationCount: number;
+}
+
+export const isLeaderSnapshot = (s: unknown): s is LeaderEvidenceSnapshot =>
+  typeof s === "object" && s !== null && (s as { variant?: unknown }).variant === "leader";
+
 interface MismatchSnapshotEntity {
   companyId: string;
   prospectId: string | null;
@@ -648,5 +677,91 @@ export function buildEvidenceSnapshot(
     },
     metricType,
     thresholds: MISMATCH_THRESHOLDS,
+  };
+}
+
+// ------------------------------------------------------ spec 168: leader
+
+export type LeaderReasonCode =
+  | "NO_RECIPIENT_FIRST_NAME"
+  | "ENTITY_RESOLUTION_UNCERTAIN"
+  | "NO_BENCHMARK"
+  | "CHATGPT_DATA_UNAVAILABLE"
+  | "BENCHMARK_SCOPE_INVALID"
+  | "BENCHMARK_TOO_OLD"
+  | "PROSPECT_ALREADY_RECOMMENDED"
+  | "ENTITY_LEVEL_UNKNOWN"
+  | "NO_CLEAR_LEADER";
+
+export interface LeaderEvaluation {
+  eligible: boolean;
+  reasonCodes: LeaderReasonCode[];
+  leader: MismatchCandidate | null;
+}
+
+/**
+ * Spec 168, pure. The prospect is (nearly) absent from the run's
+ * recommendations and the market's most-recommended entity at the SAME
+ * entity level (team vs team, individual vs individual) is clearly ahead.
+ * Production is never compared; it only supplies the verified entity level.
+ */
+export function evaluateLeader(
+  review: CompetitiveMismatchReview,
+  prospectEntity: "individual" | "team" | null,
+  now: Date
+): LeaderEvaluation {
+  const codes: LeaderReasonCode[] = [];
+  if (!review.firstName) codes.push("NO_RECIPIENT_FIRST_NAME");
+  if (!review.prospect.companyId) codes.push("ENTITY_RESOLUTION_UNCERTAIN");
+  if (!review.runId || !review.benchmark) codes.push("NO_BENCHMARK");
+  else if (review.benchmark.answerCount <= 0) codes.push("CHATGPT_DATA_UNAVAILABLE");
+  if (!review.benchmarkCompletedAt) codes.push("BENCHMARK_SCOPE_INVALID");
+  else if ((now.getTime() - review.benchmarkCompletedAt.getTime()) / 86_400_000 > LEADER_THRESHOLDS.maxBenchmarkAgeDays) {
+    codes.push("BENCHMARK_TOO_OLD");
+  }
+  if (review.prospect.recommendationCount > LEADER_THRESHOLDS.maxProspectRecommendations) {
+    codes.push("PROSPECT_ALREADY_RECOMMENDED");
+  }
+  if (!prospectEntity) codes.push("ENTITY_LEVEL_UNKNOWN");
+  const leader =
+    [...review.evaluation.candidates]
+      .filter((c) => prospectEntity !== null && c.production?.entityType === prospectEntity)
+      .sort((a, b) => b.recommendationCount - a.recommendationCount || a.displayName.localeCompare(b.displayName))[0] ?? null;
+  if (!leader || leader.recommendationCount - review.prospect.recommendationCount < LEADER_THRESHOLDS.minRecommendationGap) {
+    codes.push("NO_CLEAR_LEADER");
+  }
+  return { eligible: codes.length === 0, reasonCodes: codes, leader: codes.length === 0 ? leader : null };
+}
+
+/** Freeze the facts a leader draft will assert. Caller guarantees eligibility. */
+export function buildLeaderSnapshot(
+  review: CompetitiveMismatchReview,
+  leader: MismatchCandidate
+): LeaderEvidenceSnapshot {
+  return {
+    variant: "leader",
+    templateVersion: LEADER_TEMPLATE_VERSION,
+    runId: review.runId!,
+    provider: MISMATCH_PROVIDER,
+    answerCount: review.benchmark!.answerCount,
+    modelCount: review.benchmark!.modelCount,
+    capturedAt: review.benchmark!.capturedAt?.toISOString() ?? null,
+    completedAt: review.benchmarkCompletedAt?.toISOString() ?? null,
+    scopeCopy: review.scopeCopy,
+    audiences: review.audiences,
+    prospect: {
+      companyId: review.prospect.companyId!,
+      prospectId: review.prospectId,
+      name: review.prospect.displayName,
+      recommendationCount: review.prospect.recommendationCount,
+    },
+    competitor: {
+      companyId: leader.companyId,
+      prospectId: leader.prospectId,
+      name: leader.displayName,
+      recommendationCount: leader.recommendationCount,
+      recommendationGap: leader.recommendationCount - review.prospect.recommendationCount,
+    },
+    thresholds: LEADER_THRESHOLDS,
   };
 }

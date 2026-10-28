@@ -354,6 +354,22 @@ export const MISMATCH_TEMPLATE_VERSIONS: readonly string[] = [
   "competitive_mismatch_reply_v1",
   MISMATCH_TEMPLATE_VERSION,
 ];
+/** Spec 168: Touch 1 "market leader" comparison — recommendation counts only. */
+export const LEADER_TEMPLATE_VERSION = "leader_comparison_reply_v1";
+export const isLeaderTemplate = (v: string | null | undefined): boolean => v === LEADER_TEMPLATE_VERSION;
+/** Spec 168: who gets the leader email. The prospect is (nearly) absent and
+ * the market's most-recommended comparable entity clearly is not. */
+export const LEADER_THRESHOLDS = {
+  maxProspectRecommendations: 2,
+  minRecommendationGap: 10,
+  maxBenchmarkAgeDays: 14,
+} as const;
+/** Every cold Touch 1 template that states frozen competitive evidence. */
+export const TOUCH1_EVIDENCE_TEMPLATE_VERSIONS: readonly string[] = [
+  "competitive_mismatch_reply_v1",
+  "competitive_mismatch_reply_v2",
+  LEADER_TEMPLATE_VERSION,
+];
 export const isMismatchTemplate = (v: string | null | undefined): boolean =>
   v != null && MISMATCH_TEMPLATE_VERSIONS.includes(v);
 
@@ -434,6 +450,7 @@ export const OUTREACH_TEMPLATE_LABELS: Record<string, string> = {
   [LEGACY_OUTREACH_TEMPLATE_VERSION]: "Reply-first audit email",
   "competitive_mismatch_reply_v1": "Competitive mismatch",
   [MISMATCH_TEMPLATE_VERSION]: "Competitive mismatch v2",
+  [LEADER_TEMPLATE_VERSION]: "Market leader comparison",
   [FOLLOWUP_TEMPLATE_VERSIONS.t2NoEngagement]: "Mismatch T2 · no engagement",
   [FOLLOWUP_TEMPLATE_VERSIONS.t2Engaged]: "Mismatch T2 · engaged",
   [FOLLOWUP_TEMPLATE_VERSIONS.t3Engaged]: "Mismatch T3 · engaged",

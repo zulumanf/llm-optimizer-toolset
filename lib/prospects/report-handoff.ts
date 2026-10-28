@@ -54,7 +54,7 @@ import {
 import { lintFollowupCopy, type ProspectEntityType } from "@/lib/prospects/followup-templates";
 import { entityRef, type AuditMismatchBlock } from "@/lib/prospects/audit-mismatch";
 import type { DraftQaIssue } from "@/lib/prospects/draft-qa";
-import type { MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
+import { isLeaderSnapshot, type MismatchEvidenceSnapshot } from "@/lib/prospects/mismatch";
 import { reportInvitationUrl } from "@/lib/prospects/urls";
 import { logActivity } from "@/lib/prospects/shared";
 
@@ -1134,6 +1134,8 @@ async function fulfillmentSendRecheckCore(db: TransactionSql | typeof sql, draft
   if (!h.manifestText) return { passed: false, detail: "handoff has no fact manifest" };
   const found = await evidenceSnapshotForDraft(db, draftId);
   if (!found) return { passed: false, detail: "delivery draft carries no frozen evidence" };
+  // Spec 168: fulfillment manifests are built from mismatch evidence only.
+  if (isLeaderSnapshot(found.snapshot)) return { passed: false, detail: "leader-comparison evidence has no fulfillment manifest path" };
   const stored = JSON.parse(h.manifestText as string) as FactManifest;
   const [seqRow] = h.sequenceId ? await db`select touch1_send_id from outreach_followup_sequences where id = ${h.sequenceId}` : [];
   const t1 = seqRow ? ((seqRow.touch1SendId as string | null) ?? null) : await (async () => {

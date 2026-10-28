@@ -419,3 +419,18 @@ describe("raw occurrence rule mirrors the parser boundary", () => {
     expect(s.companies[JOSH]).toMatchObject({ recommended: 0, rawOccurrenceResponses: 1, coverageGaps: [] });
   });
 });
+
+describe("spec 168: leader snapshots skip only the production checks", () => {
+  it("a leader claim verifies without production records; a mismatch claim without them still fails", () => {
+    const i = baseInput();
+    const noProd = { ...i, prospect: { ...i.prospect, production: null }, competitor: { ...i.competitor, production: null } };
+    const leader = { ...noProd, snapshot: { ...i.snapshot, metricType: null, variant: "leader" as const } };
+    expect(composeReleaseVerdict(leader).reasons).not.toContain("PRODUCTION_RECORD_UNVERIFIED");
+    expect(composeReleaseVerdict(leader).checks.map((c) => c.name)).not.toContain("PRODUCTION_COMPARABLE");
+    expect(composeReleaseVerdict(noProd).reasons).toContain("PRODUCTION_RECORD_UNVERIFIED");
+    expect(composeReleaseVerdict(baseInput()).verified).toBe(true);
+    // Every non-production check still runs for a leader claim.
+    const countDrift = { ...leader, prospect: { ...leader.prospect, stated: { ...leader.prospect.stated, recommendationCount: 99 } } };
+    expect(composeReleaseVerdict(countDrift).verified).toBe(false);
+  });
+});

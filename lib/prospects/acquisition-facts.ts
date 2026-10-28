@@ -20,7 +20,7 @@
 import { sql } from "@/db/client";
 import { humanViews, machineHealth } from "@/lib/prospects/dashboard";
 import {
-  MISMATCH_TEMPLATE_VERSIONS,
+  TOUCH1_EVIDENCE_TEMPLATE_VERSIONS,
   PRICING_REQUEST_RE,
   QA_FIXTURE_NAME_PREFIX,
   REPORT_DELIVERY_TEMPLATE_VERSION,
@@ -211,7 +211,7 @@ async function supply(): Promise<MarketSupplyFact[]> {
         exists (select 1 from outreach_drafts dr where dr.prospect_id = p.id and dr.status = 'approved' and dr.sent_recorded_at is null
            and dr.scheduled_send_at is null and dr.last_send_error is not null and dr.sequence_id is null and dr.reply_to_id is null) as parked,
         exists (select 1 from outreach_drafts dr where dr.prospect_id = p.id and dr.status = 'draft' and dr.evidence_snapshot is not null
-           and dr.prompt_version = any(${MISMATCH_TEMPLATE_VERSIONS})) as awaiting
+           and dr.prompt_version = any(${TOUCH1_EVIDENCE_TEMPLATE_VERSIONS})) as awaiting
       from prospects p join market_launches l on l.id = p.launch_id
       where p.archived_at is null and l.archived_at is null and l.name not like ${fixture}
     )
@@ -247,7 +247,7 @@ async function queued(): Promise<QueuedDraftFact[]> {
         when dr.reply_to_id is not null or dr.prompt_version = ${REPORT_DELIVERY_TEMPLATE_VERSION} then 'FOUNDER'
         when dr.sequence_id is not null and dr.touch_number = 2 then 'T2'
         when dr.sequence_id is not null and dr.touch_number = 3 then 'T3'
-        when dr.prompt_version = any(${MISMATCH_TEMPLATE_VERSIONS}) or dr.evidence_snapshot is not null then 'T1'
+        when dr.prompt_version = any(${TOUCH1_EVIDENCE_TEMPLATE_VERSIONS}) or dr.evidence_snapshot is not null then 'T1'
         else 'OTHER'
       end as kind,
       count(*)::int as n

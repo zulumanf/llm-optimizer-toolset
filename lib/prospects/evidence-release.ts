@@ -36,6 +36,8 @@ import { latestEvidenceCorrection } from "@/lib/prospects/evidence-corrections";
 import {
   MISMATCH_PROVIDER,
   sharedMetric,
+  isLeaderSnapshot,
+  type LeaderEvidenceSnapshot,
   type MismatchEvidenceSnapshot,
   type MismatchMetricType,
 } from "@/lib/prospects/mismatch";
@@ -330,7 +332,8 @@ export interface ReleaseRunInput {
 }
 
 export interface ReleaseVerdictInput {
-  snapshot: { runId: string; provider: string; answerCount: number; metricType: MismatchMetricType };
+  /** Spec 168: variant "leader" states counts only — production checks don't apply. */
+  snapshot: { runId: string; provider: string; answerCount: number; metricType: MismatchMetricType | null; variant?: "leader" };
   expectedProvider: string;
   knownParserVersions: readonly string[];
   run: ReleaseRunInput;
@@ -424,6 +427,9 @@ const metricValue = (r: ProductionRecord, m: MismatchMetricType): number => (m =
 
 function productionChecks(i: ReleaseVerdictInput): ReleaseCheck[] {
   const m = i.snapshot.metricType;
+  if (m === null) {
+    return [mk("PRODUCTION_COMPARABLE", false, "a production claim with no metric type", "PRODUCTION_RECORD_UNVERIFIED")];
+  }
   const side = (s: ReleaseSideInput, name: ReleaseCheckName): ReleaseCheck => {
     const r = s.production;
     if (!r) return mk(name, false, `${s.name}: production record ${s.stated.productionSignalId} not found`, "PRODUCTION_RECORD_UNVERIFIED");
@@ -530,7 +536,8 @@ function integrityChecks(i: ReleaseVerdictInput): ReleaseCheck[] {
 /** Pure. Every check runs (no short-circuit) so the ledger explains the
  * whole state; the verdict is TRUE only when every check passed. */
 export function composeReleaseVerdict(i: ReleaseVerdictInput): EvidenceReleaseVerdict {
-  const checks = [...entityChecks(i), ...productionChecks(i), ...runChecks(i), ...countChecks(i), ...integrityChecks(i)];
+  const production = i.snapshot.variant === "leader" ? [] : productionChecks(i);
+  const checks = [...entityChecks(i), ...production, ...runChecks(i), ...countChecks(i), ...integrityChecks(i)];
   const reasons = [...new Set(checks.filter((c) => !c.passed).map((c) => c.reason!))];
   return {
     version: EVIDENCE_RELEASE_VERSION,
@@ -723,7 +730,7 @@ export interface VerifyReleaseContext {
  * compose it. Reads only; never reruns the benchmark; never writes.
  */
 export async function verifyEvidenceRelease(
-  snapshot: MismatchEvidenceSnapshot,
+  snapshot: MismatchEvidenceSnapshot | LeaderEvidenceSnapshot,
   ctx: VerifyReleaseContext
 ): Promise<EvidenceReleaseVerdict> {
   const ids = [snapshot.prospect.companyId, snapshot.competitor.companyId];
@@ -738,8 +745,8 @@ export async function verifyEvidenceRelease(
     ]),
     providerRecommendationCounts(snapshot.runId, snapshot.provider, ids),
     latestEvidenceCorrection(ctx.prospectId, ctx.sendId),
-    loadProductionRecord(snapshot.prospect.productionSignalId),
-    loadProductionRecord(snapshot.competitor.productionSignalId),
+    isLeaderSnapshot(snapshot) ? Promise.resolve(null) : loadProductionRecord(snapshot.prospect.productionSignalId),
+    isLeaderSnapshot(snapshot) ? Promise.resolve(null) : loadProductionRecord(snapshot.competitor.productionSignalId),
     loadBenchmarkMarket(snapshot.runId, snapshot.prospect.prospectId),
   ]);
   const companies = new Map(companyRows.map((c) => [c.id as string, { name: c.name as string, aliases: ((c.aliases as string[]) ?? []) }]));
@@ -751,11 +758,19 @@ export async function verifyEvidenceRelease(
   const shadow = shadowRecount({
     provider: snapshot.provider, responses: runLoad.responses, holdoutPromptIds: runLoad.holdoutPromptIds, mentions, companies: shadowCompanies,
   });
-  const side = (role: "prospect" | "competitor", e: MismatchEvidenceSnapshot["prospect"], production: ProductionRecord | null): ReleaseSideInput => {
+  const side = (
+    role: "prospect" | "competitor",
+    e: MismatchEvidenceSnapshot["prospect"] | LeaderEvidenceSnapshot["prospect"],
+    production: ProductionRecord | null
+  ): ReleaseSideInput => {
     const rel = relById.get(e.companyId) ?? null;
     return {
       role, companyId: e.companyId, name: e.name,
-      stated: { recommendationCount: e.recommendationCount, productionSignalId: e.productionSignalId, productionYear: e.productionYear, productionValue: e.productionValue },
+      // Leader snapshots state no production; these stay empty and the
+      // production checks are skipped for them (composeReleaseVerdict).
+      stated: "productionSignalId" in e
+        ? { recommendationCount: e.recommendationCount, productionSignalId: e.productionSignalId, productionYear: e.productionYear, productionValue: e.productionValue }
+        : { recommendationCount: e.recommendationCount, productionSignalId: "", productionYear: null, productionValue: 0 },
       entity: statuses.find((s) => s.companyId === e.companyId) ?? null,
       relationship: { leadName: rel?.teamLead ?? null, provenanced: Boolean(rel?.realtrendsRecordId && rel.entityType === "team" && rel.teamLead) },
       identityNames: shadowCompanies.find((c) => c.id === e.companyId)?.identityNames ?? [],
@@ -766,7 +781,9 @@ export async function verifyEvidenceRelease(
   };
   return composeReleaseVerdict({
     benchmarkMarket,
-    snapshot: { runId: snapshot.runId, provider: snapshot.provider, answerCount: snapshot.answerCount, metricType: snapshot.metricType },
+    snapshot: isLeaderSnapshot(snapshot)
+      ? { runId: snapshot.runId, provider: snapshot.provider, answerCount: snapshot.answerCount, metricType: null, variant: "leader" }
+      : { runId: snapshot.runId, provider: snapshot.provider, answerCount: snapshot.answerCount, metricType: snapshot.metricType },
     expectedProvider: MISMATCH_PROVIDER,
     knownParserVersions: KNOWN_PARSER_VERSIONS,
     run: runLoad.run,
@@ -785,7 +802,7 @@ export async function verifyEvidenceRelease(
 export async function evidenceSnapshotForDraft(
   db: TransactionSql | typeof sql,
   draftId: string
-): Promise<{ snapshot: MismatchEvidenceSnapshot; evidenceDraftId: string } | null> {
+): Promise<{ snapshot: MismatchEvidenceSnapshot | LeaderEvidenceSnapshot; evidenceDraftId: string } | null> {
   const [row] = await db`
     with recursive chain as (
       select id, parent_id, evidence_snapshot, 0 as depth from outreach_drafts where id = ${draftId}
@@ -795,7 +812,7 @@ export async function evidenceSnapshotForDraft(
     )
     select id, evidence_snapshot from chain where evidence_snapshot is not null order by depth asc limit 1
   `;
-  const snap = (row?.evidenceSnapshot as MismatchEvidenceSnapshot | null) ?? null;
+  const snap = (row?.evidenceSnapshot as MismatchEvidenceSnapshot | LeaderEvidenceSnapshot | null) ?? null;
   if (!snap?.prospect?.companyId || !snap.competitor?.companyId) return null;
   return { snapshot: snap, evidenceDraftId: row!.id as string };
 }

@@ -377,3 +377,62 @@ describe("spec 167: mismatch template versions", () => {
     expect(isMismatchTemplate(null)).toBe(false);
   });
 });
+
+// ------------------------------------------------- spec 168: market leader
+
+describe("spec 168: market-leader comparison", () => {
+  const leaderReview = (prospectRecs: number, leaderRecs: number): CompetitiveMismatchReview => {
+    const r = review();
+    return {
+      ...r,
+      prospect: { ...r.prospect, recommendationCount: prospectRecs },
+      evaluation: {
+        ...r.evaluation,
+        candidates: r.evaluation.candidates.map((c, i) => ({ ...c, recommendationCount: i === 0 ? leaderRecs : 1 })),
+      },
+    };
+  };
+
+  it("is eligible when the prospect is nearly absent and a same-level leader is 10+ ahead", async () => {
+    const { evaluateLeader } = await import("@/lib/prospects/mismatch");
+    const e = evaluateLeader(leaderReview(0, 18), "team", NOW);
+    expect(e.eligible).toBe(true);
+    expect(e.leader?.recommendationCount).toBe(18);
+  });
+
+  it("refuses a prospect already recommended, a small gap, an unknown or different entity level", async () => {
+    const { evaluateLeader } = await import("@/lib/prospects/mismatch");
+    expect(evaluateLeader(leaderReview(3, 30), "team", NOW).reasonCodes).toContain("PROSPECT_ALREADY_RECOMMENDED");
+    expect(evaluateLeader(leaderReview(0, 9), "team", NOW).reasonCodes).toContain("NO_CLEAR_LEADER");
+    expect(evaluateLeader(leaderReview(0, 18), null, NOW).reasonCodes).toContain("ENTITY_LEVEL_UNKNOWN");
+    expect(evaluateLeader(leaderReview(0, 18), "individual", NOW).reasonCodes).toContain("NO_CLEAR_LEADER");
+  });
+
+  it("refuses a stale benchmark", async () => {
+    const { evaluateLeader } = await import("@/lib/prospects/mismatch");
+    expect(evaluateLeader(leaderReview(0, 18), "team", new Date("2026-09-20T12:00:00Z")).reasonCodes).toContain("BENCHMARK_TOO_OLD");
+  });
+
+  it("renders two counts, no production claim, Hormozi lines, no prohibited phrase; QA passes and catches drift", async () => {
+    const { evaluateLeader, buildLeaderSnapshot } = await import("@/lib/prospects/mismatch");
+    const { generateLeaderEmail } = await import("@/lib/prospects/outreach");
+    const { qaLeaderClaims } = await import("@/lib/prospects/draft-qa");
+    const r = leaderReview(0, 18);
+    const e = evaluateLeader(r, "team", NOW);
+    const snap = buildLeaderSnapshot(r, e.leader!);
+    expect(snap.variant).toBe("leader");
+    expect(snap).not.toHaveProperty("metricType");
+    const d = generateLeaderEmail(r, snap, "team", NOW);
+    expect(d.body).toContain("Your team: recommended in 0 of 64 answers");
+    expect(d.body).toContain(`${e.leader!.displayName}: recommended in 18 of 64 answers`);
+    expect(d.body).not.toMatch(/RealTrends|closed|\$/);
+    expect(d.body).toContain("I work with one client per market.");
+    expect(d.body).toContain('reply "show me"');
+    expect(findProhibitedPhrase(d.body)).toBeNull();
+    const live = { eligible: true, prospectRecommendationCount: 0, competitorRecommendationCount: 18, answerCount: 64, benchmarkAgeDays: 1 };
+    expect(qaLeaderClaims(d.body, snap, live)).toEqual([]);
+    expect(qaLeaderClaims(d.body, snap, { ...live, competitorRecommendationCount: 15 }).map((i) => i.check)).toContain("leader_stale");
+    expect(qaLeaderClaims(d.body, snap, { ...live, prospectRecommendationCount: 0, competitorRecommendationCount: 9 }).map((i) => i.check)).toContain("leader_eligibility");
+    expect(qaLeaderClaims(d.body.replace("18 of 64", "19 of 64"), snap, live).map((i) => i.check)).toContain("leader_render");
+  });
+});

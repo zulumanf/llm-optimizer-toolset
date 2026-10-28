@@ -16,7 +16,8 @@ import { wallClock } from "@/lib/prospects/business-days";
 import {
   FOLLOWUP_EXPERIMENT_ID,
   GMAIL_DAILY_SEND_CAP,
-  MISMATCH_TEMPLATE_VERSIONS,
+  TOUCH1_EVIDENCE_TEMPLATE_VERSIONS,
+  isLeaderTemplate,
   isMismatchTemplate,
   REPORT_DELIVERY_TEMPLATE_VERSION,
 } from "@/lib/prospects/constants";
@@ -46,7 +47,7 @@ export function classifySend(s: SendRow): SendClass {
   if (s.replyTo || s.promptVersion === REPORT_DELIVERY_TEMPLATE_VERSION) return "FOUNDER";
   if (s.sequenceId && s.touch === 2) return "T2";
   if (s.sequenceId && s.touch === 3) return "T3";
-  if (isMismatchTemplate(s.promptVersion)) return "T1";
+  if (isMismatchTemplate(s.promptVersion) || isLeaderTemplate(s.promptVersion)) return "T1";
   return "OTHER";
 }
 
@@ -169,7 +170,7 @@ export async function campaignPreflight(now: Date = new Date()): Promise<Campaig
   const syncAge = gmail?.lastSyncAt ? Math.round((now.getTime() - new Date(gmail.lastSyncAt as Date).getTime()) / 60_000) : null;
   const [trailing] = await sql`select count(*)::int as n from prospect_outreach_sends where allowed and channel = 'gmail' and sent_at > now() - interval '24 hours'`;
   const queued = await sql`
-    select coalesce(d.touch_number, case when d.prompt_version = any(${MISMATCH_TEMPLATE_VERSIONS}) then 1 else 0 end) as t, count(*)::int as n
+    select coalesce(d.touch_number, case when d.prompt_version = any(${TOUCH1_EVIDENCE_TEMPLATE_VERSIONS}) then 1 else 0 end) as t, count(*)::int as n
     from outreach_drafts d where d.status = 'approved' and d.sent_recorded_at is null and d.scheduled_send_at is not null
       and to_char(d.scheduled_send_at at time zone ${OPERATOR_TIMEZONE}, 'YYYY-MM-DD') = ${day} group by 1`;
   const q = { t1: 0, t2: 0, t3: 0, other: 0 };

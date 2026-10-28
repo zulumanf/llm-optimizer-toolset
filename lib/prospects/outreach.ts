@@ -7,6 +7,7 @@
  * no urgency.
  */
 import {
+  LEADER_TEMPLATE_VERSION,
   MISMATCH_TEMPLATE_VERSION,
   OUTREACH_TEMPLATE_VERSION,
 } from "@/lib/prospects/constants";
@@ -23,6 +24,7 @@ import {
   recencyPhrase,
   PRODUCTION_METRIC_COPY,
   type CompetitiveMismatchReview,
+  type LeaderEvidenceSnapshot,
   type MismatchCandidate,
 } from "@/lib/prospects/mismatch";
 
@@ -275,5 +277,44 @@ export function generateCompetitiveMismatchEmail(
     tone: "direct, factual, peer-to-peer",
     cta,
     promptVersion: MISMATCH_TEMPLATE_VERSION,
+  };
+}
+
+/** Spec 168, Hormozi-aligned like spec 167: the "market leader" Touch 1.
+ * Two counts from one run, no production claim. Caller guarantees
+ * `evaluateLeader(...).eligible`. */
+export function generateLeaderEmail(
+  review: CompetitiveMismatchReview,
+  snapshot: LeaderEvidenceSnapshot,
+  entityType: ProspectEntityType,
+  now: Date = new Date()
+): GeneratedDraft {
+  const recency = recencyPhrase(snapshot.capturedAt ? new Date(snapshot.capturedAt) : (review.benchmarkCompletedAt ?? now), now);
+  const pronoun = snapshot.modelCount > 1 ? "They" : "It";
+  const n = snapshot.answerCount;
+  const market = marketShortName(review.marketName);
+  const cta = `If you want the exact questions and the side-by-side, reply "show me". It's a five-minute read.`;
+  const body = [
+    `${review.firstName!} —`,
+    ``,
+    `${recency} I ran ${snapshot.scopeCopy} through ${consumerAnchoredModelPhrase(snapshot.provider, snapshot.modelCount)}. ` +
+      `${pronoun} recommended ${snapshot.competitor.name} far more often than ${prospectReference(entityType)}.`,
+    ``,
+    `${prospectLabel(entityType)}: recommended in ${snapshot.prospect.recommendationCount} of ${n} answers`,
+    `${snapshot.competitor.name}: recommended in ${snapshot.competitor.recommendationCount} of ${n} answers`,
+    ``,
+    implicationLine(snapshot.audiences),
+    ``,
+    `Any single answer varies; the pattern across all ${n} is the finding. ` +
+      `These answers change slowly, so whoever fixes this first becomes the default recommendation in ${market}.`,
+    ``,
+    `I work with one client per market. ${cta}`,
+  ].join("\n");
+  return {
+    subject: `${review.firstName!} — ${market}`,
+    body,
+    tone: "direct, factual, peer-to-peer",
+    cta,
+    promptVersion: LEADER_TEMPLATE_VERSION,
   };
 }

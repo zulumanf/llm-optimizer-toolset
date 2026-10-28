@@ -14,15 +14,21 @@ import {
 import { resolveFindingEvidence, unsupportedProviderMentions } from "@/lib/prospects/finding-evidence";
 import { auditUrl, brandedAuditUrl } from "@/lib/prospects/urls";
 import {
+  isLeaderTemplate,
   isMismatchTemplate,
+  LEADER_THRESHOLDS,
   MISMATCH_THRESHOLDS,
   OUTREACH_FORBIDDEN_FOOTER_HOST,
   OUTREACH_PUBLIC_WEBSITE,
 } from "@/lib/prospects/constants";
 import {
   competitiveMismatchReview,
+  evaluateLeader,
+  isLeaderSnapshot,
+  type LeaderEvidenceSnapshot,
   type MismatchEvidenceSnapshot,
 } from "@/lib/prospects/mismatch";
+import { entityTypeFromProspectType } from "@/lib/prospects/outreach";
 import {
   lintFollowupCopy,
   qaFollowupEvidence,
@@ -353,6 +359,50 @@ export function qaMismatchClaims(
   return issues;
 }
 
+/** Spec 168, pure: what a market-leader Touch 1 claims, re-checked against
+ * live data. Every issue fails the draft (approval and send). */
+export function qaLeaderClaims(
+  body: string,
+  snapshot: LeaderEvidenceSnapshot,
+  live: {
+    eligible: boolean;
+    prospectRecommendationCount: number;
+    competitorRecommendationCount: number | null;
+    answerCount: number;
+    benchmarkAgeDays: number | null;
+  }
+): DraftQaIssue[] {
+  const issues: DraftQaIssue[] = [];
+  const add = (check: string, detail: string): void => {
+    issues.push({ check, detail });
+  };
+  for (const fragment of [
+    `recommended in ${snapshot.prospect.recommendationCount} of ${snapshot.answerCount} answers`,
+    `${snapshot.competitor.name}: recommended in ${snapshot.competitor.recommendationCount} of ${snapshot.answerCount} answers`,
+  ]) {
+    if (!body.includes(fragment)) add("leader_render", `body no longer states the frozen claim "${fragment}".`);
+  }
+  if (live.answerCount !== snapshot.answerCount) {
+    add("leader_stale", `live answer count is ${live.answerCount}, the draft asserts ${snapshot.answerCount}.`);
+  }
+  if (live.prospectRecommendationCount !== snapshot.prospect.recommendationCount) {
+    add("leader_stale", `live prospect recommendation count is ${live.prospectRecommendationCount}, the draft asserts ${snapshot.prospect.recommendationCount}.`);
+  }
+  if (live.competitorRecommendationCount !== snapshot.competitor.recommendationCount) {
+    add("leader_stale", `live leader recommendation count is ${live.competitorRecommendationCount ?? "unavailable"}, the draft asserts ${snapshot.competitor.recommendationCount}.`);
+  }
+  if (
+    !live.eligible ||
+    (live.competitorRecommendationCount ?? 0) - live.prospectRecommendationCount < LEADER_THRESHOLDS.minRecommendationGap
+  ) {
+    add("leader_eligibility", "the leader comparison no longer passes eligibility against live data — regenerate the draft.");
+  }
+  if (live.benchmarkAgeDays === null || live.benchmarkAgeDays > LEADER_THRESHOLDS.maxBenchmarkAgeDays) {
+    add("leader_recency", `benchmark is ${live.benchmarkAgeDays ?? "of unknown"} days old — over the ${LEADER_THRESHOLDS.maxBenchmarkAgeDays}-day maximum.`);
+  }
+  return issues;
+}
+
 /** Assemble a draft's QA input from the database and run the pure core. */
 export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
   const [row] = await sql`
@@ -415,6 +465,28 @@ export async function qaDraft(draftId: string): Promise<DraftQaIssue[]> {
         benchmarkAgeDays: review?.evaluation.benchmarkAgeDays ?? null,
       });
     mismatchIssues.push(...claimIssues);
+  }
+  if (isLeaderTemplate(row.promptVersion as string | null)) {
+    if (!isLeaderSnapshot(row.evidenceSnapshot)) {
+      mismatchIssues.push({ check: "leader_evidence", detail: "leader draft carries no frozen leader evidence." });
+    } else {
+      const leaderSnap = row.evidenceSnapshot;
+      const review = await competitiveMismatchReview(row.prospectId as string, {
+        contactId: (row.contactId as string | null) ?? null,
+      });
+      const entity = review?.prospect.production?.entityType ?? entityTypeFromProspectType(row.prospectType as string);
+      const evaluation = review && entity ? evaluateLeader(review, entity, new Date()) : null;
+      mismatchIssues.push(
+        ...qaLeaderClaims((row.body as string) ?? "", leaderSnap, {
+          eligible: evaluation?.eligible ?? false,
+          prospectRecommendationCount: review?.prospect.recommendationCount ?? 0,
+          competitorRecommendationCount:
+            review?.evaluation.candidates.find((c) => c.companyId === leaderSnap.competitor.companyId)?.recommendationCount ?? null,
+          answerCount: review?.benchmark?.answerCount ?? 0,
+          benchmarkAgeDays: review?.evaluation.benchmarkAgeDays ?? null,
+        })
+      );
+    }
   }
   // Spec 150: a cold first-touch email stands on its finding. Re-resolved
   // here, so approval AND every send (scheduled included) re-check it — an

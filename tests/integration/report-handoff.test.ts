@@ -78,7 +78,7 @@ vi.mock("@/lib/prospects/evidence-release", async (orig) => {
       const found = await real.evidenceSnapshotForDraft(db as never, draft.id);
       if (!found) return null;
       const [seq] = draft.sequenceId ? await (db as typeof import("@/db/client")["sql"])`select touch1_send_id from outreach_followup_sequences where id = ${draft.sequenceId}` : [];
-      return verdictFor(found.snapshot, { prospectId: draft.prospectId, sendId: (seq?.touch1SendId as string | null) ?? null });
+      return verdictFor(found.snapshot as never, { prospectId: draft.prospectId, sendId: (seq?.touch1SendId as string | null) ?? null });
     },
   };
 });

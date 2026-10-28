@@ -81,12 +81,16 @@ import {
   entityTypeFromProspectType,
   findingOutreachObservation,
   generateCompetitiveMismatchEmail,
+  generateLeaderEmail,
   generateReplyFirstEmail,
 } from "@/lib/prospects/outreach";
 import { resolveFindingEvidence } from "@/lib/prospects/finding-evidence";
 import {
   buildEvidenceSnapshot,
   competitiveMismatchReview,
+  buildLeaderSnapshot,
+  evaluateLeader,
+  type LeaderEvidenceSnapshot,
   type MismatchEvidenceSnapshot,
 } from "@/lib/prospects/mismatch";
 import {
@@ -1656,7 +1660,7 @@ export async function createOutreachDraft(
       let cta = input.cta ?? null;
       let generatedBy: "system" | "operator" = "operator";
       let promptVersion: string | null = null;
-      let evidenceSnapshot: MismatchEvidenceSnapshot | null = null;
+      let evidenceSnapshot: MismatchEvidenceSnapshot | LeaderEvidenceSnapshot | null = null;
 
       if (!body) {
         const draftMarketName = await launchMarketName(tx, prospect.launchId);
@@ -1728,6 +1732,15 @@ export async function createOutreachDraft(
             "This prospect's entity type (individual or team) is unknown, so the comparison email cannot address them correctly."
           );
         }
+        // Spec 168: no clean mismatch → the market-leader comparison, when the
+        // prospect is (nearly) absent and a same-level leader is clearly ahead.
+        const leaderEntity =
+          !chosenCompetitor && !input.competitorCompanyId && review
+            ? (review.prospect.production?.entityType ?? entityTypeFromProspectType(prospectType))
+            : null;
+        const leaderEval = review && leaderEntity ? evaluateLeader(review, leaderEntity, new Date()) : null;
+        const leaderSnapshot =
+          review && leaderEval?.eligible && leaderEval.leader ? buildLeaderSnapshot(review, leaderEval.leader) : null;
         if (review && chosenCompetitor && mismatchSnapshot && mismatchEntity) {
           const generated = generateCompetitiveMismatchEmail(review, chosenCompetitor, new Date(), mismatchEntity);
           subject = generated.subject;
@@ -1737,6 +1750,15 @@ export async function createOutreachDraft(
           generatedBy = "system";
           promptVersion = generated.promptVersion;
           evidenceSnapshot = mismatchSnapshot;
+        } else if (review && leaderSnapshot && leaderEntity) {
+          const generated = generateLeaderEmail(review, leaderSnapshot, leaderEntity);
+          subject = generated.subject;
+          body = generated.body + optOutFooter(draftIdentity);
+          tone = generated.tone;
+          cta = generated.cta;
+          generatedBy = "system";
+          promptVersion = generated.promptVersion;
+          evidenceSnapshot = leaderSnapshot;
         } else {
           const [names] = await tx`
             select
