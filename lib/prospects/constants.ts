@@ -487,6 +487,9 @@ export const MISMATCH_THRESHOLDS = {
 } as const;
 
 /** Reply classifications (spec 124) — mirrors the prospect_replies CHECK. */
+/** Spec 173: activity kind for a reply the operator sent by hand in our thread. */
+export const OPERATOR_REPLIED_ACTIVITY = "operator_replied";
+
 export const REPLY_CLASSIFICATIONS = [
   "positive_interest",
   "question",
@@ -581,6 +584,30 @@ export const RECONTACT_PERSON_WINDOW_DAYS = 30;
  * guards against is local; a national brand's teams in different metros
  * share only the name. Matching is on the normalized brokerage name. */
 export const BROKERAGE_SEND_CAP_30D = 3;
+/** Dispatch policy v2 (founder directive 2026-09-15; ported 2026-10-30, spec
+ * 171): outreach collision is controlled per canonical BUYING UNIT, not per
+ * brokerage brand. BROKERAGE_SEND_CAP_30D is retired as a send gate and
+ * survives only as a supply-ranking heuristic. See dispatch-policy.ts. */
+export const DISPATCH_POLICY_VERSION = "dispatch-policy-v2";
+/** At most one active cold sequence per canonical buying unit. */
+export const BUYING_UNIT_MAX_ACTIVE_COLD_SEQUENCES = 1;
+/** Max share of ONE DAY's new Touch 1 sends from one brokerage brand — a
+ * diversity guard on dispatch order, never qualification. */
+export const DAILY_BRAND_SHARE_MAX = 0.3;
+export function dailyBrandCap(batchSize: number = DAILY_SEND_QUOTA): number {
+  return Math.max(1, Math.floor(batchSize * DAILY_BRAND_SHARE_MAX));
+}
+/** Local-office collision registry: ONLY evidence-backed entries (a dated
+ * source showing two prospects sit in one tightly managed local office).
+ * Empty = no office guard. A national brand name is never evidence. */
+export interface LocalOfficeCollisionEntry {
+  launchId: string;
+  /** normalizeBrokerage() output the prospects carry. */
+  brokerageKey: string;
+  officeKey: string;
+  source: string;
+}
+export const LOCAL_OFFICE_COLLISION_REGISTRY: readonly LocalOfficeCollisionEntry[] = [];
 
 /** Brokerage-name normalization (spec 120): naming variants must land in
  * the same cap bucket. Cut everything from the first comma, then a trailing

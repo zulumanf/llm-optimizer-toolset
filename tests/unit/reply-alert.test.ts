@@ -24,3 +24,10 @@ describe("buildReplyAlert", () => {
     expect(a.body.length).toBeLessThan(900);
   });
 });
+
+describe("spec 172: companyDomains", () => {
+  it("lists business domains once and skips free-mail providers", async () => {
+    const { companyDomains } = await import("@/lib/prospects/reply-sync");
+    expect(companyDomains(["matt@talktotucker.com", "Kate@TalkToTucker.com", "joe@gmail.com", "a@kw.com"])).toEqual(["kw.com", "talktotucker.com"]);
+  });
+});

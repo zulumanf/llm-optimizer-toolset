@@ -11,6 +11,7 @@ import { assertCanWrite, type CurrentUser } from "@/lib/auth";
 import { ok, fail, type ActionResult } from "@/lib/actions/result";
 import { ClassifiedError } from "@/lib/errors";
 import { addBusinessDays } from "@/lib/prospects/business-days";
+import { OPERATOR_REPLIED_ACTIVITY } from "@/lib/prospects/constants";
 import { OPERATOR_TIMEZONE } from "@/lib/prospects/intent";
 import { logActivity } from "@/lib/prospects/shared";
 import { operatorView, type HandoffStatus, type OperatorView } from "@/lib/prospects/fulfillment-lane";
@@ -94,7 +95,11 @@ export async function positiveRepliesWaiting(now: Date = new Date()): Promise<Po
     )
     select c.id as reply_id, c.prospect_id, c.received_at, c.body_text,
       p.business_name, p.stage, p.next_action, p.next_action_on::text, u.name as owner_name,
-      (select max(s.sent_at) from prospect_outreach_sends s where s.prospect_id = p.id and s.allowed and s.sent_at > c.received_at) as answered_at,
+      -- Spec 173: answered by a system send OR the operator's own reply in our thread.
+      greatest(
+        (select max(s.sent_at) from prospect_outreach_sends s where s.prospect_id = p.id and s.allowed and s.sent_at > c.received_at),
+        (select max(a.occurred_at) from prospect_activities a where a.prospect_id = p.id and a.kind = ${OPERATOR_REPLIED_ACTIVITY} and a.occurred_at > c.received_at)
+      ) as answered_at,
       (select json_build_object('status', h.status, 'reason', h.reason, 'autoVerdict', h.auto_verdict, 'autonomyClass', h.autonomy_class, 'laneMode', h.lane_mode, 'releaseVerdict', h.release_verdict)
          from prospect_report_handoffs h where h.reply_id = c.id order by h.created_at desc limit 1) as handoff,
       exists (select 1 from prospect_audits a where a.prospect_id = p.id and a.status = 'published') as report_published,
