@@ -80,7 +80,20 @@ async function fetchHtml(url: string): Promise<FetchOutcome> {
  * did not finish stay PENDING. */
 const ENGINE_BACKOFF_MINUTES = 20;
 type Engine = { name: string; url: (q: string) => string; parse: (html: string) => string[]; ua: string };
+/** Optional self-hosted SearxNG (JSON API) — tried first when SEARXNG_URL is
+ * set; public engines rate-limit after a handful of queries. Same host
+ * filtering applies downstream (aggregators removed). */
+function searxngLinks(body: string): string[] {
+  try {
+    const d = JSON.parse(body) as { results?: { url?: string }[] };
+    return (d.results ?? []).map((r) => r.url ?? "").filter((u) => /^https?:\/\//.test(u));
+  } catch {
+    return [];
+  }
+}
+const SEARXNG_URL = process.env.SEARXNG_URL?.replace(/\/$/, "") ?? null;
 const ENGINES: Engine[] = [
+  ...(SEARXNG_URL ? [{ name: "searxng", url: (q: string) => `${SEARXNG_URL}/search?q=${encodeURIComponent(q)}&format=json`, parse: searxngLinks, ua: UA }] : []),
   { name: "brave", url: (q) => `https://search.brave.com/search?q=${encodeURIComponent(q)}&source=web`, parse: extractResultLinks, ua: UA },
 ];
 const engineBlockedUntil: Record<string, number> = {};
@@ -108,7 +121,9 @@ async function search(query: string): Promise<{ links: string[]; exhausted: bool
     } catch (e) { out = { kind: "network_error", message: (e as Error).message }; }
     const html = out.kind === "ok" ? out.html : "";
     const status = out.kind === "network_error" ? 0 : out.status;
-    if (engineBlocked(html, status)) {
+    // SearxNG's JSON lists upstream engines that hit a CAPTCHA; only its own
+    // HTTP status says whether SearxNG itself refused.
+    if (engine.name === "searxng" ? status === 429 || status === 403 : engineBlocked(html, status)) {
       engineBlockedUntil[engine.name] = Date.now() + ENGINE_BACKOFF_MINUTES * 60_000;
       console.error(`search engine ${engine.name} rate-limited (HTTP ${status}); backing off ${ENGINE_BACKOFF_MINUTES} min`);
       continue;
