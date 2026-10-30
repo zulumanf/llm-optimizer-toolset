@@ -3926,3 +3926,10 @@ paid work no one requested. Medina's baseline needs the worker.
 - Spec 173: the operator's own replies in our threads are logged as
   `operator_replied` activities (not ledger sends: they were not gated by the
   OS) and count as answering a positive reply.
+
+## 2026-10-30 — Send cap 30/day; free contact research via SearxNG (spec 174)
+
+- Cap raised on clean restart-week deliverability; 35 only after more zero-bounce days.
+- Supply without benchmark spend: forecast the fresh runs' RealTrends pool
+  (197 qualifying teams), research contacts with code + local SearxNG, promote
+  only literal on-page person emails. First pass: 17 promoted, 13 scheduled.

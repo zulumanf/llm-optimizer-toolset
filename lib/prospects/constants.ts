@@ -627,7 +627,10 @@ export function normalizeBrokerage(name: string): string {
 // Gmail transmission (spec 091). The cap is ours, far below Gmail's own
 // limits — a warming sender address, and a policy constant like the ones
 // above: raising it is a diff, not a config edit.
-export const GMAIL_DAILY_SEND_CAP = 25;
+// 2026-10-30 (founder, spec 174): 25 → 30 after the restart week — 59 Gmail
+// sends, 0 bounces, 0 complaints, ~63% opens — to fit ≥100 Touch 1 plus the
+// follow-ups in a week. Next step (35) only if bounces stay at zero.
+export const GMAIL_DAILY_SEND_CAP = 30;
 
 /** The PUBLIC website shown in the outgoing signature/footer. Outbound
  * email must never show the app subdomain — the operator console is not
