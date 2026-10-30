@@ -242,7 +242,7 @@ describe.skipIf(!TEST_URL)("evidence release verification (integration)", () => 
     const [ledger] = await sql`select allowed, gate_verdict from prospect_outreach_sends where draft_id = ${d!.id}`;
     expect(ledger!.allowed).toBe(false);
     const verdict = ledger!.gateVerdict as { version: string; checks: { name: string; passed: boolean; detail: string }[] };
-    expect(verdict.version).toBe("prospect-send-gate-v5");
+    expect(verdict.version).toBe("prospect-send-gate-v6");
     const release = verdict.checks.find((c) => c.name === "evidence_release_verified")!;
     expect(release.passed).toBe(false);
     expect(release.detail).toContain('"version":"evidence-release-v1"');

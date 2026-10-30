@@ -306,7 +306,7 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
       version: string;
       checks: { name: string; passed: boolean }[];
     };
-    expect(verdict.version).toBe("prospect-send-gate-v5");
+    expect(verdict.version).toBe("prospect-send-gate-v6");
     const cap = verdict.checks.find((c) => c.name === "daily_send_cap");
     expect(cap?.passed).toBe(true);
 
@@ -679,6 +679,40 @@ describe.skipIf(!TEST_URL)("gmail channel + scheduled sends (integration)", () =
     expect(d?.scheduledSendAt).toBeNull();
     expect(d?.lastSendError).toMatch(/more than 24 hours overdue/);
     expect(d?.lastSendError).toMatch(/Nothing was sent/);
+  });
+
+  it("spec 172: a colleague's reply inside our thread is recorded; a same-domain message outside our threads is not", async () => {
+    const { draftId, prospectId } = await seedApprovedDraft();
+    executeCapability.mockResolvedValue(sendOk);
+    unwrap(await svc.sendProspectDraft(operator, { draftId, channel: "gmail", businessPurpose: PURPOSE }));
+    const [send] = await sql`select recipient_email, gmail_thread_id from prospect_outreach_sends where draft_id = ${draftId} and allowed`;
+    const domain = String(send!.recipientEmail).split("@")[1]!;
+    await sql`insert into connector_connections (provider, status, config) values ('gmail', 'active', ${sql.json({ sendAsAddress: "dana@avos.agency" })})`;
+    const colleague = { id: "gm-colleague", threadId: send!.gmailThreadId as string, from: `Kate <kate@${domain}>`, subject: "Re: hello", body: "What is the timeline and cost for a project like this?", date: new Date().toISOString(), messageId: "<c@x>" };
+    const outsider = { ...colleague, id: "gm-outsider", threadId: "th-unrelated", body: "Unrelated note from the same company." };
+    // Spec 173: our own hand-written reply in the thread, and the system's tracked Touch 1 (provider id gm-123).
+    const mine = { ...colleague, id: "gm-mine", from: "Dana Operator <dana@avos.agency>", body: "Hi Kate, it's 90 days.", date: new Date(Date.now() + 60_000).toISOString() };
+    const tracked = { ...mine, id: "gm-123" };
+    executeCapability.mockReset();
+    executeCapability.mockImplementation(async (req: { capability: string; input: { q?: string } }) => {
+      if (req.capability !== "email.search_messages") return sendOk;
+      const q = req.input.q ?? "";
+      if (q.startsWith("in:sent")) return { ...sendOk, data: { messages: q.includes(domain) ? [mine, tracked] : [] } };
+      return { ...sendOk, data: { messages: q.includes(`from:(${domain}`) ? [colleague, outsider] : [] } };
+    });
+    const { syncProspectReplies } = await import("@/lib/prospects/reply-sync");
+    const report = await syncProspectReplies();
+    expect(report.error).toBeNull();
+    const replies = await sql`select gmail_message_id from prospect_replies where prospect_id = ${prospectId}`;
+    expect(replies.map((r) => r.gmailMessageId)).toEqual(["gm-colleague"]);
+    const mineLogged = await sql`select detail->>'gmailMessageId' as id from prospect_activities where prospect_id = ${prospectId} and kind = 'operator_replied'`;
+    expect(mineLogged.map((r) => r.id)).toEqual(["gm-mine"]);
+    expect(report.operatorReplies).toBe(1);
+    // Re-running records nothing new.
+    await syncProspectReplies();
+    expect((await sql`select count(*)::int as n from prospect_replies where prospect_id = ${prospectId}`)[0]!.n).toBe(1);
+    expect((await sql`select count(*)::int as n from prospect_activities where prospect_id = ${prospectId} and kind = 'operator_replied'`)[0]!.n).toBe(1);
+    await sql`delete from connector_connections where provider = 'gmail' and project_id is null`;
   });
 
   it("spec 163 G3: a follow-up due outside its recipient-local window is deferred, not sent", async () => {

@@ -3884,7 +3884,6 @@ paid work no one requested. Medina's baseline needs the worker.
 - A separate snapshot type keeps `MismatchEvidenceSnapshot` strict; only
   evidence release accepts both and skips just the production checks.
 
-<<<<<<< HEAD
 ## 2026-10-17 — Spec 152 (planned): performance pilot pricing replaces the $7,500 offer
 
 - **Founder decision: the current offer is $1,000 to start, plus $4,000 only if an agreed, measurable target is reached.** `first_client_90d_v1` ($7,500 / 90 days) is retired, not deleted: presented quotes and engagements reference policies by version, and history is evidence (spec 135).
@@ -3902,7 +3901,6 @@ paid work no one requested. Medina's baseline needs the worker.
 - Purchase order changes: freeze baseline and record the target before the
   agreement, which cites the target. `markActive` checks onboarding, then the
   target. v1 agreements re-render byte-identically (pinned hash).
-=======
 ## 2026-10-28 — Leader email for "increase your ranking" (spec 169)
 
 - Segment B (already recommended, not the default) gets the leader email when
@@ -3913,4 +3911,18 @@ paid work no one requested. Medina's baseline needs the worker.
 
 - The alert goes to the owner's account email, not the outreach mailbox the
   reply already sits in: the point is a phone notification within the hour.
->>>>>>> origin/main
+
+## 2026-10-30 — Dispatch policy v2 deployed: buying unit, not brokerage (spec 171)
+
+- The 2026-09-15 decision finally reaches production: the brokerage cap
+  refused 31 of 66 Touch 1 sends in the first restart week. Same canonical
+  business or an evidence-backed local office still blocks; a brand never does.
+
+## 2026-10-30 — Reply attribution is by our thread, not only the sender (spec 172)
+
+- A prospect's colleague replied in our thread and nothing was recorded. The
+  thread we started is the attribution key; the company domain only narrows
+  the search. Mail outside our threads is never attributed to a prospect.
+- Spec 173: the operator's own replies in our threads are logged as
+  `operator_replied` activities (not ledger sends: they were not gated by the
+  OS) and count as answering a positive reply.
